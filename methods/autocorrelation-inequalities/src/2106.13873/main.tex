@@ -1,0 +1,247 @@
+
+
+%\documentclass{article}
+\documentclass[10pt,reqno]{amsart}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage[utf8]{inputenc}
+
+\usepackage{ esint }
+
+\usepackage{amsmath,amsfonts,amssymb,amsthm,mathtools,esint,color,hyperref,cleveref,subcaption}
+
+\usepackage{amsmath,amsfonts,amssymb,amsthm,color}
+\usepackage{mathrsfs}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+\usepackage{marginnote}
+
+\usepackage[inline]{asymptote}
+
+\usepackage{fancybox,color}
+
+\newcommand{\optf}{f^\star}
+
+
+\usepackage{todonotes}
+
+\newcommand{\bra}[1]{\langle #1 |}
+\newcommand{\ket}[1]{| #1 \rangle}
+\newcommand{\braket}[2]{\langle #1 | #2 \rangle}
+
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{fact}[theorem]{Fact}
+\newtheorem{claim}[theorem]{Claim}
+%\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+%\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{Question}[theorem]{Question}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{conjecture}[theorem]{Conjecture}
+
+
+\newcommand{\CR}{{\mathcal{R}}}
+\newcommand{\R}{{\mathbb R}}
+\newcommand{\Q}{{\mathbb Q}}
+\newcommand{\N}{{\mathbb N}}
+\newcommand{\Z}{{\mathbb Z}}
+\newcommand{\C}{{\mathcal C}}
+\newcommand{\M}{{\mathcal M}}
+\newcommand{\D}{{\mathcal D}}
+\newcommand{\E}{{\mathbb E\,}}
+\newcommand{\ha}{{\mathcal{H}}}
+\newcommand{\CB}{{\mathcal B}}
+
+\newcommand{\newr}[1]{\textcolor{red}{#1}}
+\newcommand{\newb}[1]{\textcolor{blue}{#1}}
+\newcommand{\new}[1]{\textcolor{black}{#1}}
+
+\title{On classical inequalities for autocorrelations and autoconvolutions
+%The inequality Jose and João proposed has extremizers
+}
+\author{Jaume de Dios Pont}
+\address[JDP]{Department of  Mathematics,  University  of  California  Los  Angeles,  Portola Plaza 520, Los  Angeles,
+CA 90095, USA}
+\email{jdedios@math.ucla.edu}
+\author[Jos\'e Madrid]{Jos\'e Madrid}
+\address[JM]{Department of  Mathematics,  University  of  California  Los  Angeles,  Portola Plaza 520, Los  Angeles,
+CA 90095, USA}
+\email{jmadrid@math.ucla.edu}
+
+\date{\today}
+\newtheorem{thm}{Theorem}
+\newtheorem{prop}{Proposition} 
+
+\keywords{autocorrelation, autoconvolution, optimal constants, extremizers}
+\subjclass[2010]{42A05, 42A85, 70H03, 39A12}
+
+
+
+\begin{document}
+	\maketitle
+	
+\begin{abstract}
+In this paper we study an autocorrelation inequality proposed by Barnard and Steinerberger \cite{BarnardSteinerberger}. The study of these problems is motivated by a classical problem in additive combinatorics. We establish the existence of extremizers to this inequality, for a general class of weights, including Gaussian functions (as studied by the second author and Ramos) and characteristic function (as originally studied by Barnard and Steinerberger). Moreover, via a discretization argument and numerical analysis, we find some almost optimal approximation for the best constant allowed in this inequality. We also discuss some other related problem about autoconvolutions.
+
+
+ .
+\end{abstract}	
+	
+	
+	
+\section{Introduction}
+\input{intro}
+
+
+\section{The extremizer exists and is compactly supported}
+\input{existence}
+
+\section{Approximation inequalities}
+\input{approximation}
+
+
+\input{computational}
+
+\section{A remark on another autoconvolution problem}
+\input{another_problem}
+
+
+
+
+
+\begin{thebibliography}{99}
+
+\bibitem{BarnardSteinerberger} 
+\newblock R.C. Barnard, S. Steinerberger,
+\newblock \emph{Three convolution inequalities on the real line with connection to additive combinatorics.}
+\newblock Journal of Number Theory, \textbf{207} (2020), 42--55. 
+
+\bibitem{Beckner}
+\newblock W. Beckner, 
+\newblock \emph{Inequalities in Fourier analysis.} 
+\newblock  Annals of Mathematics, \textbf{102} (1975), 159--182. 
+
+\bibitem{BCK}
+\newblock  J. Bourgain, L. Clozel and J.P. Kahane, 
+\newblock \emph{Principe d’Heisenberg et fonctions positives.}
+\newblock Annales de l’institut Fourier, \textbf{60} (2010), n. 4, 1215--1232.
+
+\bibitem{CDGJLM}
+ A. Chang, J. de Dios, R. Greenfeld, A. Jamneshan, Z. Li and J. Madrid,
+ \newblock \emph{Decoupling for fractal subsets of the parabola.}
+\newblock Preprint https://arxiv.org/abs/2012.11458
+
+\bibitem{CJLL}
+ E. Carlen, I. Jauslin, E. Lieb and M. Loss,
+ \newblock \emph{On the Convolution Inequality $f\geq f*f$.}
+\newblock To appear in IMRN https://doi.org/10.1093/imrn/rnaa350.
+
+\bibitem{CRT}
+\newblock J. Cilleruelo, I. Ruzsa and C. Trujillo,
+\newblock \emph{Upper and lower bounds for finite $Bh[g]$ sequences.}
+\newblock Journal of Number Theory, \textbf{97} (2002), n. 1, 26--34.
+
+\bibitem{CRV} 
+\newblock J. Cilleruelo, I. Ruzsa and C. Vinuesa,
+\newblock \emph{Generalized Sidon sets.}
+\newblock Advances in Mathematics, \textbf{225} (2010), n. 5, 2786 --2807.
+
+\bibitem{CS}
+\newblock A. Cloninger and S. Steinerberger, 
+\newblock \emph{On suprema of autoconvolutions with an application to Sidon sets.}
+\newblock Proceedings of the American Mathematical Society \textbf{145} (2017), no. 8, 3191--3200.
+
+\bibitem{CG}
+\newblock H. Cohn and F. Gon\c{c}alves,
+\newblock \emph{An optimal uncertainty principle in twelve dimensions via modular forms.}
+\newblock Inventionnes Mathematicae {\bf 217} (2019), no.~3, 799--831. 
+
+\bibitem{Github}
+\newblock  J. de Dios, J. Madrid, 
+\newblock \emph{On classical inequalities for autocorrelations and autoconvolutions: accompaining code.}
+\newblock Hosted on GitHub at \url{https://github.com/jaumededios/suprema-autocorrelations}.
+
+\bibitem{FKM}
+\newblock S. Fish, D. King and S. J. Miller,  
+\newblock \emph{Extensions of Autocorrelation Inequalities with Applications to Additive Combinatorics.}
+\newblock arXiv preprint \texttt{arXiv:2001.02326}. 
+
+\bibitem{Folland}
+\newblock G. Folland, 
+\newblock \emph{A course in abstract harmonic analysis.} 
+\newblock Chapman and Hall/CRC, 2016. 
+
+%\bibitem{GOeSR2}
+%\newblock F. Gon\c{c}alves, D. Oliveira e Silva, and J. P. G. Ramos, 
+%\newblock \emph{New sign uncertainty principles.}
+%\newblock Preprint, 2020.
+
+%\bibitem{GOeSR1}
+%\newblock F. Gon\c{c}alves, D. Oliveira e Silva, and J. P. G. Ramos, 
+%\newblock \emph{On regularity and mass concentration phenomena for the sign uncertainty principle.}
+%\newblock Preprint, 2020.
+
+\bibitem{GOeSS}
+\newblock F. Gon\c{c}alves, D. Oliveira e Silva, and S. Steinerberger,
+\newblock \emph{ Hermite polynomials, linear flows on the torus, and an uncertainty principle for roots.} 
+\newblock Journal of Mathematical Analysis and Applications {\bf 451} (2017), no.~2, 678--711. 
+
+\bibitem{G}
+\newblock B. Green, 
+\newblock \emph{The number of squares and $Bh[g]$ sets.}
+\newblock Acta Arithimetica, \textbf{100} (2001), 365--390.
+
+\bibitem{HLP}
+\newblock G.H. Hardy, J.E. Littlewood, and G. Polya,
+\newblock \emph{Inequalities}
+\newblock Cambridge University Press, Cambridge (1934).
+
+\bibitem{Ha}
+\newblock J. K. Haugland, 
+\newblock \emph{Advances in the minimum overlap problem.}
+\newblock Journal of Number Theory, \textbf{58} (2001), 71--78.
+
+\bibitem{MOB1}
+\newblock G. Martin and K. O'Bryant, 
+\newblock \emph{Constructions of generalized Sidon sets.}
+\newblock Journal of Combinatorial Theory Series A \textbf{113} (2006), n. 4, 591--607.
+
+\bibitem{MOB2} 
+\newblock G. Martin and K. O'Bryant,
+\newblock \emph{The symmetric subset problem in continuous Ramsey theory.}
+\newblock Experimental Mathematics \textbf{16} (2007), n. 2, 145--166.
+
+\bibitem{MOB3}
+\newblock G. Martin, K. O’Bryant,
+\newblock \emph{The supremum of autoconvolutions, with applications to additive
+number theory.}
+\newblock Illinois J. Math. \textbf{53} (2009), no. 1, 219--235.
+
+\bibitem{MR}
+\newblock J. Madrid and J. P. G. Ramos, 
+\newblock \emph{On optimal autocorrelation inequalities on the real line.}
+\newblock Communications on Pure and Applied Analysis (2021), 20 (1) 369-388
+
+
+
+\bibitem{MV} 
+\newblock  M. Matolcsi and C. Vinuesa, 
+\newblock \emph{Improved bounds on the supremum of autoconvolutions.} 
+\newblock Journal of Mathematical Analysis and Applications \textbf{372} (2010), no. 2, 439--447.
+
+\bibitem{Y}
+\newblock  G. Yu, 
+\newblock \emph{An upper bound for $B2[g]$ sets.}
+\newblock Journal of Number Theory \textbf{122} (2007), n. 1, 211--220. 
+
+
+\end{thebibliography}
+
+
+\end{document}

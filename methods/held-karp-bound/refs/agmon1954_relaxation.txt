@@ -1,0 +1,520 @@
+                                            THE RELAXATION METHOD FOR
+                                                LINEAR INEQUALITIES
+                                                                  S H M U E L AGMON
+
+                       1. Introduction. In various numerical problems one is confronted with the
+                    task of solving a system of linear inequalities:
+                                                                    n
+                                                                        a
+                     (1.1)                           U(x) = 2               iJxJ + bi> 0     (i = 1, . . . , m)y
+
+                     assuming, of course, that the above system is consistent. Sometimes one has,
+                     in addition, to minimize a given linear form l(x). Thus, in linear programming
+                     one obtains a problem of the latter type. To cite another example, this time
+                     from analysis, the problem of finding the polynomial of best approximation of
+                     degree less than n corresponding to a discrete function defined in N points is of
+                     the latter type. In this paper we shall be dealing only with the simpler problem
+                     of finding a solution of (1.1). Nevertheless, it is known (7, lectures IV and V)
+                     that the more difficult problem of minimization can be reduced to a system of
+                     inequalities involving no minimization by the duality (or minimax) principle.
+                     (However, this will increase considerably the number of unknowns and
+                    inequalities in the equivalent system.)
+                        That the numerical problem of solving a system of inequalities is in general
+                    no easy task could be inferred from the fact that even in the case of equations
+                    the numerical solution is not easy, and that many ingenious methods were
+                    devised (2) in the hope of obtaining at least an approximate solution in a
+                    "reasonable" number of steps. The situation is much worse in the case of
+                    inequalities. Of the existing methods one could mention the double description
+                    method (3) and the simplex method due to Dantzig (1). The elimination
+                    method (proposed already by Fourier) is ruled out in general due to the huge
+                    number of elementary operations involved.
+                       We propose to discuss here an iteration procedure of finding a solution of
+                     (1.1). The idea of the algorithm involved was communicated to the author by
+                    T. S. Motzkin. 1 This method, which uses orthogonal projection, will be seen
+                    later to be intimately connected with the so-called relaxation method in the
+                    case of equations (4; 5; 6), and it could be considered (after a suitable trans-
+                    formation) to be the extension of this method to inequalities. Even in the case
+                    of equations it seems to us that our results are not completely devoid of
+                    interest, for we shall get a simple geometric proof for the convergence of the
+
+                      Received May 27, 1953. The preparation of this paper was sponsored (in part) by the Office
+                   of the Air Comptroller, U.S.A.F.
+                     Ht was through valuable conversations which the author had with T. S. Motzkin that he
+                   was led to consider the problems treated here.
+                                                                              382
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                                         RELAXATION FOR LINEAR INEQUALITIES                                     383
+
+            relaxation procedure which will hold even if the (consistent) system of
+            equations has a singular matrix, and we shall also establish the rate of con-
+            vergence, a feature which had been absent in previous proofs (compare 6).
+
+               2. Preliminary remarks and lemmas. When considering the system (1.1)
+            it will be convenient to use a geometric language. Thus we shall look upon
+            x — (xi, . . . , xn) as a point in ^-dimensional Euclidean space, En, and each
+            of the inequalities (1.1) as defining a half-space. The set of solutions will
+            therefore consist of a convex polytope which we shall denote by 12. We shall
+            also say that lt(x) = 0 defines an oriented hyperplane 7rt-; — U{x) — 0 is
+            oppositely oriented. A point x will be said to be on the right side of ITt if
+            li(x) > 0, and on the wrong side of 7r* if lt(x) < 0. It is clear that the set of
+            solutions contains all those points x which are on the right side of all oriented
+            hyperplanes.
+               The following simple geometric lemma is basic in our discussion :
+               LEMMA 2.1. Let x and y be two points in En separated by the oriented hyper-
+            plane w where x is on the wrong side of IT and y is on the right side of IT. Let xr
+            be the orthogonal projection of x on v. Then, if 0 < X < 2, we have{2)
+             (2.1)                              \x + \(xr — x) — y\ < \x — y\,
+            where equality holds only for X = 0 or X = 2 and y on T.
+               Proof. Consider the two-dimensional plane T through x, xf and y. It cuts
+             the hyperplane ir in a line r. Clearly r separates x and y in T, and x! is the or-
+             thogonal projection of x on r. The statement (2.1) is now obvious from the
+             geometric configuration.
+               Alternatively, to prove the lemma analytically we may assume that w is the
+             hyperplane x\ = 0, and that x is the point (£, 0, . . . , 0) with £ < 0, and y is
+             the point (771, . . . , T)n) with 7)1 > 0. Then x' — (0, . . . , 0). Hence we have
+
+             (2.2) \x + \(x' -x)-y\                   = \(l-X)x-y\                = | [ ( 1 - X) J - Vif + Ç    vtf,
+             and
+
+             (2.2')                         \x - y\ = {(ï - vif + Çi/î}'.
+             The result is now obvious since [(1 — X)£ — rji]2 < (£ — 771)2, and equality
+             holds only if X = 0 or X = 2 and 771 = 0.
+               For future reference we note that (2.2) and (2.2') imply the following more
+             precise form of (2.1) for 0 < X < 2:
+             (2.3)            \x + \(x' - x) - y\2 <\x-                    y\2 - [1 - (1 - X)2] \x' -     x\\
+                LEMMA 2.2. Let ûbe a polytope defined by the inequalities (1.1) none of which
+             is superfluous. Let x be a point exterior to 12 and let y be the nearest point to x on
+               2
+                 In what follows we do not distinguish between the point x and the vector joining the origin
+             to this point, and whose magnitude we denote by | x \ .
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                      384                                            SHMUEL AGMON
+
+
+                      612. (The boundary of 12, denoted by 612, consists of those points of 12 which lie on at
+                      least one of the hyper planes 71-*). Let ik (k = 1, . . . , s) be the sub-set of indices for
+                      which U(y) = 0, and let fiy be the polyhedral cone defined by
+                      (2.4)                                             lih(x) > 0             (k = 1, . . . ,s).
+                      Then x is exterior to tiy and y is also the nearest point to x on dtty.
+                         Proof. Let us assume, on the contrary, that x is not exterior to £ly and
+                      consequently is on the right side of all oriented hyperplanes irik. It follows from
+                      this and from the fact that y is on the right side of all hyperplanes T t (i = 1, ..., m),
+                      that any irt (i ^ ik) having x on its wrong side intersects the open interval xy
+                      at a point yt. At least one such hyperplane exists since x is exterior to 12. Let y*
+                      be the nearest yt to y. Then it is easy to see that y* £ 612. But this leads to the
+                      contradiction: \x — y*\ < \x — y\, which establishes the first part of our
+                      contention.
+                         Let now y be any point on 612^ different from y. Obviously the whole seg-
+                      ment yy is contained in 612y. Also, there exists a spherical neighborhood Ne in
+                      En, around y, such that its points are on the right side of all hyperplanes wt
+                      with i 9^ H- Thus, the segment which is the intersection of N€ and the seg-
+                      ment yy is contained in 612. In particular there exists a point y' £ 612 which is
+                      between y and y on the segment yy. We therefore have: \x — y'\ < a±\x — y\
+                      + a2\x — y\ with ai + a2 = 1, <x\ > 0, «2 > 0. But sincex — y'\ > \x — y
+                       (y being the nearest point to x on 612) we conclude that x — y\ > \x — y\
+                      This proves the second part of the lemma.
+                          LEMMA 2.3. Let a polyhedral cone C be given by:
+
+                      (2.5)                                U(x) = 22 aijxj > 0                (i = 1, . . . , m).
+                                                                        3=1
+
+                      Let E be the set of points x such that :
+                      (a) x is exterior to C.
+                      (b) The nearest point to x on dC is the origin.
+                         Let us denote by i(x) the subset of indices for which lt(x) < 0, and by dt(x) the
+                      distance of x from the hyperplane TTi'.l^x) = 0. Then
+
+                       (2.6)                    Inf max ^       = X(C) > 0.
+                                              x £E t(x) \x\
+                        Proof. From the homogeneity of (2.5) it follows that there is no loss of
+                      generality in replacing E by the subset E* consisting of those points of E
+                      which are also on the unit hypersphere: \x\ = 1. The set E* is clearly compact.
+                      But, for any x Ç E*, we have
+
+                                              max ~ | 7 ~ = maxdi(x) > 0,
+                                               i(x)   \x\     i(x)
+                      since x is on the wrong side of at least one hyperplane. This and the compact-
+                      ness give (2.6).
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                                            RELAXATION FOR LINEAR INEQUALITIES                                                 385
+
+
+                3. The method of orthogonal projection. We shall discuss here a special
+             iteration procedure to solve (1.1) which we shall call the method of orthogonal
+             projection, and where the sequence of iterates is defined in the following way:
+                          x(0) is arbitrary;
+                          X(V+D _ x(v) if x(v) [s a solution of (1.1);
+
+
+            x("+1) is the orthogonal projection of x(l° on the farthest hyperplane 7r* with
+            respect to which it is on the wrong side, if x(v) is not a solution of (1.1). (If
+            this hyperplane is not unique one chooses one of the hyperplanes with respect
+            to which x(v) is on the wrong side and whose distance from x(v) is maximum.)
+               Numerically, if x(v) is not a solution we consider all indices i' for which
+            li>(x(v)) < 0, and among them pick an i0 for which — lv{x{v))/\ar\          has its
+            greatest value; at being the vector: (aUj . . . , ani). Then, x("+1) = x(l° + tau
+            where/ =         -lio(x^)/\aio\2.
+               We shall establish now:
+               THEOREM 3. Let (1.1) be a consistent system of linear inequalities and let
+            {x(v)} be the sequence of iterates defined above. Then x{v) —» x where x is a solution
+            of (1.1). Furthermore, if R is the distance of x(0) from the nearest solution, we have
+             (3.1)                                         \xiv) - x\ < 2Rd\                                      v = 0, 1 , . . . ,
+            where 0 < 6 < 1 depends only on the matrix                               (atJ).
+               Proof. We first claim that if y is a solution of (1.1) then x{v) approaches y
+            steadily, or, more precisely
+             (3.2)                     \x        — y\ < \x                  — y\ — |x              — x |.
+                                                     (v)                                {v)
+            Indeed, (3.2) is trivial if x is a solution. If x is not a solution then (3.2)
+            follows from the refinement (2.3) of Lemma 2.1 with x = x(v\ xf = x(H_1) and
+            X = 1. (We use also the fact that y is a solution and hence is on the right side
+            Of 7Tj.)
+                Let us consider now the polyhedral cone Cix                                   it   defined by
+                                                                   n
+            (3.3)                                               S &ikùxi > Q                                    (k = 1, . . . , s),
+                                                                 3=1
+
+            where ik is a subset of the set i — 1, . . . , m, (aikj) being a submatrix of the
+            matrix (atj) of (1.1). Let \tl,...,u be the " norm" associated with Cilt... i„
+            which was introduced in (2.6). Then, by Lemma 2.3, \u,...,u > 0. Therefore:
+            (3.4)                                   fi = min \ u                 u   > 0,
+                                                             ii,...,   is
+
+            where the minimum is taken over all possible choices of ii, . . . , is from
+            i = 1, . . . , m. Let
+                                                             e = V"ï _=: 7,
+            and let us denote by y(v) the nearest point to x(v) on dft. We assert that
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                     386                                                 SHMUEL AGMON
+
+
+                      (3.5)                              \x(v+l) - yiv)\ < 6\x(v) - y(v)\                        (y = 0, 1, . . .).
+                      Indeed, let Q,V(V) be the polyhedral cone of Lemma 2.2 generated by the ori-
+                      ented hyperplanes 7r* containing yiv). From the lemma it follows that x(v) is
+                      exterior tofi^oo,and that y^v) is also the nearest point to x (v) on d&y(p). Translat-
+                      ing y(v) to the origin, and applying Lemma 2.3, taking into account (3.4) and
+                      the fact that |x (H_1) — x(v)\ is the distance of x(v) from the farthest hyperplane
+                      with respect to which it is on the wrong side, we find that
+                      (3.6) \x(v+1) - x{v)\ > m a x d i s t (x(v\ *,) > \'\x(v)               - y(v)\ > /i|* ( F ) -     y(v)\,
+                                               ï{x{v))
+                      where i'(x) has the meaning of Lemma 2.3 and A' is the associated "norm" of
+                      (2.6), the "primes" indicating that we are dealing with the polyhedral cone
+                      £2j,(„). Combining now (3.6) and (3.2) we get
+                      /o T\                  I (M-l)         (")|2   ^    I (?)     (v)i2    2i   (?)    (*)I2
+
+                      (3.7)                     |x       — 3/ | < \x — y \ — M \x — y \ ,
+                      which establishes (3.5).
+                          The remainder of the proof now follows easily. We first note that the iterates
+                      x (0) , x (1) , . . . , x(v), . . . are all included in the hypersphere 5 ( 0 ) : \x — 3>(0)|
+                      < \xi0) — 3^(0)| = R. This follows from (3.2). For the same reason x (1) , . . . , x{v\
+                      . . . lie in the hypersphere 5 ( 1 ) : \x — 3>(1)| < |x (1) — y (1) |. But since ya) is the
+                      nearest point to x(1) on dO, and on account of (3.5), we have
+                                                         \xm-y™\<                       \xw-yw\<8R.
+                      In the same way we get that x(v\ x ( " +1) , . . . are contained in the hypersphere
+                      S(v) : \x — y(v)\ < \x(v) — y(v)\ < 6V R. It is now evident, since we have a
+                      sequence of hyperspheres with non-zero intersection and whose radii tend to
+                      zero, that                           oo
+                                                                           n s" = x.
+                      Thus we get lim x(v) = x — lim y{v) which proves the convergence of x(v) to a
+                      solution of (1.1). Moreover, since both x(p) and x belong to the hypersphere S(v)
+                      whose diameter does not exceed 2Rdv, (3.1) follows, and the proof is complete.
+                         In the above theorem we have established that the rapidity of convergence
+                      of the iterates to the solution is at least linear. However, the positive constant
+                      /x appearing in the definition of 6 was obtained from Lemma 2.3 where we had
+                      only an existence statement. More elaborate considerations can give a lower
+                      bound to n in terms of the matrix (a^). Let C = (ctj) (i,j= 1, . . . , r) be a
+                      rectangular matrix. We shall denote by \C\ the determinant of C, and by T(C)
+                      the expression
+                                                            r(c)=
+                      (3.8)                                               [s(s | c ^yT
+                      where the C*/s are the cofactors of the elements ctj. With this notation the
+                      following result may be established :
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                                         RELAXATION FOR LINEAR INEQUALITIES                          387
+
+               THEOREM.         If in Theorem 3 the lt(x) are normalized so that
+
+            (3.9)                                             £ 4 = 1,
+           and if r is the rank of the matrix ( a 0 ) , then
+
+            (3.io)                „ >min[i; \At::xi]/[z                                 (rt:::if]\
+           where the summations are taken over the range 1 < ji < . . . < j r < n, and
+           ii, . . . , ir are r linearly independent rows of (ai3) {the rows are held fixed in the
+           brackets) ;
+
+
+           is the r X r sub-matrix formed by the indicated rows and columns and
+                                                              Vji        jr
+                                                              ± ilt...   ir
+
+           is the associated quantity (3.8), while the minimum is to be taken over all different
+           combinations of the i's which correspond to linearly independent rows.
+               We omit the somewhat lengthy proof of this theorem. We remark only
+            that in its proof we make use of the invariance under orthogonal transforma-
+            tions of the numerator and denominator in (3.10), and use induction with
+            respect to n.
+
+               4. More general procedures. The method discussed above admits different
+            variants which all yield (when the system is consistent) a sequence {x{v)} of
+            iterates converging to a solution of the system. The following are few examples
+            which may prove useful in computations. In all these cases the convergence is
+            proved easily and the rate of convergence to the solution y is found to be:
+            \x(v) - y\ = 0(6V) for some 0 < 0 < 1.
+               (i) The maximal residual method. This method differs only slightly from the
+            method of orthogonal projection of §3. Instead of choosing x{v+l) as the ortho-
+            gonal projection of xiv) on the farthest hyperplane Ti with respect to which it is
+            on the wrong side, we choose x(v+1) as the orthogonal projection of x(v) on this
+            hyperplane Tt for which the negative residual lf(x(v)) is the greatest in absolute
+            value. The two methods coincide if the system (1.1) is normalized so that
+            (3.9) holds.
+               (ii) Over and under projection with a fixed ratio. Here the iterates are defined
+            in the following way: x ( " +1) = x(v) if x{v) is a solution of (1.1), or, if xiv) is not a
+            solution we let
+
+
+            where %(v) is the projection of x(v) on the farthest hyperplane with respect to
+            which it is on the wrong side, and where 0 < |/?| < 1. We say that we over-
+            project, or underproject, according as /3 > 0 or 0 < 0.
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                        388                                              SHMUEL AGMON
+
+
+                           In connection with the last procedure we remark that it is very plausible that
+                        overprojecting with a small positive constant /3 will accelerate the convergence
+                        of {x (, °}. Indeed, slowness in the convergence of the method of orthogonal
+                        projection as described in §3 may arise if some of the "solid angles" of the poly-
+                        tope Q are very small. Overprojecting has the effect of opening the angles and
+                        this may have the effect of accelerating the convergence.
+                           (iii) Systematic projection. In this procedure the m hyperplanes 7r* : lt(x) = 0,
+                        are arranged in a periodic infinite sequence -KV (V = 1 , 2 , . . . ) where 7r„ = -KI
+                        and lv(x) = li(x) if v = i (mod m). The sequence of iterates x{v) (v = 0, 1, . . .)
+                        is defined then in the following way: x (0) is arbitrary; x (l/+1) = x(l° if x(v) is on
+                        the right side of irv+i (i.e., if lv+i(x{v)) > 0) while if x{v) is on the wrong side of
+                        7T„4-i, then x(v+1) is the orthogonal projection of x(v) on TTV+I.
+
+                          5. The equivalence of the (generalized) relaxation method, and the method
+                       of orthogonal projection. The method of projections described in the last two
+                       sections can of course be applied to equations by replacing each equality by a
+                       pair of inequalities. An equivalent procedure would be to change slightly the
+                       algorithm defining the points x{v) by considering the absolute value of all
+                       residuals and not only the negative ones. We shall now describe a procedure
+                       which will be the generalization of the relaxation method to inequalities, a
+                       procedure which we assume the reader to be familiar with in the case of equa-
+                       tions. Let                         m
+
+                       (5.1)                    Lt(y) = X) gijjj + bi>0               (i = 1, . . . , m)
+
+                       be a set of m linear inequalities in m unknowns having a symmetric and positive
+                       semi-definite matrix G = (gtj). Clearly, one may assume that no row of G is
+                       identically zero. This, together with the previous assumptions, will imply that
+                       g H > 0. Let 6i (i = 1, . . . , m) be the m unit vectors directed along the axes
+                       in the Em space, and let us define the sequence {y(v)} by the following iteration
+                       scheme :
+                                      3^(0) is arbitrary;
+                        (5.2)          y(v+1) = yiv) if y(v) is a solution of (5.1);
+                                       y(H-i) = y{v) _|_ tv6iv if y(v) j s n o t a solution of (5.1),
+                        where iv is such that
+                                              Li,(yw)       < 0,         - Ltr(y")       = max (-£,(?<'>)),
+                       and t is a scalar chosen so that
+                                                                         Li.iy™)        = 0,
+                       or, more explicitly,
+                       (5.3)                                       t,=     -        Lit{yM)/gKK
+                        The above procedure can be considered as the extension of the relaxation
+                       method to inequalities. We shall now establish the following theorem :
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                                           RELAXATION FOR LINEAR INEQUALITIES                                     389
+
+             THEOREM 5. If the previously discussed system (5.1) is consistent, then the
+           sequence {yiv)} tends to a solution of the system. Moreover, we have
+            (5.4)                                 lyW-yK^l/»-^',                                     , = 0,1,...,
+           where 0 < 6 < 1, and where the constants K and 9 depend only on the matrix G.
+             Proof. We shall show that the relaxation procedure can be interpreted as an
+           orthogonal projection procedure,which will enable us to use our previous results.
+             Since G is symmetric and positive semi-definite, there exists a real matrix
+           A — (a,ij) (ijj= 1, . . . , m) such that
+                                                                G = AA*,
+           where we denote by A* the transposed matrix. Let us introduce the new
+           variable x = (#i, . . . , xm) connected with y = (yu . . . , ym) by
+            (5.5)                                                  x = y A.
+           We shall associate with the system (5.1) (which in matrix notation can be
+           written as yA A* + b > 0) the system
+                                                               m
+
+            (5.6)                                 li(x) = 23 aijxJ + °t > 0>                         i = 1, . . . , m,
+
+           or in matrix notation
+                                                               xA* + b > 0.
+           Obviously if (5.1) is consistent the same will be true for the system (5.6). Let
+           us define the sequence {x(v)} by:
+            (5.7)                                              x(v) = y(v)A,                         v = 0, 1, . . . .
+                                     (v)
+           We claim that {x } is also a sequence obtained from (5.6) by the method of
+           orthogonal projection (i) of §4. Indeed, we note that Li(y(v)) = li(x(v)) so that
+           the residuals are the same for the two systems. Now, if y{v) is a solution of
+           (5.1) then x(v) is a solution of (5.7), and xU) = x (v) , j > v. If y{v) is not a solu-
+           tion, then:
+                                                        (H-D          (")   i *
+                                                      y ^ = y }             + tv eip
+           where
+                                   -Liw(yM)         = max ( - £ , ( ? < " ) ) , Lip(y(r+1))   = 0.
+                                                          i
+           Obviously, we have also:
+                                     -liv(x(v))     = max (-h(x(v))),             liv(x(v+1)) = 0,
+                                                           i
+           so that x(v) is replaced by the point x("+1) situated on the hyperplane Tiv
+           corresponding to the negative residual with the largest absolute value. Finally,
+           we have
+                               x       x == ti>ei^/i — tv\a\iv, . . . , amiv),
+
+           which shows that xiv+1) is indeed the orthogonal projection of xiv) on wt .
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                      390                                             SHMUEL AGMON
+
+
+                        But, we have pointed out in §4 that the sequence {x(v)} converges to a
+                      solution x of (5.6). More precisely, in the same manner as (3.1) was established
+                      one shows that:
+                      (5.8)                                       \x{v) -x\<            2Rd\
+                      where R is the distance of x (0) from the set of solutions of (5.6), and where
+                      0 < 6 < 1 depends only on A. Assuming the non-trivial case where yiv) is not a
+                      solution, we may write
+
+                      (5.9)                 0 > Ltr(yM) = /,,(*<") = /,,(*) + £ atM? ~ **)•
+                      But, lh (x) > 0 and
+                                   m
+                                        I                          I (              2 VI
+                      so that if we define
+                      (5.11)                               Q = m a x g i / and g = min gti*
+                                                                     i                              i
+
+                      we get from (5.8)-(5.11):
+                      (5.12)                                               \Liv(yiv))\<2RQe\
+
+                      Combining (5.12), (5.3) and (5.2), we find that
+
+                      (5.13)                 \yiv+l) - yiv)\ <                   \Liy(y(v))\/giviv<^Rev           (? = o, i, . . .),
+
+                      from which follows the convergence of y(v) to a point y. Since the solution x of
+                      (5.6) is related to y by (5.5), y is also a solution of (5.1). Finally, we may
+                      write :
+
+                                       y - y (»)    <E 3,0+1) _               yU)
+                                                                                          2             £î   <7   1~ 0
+                      In order to get the exact statement (5.4) we note that
+                                                                                               1*
+                         JR <     \x
+
+
+                                                 < { Z Z (y. - y / V Z a\, \\ =\y- y(0)\{Za%)
+
+                                                 =b-y(o,i(zg»y<b-y°>ki<2,
+                      which, when combined with (5.13), gives (5.4) where
+                                                                              2miQ2
+                                                                     K =
+                                                                             «T(l " 0)
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                                           RELAXATION FOR LINEAR INEQUALITIES                   391
+
+                We have discussed above one type of relaxation. Similar results hold for
+             other types, such as relaxation with maximum change of \y^v+1) — y^v)\ (this
+             corresponds to the method of orthogonal projections of §3), over and under
+             relaxation and the method of systematic relaxation. It is also obvious that the
+             results hold true for the case of equations after we make the necessary change
+             in the algorithm defining {y(v)}.
+                We shall now proceed to show that conversely the orthogonal projection
+             method can be interpreted as a relaxation procedure, at least when the initial
+             point x(0) is suitably chosen. We shall suppose that a consistent system of
+             inequalities (1.1) is given. Or, in matrix notation,
+                                                              xA* + b > 0,
+             where A is an m X n matrix, and x = (xi, . . . , xn) a row vector. Let us intro-
+             duce the new variable y = (yi, . . . , ym) which will again be connected with x
+             by
+                                                 x = y A.
+             Let us also consider the associated system
+             (5.14)                                         yAA* +           b>0,
+             which, when expanded, has the form of (5.1), where G = A A* is an m X m
+             symmetric and positive semi-definite matrix. Let now x(0) be a starting point
+             of the form
+             (5.15)                          x(0) = ywA,
+             and let us define x (1) , . . . , x(v\ . . . by the orthogonal projection method (i) of
+             §4. That is, xiv+1) is the orthogonal projection of xiv) on the hyperplane iriv:
+             hv{°°) = 0 corresponding to the negative residual U{x^v)) with the largest abso-
+             lute value. We shall also define a corresponding sequence y(v) in Em as follows:
+             yw is the chosen starting point in (5.15), y(v+v is the projection of y(v) on the
+             hyperplane Liv{y) = 0 in the direction parallel to the yiv axis {iv being the
+             sequence of indices associated with the xiv)Js). It is now easy to see (using
+             (5.2)) that
+                                                               xw=y"A9
+             and that, moreover, the sequence {y(v)} may also be obtained by the relaxation
+             scheme (5.2). Now, since in the proof of Theorem 5 we did not use the consis-
+             tency of the system (5.1), but only that of (5.6), we may use the same proof to
+             obtain again that y(v) converges to a solution y, and that (5.4) holds. Thus, we
+             have established the equivalence of the two methods, and have also obtained,
+             as a by-product, that the two systems (1.1) and (5.14) are either both consis-
+             tent or inconsistent.
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+                      392                                             SHMUEL AGMON
+
+                                                                         REFERENCES
+
+                      1. G. B. Dantzig, Maximization of a linear form whose variables are subject to a system of linear
+                             inequalities (U.S.A.F., 1949), 16 pp.
+                      2. G. E. Forsythe, Solving linear algebraic equations can be interesting, Bull. Amer. Math. Soc,
+                             59 (1953), 299-329.
+                      3. T. S. Motzkin and H. Raiffa, G. L. Thompson, R. M. Thrall, The double description method,
+                             in Contributions to the Theory of Games, Annals of Mathematics Series, 2 (1953), 51-74.
+                      4. R. V. Southwell, Relaxation methods in engineering science (Oxford, 1940).
+                      5.         , Relaxation methods in theoretical physics (Oxford, 1946).
+                      6. G. Temple, The general theory of relaxations applied to linear systems, Proc. Roy. Soc. London,
+                             169 (1939), 476-500.
+                      7. Linear programming seminar notes, Institute for Numerical Analysis (Los Angeles, 1950).
+
+                      The Rice Institute, Houston, Texas
+                      University of California at Los Angeles
+                      National Bureau of Standards at Los Angeles
+                      The Hebrew University, Jerusalem
+
+
+
+
+https://doi.org/10.4153/CJM-1954-037-2 Published online by Cambridge University Press
+

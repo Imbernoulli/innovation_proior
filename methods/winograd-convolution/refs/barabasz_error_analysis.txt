@@ -1,0 +1,1996 @@
+                                               ERROR ANALYSIS AND IMPROVING THE ACCURACY OF
+                                              WINOGRAD CONVOLUTION FOR DEEP NEURAL NETWORKS
+
+
+
+
+arXiv:1803.10986v3 [cs.NA] 1 May 2019
+                                         BARBARA BARABASZ1 , ANDREW ANDERSON1 , KIRK M. SOODHALTER2 AND
+                                                                 DAVID GREGG1
+                                          1
+                                              School of Computer Science and Statistics, Trinity College Dublin, Dublin 2, Ireland
+                                                      2
+                                                          School of Mathematics, Trinity College Dublin, Dublin 2, Ireland
+
+
+
+                                                  Abstract. Popular deep neural networks (DNNs) spend the majority of their execution
+                                                  time computing convolutions. The Winograd family of algorithms can greatly reduce
+                                                  the number of arithmetic operations required and is present in many DNN software
+                                                  frameworks. However, the performance gain is at the expense of a reduction in floating
+                                                  point (FP) numerical accuracy. In this paper, we analyse the worst case FP error and
+                                                  prove the estimation of norm and conditioning of the algorithm. We show that the bound
+                                                  grows exponentially with the size of the convolution, but the error bound of the modified
+                                                  algorithm is smaller than the original one. We propose several methods for reducing
+                                                  FP error. We propose a canonical evaluation ordering based on Huffman coding that
+                                                  reduces summation error. We study the selection of sampling “points” experimentally
+                                                  and find empirically good points for the most important sizes. We identify the main
+                                                  factors associated with good points. In addition, we explore other methods to reduce
+                                                  FP error, including mixed-precision convolution, and pairwise summation across DNN
+                                                  channels. Using our methods we can significantly reduce FP error for a given block size,
+                                                  which allows larger block sizes and reduced computation.
+
+
+                                                                                    1. Motivation
+                                           Deep Neural Networks (DNNs) have become powerful tools for image, video, speech and
+                                        language processing. However, DNNs are very computationally demanding, both during
+                                        and after training. A large part of this computations consists of convolution operations,
+                                        which are used across a variety of DNNs, and in particular convolutional neural networks
+                                        (CNNs). As DNNs become ubiquitous, reducing the cost of DNN convolution is increasingly
+                                        important.
+                                           Simple direct convolution require O(n2 ) operations to convolve a size n input with size
+                                        n convolution kernel. In contrast, fast convolution algorithms require asymptotically fewer
+                                        operations. For example, converting the kernel and input to the Fourier domain with the
+                                        fast Fourier transform (FFT) requires just O(nlog2 (n)) operations. In the Fourier domain,
+                                        convolution can be computed in O(n) operations by pairwise multiplication (Hadamard
+                                        product) of the input vectors.
+
+                                            E-mail address: barabasb@tcd.ie, aanderso@tcd.ie,ksoodha@maths.tcd.ie,dgregg@tcd.ie.
+                                            Key words and phrases. floating point error, numerical analysis, Winograd algorithm, Toom-Cook algo-
+                                        rithm, convolution, Deep Neural Network.
+                                                                                             1
+2 ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+   Although FFT convolution is a popular approach, within the area of deep neural net-
+works (DNNs) a less well known algorithm is widely used. The Winograd family of fast
+convolution algorithms attempts to minimize the number of operations needed for fixed-size
+small convolutions. Around 1980, Winograd proved that a convolution of the input of length
+n with a kernel of length nh can be computed using a theoretical minimum of just n + nh − 1
+general multiplications (Hadamard product operations) [31].
+   Winograd convolutions use a predetermined triple of linear transforms. The first two
+transform the input and the kernel to space where, like in the Fourier domain, pointwise
+multiplication (Hadamard product) can be used to perform convolution. The third trans-
+form moves the result back to the space of the inputs. In Winograd convolution, each
+of the transforms requires O(n2 ) operations, as compared to O(nlog2 (n)) for FFT. Thus,
+Winograd convolution is efficient only for very small convolutions, or where the cost of the
+transform can be amortized over many uses of the transformed data. In DNN convolution,
+the kernels are small, typically 3 × 3 or 5 × 5, and large inputs can be broken into a sequence
+of smaller segments. Further, each input is convolved with many kernels, and each kernel
+with many input segments, so the cost of transform operations is amortized over multiple
+uses. Further, DNNs often operate on a mini-batch of many inputs (typically 32–512) at a
+time, which further increases the re-use of each transformed kernel.
+   Although the transforms are expensive, Winograd convolution can guarantee the theoret-
+ical minimum number of general multiplications. The Winograd transform of a real-valued
+input is real-valued, so that real (not complex) multiplication is used for pairwise multipli-
+cation (Hadamard product). Real-valued multiplication requires just one machine multiply,
+whereas complex multiplication requires four multiplies and two adds, or three multiplies
+and five adds [17]. Compared with the FFT approach, Winograd convolution allows for
+faster Hadamard product computations, at the cost of more expensive transforms.
+   Winograd convolution has a further weakness. The linear transforms are pathologically
+bad cases for FP accuracy, as we describe in Section 4. To obtain a good level of numerical
+accuracy it is normally necessary to break convolutions with a large input into a sequence
+of smaller ones. However, recall that Winograd convolution requires n + hh − 1 general
+multiplications to convolve an input of size n with a kernel of size nh . Thus, when a large
+input is split into segments, there is an overhead of nh − 1 additional general multiplications
+for each segment.
+   In this paper, we address the question of numerical accuracy of Winograd convolution
+for deep neural networks. Better numerical accuracy allows inputs to be split into a smaller
+number of larger segments, which in turn reduces the number of general multiplications. We
+take both analytical and experimental approaches to the problem. We isolate the compo-
+nents of error which can be identified with mathematical analysis, and establish empirical
+bounds for the components which cannot. We make the following specific contributions.
+      • We formalize and prove worst-case FP error bounds and identify error terms for the
+         Toom-Cook algorithm, and show that error grows at least exponentially.
+      • We present a formal analysis of the error bounds for the “modified” Toom-Cook
+         algorithm, and prove that it has a lower, but nonetheless exponentially-growing
+         error.
+      • We estimate the algorithm norm and conditioning.
+      • We demonstrate that order of evaluation of FP expressions in the linear transform
+         impacts accuracy. We propose a canonical Huffman tree evaluation order that re-
+         duces average error at no additional cost in computation.
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN 3
+
+
+                                                                     Figure 1. Diagram of the
+                                                                     structure of DNN convolution.
+                                                                     2D convolutions are computed
+                                                                     between kernels of size k ×k and
+                                                                     inputs of size H ×W . Bundles of
+                                                                     C such convolution are summed
+                                                                     pointwise to produce 1 output.
+                                                                     M outputs are produced this
+                                                                     way, and concatenated along
+                                                                     the M index to produce the
+                                                                     input for the next operation.
+
+      • We experimentally evaluate strategies for selecting algorithm coefficients for typi-
+        cal DNN convolutions. We show relationships between coefficients which improve
+        accuracy.
+      • We investigate algorithms that use a higher (double) precision transform. These
+        methods reduce the error typically by around one third in our experiments.
+
+                   2. Fast Convolution and Deep Neural Networks
+   In DNN convolution, each input segment (or kernel) is typically convolved with many
+kernels (or input segments). When the 2D convolutions are implemented with a fast con-
+volution algorithm, the transforms are thus amortized over many reuses of the transformed
+segments1. Therefore, we are primarily interested in convolution algorithms that minimize
+the general multiplications which implement the pairwise multiplication (Hadamard prod-
+uct) step.
+   Winograd [31] proved that the minimum number of general multiplications (that is the
+multiplications used in the Hadamard product) is n + nh − 1. Winograd demonstrated that
+the existing Toom-Cook method [26, 6] is capable of generating optimal convolution algo-
+rithms that achieve this minimum. Winograd also developed his own method for generating
+fast algorithms.
+   In 2016 Lavin and Gray [18] demonstrated that Winograd convolution can be around
+twice as fast as direct convolution in DNNs [18]. A key contribution of their paper is an
+algorithm to break multi-channel multi-kernel DNN convolution into smaller segments that
+can be computed with matrix multiplication. Lavin and Gray actually used the Toom-Cook
+rather than Winograd’s method to generate their convolution algorithms2. However, they
+described their approach as “Winograd convolution” and within the DNN research literature
+that term has come to include both Toom-Cook and Winograd methods.
+2.1. Decomposing Convolution and Minimizing General Multiplications. A con-
+volution of any output size no > 1 can be decomposed into the sum of smaller convolutions.
+For example, a convolution with no = 8 can be computed as eight convolutions with no = 1
+(i.e. direct convolution), four convolutions with no = 2, two convolutions with no = 4, or
+   1Note that once a DNN has been fully-trained, its weight kernels become constant. The kernels can be
+stored pre-transformed when using the trained network. During DNN training, the kernel is updated on each
+training iteration, so the transform of the convolution must be computed for each convolution. Nonetheless,
+the transformed kernels and input segments can be reused many times within each DNN convolution.
+   2See Lavin and Gray’s source code at: http://github.com/andravin/wincnn
+4 ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+                                                    Figure 2. Toom-Cook         Convolution.
+                                                    The forward linear transform of kernel
+                                                    h is computed by multiplication with
+                                                    matrix G. Similarly, the forward linear
+                                                    transform of input x is computed by
+                                                    multiplication with a matrix B T . Cor-
+                                                    responding elements of the two resulting
+                                                    vectors are then multiplied pairwise
+                                                    (compute Hadamard product) to per-
+                                                    form the convolution. The resulting
+                                                    vector is the image under the linear
+                                                    transform of the actual convolution
+                                                    output. To translate the result back
+                                                    to the domain of the inputs, h and
+                                                    x, the backward transform is applied
+                                                    by multiplication with a matrix AT to
+                                                    produce the final output s.
+
+one convolution with no = 8. With a kernel of size nh = 3, the total number of general
+multiplications for each of these decompositions will be 8 × 3 = 24, 4 × 4 = 16, 2 × 6 = 12
+or 1 × 10 = 10 respectively.
+   The larger the size of each sub-convolution, the fewer general multiplications are needed
+to compute the total output. Unfortunately, bigger output sizes lead to larger FP errors.
+In fact, as we show in Section 4, the error grows at least exponentially with no + nh − 1.
+   Table 1 summarizes the number of general multiplications per output point for different
+output block sizes using a selection of typical kernel sizes from real-world DNNs. Clearly,
+we would like to benefit from the efficiency of large output block sizes. For example, a 5 × 5
+Toom-Cook convolution with an output block size of 12×12 (bottom right) uses around 14×
+fewer general multiplications per output point than direct convolution (top right). However,
+the error for nh = 5 × 5 is so large, that in practice sizes no > 3 × 3 are not used in any
+current DNN software framework.
+
+                               3. Toom-Cook algorithm
+    In this section we describe the Toom-Cook convolution algorithm. It is based on the
+Chinese Remainder Theorem (CRT) for polynomials and the Matrix Exchange Theorem.
+Toom [26] and Cook [6] provide details on the theoretical background. Parhi [20], Tolim-
+ieri [25] and Blahut [4] provide useful descriptions of using the Toom-Cook algorithm to
+perform   a discrete
+                   convolution.   The one-dimensional  discrete convolution of two vectors
+                                                                         Pi
+h h1 · · · hnh and x = x1 · · · xn is the vector s = h ∗ x where si = j=1 hi xi−j .
+    The main idea of Toom-Cook convolution is to transform the kernel and input into
+the modulo polynomial domain where convolution becomes an element-wise multiplication
+(Hadamard product) and then transform the result back. We construct three matrices, one
+for the kernel transform, one for the input transform, and one to transform the result back.
+We denote these matrices as G, A and B respectively.
+Theorem 1 (Chinese Remainder Theorem for polynomials). Let F[a] be the ring of all poly-
+nomials over a field F. Consider the polynomial M (a) ∈ F[a] such as M (a) = m1 (a)...m` (a)
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN 5
+
+
+         Table 1. Number of multiplications per single output point for direct and
+         Toom-Cook convolutions for different kernel and output size
+
+  No of     Output   Mult/     Output size       Mult/     Output       Mult/      Output   Mult/
+  points    K=3      output    K =3×3            output   for K = 5     output    K =5×5    output
+  0            1        3         1×1               9          1           5        1×1       25
+  4            2        2         2×2               4          -           -         -         -
+  5            3      1.67        3×3             2.78         -           -         -         -
+  6            4       1.5        4×4             2.25         2           3        2×2        9
+  7            5       1.4        5×5             1.96         3         2.33       3×3      5.44
+  8            6      1.34        6×6             1.78         4           2        4×4        4
+  9            7      1.29        7×7             1.65         5          1.8       5×5      3.24
+  10           8      1.25        8×8             1.56         6         1.67       6×6      2.78
+  11           9      1.22        9×9             1.49         7         1.57       7×7      2.47
+  12          10       1.2       10×10            1.44         8          1.5       8×8      2.25
+  13          11      1.18       11×11             1.4         9         1.44       9×9      2.09
+  14          12      1.17       12×12            1.36        10          1.4      10×10     1.96
+  15          13      1.15       13×13            1.33        11         1.36      11×11     1.86
+  16          14      1.14       14×14            1.31        12         1.33      12×12     1.78
+
+
+
+where mi (a) irreducible ∀i = 1, 2, .., ` and GCD(mi (a), mj (a)) = 1 ∀i = 1, 2, .., `, i 6= j.
+Let si (a) ∈ F[a] be any polynomials for i = 1, 2, .., `. Then there exists s(a) ∈ F[a] a unique
+solution of the system of congruences:
+                          s(a) = si (a) mod mi (a)          ∀ i = 1, 2, .., `
+and
+                                       `
+                                       X
+                              s(a) =         si (a)Ni (a)Mi (a) mod M (a)
+                                       i=1
+where:
+                                                                   M (a)
+      Ni (a)Mi (a) + ni (a)mi (a) = 1,          Ni (a), Mi (a) =          , and    mi (a) ∈ F[a].
+                                                                   mi (a)
+   Let us assume in what follows that F is equal to R, a field of real numbers, and represent
+the one-dimensional   kernel vector h  =   h1 h2 · · · hnh and one-dimensional input vector
+                       
+x = x1 x2 · · · xn as polynomials h(a) and x(a), with coefficients equal to their respec-
+tive components, such that the leading coefficients of h(a) and x(a) are taken to be hnh and
+xn , respectively. Then computing the one-dimensional discrete convolution is equivalent to
+computing           the       coefficients      of        the         polynomial       product
+s(a) = h(a)x(a).
+   In the Toom-Cook algorithms, it is assumed that all m(i) (a) are monomials; so the
+computation reduces to the following steps:
+     (1) Choosing points pi to construct polynomials mi (a) = a − pi ;
+     (2) Evaluating polynomials h(a), x(a) at each point pi to change the domain, which is
+         equivalent to computing hi (a) = h(a) mod mi (a) and xi (a) = x(a) mod mi (a);
+     (3) Performing the multiplication si (a) = hi (a)xi (a); and
+     (4) Applying the Chinese Reminder Theorem to compute the coefficients of the poly-
+         nomial si .
+6 ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+We can represent this algorithm as:
+                                          V −1 (Vx x    Vh h)
+where matrices Vx and Vh (called Vandermonde matrices) represent transformation into the
+modulo polynomial domain, which is equivalent to evaluation of the polynomial in different
+points pi . The matrix V −1 is the inverse Vandermonde matrix for the transformation of
+the result back from the modulo polynomial domain. The nonsingularity of these matrices
+is guaranteed by choosing the different ai so that the assumptions of the CRT are fulfilled.
+
+3.1. Matrix Interchange. It is possible to interchange matrices in the convolution for-
+mula using the Matrix Exchange theorem.
+
+
+Theorem 2. Let M be a diagonal matrix.              If matrix M can be factorised as
+M = CDE then it also can be factorised as M = (E)T D(C)T , where matrix E is a matrix
+obtained from E by reversing the order of its columns and C is a matrix obtained from C
+by reversing its rows.
+   Although the literature on DNNs typically calls this operation convolution, from a math-
+ematical point of view the operation we want to compute is, in fact, the correlation. This is
+why, when applying the Matrix Exchange Theorem, we do not reverse the order of columns
+in matrix E. Thus
+
+                 V −1 (Vx x    Vh h) = V −1 Diag(Vh h)Vx x = Vx T (Vh h        V −T x)
+Putting A = Vx , G = Vh and B = V −1 we obtain the following formula for one-dimensional
+convolution
+                              (h ∗ x)1D = AT (Gh B T x)
+In a similar way, using the Kronecker product, we obtain a formula for two-dimensional
+convolution
+                          (H ∗ X)2D = AT (GHGT B T XB)A
+where matrices H and X are the two-dimensional kernel and input, respectively.
+
+
+3.2. Linear Transform Matrix Construction. The method of constructing matrices
+AT , G and B T is presented in Algorithm 1. To compute a 1D convolution of size no with
+the kernel of size nh , we need a input of size n = nh + no − 1. As inputs to the algorithm
+we provide n different real points p1 , .., pn and use them to construct n linear polynomials
+mi (a) = x − pi , for i = 1, .., n. We compute       polynomial M (a) = (a − p1 )..(a − pn ) and
+                                                      j−1
+                                          P
+polynomials Mi (a) = M (a)/mi (a) =          j M j,i a    for i = 1, 2, . . . , n and j = 0, 1, . . . , n
+used in CRT.
+   The matrix AT is a transposed rectangular Vandermonde matrix of size no × n. We
+compute its elements as the 0th to no − 1th powers of the n selected points. Next, we
+construct the matrix G of size n × nh in a very similar way. Note that we scale one of
+the Vandermonde matrices by coefficients Ni to obtain matrices G and B T . We find the
+coefficients Ni using the Euclidean algorithm [2].
+   The general form of matrices obtained by the Toom-Cook algorithm is as follows:
+    ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN 7
+
+
+  ALGORITHM 1: Toom-Cook algorithm
+
+
+  Input: no - size of output, nh - size of                  5   for i = 1 to n do
+               kernel, ;                                    6       Ni = Q (p1 i −pj )
+                                                                            j6=i
+  {p1 , · · · , pn } set of n different points              7 for i = 1 to no do
+  Output: Three matrices AT , G B T for                     8     for j = 1 to n do
+                 Toom-Cook convolution                      9         ATi,j = pj i−1
+1 n = no + nh − 1;
+                                                           10 for i = 1 to n do
+2 for i = 1 to n do
+                                                           11     for j = 1 to nh do
+3      for j = 1 to n do                                   12         Gi,j = pi j−1 ∗ Ni
+4             Mi,j = coefficient of the polynomial
+                                                           13 for i = 1 to n) do
+                Q                            j−1
+                  k6=i (a − pk ) stands for a              14     for j = 1 to n do
+                                                                        T
+                                                           15         Bi,j  = Mj,i
+
+
+
+
+       1 p1 ∗ N1 · · · p1 nh −1 ∗ N1
+                                                                               
+                                                   1      1  ···       1                                        
+                          n   −1                                                                   M1,1 · · · M1,n
+      1 p2 ∗ N2 · · · p2   h     ∗ N2          p1
+                                                          p2 · · ·     pn 
+                                                                                                    ..  ..     .. 
+                                        ; AT =                                          BT = 
+                                                                                              
+  G = .                                             .      .            ..      ; and
+                                                                                                                . .
+                                      
+             .   .             .                 .         .  . .                                   .      .
+                                                                                                                   
+       ..   ..    ..          ..               .         .      .      .
+                                                                                
+                                                                                
+                                                                                               
+                          n   −1                   no −1 no −1          n    −1                    Mn,1 · · · Mn,n
+       1 pn ∗ Nn · · · pn   h     ∗ Nn            p1     p2    · · · pn    o
+
+
+
+
+  A note on matrix construction. Theoretically, the evaluation of the polynomials at the
+  chosen interpolation points corresponds to the action of square Vandermonde matrices on
+  the coefficient vectors. These matrices are nonsingular due to our choice of points pi .
+  Thus, in our analysis, we use properties of square Vandermonde matrices to understand
+  the stability properties of the Toom-Cook algorithm and conditioning of the underlying
+  calculation. The properties of square Vandermonde matrices are well understood [19], but
+  the matrices G and A as described in our implementation are actually rectangular. However,
+  this is an advantage we take at the algorithmic level rather than a mathematical property
+  of the interpolation process. We can mathematically interpret the actions of G and A as
+  square Vandermonde matrices acting on vectors whose last entry is zero. Thus, we can
+  analyse these methods in terms of the square matrices while the implementation is done in
+  terms of rectangular matrices which are the square matrices with the last column deleted.
+     The matrix G shown in Figure 2 has only three elements in each row, rather than four,
+  because the kernel in the example has just nh = 3 elements. The full (square) Vandermonde
+  matrix G actually has four elements per row, with the fourth element computed in the same
+  pattern as the first three. The kernel h also has four elements, but the fourth is always zero.
+  Thus, the fourth element of each row of G is multiplied by the fourth element of h which is
+  always zero. As a result, we can safely eliminate the last column of the square Vandermonde
+  matrix G, and crucially, all associated computation.
+     Similarly, AT in Figure 2 is shown with just two rows rather than four, because in this
+  example we compute an output block of size two (that is equivalent to the number of fully
+  computed elements). However, we could equally show all four rows of the Vandermonde
+  matrix A and discard two of the computed results.
+8 ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+                           4. Error in Toom-Cook Convolution
+   In this section, we derive a bound on the FP error that can arise in Toom-Cook convo-
+lution. We use the methods and notation of Higham’s standard textbook on FP error [14].
+In line with Higham, and many other formal analyses of FP error [14, p. 48], we provide a
+worst-case error analysis.
+
+4.1. FP error. FP error arises because FP numbers are limited precision approximations
+of real numbers. Each real number can be mapped to its nearest FP equivalent with the
+rounding function x → f l(x) such that f l(x) = minf ∈F (f − x). Where the absolute value
+of a real number is larger than the largest representable FP number, the number is said to
+overflow. Overflow results in a catastropic loss of accuracy, but it is rare at least within the
+field of DNNs. In the absence of overflow, we have the assumption f l(x) = x(1 + δ) where
+−ε < δ < ε and ε is a machine epsilon dependent on precision. Similarly provided there
+is no overflow in inputs or results, FP arithmetic operators can be described as follows:
+f l(x op y) = (x op y)(1 + δ), where |δ| ≤ ε, x, y ∈ F and op ∈ {+, −, ∗, /}; see, e.g.,
+[14, 11, 29]. In this paper, for a quantity x, we denote the floating point representation of
+x by x̂ and FP operations by f l(·).
+
+4.2. FP Error in the Linear Transforms. The core operation in the linear trans-
+forms is a matrix-vector product, which can be represented as a set of dot products aT x.
+                                                                 T
+Let us take an input vector x = x1 x2 · · · xn                        where xi ∈ F , ∀i = 1, 2, . . . , n,
+                                                 T
+and another vector a = a1 a2 · · · an                   which is part of the algorithm, so f l(a) =
+                                  T
+ f l(a1 ) f l(a2 ) · · · f l(an )                                                                    and
+f l(ai ) = ai (1 + δi ), where |δi | ≤ ε ∀ai = 1, 2, . . . , n [14]. Then
+
+
+(1)                        |aT x − f l(f l(aT )x)| ≤ |aT ||x|α(n) ε + O(ε2 )
+   Higham provides a similar bound on the error for dot product but uses n where we use
+α(n) . That is because he assumes linear summation in dot product computations. There is
+a wide range of summation methods that allows us to compute dot product with smaller
+floating point error than using linear summation. Demmel and Rump have analysed various
+summarion algorithms. The algorithms, as well as their floating point error estimations,
+can be found in ([21], [22], [8]). Fo generality, we do not assume any particular method
+of dot product evaluation. Instead, we use α(n) , which stands for the error of dot product
+computations for vectors of n elements.
+   Also in our analysis, the vector aT is a constant, not an input. The value of aT depends
+on the parameters of the algorithm. We write f l(aT ) because the mathematically exact
+value of aT may not be exactly representable in finite precision FP. We want to estimate
+the error of the algorithm, as it depends on these parameters, as well as of the number and
+type of operations.
+   Note that the value of α(n) depends on the error from multiplication, as well as on n and
+on the method of summation. We have three possible cases that give us different boundaries
+for the error of multiplication ai xi :
+      • Values of ai are not exactly representable in F (the set of FP numbers). In this case
+        we have an error from the inexact representation of ai and from the multiplication,
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN 9
+
+
+         so f l(ai ) = ai (1 + δi ) where |δi | ≤ ε. Then |f l(f l(ai )xi ) − ai xi | ≤ |ai ||xi |2ε + O(ε2 ),
+         ∀i = 1, 2, . . . , n.
+       • Values of ai are exactly representable in F . In this case only the multiplication
+         and summation errors remain, that is: |f l(f l(ai )xi ) − ai xi | ≤ |ai ||xi |ε + O(ε2 ),
+         ∀i = 1, 2, . . . , n.
+       • When of ai are integer powers of 2 we have no error from either representation or
+         from multiplication, so |f l(f l(ai )xi ) − ai xi | ≤ |ai ||xi |, ∀i = 1, 2, . . . , n.
+   If we assume linear summation in Equation 1 we have α(n) = n + 1 for any elements ai ,
+α = n for ai exactly represented in F and α(n) = n − 1 if all ai are integer powers of 2.
+ (n)
+
+However n − 1 < n < n + 1 so using α(n) = n + 1 is a correct estimate but does not give the
+tightest possible bound.
+
+
+4.3. Toom-Cook Convolution Error Estimation. In this section, we present a formal
+error analysis of the Toom-Cook convolution algorithm, which to our knowledge is the first
+such formulation. Our approach uses the Higham [14] method of FP error estimation and
+results on the instability of Vandermonde systems by Higham [14] and Pan [19]. The error
+estimation allows us to show that the Toom-Cook convolution algorithm is unstable and to
+identify the components of the error.
+   The Toom-Cook method generates algorithms for fixed-size convolution, which are ex-
+pressed as a set of three matrices, G, B T and AT . These matrices are computed once, ahead
+of time, and can be used with many different inputs and kernels. Figure 2 shows the three
+steps of the algorithm: (a) linear transforms of the kernel, h, and input, x; (b) pairwise
+multiplication between the elements of the transformed input and kernel (Hadamard prod-
+uct); and (c) the output linear transform. All of these operations have an impact on the
+accuracy of the result, so we see terms in our error for each operation.      P
+   To estimate the error bounds we will use the matrix
+                                                    P         norm kAk1 = maxj i |Aij | that is
+induced by the vector norm kyk1 =                      i |yi |,  and also the matrix norm
+                        2 1/2
+           P P
+kAkF = ( i j |aij | )          (called the Euclidean or Frobenius norm), which is not an in-
+duced norm.    However,    it is equivalent to the matrix norm kAk2 induced by vector norm
+kyk2 = ( i |yi |2 )1/2 with the inequality
+         P
+                                                     √
+(2)                                  kAk2 ≤ kAkF ≤ rkAk2 ,
+where r is the rank of A. The Euclidean norm is used very often in numerical analysis
+instead of k · k2 , because it is easier to compute and kAkF = k |A| kF , where |A| is matrix
+with entry-wise absolute values of the entries of A [29]. We define α(n) , β (n) and γ (nh ) as
+constants used in dot product FP error bounds in Equation 1 for matrices AT , B T and G.
+Theorem 3. The error for one-dimensional Toom-Cook convolution computation satisfies
+the normwise bound equal to:
+                                                                         
+(3)   kŝ − sk1 ≤ kAT k1 kGkF khk2 kB T kF kxk2 α(n) + β (n) + γ (nh ) + 1 ε + O(ε2 )
+
+   Error for the qth element of one-dimensional Toom-Cook convolution computation satis-
+fies the bound equal to:
+                                                                         
+(4)         |ŝq − sq | ≤ |AT | |G||h| |B T ||x| α(n) + β (n) + γ (nh ) + 1 ε + O(ε2 )
+10ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+Where values of α(n) , β (n) and γ (nh ) depends on method of summation in dot product com-
+putations in matrices AT , B T and G as in formula (1)
+Proof. Let f (h, x) be the bilinear function computing Toom-Cook convolution
+f (h, x):Rnh × Rn → Rno such that f (h, x) = AT (Gh B T x). The computation consists
+of (a) kernel and input transformations, f1h : Rnh → Rn , f1h (h) = Gh, and f1x : Rn →
+Rn f1x (x) = B T x; (b) Hadamard product: f2 : Rn × Rn → Rn f2 (b, c) = b c; and
+(c) postprocessing transformation f3 : Rn → Rno f3 (a) = AT a.
+    We therefore need to find the error for the composition of these three computations,
+that is the error of f (h, x) = f3 (f2 (f1h (h), f1x (x))). We follow Higham’s method [14] for
+estimating the FP result of the composed function.
+    Let a1 = (h, x), and ak+1 = fk (ak ) that is the result of k + 1th stage of the algo-
+rithm. So a2 is the vector that includes preprocessing transforms of kernel and input
+f1h (h) = Gh and f1x (x) = B T x, a3 is the Hadamard product of the two vectors Gh
+and B T x and is equal to f2 (Gh, B T x) = Gh B T x and a4 is the postprocessing trans-
+form f3 (Gh B T x) = AT (Gh B T x). The computed values are denoted by âk+1 =
+fk (ak ) + ∆ak+1 , so ∆ak+1 is the FP error of the kth stage of algorithm that we compute
+using formula 1.
+Let vector s = f3 (f2 (f1h (h), f1x (x))) be a real result and ŝ be the computed solution.
+Jk is the Jacobian matrix of fk . The computed result ŝ is equal to the formula [14]:
+                     ŝ = f3 (f2 (f1h (h), f1x (x))) + J3 J2 ∆a2 + J3 ∆a3 + ∆a4
+Where:
+                                   J 3 = AT ,  J2 = Diag(B T x), Diag(Gh)
+                                                                             
+
+
+                                                  |G||h|γ (nh ) ε + O(ε2 )
+                                                                           
+                                       |∆a2 | ≤
+                                                  |B T ||x|β (n) ε + O(ε2 )
+
+                       |B T ||x| ε + O(ε2 ), |∆a4 | ≤ |AT | |G||h|      |B T ||x| α(n) ε + O(ε2 )
+                                                                                
+   |∆a3 | ≤ |G||h|
+The componentwise error is the absolute difference between real and computed solutions
+[14] [29]
+                                      |ŝ − s| =
+   = |f3 f2 f1h (h) , f1x (x)     + J3 J2 ∆a2 + J3 ∆a3 + ∆a4 − f3 f2 f1h (h) , f1x (x) | =
+                                                                                    
+
+           = |J3 J2 ∆a2 + J3 ∆a3 + ∆a4 | ≤ |J3 ||J2 ||∆a2 | + |J3 ||∆a3 | + |∆a4 | ≤
+
+          ≤ |AT ||Diag (Gh) |, |AT | |Diag B T x | |∆a2 | + |AT ||∆a3 | + |∆a4 | ≤
+                                                    
+
+                                                                                    
+                                                            |G||h|γ (nh ) ε + O ε2 
+                                                         
+                 T           T        T
+                               
+           ≤ |A ||Diag B x | , |A || Diag (Gh) |)                                      +
+                                                            |B T ||x|β (n) ε + O ε2
+         +|AT | |G||h| |B T ||x| ε + O(ε2 ) + +|AT | |G||h| |B T ||x| α(n) ε + O ε2 =
+                                                                                       
+
+
+            = |AT | |G||h| |B T ||x| (γ (nh ) + β (n) )ε + |AT | |G||h| |B T ||x| ε+
+                                                                                   
+
+                          +|AT | (|G||h| |B T ||x| γ (nh ) ε + O ε2 =
+                                                                        
+
+                                                                     
+               = |AT | |G||h| |B T ||x| α(n) + β (n) + γ (nh ) + 1 ε + O ε2
+                                                                                  
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN11
+
+
+For the normwise error estimation we use induced norm k · k1 and Frobenius norm k · kF ,
+hence
+                                       kŝ − sk1 ≤
+                                  (n)                   
+             ≤ kA Gh B x α + β (n) + γ (nh ) + 1 ε + O ε2 k1 ≤
+                   T         T
+                                                                    
+
+                                                          
+              ≤ kAT Gh B T x k1 α(n) + β (n) + γ nh + 1 ε + O(ε2 ) ≤
+                                                             
+               ≤ kAT k1 kGh B T xk1 α(n) + β (n) + γ (nh ) + 1 ε + O(ε2 )
+Applying the Buniakowski-Schwartz inequality to componentwise multiplication yields
+                                                                     
+          kŝ − sk1 ≤ kAT k1 kGhk2 kB T xk2 α(n) + β (n) + γ (nh ) + 1 ε + O(ε2 )
+Finally from norm equivalence (2) we have
+                                                                         
+      kŝ − sk1 ≤ kAT k1 kGkF khk2 kB T kF kxk2 α(n) + β (n) + γ (nh ) + 1 ε + O(ε2 )
+                                                                                          
+  As k · k1 ≤ nk · k2 we have
+                                                                        
+(5)     kŝ − sk1 ≤ nkAT kF kGkF khk2 kB T kF kxk2 α(n) + β (n) + γ (nh ) ε + O(ε2 )
+
+Corollary 1. For linear summation in the dot product and for any elements in matrices
+AT , G and B T the componentwise boundary is equal to:
+                 |ŝ − s| ≤ |AT | |G||h| |B T ||x| (nh + 2n + 4)ε + O(ε2 )
+                                                  
+
+and the normwise boundary is equal to:
+             kŝ − sk1 ≤ kAT k1 kGkF khk2 kB T kF kxk2 (nh + 2n + 4) ε + O(ε2 )
+Where nh is the kernel size and n is the input size of the convolution
+4.4. Two Dimensions. Two-dimensional convolution can be implemented by nesting 1D
+convolutions [18]. This nesting approach requires additional pre-/post-processing linear
+transforms. For two-dimensional Toom-Cook convolution the analogous theorem is formu-
+lated as follows:
+Theorem 4. Error for two-dimensional Toom-Cook convolution computation satisfies the
+componentwise bound equal to:
+                                                                              
+(6) |Ŝ − S| ≤ |AT | |G||H||GT | |B T ||X||B| |A| 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + Ø(ε2 )
+                                             
+
+Error for two-dimensional Toom-Cook convolution computation satisfies the normwise bound
+equal to:
+                                                     kŜ − Sk1 ≤
+(7)         ≤ kAT k1 kGkF kHkF kGT kF kB T kF kXkF kBkF kAk1 R ε + O(ε2 )
+                      where : R = 2α(n) + 2β (n) + 2γ (nh ) + 1
+We assume identical method of summation for matrix and transpose matrix multiplication,
+where α(n) , β (n) , γ (nh ) represent errors from multiplication by matrices AT , B T and G
+respectively.
+12ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+   The proof of this theorem is presented in Appendix B
+   Notice that the Euclidean norm of any matrix M is equal to the Euclidean norm of matrix
+M T , so we can formulate the normwise boundaries
+                                                                               
+kŜ − Sk1 ≤ kAT k1 kAk1 kGk2 F kHkF kB T k2 F kXkF 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+
+    Notice that we can bound kAT k1 kAk1 ≤ n2 kAT kF kAkF = n2 kAT k2 F [14]. Then we have
+the error bound estimation for two-dimensional Toom-Cook algorithm equal to
+                                                                                
+ kŜ − Sk1 ≤ n2 kAT k2 F kGk2 F kB T k2 F kHkF kXkF 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+Comparing it to the one-dimensional Toom-Cook convolution 4 we can observe that the error
+boundary for 2 dimensions is approximately the square of the error of the 1D algorithm.
+Corollary 2. For linear summation in the dot product and for any elements in matrices
+AT , G and B T the componentwise boundary for two-dimensional Toom-Cook convolution is
+equal to:
+          |Ŝ − S| ≤ |AT | |G||H||GT | |B T ||X||B| |A| (2nh + 4n + 7) ε + Ø(ε2 )
+                                                   
+
+and the normwise boundary is equal to
+ kŜ − Sk1 ≤ kAT k1 kGkF kHkF kGT kF kB T kF kXkF kBkF kAk1 (2nh + 4n + 7) ε + O(ε2 )
+4.5. Components of the Toom-Cook error. The Toom-Cook error in Theorem 8 states
+that the bound is proportional to the product of three main terms: (a) the product of the
+norms of the three convolution matrices G, B T and AT ; (b) the product of the norms of the
+input x and kernel h; and (c) the sum of the errors from the linear transforms α(n) , β (n)
+and γ (nh ) .
+    The input x and kernel h can take on any value at execution time, so their norms can
+be arbitrarily large if the input and kernel have pathological values. Thus, the worst-case
+error arising from the product of these norms can be arbitrarily large. However, most
+inputs and kernels are unlikely to have pathological values. Furthermore, it is often more
+informative to study the relative error/stability of an algorithm, i.e., the size of the error
+produced by the algorithm relative to the size of its inputs. Interpreting the error bounds
+derived in Theorems 3 and 8, we see that the relative errors are controlled by norms of the
+Vandermonde matrices and the summation order. Furthermore, the errors arising from the
+linear transforms are polynomial, as shown in Equation 1. However, it should be noted that
+the relative condition number may depend on x and h; see Appendix A.
+    The three matrices G, AT and B T are more problematic. As we describe in more detail
+in Section 3, G and A are (theoretically square although normally presented as rectangular)
+Vandermonde matrices and B T is the inverse of (the square version of) AT . The product
+of the norms of a square Vandermonde matrix and its inverse grows at least exponentially
+with n [19]. Thus, our bound on the error grows at least exponentially with n.
+    The third component of the Toom-Cook algorithm error depends on the values of α(n) ,
+β , γ (nh ) , which means that it depends on the method of evaluation of the matrix-vector
+  (n)
+
+multiplication.
+
+4.6. Multiple Channels. Note that DNN convolution is also normally computed across
+multiple input channels. Both their input and kernel have the same number of channels,
+and separate 1D or 2D convolutions are computed for each channel. The resulting vectors
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN13
+
+
+or matrices (for 1D or 2D convolution respectively) are summed pointwise to yield a single-
+channel result vector or matrix. The separate convolutions for each channel can be computed
+using Toom-Cook or indeed any convolution algorithm.
+   Toom-Cook convolution consists of three stages: pre-processing, pairwise multiplication
+(Hadamard product), and post-processing. Lavin and Gray’s DNN convolution algorithm
+dramatically reduces the work of post-processing for multi-channel convolution. The post-
+processing step is a linear transform, so the sum of the transformed Hadamard products
+is equal to the transform of the sum of the Hadamard products. Thus the post-processing
+transform is applied just once after summing the Hadamard products, rather than separately
+for each input channel before summation.
+   If we compute Toom-Cook convolution over C channels we add the results of Hadamard
+          PC                                                       PC
+products c=1 (Ghc B T xc ) for one-dimensional convolution and c=1 (GHc GT B T Xc B)
+for two-dimensional convolution, using the same matrices G and B T on every channel. Thus
+we have the error less than or equal to:
+
+             kŝ − sk1 ≤ kAT k1 C kGkF maxc khc k2 kB T |F maxc kxc k2 Rε + O(ε2 )
+Where R = α(n) + β (n) + γ (nh ) + 1 + λ(C) , hc and xc are the kernel and input vectors
+on channel c, α(n) , β (n) , γ (nh ) represent the dot product errors and λ(C) is the error in
+pointwise summation.
+For two dimensions we have:
+kŜ − Sk ≤ kAT k1 C kGkF maxc khc k2 kGT kF kB T kF maxc kxc k2 kBkF kAk1 R ε + O(ε2 )
+                                                                                
+
+Where R = 2α(n) + 2β (n) + 2γ (nh ) + 1 + λ(C)
+
+                            5. Modified Toom-Cook Algorithm
+    A common method to reduce the number of terms in the linear transforms of Toom-Cook
+convolution is to use the so-called modified version of the algorithm 3. In this section, we
+show that as well as reducing the number of FP operations in the linear transforms, the
+modified algorithm also significantly reduces the FP error in Toom-Cook convolution.
+    The main idea of the modified algorithm is to solve one size smaller problem which means
+we use a kernel of the same size nh but an input of size n − 1 instead of n. Having computed
+such a convolution, we then modify the output values in which the nth element of the input
+is included.
+    To minimize the Q number of operations in the Toom-Cook algorithm we construct the
+polynomial M (a) = i mi (a) such that deg(M (a)) = deg(s(a)) + 1. We can further reduce
+                                      0
+the number of operation by using M (a) where deg(M 0 (a)) = deg(M (a)) − 1 = deg(s(a)).
+Then when we apply CRT instead of polynomial s(a) = h(a)x(a) we obtain the polynomial
+(8)                                  s0 (a) = s(a) mod M 0 (a)
+Because all mi we use are monic, M 0 (a) is also monic. We have s(a) = s0 (a)+R M 0 (x), where
+the scalar R is the coefficient of the variable with highest degree in
+
+   3See tensorflow source code at https://github.com/tensorflow/tensorflow/blob/9590c4c32dd4346ea5c356733
+36f5912c6072bf2/tensorflow/core/kernels/winograd transform.h#L179-L186
+and MKL-DNN https://github.com/intel/mkl-dnn/blob/fa5f6313d6b65e8f6444c6900432fb07ef5661e5/doc/
+winograd convolution.md
+14ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+s(a) = h(a)x(a) i.e. R = hnh xn . Finally we have:
+(9)                               s(a) = s0 (a) + hnh xn M 0 (a)
+where s0 (a) is a solution for convolution with one fewer inputs.
+With this approach we need only n − 1 points to construct polynomial M 0 (a) instead of n
+used in Section 3. Formally, we use M (a) = M 0 (a)(a − ∞) [4].
+
+  Let us denote the matrices constructed by Toom-Cook algorithm for input n as G(n) ,
+ (n)T
+B     and A(n)T and for modified Toom-Cook algorithm with input n as Gm(n) , B m(n)T
+      m(n)T
+and A       .
+  The modified Toom-Cook algorithm for input n proceeds as follows:
+        • Construct matrices A(n−1)T , G(n−1) and B (n−1)T as for Toom-Cook for the problem
+          of size n − 1 with polynomial M 0 (a).
+        • Construct matrix Gm(n) by adding the nth row to the matrix G(n−1) . This row
+          includes zeros and a 1 at the last position. Then Gm(n) h = G(n−1) h + hnh .
+        • Construct matrix Am(n) in the same way by adding the nth row to the matrix A(n−1) .
+          This row includes zeros and a 1 at the last position. Then Am(n) x = A(n−1) x + xn .
+        • Construct matrix B m(n) by adding the nth row and nth column to the matrix
+          B (n−1) . The last row includes zeros and a 1 at the last position. The last col-
+          umn includes consecutive coefficients of polynomial M 0 (a). Then B m(n) (Gm(n) h
+          Am(n) x) = B (n−1) (G(n−1) h A(n−1) x) + hnh xn M 0 (a)
+        • Apply the Matrix Exchange theorem
+  The general form of the matrices obtained by modified Toom-Cook algorithm is as follows:
+
+                                                       
+                                                   0                                     
+              G(n−1)                                                          B(n−1)T
+                                                       
+                                                   ...                                   0
+  Gm(n) =                     Am(n)T =A(n−1)T               B m(n)T =
+                                                       
+            0 ... 0 1                                0                    M1 (a) ... Mn   1
+                                                        
+                                       
+                                                       
+                                                     1
+
+5.1. Modified Toom-Cook Error Analysis. Our Theorems 3 and 8 about error esti-
+mation apply both to Toom-Cook and modified Toom-Cook algorithms. However, we can
+distinguish error bounds for Toom-Cook and modified Toom-Cook. In this section, we
+present a FP error analysis for the modified version of Toom-Cook and show that it gives
+us tighter error bounds than Toom-Cook. As before, our error analysis is novel, but we rely
+on prior methods and results from Higham [14], Demmel [7], Pan [19] and the work of Bini
+and Lotti [3] on the error for fast matrix multiplication. The presented bounds allow us to
+see the exact difference in FP error for both algorithms.
+   For modified Toom-Cook algorithm we have some zero elements in matrices that are in-
+dependent of the parameters (points) we choose. The guaranteed properties of the modified
+Toom-Cook algorithm is that we have nh − 1 zeros elements and a single 1 in the last row
+of G matrix, n − 1 zeros elements and a single 1 in the last column of B T matrix and no − 1
+zeros elements and 1 in the last column of AT matrix. In addition, we can observe that
+Toom-Cook matrices for input n − 1 are submatrices for modified Toom-Cook for input n.
+   Let us denote the real result vector of modified Toom-Cook algorithm for input n as
+sm(n) and convolution vector computing by modified Toom-Cook algorithm for input n by
+ŝm(n) , similarly denote the real result vector of Toom-Cook algorithm for input n by s(n)
+     ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN15
+
+
+    and computed result by ŝ(n) . We put the vector x(n−1) as the vector of size n − 1 where
+     (n−1)    (n)
+    xi     = xi for i = 1...n − 1
+    Theorem 5. The componentwise error for one-dimensional modified Toom-Cook for qth
+    element of output is bounded by:
+    (10)
+       |ŝm(n)
+          q    − sm(n)
+                  q    |=
+                                                                                           
+       |A(n−1)T q: | |G(n−1) ||h|      |B (n−1)T ||x(n−1) |     γ (nh ) + β (n−1) + α(n−1) + 1 ε + O(ε2 )
+       for q = 1, .., no − 1
+    (11)
+       |ŝ(m(n))
+          no     − sm(n)
+                     no | ≤
+            (n−1)
+                                                                            
+      |ATq:       | |G(n−1) ||h| |B (n−1)T ||x(n−1) | + |hnh ||Bn: m(n)T ||x|
+                                n                                          o 
+                              max γ (nh ) + β (n−1) + α(n−1) + 1 , β (n) + 1 + 1 ε + O(ε2 )
+       for q = no
+    The proof of this theorem is presented in Appendix C, along with corollaries for the case
+    where nh ≥ 3.
+
+    ALGORITHM 2: Modified Toom-Cook algorithm
+
+                                                                  m(n)T
+  Input: no - size of output, nh - size of                    5 A1:no ,1:n−1 = A(n−1)T ;
+               kernel, ;                                      6 for i = 1 to no − 1 do
+  {p1 , · · · , pn−1 } set of n − 1 different points.         7
+                                                                      m(n)T
+                                                                    Ai,n     =0
+  A(n−1)T , B (n−1)T , G(n−1) - matrices                          m(n)T
+                                                             Ano ,n = 1 ;
+                                                              8
+  constructed by Toom-Cook algorithm for                       m(n)          (n−1)
+                                                           9 G1:n ,1:n−1 = G       ;
+  n − 1 points                                                    h
+
+  Output: Three matrices Am(n)T , Gm(n)                   10 for j = 1 to nh − 1 do
+                                                                    m(n)
+                 B m(n)T for modified Toom-Cook           11     Gn,j = 0
+                                                                  m(n)
+                 convolution                              12 Gn,nh = 1 ;
+1 n = no + nh − 1 ;                                            m(n)T          (n−1)T
+                                                          13 B1:n−1,1:n−1 = B        ;
+2 for i = 1 to n − 1 do
+                                                          14 for i = 1 to n − 1 do
+3      Ni = Q (p1 i −pj ) ;                                        m(n)T
+               j6=i                                       15     Bi,n    =0
+4      MQ
+        i = coefficient of the polynomial                 16 for j = 1 to n do
+          k (a − pk ) of ith term
+                                                                   m(n)T
+                                                          17     Bn,j    = Mj
+
+
+
+
+    5.2. Toom-Cook versus Modified Toom-Cook. Comparing the componentwise error
+    of Toom-Cook (4) and modified Toom-Cook (10) algorithms, we observe that the error
+    of modified Toom-Cook is smaller. We can see from the formula of modified Toom-Cook
+    (10) that, in contrast to unmodified Toom-Cook (4) the errors do not spread uniformly
+    over all output points. The idea of computing one size smaller convolution and using the
+    pseudo-point ∞ results in a different error boundary for the last output points. Thus our
+16ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+comparision is split in two parts: the error comparison for first no − 1 output points and
+the error comparison for the last output point.
+    Looking to the error formulas (4 and 10) for the first no − 1 output points we observe that
+the submatrices used in error estimation of the modified Toom-Cook algorithm with input
+of size n are the same as in the Toom-Cook algorithm with input of size n − 1. This results
+from the modified Toom-Cook algorithm definition in Section 5. Thus we have the same
+error in modified Toom-Cook algorithm with input n as for Toom-Cook with input n − 1.
+Since the ill-conditioning of Vandermonde matrices increases exponentially with size, the
+error due to the conditioning of matrices in modified Toom-Cook algorithm is significantly
+smaller, although still exponential.
+    The second factor in the formulas for the first no − 1 output points of both algo-
+rithms is the error from floating point operations. The error due to the dot product has
+tighter boundaries for modified Toom-Cook (γ (nh ) + β (n−1) + α(n−1) ) than for Toom-Cook
+(γ (nh ) + β (n) + α(n) ), if we assume the same method of summation in both algorithms. It
+is clear that the worst-case error of summation of n − 1 elements is not larger than the
+worst-case error of summation of n elements, so β (n−1) < β (n) and α(n−1) < α(n) .
+    Because both components of the error in the first no − 1 output points are smaller in
+modified Toom-Cook, we can safely conclude that the overall worse case error in these points
+is smaller than in the unmodified Toom-Cook algorithm.
+
+5.2.1. Error in Modified Points. To compare the error of the last output points for both
+algorithms, we observe from the definition of the modified Toom-Cook algorithm that the
+error from matrix elements is bounded by a sum of the error for Toom-Cook at size n − 1
+and the error provided by the last row of matrix B m(n)T . The values in the last row of the
+matrix are exactly the same as for a row constructed for an interpolation point pi = 0, but
+in reverse order. Thus the overall error from matrix elements for modified Toom-Cook is
+not larger than for Toom-Cook.
+    The error from the method of dot product computation for the last output point of the
+modified algorithm is equal to γ (nh ) +β (n−1) +α(n−1) +2 or β (n) +1. In both cases this value
+is smaller than the corresponding value γ (nh ) + β (n) + α(n) + 1 in the unmodified Toom-Cook
+error estimation.
+    Although the error for both Toom-Cook and modified Toom-Cook algorithms grows expo-
+nentially, the error for all output points for modified version is smaller than for the original
+unmodified Toom-Cook algorithm.
+
+                       6. Empirical Measurement of FP Error
+   The formal error analysis that has appeared in earlier sections of the paper is a worst-case
+analysis. However, even if the worst-case error is potentially very large, it is important to
+know something about the typical error that arises in practice. Almost all formal analyses of
+FP error are worst-case analyses. For example, all the analyses in Higham’s standard text-
+book on FP error are worst-case estimates [14, p. 48]. Studies of average case probabilistic
+FP error are possible in principle, but they rely on assumptions about the distribution of
+errors that are difficult to verify. For example, Kahan, who won the Turing award for his
+contributions to FP numerical analysis, has argued that FP rounding errors are typically
+not random, often correlated, and often behave more like discrete variables than continuous
+ones [16], which makes average case analyses unreliable.
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN17
+
+
+   The focus of our work is on understanding and reducing the FP error in fast DNN
+convolution. So rather than deal with the many pitfalls of formal average case analysis, we
+make empirical measurements of the FP errors.
+   To measure the error in Toom-Cook convolution, we first need the algorithm for a specific
+size, which is defined by nh , no and the n = nh + no − 1 real-valued points that are used
+to sample the polynomials corresponding to the input and kernel. We study over 40000 of
+point selections and find that the the values of these points has a huge impact on the FP
+error (see Section 7).
+   When generating the AT , G and B T matrices using these points, we represent all values
+symbolically rather than as FP numbers. This allows us to generate exact values in each
+element of the convolution matrices. Once the elements have been generated, we then
+convert each value to the nearest representable FP number. Recall that AT , G and B T are
+constant matrices, so we compute them as accurately as possible ahead of time.
+   FP numbers are constructed as a logarithmic sampling of the real number line, and the
+range (−1, 1) is where they have most precision. The values of trained DNN weights are
+overwhelmingly concentrated in this range in practice. Since we are interested in differen-
+tiating the inherent error in the convolution algorithms, not just in the context of specific
+networks, we would like to know something about the average case error independent of
+any specific dataset or network. For this reason, rather than model inputs and kernels with
+specific distributions drawn from real networks, we model them as random variables with
+uniform distributions in the range(−1, 1).
+   We compute the error as the L1 norm || · ||1 between the result of the convolution,
+and an approximation of the numerically correct result. We find our approximation of
+the numerically correct result using direct convolution in 64-bit double precision FP. We
+compute the error as the L1 norm || · ||L1 from the difference between the result computed
+using the proposed method and our approximately correct result.
+
+
+                                kAT (Gh    B T x) − h ∗ xkL1
+
+                           kAT (GHGT      B T XB)A − H ∗ XkL1
+                                                                                      
+   For
+      1 and 2 dimensions
+                            respectively. Where for two vectors: a = a1 · · · an and
+b = b1 · · · bn the norm k · kL1 isPequal to sum of absolute from a difference between
+corresponded elements:
+              P          ka − bkL1 = i |ai − bi |. For two matrices A and B the formula is
+kA − BkL1 = i,j |Ai,j − Bi,j |.
+   We found that 5000 iterations of random testing was sufficient for the average error
+to become stable. In all experiments we use a kernel of size 3 for 1D and 3 × 3 for 2D
+convolution, which are the most common sizes in real DNNs.
+   We empirically compared the numerical error of convolution algorithms generated by the
+Toom-Cook and modified Toom-Cook methods. The error is extremely sensitive to the
+points that are selected. However, for a given set of points, replacing one of them with the
+∞ pseudo-point almost always reduces the error. For sets of points that otherwise result
+in a low error, we observed that modified Toom-Cook gave a reduction in numerical error
+from 20% for kernel size 3 and output size 16, to over 70% for kernel size 3 and output 2.
+Throughout the remainder of the paper, we use the ∞ pseduo-point to indicate where the
+modified algorithm is used.
+18ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+                      7. Selecting Points and Orders of Evaluation
+   The Toom-Cook method gives the mathematically correct result using any sufficiently
+large set of distinct sampling points. However, there is a large difference between the FP
+error using different sets of points and there is no known systematic method for selecting
+the best points to minimize the error [28]. The points we use have an impact on the norm
+of matrices G, AT and B T as well as for the values of α(n) , β (n) and γ (nh ) in error formula
+in theorems (3) and (8).
+   In this section we study the problem of selecting points experimentally. In the first stage
+we simply evaluated the random sets of points, and quickly discovered that (1) some sets
+of points are much better than others; and (2) not just the value of the points, but their
+ordering is important. The same set of points considered in a different order give quite
+different numerical errors.
+7.1. Canonical Summation Order. Different orderings of the same points give different
+answers because of the order of evaluation. Different point orderings result in different or-
+derings of the values within the AT , G, B T matrices. The transform steps of Toom-Cook
+convolution involve multiplying each of the input, kernel, and output by one of these matri-
+ces. If we change the order of entries in the matrix, then we change the order of evaluation
+at execution time, which causes different FP rounding errors. Some point orderings were
+better than others, but it was difficulty to predict the good ones ahead of time.
+   Rather than searching different orderings of points, we propose to fix the order of evalua-
+tion, so that all orderings of the same set of points will be evaluated in the same order. The
+remaining problem is to pick a canonical order of evaluation that works well in practice.
+Each row of the AT , G, B T matrices is used to compute single dot product within a linear
+transform, and we specify a canonical ordering for evaluating each of these dot products.
+
+
+
+                                                 Figure 3. Linear and Huffman tree
+                                                 (canonical) summation methods. Our
+                                                 canonical ordering has two main advan-
+                                                 tages. It reduces the FP summation er-
+                                                 ror in the linear transforms by improv-
+                                                 ing the order of evaluation. It also en-
+                                                 sures that we get the same error if we
+                                                 evaluate the same set of points in differ-
+                                                 ent orderings; the order of evaluation is
+                                                 determined by the Huffman tree, not by
+               (a)           (b) Huffman
+               Lin-                              the order in which the points are pre-
+               ear                               sented.
+
+   We build a Huffman [15] tree using the absolute values of each row, that is used to specify
+the order of summation. We also use simple heuristics to break ties between coeffients with
+the same absolute values. A basic principle of accurate FP summation is to try to sum
+smaller values first, as shown in Figure 3. Our Huffman tree is based purely on the values
+of the rows of our constant matrices; we build the tree at the algorithm design time, when
+the input and kernel are unknown. This makes it much easier for us to search empirically
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN19
+
+
+for good sets of points because we need only consider their value, not their ordering. In
+addition this method allows us to use different order of summation for every row of matrices
+that is not possible to obtain by points permutation.
+   There are a great deal of different summation methods. They were investigated in detail
+by Rump ([21], [22]) and Demmel ([8]). They guarantee the accurate or nearly accurate
+result of dot product computations. However they require additional arithmetic operations
+either (1) for a compensated summation, or (2) to sort elements before summation, that slow
+down the convolution computations. These methods trade-off increased accuracy against
+increased computation cost, which is similar to the mixed-precision method we propose in
+Section 8.
+   Our canonical evaluation order is not guaranteed to sum in increasing order of absolute
+value, because the execution time inputs might contain large or small values. But in practice
+our canonical ordering does much better than arbitrary orderings. We tested our approach
+with the setup describe in Section 6. Across a range of convolution sizes using various points
+we found roughly a 14% improvement in accuracy for 1D and 12% for 2D compared with
+the same selection of points in an arbitrary order. All subsequent test results presented in
+this paper use our Huffman summation for the transforms.
+
+7.2. Point Choice. We empirically evaluated over 40000 of random selections of values for
+the points that are used to construct the G, AT and B T matrices that are used to perform
+the linear transforms. We quickly found that it is very easy to find sets of points that cause
+huge FP errors, and rather more difficult to find better points.
+   There is no single recognized method for selecting points that minimize the FP error.
+However, the Chebyshev nodes are known to improve the conditioning of polynomial inter-
+polation [14], which is an important step of Toom-Cook convolution. Results for the FP
+error of using the Chebyshev nodes can be found in Appendix D. In general, the Chebyshev
+nodes are orders of magnitude better than typical random point selections.
+   There is, however, some common wisdom in the literature on another approach to se-
+lecting points to reduce the computation in the linear transforms. In general, the points
+{0, −1, 1, ∞} are good for reducing these costs, assuming that the code to implement convo-
+lution exploits these values. Multiplication by 1 or -1 can simply be skipped, and multipli-
+cation by zero allows both the scaling and addition to be skipped. Fortunately, eliminating
+FP operations also eliminates their associated error, so these points are also suitable to
+reducing FP error.
+   Problems start to arise where we need more than just these four basic points. In general,
+researchers agree that selecting small simple integers and fractions are good choices for
+reducing the required number of scalings and additions. We also found this type of points
+to be good for reducing the FP error. But there is no agreed-upon method in the literature
+for selecting between different values such as 2, −2, 12 , − 12 , 23 , 23 , etc.
+   To help us find good sets of these simple values to reduce the FP error, we developed
+the following rules which act as a heuristic to guide our search. The size of the kernel
+and output block determine the number of points needed. We start with the basic points
+{0, −1, 1, ∞}, which work well when four points are needed. We perform our search for sets
+of good points for output n based on the good sets of points for output n − 1. We establish
+a set of potentialy interesting points according to below rules as rationals with numerator
+in {−4, −3, −2, −1, 0, 1, 2, 3, 4} and denominator in {1, 2, 3, 4}. This gives us a set P of 23
+possible points.
+20ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+Our Algorithm.
+       • We start with a set Pn−1 of n − 1 good points p1 , ..., pn−1
+       • We construct new sets of points by adding pn .
+         Pn−1 ∪ {pn } ∀pn such that pn ∈ P and pn 6= pi ∀i = 0, .., n − 1.
+       • If n is even we construct a new set by dropping pj and adding two new points pk
+         and − p1k .
+         As n is even we have at least one point pj without symmetry, that is, pj ∈ Pn−1
+         and − p1j ∈ / Pn−1 . We drop the point pj and add instead all pairs pk and − p1k
+         Pn−1 \ {pj } ∪ {pk , − p1k } ∀pk ∈ P , pk , − p1k 6= pi ∀i = 0, .., n − 1.
+       • If there are different sets of points for 1D and 2D we check both sets for 1D and
+         2D in parallel.
+The resulting sets of “good” points are presented in Table 2. The basic four points are
+always {0, −1, 1, ∞}. Table 2 shows that when we add a fifth point, we found empirically
+that 12 is the best point to add for both 1D and 2D convolution. Occasionally, when moving
+to the next larger number of points we remove an existing point and add two new ones,
+such as when we add the eight point for 1D convolution. Note that the FP error versus
+direct convolution grows rapidly with the number of points. The increased error is due to
+the algorithm becoming less accurate with more points. The growth in error appears to be
+roughly exponential in the number of points in practice. However, the growth in error is
+not smooth (see Figure 5).
+
+        Table 2. Example points for Toom-Cook in F P 32 with kernels of size 3
+        (for 1D) or 3 × 3 (for 2D). We start with set of 4 points P4 = {0, −1, 1, ∞}.
+        Then we present the set of points for different cardinality as a additions
+        and/or subtraction of sets of points.
+
+  n    Points 1D                            Error 1D   no   Points 2D                         Error 2D     no
+  0    Direct convolution                   1.75E-08    1   Direct conv.                      4.63E-08    1×1
+  4    P4 = {0, −1, 1, ∞}                   2.45E-08    2   P4                                7.65E-08    2×2
+  5    P4 ∪ { 21 }                          5.19E-08    3   P4 ∪ { 21 }                       2.35E-07    3×3
+  6    P4 ∪ { 21 , −3}                      6.92E-08    4   P4 ∪ { 21 , −2}                   3.29E-07    4×4
+  7    P4 ∪ { 21 , − 12 , −3}               9.35E-08    5   P4 ∪ { 21 , −2, − 12 }            6.81E-07    5×5
+  8    P8 = P4 ∪ { 21 , − 12 , 2, −2}       1.15E-07    6   P8                                8.79E-07    6×6
+  9    P8 ∪ {− 41 }                         2.34E-07    7   P8 ∪ {− 41 }                      3.71E-06    7×7
+  10   P10 = P8 ∪ {− 41 , 4}                3.46E-07    8   P10                               7.35E-06    8×8
+  11   P10 ∪ { 14 }                         5.91E-07    9   P10 \ {0} ∪ { 34 , − 43 }          2.2E-05    9×9
+  12   P10 ∪ { 34 , − 43 }                  7.51E-07   10   P10 ∪ { 43 , − 43 }               3.22E-05   10 × 10
+  13   P10 ∪ { 34 , − 43 , 41 }             1.32E-06   11   P10 ∪ { 43 , − 43 , 14 }          1.09E-04   11 × 11
+  14   P14 = P10 ∪ { 14 , − 34 , 43 , −4}   1.84E-06   12   P14                               1.99E-04   12 × 12
+  15   (P14 \ {0}) ∪{ 32 , − 32 }           3.42E-06   13   P14 \ {0} ∪{ 34 , − 43 }          5.54E-04   13 × 13
+  16   P14 ∪ { 23 , − 32 }                  4.26E-06   14   P14 ∪{ 34 , − 43 }                 8.8E-04   14 × 14
+  17   P14 ∪ { 23 , − 32 , − 32 }           1.35E-05   15   P14 ∪{ 23 , − 32 , 32 }           1.07E-02   15 × 15
+  18   P14 ∪ { 23 , − 32 , − 32 , 32 }      2.24E-05   16   P14 ∪ { 32 , − 32 , − 23 , 32 }   1.93E-02   16 × 16
+
+
+
+7.3. Error Growth. If we consider the growth in 1D error from 7 to 8 points, the error
+grows from 9.35 × 10−8 to 1.15 × 10−7 , which is a factor of around 1.12×. In contrast the
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN21
+
+
+
+
+                     (a) 1D                                         (b) 2D
+
+        Figure 4. Number of multiplication and error for single output point for
+        different input block sizes in one- and two-dimensional Toom-Cook convo-
+        lution
+
+
+
+
+growth in error from 8 to 9 points is 1.15 × 10−7 to 2.34 × 10−7 , which is a factor of 2.03×.
+This is not a coincidence. The empirically good solution that we found when seven points
+are used for 1D convolution is {0, − 21 , 12 , −1, 1, −3, ∞}. In contrast when eight points are
+needed, the good solution is {0, − 12 , 12 , −1, 1, −2, 2, ∞}. Among the eight points there is a
+symmetry between the four values {− 21 , 12 , −2, 2}, which are negations and reciprocals of
+one another. As we discuss in Section 7.4, these symmetries reduce FP error.
+   In contrast, where 7 points are needed, the points {− 12 , 12 , −3} do not cancel in the same
+way, and so the error for seven points is larger than a smooth growth in error with points
+would suggest. Note that the appearance of the point −3 as the sixth selected point for
+1D convolution was a great surprise to us. However, −3 has just two significant binary
+digits, so there is no representation error of −3 in FP, and multiplication by −3 causes a
+very small error. Further, when computing differences between pairs of points for the B T
+matrix, −3 − (−1) = −2 and −3 − 1 = −4, both of which are even powers of two.
+   For 2D convolution, small differences mean that −3 is very slightly worse than 12 , 2 or −2
+and is not selected.
+   Given these trends it is reasonable to ask where are the good trade-offs between com-
+putation and error growth. The number of general multiplications is simply the number
+of points in the convolution algorithm. Using good point selections has no additional cost
+over bad ones, but greatly reduces the error. Similarly, our Huffman summation reduces
+the error at no additional computation cost. There is no single best trade-off because it
+depends on the required accuracy. However, using our point selections and other methods
+it may be possible to increase the output block size by 1-3 units.
+   When we examine the measured errors in Figure 5 we see that even using good point se-
+lections the measured error increases roughly exponentially with the size of the convolution.
+The average measured error grows at a rate that is compatible with the worst-case bound
+proven in Section 3.
+22ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+
+
+                                                                Figure 5. Increasing error
+                                                                in one- and one-dimensional
+                                                                Toom-Cook convolution. The
+                                                                vertical axis show the differ-
+                                                                ence of logarithms from error
+                                                                of convolution computed with
+                                                                n and n − 1 points, to show
+                                                                error growth.
+
+
+   Our analysis in Section 4.4 also suggests that the FP error for 2D convolution grows
+quadratically more quickly than the error for 1D convolution. This is borne out in Figure
+                                                                              x2
+5, where the 2D error as a function of the 1D error is approximately f (x) = 2.97 .
+   As a further check on the consistency of our measurements, we also implemented a run-
+ning error analysis for 1D Toom-Cook convolution. Running error analysis [14, p. 65] is
+an empirical method that computes a partial bound based on actual values alongside the
+executing algorithm. In our experiments we found that the running error closely matched
+the exponential rate of growth of the average error, with the running error 4.63× to 7.51×
+times the average error.
+
+7.4. Discussion of point selection. The point selection affect both components of forward
+error: conditioning of used matrices and floating point error. The goal of our tests is to
+find a good balance between them. Based on the our theoretical analysis, literature ([14],
+[9], [10]) and our empirical experiments those presented in Figure 4 and many other tests
+that give us much larger FP error, it is possible to explain why some points are better than
+others.
+    One common way to mitigate the Vandermonde matrices ill-conditioning is use Chebyshev
+nodes. We tried this approach (see Appendix D) but found that this did not perform well.
+The size of Vandermonde matrices used in DNN convolution is relatively small. The error
+generated by ill-conditioning grows exponentially. But for the small convolutions in DNNs,
+the error from ill-conditioning is not so large as to outweigh the error from floating point
+operation and representation. Chebyshev nodes are mostly irrational, so they can not be
+represented exactly as FP values. This representation error propagates throughout the
+algorithm.
+    In addition, we are interested in the accuracy of discrete convolution. There is a single
+correct answer (with known degree) to the interpolation in Toom-Cook convolution. If we
+were computing with infinite precision we could compute the correct polynomial precisely.
+This is somewhat different to another common use of interpolation, which is to estimate a
+polynomial where the degree is unknown. The advantages of Chebyshev interpolation points
+to mitigate Runge’s phenomenon does not help Toom-Cook convolution. We can not ignore
+conditioning entirely. But our goal is to find a set of points that will minimize both factors:
+problem conditioning and floating point error.
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN23
+
+
+   The four basic points {0, −1, 1, ∞} are almost always a good choices. In particular 0 and
+∞ result in guaranteed zeros in all three matrices AT , G and B T which cause no FP error.
+But we have to explain the point selection for bigger sets. We note that some clear rules for
+point selection emerge from our empirical study.
+   Firstly, we should use pairs of points that differ in sign (positive/negative), and pairs of
+reciprocal points — see Table 2. If we use point p then using −p, p1 and − p1 allow us to
+get better accuracy than introducing other point. Positive/negative pairs of points generate
+lower elements in matrix B T 1. Looking for the formula of matrix B T elements construction
+we can noticed that multiplication (a − p)(a + p) = −p2 + 0a + a2 results in zero coefficient
+of second term. Reciprocal points introduce the coefficient of the first term equal to 1 in
+                                                2
+multiplication (a − p)(a − f rac1pp) = 1 − p p+1 a + a1 that not introduce any additional
+scalling error. The opposite points are also known to be good for Vandermonde matrices
+conditioning ([9], [10]).
+   Secondly, the floating point error boundary depends directly on the values used in oper-
+ations (see formula 1). That means that we should look for the small values close to one to
+reduce the error. Putting it together with the previous observation we can say that choosing
+rational points minimizing numerator and denominator is a good strategy. This approach to
+points selection has also a positive impact for the floating point error. Assuming that each
+of kernel and input elements have a similar distribution using scaling factors with similar
+order of magnitude it is more likely to avoid cancellation error while computing dot product.
+The interesting point is that for bigger sets this is not always leading rule. We found that 14
+together with (0, −1, 1, −1/2, 1/2, −2, 2) works better than 13 for 9 points (see tables 2, 3).
+We explain this phenomena later in this section.
+   Thirdly, representation error of matrices elements have a big impact for the accuracy of
+the result. As we mentioned below the representation error propagates through all floating
+point operations and therefore can significantly grow up. This is why the exactly represented
+points work best in investigated algorithm (see tables 2, 3).
+   Finally, as we described in subsection (4.2) the error from multiplication while computing
+the dot product affects on accuracy as well. The elements equal to power of 2 do not
+introduce any error from scaling and therefore keep floating point error smaller. This and
+previous observation explain us why point 14 4 is better then 13 . The value 14 in contrast to
+1
+3 is exactly represented and do not introduce any error from multiplication.
+   Thus there is not a simple algorithm to choose a set of good points for Winograd algo-
+rithm. Our theoretical analysis allow us to identify all components of the error and dra-
+matically narrow the search space. With that knowledge it is possible to check empiricaly
+which of the narrow sets of points works the best in practice.
+
+                       8. Mixed-precision pre-/post-processing
+   We often apply the same kernel to the set of many different inputs. Similarly we often
+compute convolution with different kernels for the same input data. Thus, the pre-/post
+processing of each input, kernel and output are done just once, whereas the transformed data
+is used many times. One way to improve accuracy is to use a mixed-precision algorithm,
+where the pre-/post processing is done in higher precision, while the inner loops that perform
+the pairwise multiplication (Hadamard product) are computed in standard precision. This
+approach lowers the value of machine epsilon ε for the linear transforms in the error formulsa
+in Theorems (3) and (8).
+24ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+   Table 3 shows the point selection and measured errors for a mixed-precision Toom-Cook
+that performs the pre-/processing in FP64 and all other processing in FP32. We found
+that the mixed precision algorithm reduced the error in both 1D and 2D by up to around
+40% see column ”Ratio” in table (3). The result is that for the same level of error, the
+mixed-precision algorithm can often allow an ouput size that is one larger. We observe that
+in most cases the same sets of points worked best for convolution computed in FP32 and
+in mixed precision. Where there are differences, in most cases this is the result of a slight
+difference in the order in which points are selected when the number of points is odd. In
+the mixed-precision rounding errors during the pre-/post processing steps become a little
+less important because intermediate values are represented in FP64.
+   The cost of computing in double precision is significant. Modern processors typically
+use vector arithmetic units, and the throughout of double precision (FP64) is normally just
+half of single precision (FP32). On graphics processing units (GPUs) the disparity between
+single and double precision can be much larger. Furthermore, data conversions between
+single and double precision are normally needed, which further increase the computing cost.
+   A growing trend in deep neural networks is to store inputs and kernels in FP16 precision
+in memory, but to compute in FP32. Most Intel and ARM processors do not support FP16
+arithmetic. But they provide fast instructions for converting from FP16 values to FP32 to
+allow FP16 storage and FP32 computation. Many GPUs support native FP16 arithmetic,
+but it is not commonly used for DNN convolution. FP16 errors accumulate too rapidly for
+DNN convolution, particularly the errors arising from summation across channels. Recent
+NVidia GPUs provide co-called tensor cores, which are specifically aimed at storing data
+in FP16 and computing in FP32. The tensor cores accept FP16 inputs, and compute a
+multiple-input fused multiply and add operation, which produces a FP32 result. These
+operations could be used to implement mixed-precision FP16/FP32 linear transforms for
+Toom-Cook convolution.
+
+
+
+                                 9. Multiple channels
+   The proposed techniques up to this point of the paper have been for simple 1D or 2D
+convolution with a size 3 or 3 × 3 matrix respectively. However, an important feature of
+convolution in deep neural networks is multiple channels. Convolution inputs and kernels
+in many of the best known DNNs, such as GoogLeNet [24] or ResNet [13] typically have
+something between 3 and 1024 channels. However, the number of channels is a parameter
+selected by the designer of the neural network, and there is no upper limit on the number
+of channels used.
+   When performing convolution, a separate 1D or 2D convolution is performed at each
+channel, and then the results of each separate convolution is summed with the corresponding
+values in the other channels see figure 1. The obvious way to implement summation across
+channels is to perform the complete convolution separately on each channel, and sum the
+results. However, this would require that the post-processing linear transform is applied
+on each channel, which is a relatively expensive operation. Lavin and Gray [18] observed
+that the items can be summed before the linear transform, so that the post-processing step
+need be applied only to the sum. Therefore, in order to perform convolution over multiple
+channels we have to sum up the results of pairwise multiplication (Hadamard product)
+before we apply the transposition represented by AT matrix. The convolution is computed
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN25
+
+
+        Table 3. Example points for Toom-Cook method computations in F P 32
+        with transforms in F P 64 with kernels of size 3 (for 1D) or 3 × 3 (for 2D).
+        We start with set of 4 points P4 = {0, −1, 1, ∞}. Then we present the set of
+        points for different cardinallity as a additions and/or substractionf of sets of
+        points. The column Ratio present the ratio between the error of convolution
+        computations with transforms in F P 64 and convolution computations in
+        F P 32.
+
+   n    Points 1D                       Error 1D      no     Ratio    Points 2D                   Error 2D   Ratio
+   0    Direct convolution              1.75E-08      1        1      Direct convolution          4.63E-08    1
+   4    P4 = {0, −1, 1, ∞}              1.87E-08       2     0.76     P4                          5.27E-08   0.69
+   5    P4 ∪ {3}                        3.66E-08       3     0.71     P4 ∪ {3}                    1.62E-07   0.69
+   6    P4 ∪ {3, − 21 }                 4.41E-08       4     0.64     P4 ∪ {3, − 12 }             2.14E-07   0.65
+   7    P4 ∪ {3, − 21 , 12 }            6.09E-08       5     0.65     P4 ∪ {3, − 12 , 12 }        3.69E-07   0.54
+   8    P8 = P4 ∪ {− 12 , 21 , −2, 2}   6.97E-08       6     0.61     P8                          5.18E-07   0.59
+   9    P8 ∪ {− 41 }                    1.55E-07       7     0.66     P8 ∪ {4}                    2.42E-06   0.65
+   10   P10 = P8 ∪ {− 14 , 4}           2.09E-07       8      0.6     P10                         4.41E-06   0.6
+   11   P10 ∪ { 14 }                    3.64E-07       9     0.62     P10 \ {0} ∪ { 43 , − 43 }   1.27E-05   0.58
+   12   P12 = P10 ∪ { 34 , − 34 }       4.50E-07      10     0.6      P12                         1.89E-05   0.59
+   13   P12 ∪ { 14 }                    8.25E-07      11     0.63     P12 ∪ {−4}                  6.38E-05   0.59
+   14   P14 = P12 ∪ { 14 , −4}          1.11E-06      12     0.6      P14                         1.14E-04   0.57
+   15   P12 \ {0} ∪ { 32 , − 32 }       2.17E-06      13     0.63     P12 \ {0} ∪ {− 34 , 34 }    3.08E-04   0.56
+   16   P16 = P14 ∪ { 23 , − 23 }       2.78E-06      14     0.65      0 =P
+                                                                      P16                  3 4
+                                                                              14 ∪ {− 4 , 3 }     4.95E-04   0.56
+   17   P16 ∪ {− 23 }                   8.43E-06      15     0.62      0      3
+                                                                      P16 ∪ { 2 }                 5.93E-03   0.55
+   18   P18 = P16 ∪ {− 23 , 23 }        1.39E-05      16     0.62     P18                         1.04E-02   0.54
+
+
+
+
+according the following formulas:
+                                                    X
+                                           AT (            (Gh       B T x))
+                                                  channels
+                                            X
+                                    AT (             (GHGT           B T XB))A
+                                         channels
+   As a result, the FP error from DNN convolution is not just the error of the 1D or 2D
+convolution, but also the error from summing across channels. This is important for two
+reasons. First, if using Toom-Cook convolution increases the numerical error. The impact
+of summation over channels in error formulas (8) and (8) is represented by λ.
+   Second, there are well-known techniques for reducing the error from summation. If we
+reduce the error of summation, this may offset some part of the loss of accuracy arising from
+Toom-Cook convolution.
+   In section 8 we proposed a mixed precision algorithm that does pre-/post-processing in
+higher precision. However, this is not a suitable approach to increase the accuracy of the
+summation across channels. The summation across channels is in the inner-most loop of
+DNN convolution, so we cannot afford to double its cost. We instead propose using the
+well-known pairwise summation algorithm [17] for summation across channels.
+   When summing n FP inputs, the worst-case error from simply accumulating to a single
+variable is O(n). In contrast, the pairwise summation algorithm has a worst-case error
+of just O(log2 n) [17]. Given our existing error bound for Toom-Cook convolution with
+26ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+multiple channels, we can formulate the effect of using pairwise summation rather than
+linear summation.
+Corollary 3. The error for 1D convolution based on theorems (3) and (8), using linear
+summation across channels is:
+                                                                          
+(12)   kŝ − sk1 ≤ kAT k1 kGkF kB T kF khkF kxkF α(n) + β (n) + γ (nh ) + C ε + O(ε2 )
+   For pairwise summation across channels, the corresponding error is:
+       kŝ − sk1 ≤
+(13)                                                                        
+        ≤ kAT k1 kGkF kB T kF khk2 kxk2 α(n) + β (n) + γ (nh ) + blog(C)c + 2 ε + O(ε2 )
+   As we can observe comparing formulas (12) and (13) we have smaller overall error when
+we use the pairwise summation over channels than for linear summation.
+   Tables 4, 5, 6, 7 present measured errors for Toom-Cook convolution with just a single
+channel, with 32 channels, and with 64 channels. We see that the error per output value
+for 64 input channels is much larger than the error for just a single input channel. But the
+error is around 2–20 times larger, not 64 times larger. The reason is that when these values
+are summed, some of the errors cancel one another.
+   Our results presented in tables 4, 5 show that pairwise summation can reduce the total
+FP error by around 20%–40%. Similar tests presented in tables 6,7 show that when pair-
+wise summation across channels is used with mixed-precision transforms, the improvement
+compared to mixed-precision transforms alone is 25%-45%. Using both proposed methods:
+mixed precision and pairwise summation (8) give us an improvement in accuracy of around
+50% in both one- and two-dimensional computations.
+
+        Table 4. Toom-Cook over multiple channels in F P 32 — error per single
+        output point for 1 dimension convolution. Columns ”ratio in %” present
+        the ratio of error per single output point get with pairwise summation and
+        error per single output point with liner summation in %.
+
+    Out        1         32       32 channels   ratio      64       64 channels   ratio
+    size   channel    channels   pairwise sum   in %    channels   pairwise sum   in %
+     1     1.75E-08   2.74E-07     1.90E-07     69%     5.12E-07     2.87E-07     56%
+     2     2.45E-08   3.80E-07     2.71E-07     71%     7.03E-07     4.00E-07     57%
+     3     5.19E-08   7.08E-07     5.11E-07     72%     1.28E-06     7.59E-07     59%
+     4     6.92E-08   8.35E-07     6.17E-07     74%     1.48E-06     9.18E-07     62%
+     5     9.35E-08   1.09E-06     8.35E-07     77%     2.00E-06     1.24E-06     62%
+     6     1.15E-07   1.31E-06     9.79E-07     75%     2.34E-06     1.47E-06     63%
+     7     2.34E-07   2.90E-06     2.16E-06     74%     5.21E-06     3.20E-06     61%
+
+
+
+                                   10. Related work
+  Lavin and Gray [18] wrote the seminal paper on applying Winograd convolution to deep
+neural networks. They showed how to apply 2D versions of these algorithms to DNN
+convolution with multiple input and output channels, and how to amortize the cost of pre-
+/post-processing over many convolutions. Although they used the Toom-Cook method to
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN27
+
+
+        Table 5. Toom-Cook over multiple channels in F P 32 - error per sin-
+        gle output point for two-dimensional convolution. Columns ”ratio in %”
+        present the ratio of error per single output point get with pairwise summa-
+        tion and error per single output point with linear summation in %.
+
+    Out        1          32       32 channels    ratio      64       64 channels   ratio
+    size   channel     channels   pairwise sum    in %    channels   pairwise sum   in %
+    1×1    4.63E-08    5.25E-07     3.95E-07      75%     9.44E-07     5.83E-07     62%
+    2×2    7.65E-08    9.05E-07     6.47E-07      71%     1.65E-06     9.59E-07     58%
+    3×3    2.35E-07    2.87E-06     2.09E-06      73%     5.33E-06     3.11E-06     58%
+    4×4    3.29E-07    3.60E-06     2.70E-06      75%     6.56E-06     3.98E-06     61%
+    5×5    6.81E-07    7.78E-06     5.71E-06      73%     1.41E-05     8.57E-06     61%
+    6×6    8.79E-07    9.48E-06     7.12E-06      75%     1.71E-05     1.04E-05     61%
+    7×7    2.43E-06    4.66E-05     3.41E-05      73%     8.41E-05     5.09E-05     61%
+
+
+        Table 6. Toom-Cook computation in F P 32 with transforms in F P 64-
+        error per single output point for 1 dimension convolution. Columns ”ratio
+        in %” present the ratio of error per single output point get with pairwise
+        summation and error per single output point with liner summation in %.
+
+    Out        1         32        32 channels   ratio       64       64 channels   ratio
+    size   channel    channels    pairwise sum   in %     channels   pairwise sum   in %
+     1     1.75E-08   2.73E-07      1.90E-07     70%      5.15E-07     2.88E-07     56%
+     2     1.87E-08   3.60E-07      2.31E-07     64%      6.73E-07     3.58E-07     53%
+     3     3.66E-08   6.50E-07      4.39E-07     68%      1.20E-06     6.72E-07     56%
+     4     4.41E-08   7.45E-07      5.16E-07     69%      1.41E-06     7.86E-07     56%
+     5     6.09E-08   1.00E-06      6.98E-07     70%      1.92E-06     1.06E-06     55%
+     6     6.97E-08   1.17E-06      7.90E-07     68%      2.18E-06     1.20E-06     55%
+     7     1.55E-07   2.60E-06      1.80E-06     69%      4.91E-06     2.75E-06     56%
+
+
+generate their core convolution algorithms, they refered to it as Winograd convolution, and
+that has become the accepted term in the DNN literature.
+   By far the closest existing work to ours is from Vincent et al. [28]. They propose to scale
+convolution matrices to reduce the condition number of the Vandermonde matrices. They
+demonstrate that this approach can reduce the error number in exactly one case: convolving
+a 5 × 5 kernel to create a 9 × 9 output block. Further they showed that this improved matrix
+could be used to successfully for training a DNN. However, they did not provide a method
+for choosing good scaling factors. Our approach to reducing FP error is equally empirical,
+but we focus on constructing good convolution matrices rather than improving them after
+construction. We measured the error for our 5 × 5, 9 × 9 (with 13 points) convolution
+matrices and compared it with Vincent et al.’s solution. We found that our convolution
+matrices yield an error that is around 45% lower (better) than Vincent et al.’s.
+   The idea of applying the Toom-Cook algorithm to compute convolution was investigated
+and in great detail by Shmuel Winograd [30]. He focused on the low complexity of Toom-
+Cook convolution, and proved that it is optimal with respect to the number of general
+28ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+        Table 7. Toom-Cook computation in F P 32 with transforms in F P 64-
+        error per single output point for two-dimensional convolution. Columns
+        ”ratio in %” present the ratio of error per single output point get with
+        pairwise summation and error per single output point with liner summation
+        in %.
+
+    Out         1         32        32 channels    ratio      64       64 channels    ratio
+    size    channel    channels    pairwise sum    in %    channels   pairwise sum    in %
+    1×1     4.63E-08   5.25E-07      3.95E-07      75%     9.48E-07     5.85E-07      62%
+    2×2     5.27E-08   8.51E-07      5.54E-07      65%     1.59E-06     8.48E-07      53%
+    3×3     1.62E-07   2.70E-06      1.80E-06      67%     5.13E-06     2.75E-06      54%
+    4×4     2.14E-07   3.60E-06      2.36E-06      66%     6.68E-06     3.61E-06      54%
+    5×5     3.69E-07   6.06E-06      4.07E-06      67%     1.14E-05     6.17E-06      54%
+    6×6     5.18E-07   8.48E-06      5.64E-06      67%     1.59E-05     8.53E-06      54%
+    7×7     3.39E-06   4.21E-05      2.91E-05      69%     8.03E-05     4.34E-05      54%
+
+        Table 8. Ratio of Toom-Cook in F P 32 with linear summation over the
+        channels and in mixed precision with pairwise summation over the channels
+        - error for single output point in 1 and 2 dimensions.
+
+           Output size    32            64    Output size         32          64
+              1D       channels      channels    2D            channels    channels
+               1         69%           56%      1×1              75%         62%
+               2         61%           51%      2×2              61%         51%
+               3         62%           53%      3×3              63%         52%
+               4         62%           53%      4×4              66%         55%
+               5         65%           53%      5×5              52%         44%
+               6         60%           51%      6×6              59%         50%
+               7         62%           53%      7×7              62%         52%
+
+
+
+multiplications. Winograd developed his own method of generating short convolution algo-
+rithms based on the Chinese remainder theorem. Winograd’s method can create a much
+larger set of algorithms than Toom-Cook, including algorithms that are not optimal with
+respect to general mutliplications.
+   To the best of our knowledge, this paper is the first that presents a theoretical analysis of
+the numerical error of Toom-Cook convolution. We demonstrate that the algorithm is unsta-
+ble because the properties of algorithm parameters matrices we use
+(G, B T , AT ). We formulate the boundaries of the FP errors for one- and two-dimensional
+kernels and inputs so we can resonable choose what we should focus on to improve the ac-
+curacy. We formulated the error bounds for Toom-Cook convolution using similar techniqes
+to those used for another bilinear problem: the fast matrix multiplication, error estimation
+by Bini and Lotti [3], Demmel et al. [7] and [1]. We show that algorithm is unstable and
+how the error depends on each component.
+   As we can see from our errors formulation, the stability of the Toom-Cook convolution
+depends directly on the values of the matrices G, AT and B T not only on input and kernel
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN29
+
+
+values and sizes. While it has been empirically observed and theoreticaly proven that the
+condition number of square Vandermonde matrices containing real (not complex) points
+increases exponentially, to our knowledge there is no theoretically-sound method for choosing
+the best points. There are some more specific boudaries for particular sets of points, i.e.
+harmonic, equidistance, positive, in the range (−1, 1) [14] and complex points [19]. The way
+we choose points in our tests allow us to obtain sets of good points for specific input and
+kernel sizes, but points were find to be good empirically do not follow any of these simple
+patters. In general, minimizing the numerator and denominator works well, but it is not
+always the best approach. The FP representation [11] [14] and symmetry of reciprocal and
+inverse points [5] [10] matters as well.
+   In our search for the best points, we studied a wide range of literature on the conditiining
+of Vandermonde matrices dating from the last 40+ years [19] [10] [9] [14] and Toom-Cook
+algorithm [5] [23]. We took under consideration all theoretical results we found while de-
+veloping our strategy for finding good points. Since there is not any clear pattern of points
+to choose, the lack of theoretical background on Vandermonde inverse matrix norm did not
+allow us to present any more advanced analysis.
+   Some work on Toom-Cook optimality was done by M. Bodrato [5]. He focused on the
+optimality of this algorithm applied to the polynomial multiplication problem, as measured
+by the number of operations required. Improving the floating numerical accuracy of the
+result was not a goal of Bodrato’s work, and no data data is provided of the effect of
+the proposed techniques on numerical accuracy. In contrast, our work studied Toom-Cook
+algorithm application for the DNN convolution problem; we consider a much bigger variety
+of input sizes and additional factors that have an impact on accuracy like FP precision.
+However, as we have shown, reducing the number of operations required for the pre-/post-
+processing steps can improve numerical accuracy. Just as we found that symmetric points
+can improve numerical accuracy, Bodrato found that such points could reduce the number
+of required operations.
+   Note that our focus is on reducing Toom-Cook FP error to allow larger outblock block
+sizes and thus fewer general multiplications. However, error analysis might also be used for
+other purposes such as identifying when the training error has become smaller than the FP
+error, and that therefore training can be terminated early. We leave such additional uses of
+error analysis to future work.
+
+
+                                     11. Conclusions
+   We present an analysis of 1D and 2D Toom-Cook convolution with multiple channels for
+DNN convolution. We identify and formalize the error terms for Toom-Cook convolution,
+and prove that the error bound grows at least exponentially with the size of the convolution.
+This result is supported by an analysis of conditioning, which shows that the condition
+number of the convolution with respect to the norm grows exponentially with convolution
+size.
+   We formally analyse the error bound for the “modified” Toom-Cook algorithm, and
+prove that the error is close to that of the non-modified algorithm operating on an input
+one element smaller. We observe empirically that using modified version reduces the error
+by 20% to over 70%, with no additional computation cost.
+   We observe that the order of point selection impacts the accuracy of the algorithm.
+We propose a canonical evaluation order based on Huffman trees. This fixes the order
+30ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+of evaluation, and empirically reduces the error by a further 12%-14% in addition to the
+improvement from using the modified algorithm, again with no additional computation cost.
+   There is no existing, widely accepted strategy for selecting points. We observe that for
+DNNs there is a relatively small number of important sizes, and we search empirically for
+good point selections for those sizes. We identify four key criteria for good point selections:
+(1) few significant mantissa bits, (2) positive/negative point symmetry, (3) reciprocal point
+symmetry, and (4) subtractions of points leading to few significant mantissa bits. For
+important convolution sizes for DNNs, our empirically selected points yield much better
+accuracy than the Chebyshev nodes. The Chebyshev nodes fail to meet our criteria (1), (3)
+and (4) which makes them relatively poor choices for the small convolutions found in DNNs.
+   We also proposed a mixed precision approach where the transforms are computed in
+double precision, while the remaining inner loops are computed in F P 32. We found that
+perfoming pre/post processing transforms in F P 64 decreases error typically by around one
+third in our experiments. We also empirically investigated summation across channels using
+pairwise summation and found that this reduces the error by around 20% to 50%. Unlike the
+other methods we investigated, mixed precision transforms and pairwise summation impose
+an additional computation cost.
+   Using our point selections and techniques for improving FP accuracy, we can reduce the
+error between 2× and orders of magnitude, when compared with the Chebyshev nodes.
+Each approximately 2× reduction in the error allows the output block size dimension to be
+increased by around one. Whereas current implementations of Winograd convolution for
+DNNs typically use output block sizes of 2 × 2 or 3 × 3, our methods allow larger block sizes,
+with a resulting reduction in arithmetic operations (see Table 1). This will allow faster DNN
+training and inference, which is particularly valuable for resource-constrained mobile and
+embedded systems.
+
+                                           APPENDIX
+                  Appendix A. Estimate of norm and conditioning
+   In this appendix, we provide
+                               some estimates of the norm and conditioning of the product
+W (h, x) = AT Gh B T x in terms of an expression involving only the matrices A, G, and
+B and one involving x and h. To do this, we reformulate this Hadamard product using a
+special product of two matrice called the Khatri-Rao product, which can be thought of as
+a specific block analog of the Hadamard product; see [12].
+Definition 1. Let C, F be m × n block matrices with the structure
+                            C = (Cij )ij       and     F = (Fij )ij
+                            si ×sj
+with block sizes Cij , Fij ∈ R . The Khatri-Rao product is the blockwise Kronecker prod-
+uct defined by C ⊗KR F = (Cij ⊗ Fij )ij .
+
+   The Khatri-Rao product can be used to express the Hadamard product Gh B T x as
+a matrix-vector product, whereby we use block both matrices by row. That means the
+C ⊗KR F here denotes the matrix whose rows consist of the Kronecker products of the rows
+of C and F .
+Theorem 6. The Hadamard product Gh             B T x admits the expression
+                                     B T x = B T ⊗KR G · (x ⊗ h) .
+                                                        
+                            Gh
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN31
+
+
+Proof. Let
+                                  T                                  T
+                                   g1                                   b1
+                                  g2T                                bT2 
+                               G= .                 and        BT =  . 
+                                                                     
+                                  ..                                 .. 
+                                  T
+                                 gnx                       bTnx
+                                                                     Pnx
+with bTi = bi1 bi2 · · · bi,nx . Then the ith entry of B T h is bTi x = j=1 bij xj . and the
+ith entry of Gh B T x can thus be written as
+                                                    nx
+                                                    X                nx
+                                                                     X
+                          giT h · bTi x = giT h ·         bij xj =         bij giT (xj h) ,
+                                                    j=1              j=1
+
+which can be written as the vector dot product
+                                                                      
+                                                                  x1 h
+                                                                 x2 h 
+                                                                     
+          giT h · bTi x = bi1 giT   bi2 giT           bi,nx giT  .  = bTi ⊗ giT (x ⊗ h) .
+                                                                                
+                                              ···
+                                                                   .
+                                                                 . 
+                                                                     x nx h
+This proves the result.                                                                       
+
+   We now calculate the condition number of W (h, x). Recall that for a continuous function
+f (x) and a given vector norm k·k, we can express the relative condition number in terms of
+the induced operator norm of its Jacobian Jf (x)
+                                                     kJf (x)k · kxk
+                                         κ(x) =                     ;
+                                                        kf (x)k
+see, e.g., [27]. We can write the composition W (h, x) = W (y) where y := y(h, x) = x ⊗ h.
+Then we can use the chain rule to express the Jacobian of W (h, x) as
+                            Jw (h, x) = AT B T ⊗KR G Jy (x, h),
+                                                      
+
+where Jy (h, x) is the Jacobian of y(h, x). Thus the condition number for W (h, x) satisfies
+                                                   
+                                   AT B T ⊗KR G Jy (x, h) · kx ⊗ hk
+(14)                  κW (h, x) =                                     .
+                                       kAT (B T ⊗KR G) · (x ⊗ h)k
+We can then get an upper bound estimate for this condition number. We begin by in-
+troducing some terminology. If C ∈ Rm×m is nonsingular, then it is a well-known result
+                                                                             σmax (C)
+that the condition number κ2 (C) with respect to k·k2 satisfies κ2 (C) =              , where
+                                                                             σmin (C)
+σmax (C), σmin (C) > 0 are, respectively, the largest and smallest singular value of C, which
+are guaranteed by the nonsingularity of C to be nonzero.
+Theorem 7. The condition number κW (h, x) with respect to k·k1 admits the upper bound
+estimate
+                       √
+           κW (h, x) ≤ no nnh max {kxk1 , khk1 } κ2 AT B T ⊗KR G .
+                                                                    
+
+Proof. We must get appropriate lower bound estimates for the denominator of κw (h, x) in or-
+der to get an upper bound estimate of the whole expression. First, observe that we have from
+vector norm equivalence AT B T ⊗KR G · (x ⊗ h) 1 ≥ AT B T ⊗KR G · (x ⊗ h) 2 . Next,
+32ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+we take advantage of the fact that in theory, the three matrices are square, nonsingular Van-
+dermonde matrices. This allows us to unambgiuously construct a chain of inequalities,
+
+
+                                                                  x⊗h
+          AT B T ⊗KR G · (x ⊗ h) 2 = AT B T ⊗KR G ·
+                                                
+                                                                            kx ⊗ hk2
+                                                                 kx ⊗ hk2 2
+                                                      AT   B T ⊗KR G · y 2 kx ⊗ hk2
+                                                                     
+                                        ≥ min
+                                           nn
+                                           y∈R    h
+                                            kyk2 =1
+
+
+                                        ≥ σmin AT B T ⊗KR G kx ⊗ hk2 .
+                                                           
+
+
+
+Applying this to (14)
+
+                                              
+                                AT B T ⊗KR G Jy (x, h) 1 · kx ⊗ hk1
+(15)                κW (h, x) ≤                                     .
+                                 σmin (AT (B T ⊗KR G)) kx ⊗ hk2
+
+
+                                                                 √
+Using vector norm equivalence, we can estimate kx ⊗ hk1 ≤            nnh kx ⊗ hk2 . We have the
+induced matrix norm inequality
+
+
+               AT B T ⊗KR G Jy (x, h) 1 ≤ AT B T ⊗KR G 1 kJy (x, h)k1 .
+                                                     
+
+
+
+Writing out Jy (x, h), one observes that kJy (x, h)k1 = max {kxk1 , khk1 }. Furthermore, for
+                                                          1                      √
+C ∈ Rm1 ×m2 , we have the matrix norm equivalence √           kCk1 ≤ kCk2 ≤ m2 kCk1 .
+                                                          m1
+Applied in this setting yields
+
+
+                       √                   √
+       AT B T ⊗KR G 1 ≤ no AT B T ⊗KR G 2 = no σmax AT B T ⊗KR G .
+                                                              
+
+
+
+Substituting into (15) yields the result after some simplificaton.                           
+
+
+
+   What this demonstrates is that in the one-dimensional case, conditioning of the underly-
+ing problem, i.e., the relative condition number of the convolution with respect to k·k1 , has
+a bound which grows worse exponentially as the size of the Vandermonde matrices grows.
+This is not surprising in light of the error analysis shown earlier. However, we also see that
+the condition number has an upper bound depending on kxk1 and khk1 , meaning that we
+cannot rule out that the convolution may exhibit poorer conditioning in the case that x and
+h are pathologically large.
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN33
+
+
+  Appendix B. Proof of the theorem of two-dimensional Toom-Cook error
+                                       bounds
+B.1. Two-dimensional Toom-Cook convolution error.
+Theorem 8. Error for two-dimensional Toom-Cook convolution computation satisfies the
+componentwise bound equal to:
+       |Ŝ − S| ≤
+(16)                                                                            
+            ≤|AT | |G||H||GT |     |B T ||X||B| |A| 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + Ø(ε2 )
+                                               
+
+Error for two-dimensional Toom-Cook convolution computation satisfies the normwise bound
+equal to:
+       kŜ − Sk1 ≤
+(17)                ≤ kAT k1 kGkF kHkF kGT kF kB T kF kXkF kBkF kAk1 Rε + O(ε2 )
+        where R = 2α(n) + 2β (n) + 2γ (nh ) + 1
+If we assume the same method of summation while matrix and transpose matrix multiplica-
+tion.
+Where α(n) , β (n) , γ (nh ) represents the error from multiplication by matrices AT , B T and G
+respectively.
+Proof. In computing two-dimensional convolution we use the feature of Kronecker product
+that means vec(M XM T ) = (M ⊗ M )vec(X). Notice that despite the both formulas are
+mathematically equivalent the result in FP arithmetic could be different because of more
+multiplication operations while computing vec(M XM T ) than for (M ⊗ M )vec(X).
+We have
+                     |f l(f l(A)Xf l(AT ))| = |A| |X| |AT |2α(n) ε + O(ε2 )
+. Let put component function
+                            S = g(H, X) = g3 (g2 (g1H (H), g1X (X)))
+g(H, X) : Rnh ×nh × Rn×n → Rno ×no , g(H, X) = AT GHGT B T XB A,
+                                                               
+
+g3 : Rn×n → Rno ×no , g3 (M ) = AT m,
+g2 : Rn×n × Rn×n → Rn×n , g2 (M, N ) = M N ,
+g1 : Rnh ×nh → Rn×n , g1H (M ) = GM GT and g1X : Rn×n → Rn×n .
+Similarly as for one-dimensional convolution we have:
+                  |vec(Ŝ) − vec(S)| ≤ |J3 | |J2 | |∆b2 | + |J2 | |∆b3 | + |∆b4 | =
+         = |A ⊗ AT | Diag((|B T | ⊗ |B T |)vec(|X|)), Diag((|G| ⊗ |G|)vec(|H|)) |
+               T
+                                                                                       
+
+                                                      (nh )
+                                                            ε + O(ε2 )
+                                                                         
+                           (|G| ⊗ |G|) vec (|H|) 2γ
+                       |                                                   |+
+                            |B T | ⊗ |B T |)vec(|X| |2β (n) ε + O(ε2 )
+      + |AT | ⊗ |AT | (|G| ⊗ |G|) vec (|H|)            |B T | ⊗ |B T | vec (|X|) ε + O(ε2 )+
+                                                                               
+
+     |AT | ⊗ |AT | (|G| ⊗ |G|) vec (|H|)          |B T | ⊗ |B T | vec (|X|) 2α(n) ε + O(ε2 ) =
+                                                                          
+                                                                                          
+  = |AT | ⊗ |AT | (|G| ⊗ |G|) vec (|H|)          |B T | ⊗ |B T | vec (|X|) 2γ (nh ) + 2β (n) ε +
+                                                               
+
+                                                                                   
+ + |AT | ⊗ |AT | (|G| ⊗ |G|) vec (|H|)        |B T | ⊗ |B T | vec (|X|) 2α(n) + 1 ε + O(ε2 ) =
+                                                             
+34ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+      = |AT | ⊗ |AT | (|G| ⊗ |G|) vec (|H|)          |B T | ⊗ |B T | vec (|X|) | Rε + O(ε2 ) =
+                                                                   
+
+                                R = 2γ (nh ) + 2β (n) + 2α(n) + 1
+Changing vectors again to matrices we obtain:
+                                                                                
+  |Ŝ − S| ≤ |AT | |G| |H| |GT | |B T | |X| |B| |A| 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+                                                
+
+We do the normwise error estimationin in the same way as for one-dimensional convolution,
+as the matrix consistency and Buniakowski-Schwartz inequality holds both for vectors and
+matrices.
+                                                                   
+     kŜ − Sk1 ≤ kAT GHGT B T XB A 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )k ≤
+                                                                  
+           ≤ kAT GHGT B T XB Ak1 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+                                  
+
+From norm k · k1 consistency:
+                                                                                  
+ kŜ − Sk1 ≤ kAT k1 k GHGT             B T XB k1 kAk1 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+                                            
+
+Applying Buniakowski-Schwartz inequality for Hadamard product:
+                                                                         
+ kŜ − Sk1 ≤ kAT k1 kGHGT kF kB T XB)kF kAk1 2α(n) + 2β (n) + 2γ (nh ) + 1 ε + O(ε2 )
+Finally from norm equivalency:
+        kŜ − Sk1 ≤ kAT k1 kGkF kHkF kGT kF kB T kF kXkF kBkF kAk1 Rε + O(ε2 )
+                                 R = 2α(n) + 2β (n) + 2γ (nh ) + 1
+                                                                                                 
+
+         Appendix C. Modified Toom-Cook convolution error analysis
+Theorem 9. The componentwise error for one-dimensional modified Toom-Cook for qth
+element of output is bounded by:
+(18)
+  |ŝm(n)
+     q    − sm(n)
+              q    |=
+           (n−1)
+                                                                                  
+   = |ATq:       | |G(n−1) | |h| |B (n−1)T | |x(n−1) | γ (nh ) + β (n−1) + α(n−1) + 1 ε + O(ε2 )
+ for q = 1, .., no − 1
+
+
+ |ŝ(m(n))
+    no     − sm(n)
+              no | ≤
+                                                                               
+        T (n−1)
+  ≤ |Aq:        | |G(n−1) | |h| |B (n−1)T | |x(n−1) | + |hnh | |Bn: m(n)T | |x|
+                n                                         o      
+           max γ (nh ) + β (n−1) + α(n−1) + 1 , (β + 1) + 1 ε + O(ε2 )
+ for q = no
+
+Proof. We denote matrices constructed for Toom-Cook algorithm of input size n as G(n) ,
+A(n)T and B (n)T and for modified Toom-Cook algorithm of input size n as Gm(n) , Am(n)T
+and B m(n)T .
+   As we can see from the modified Toom-Cook algorithm definition we solve the problem
+of size n by solving problem of size n − 1 by Toom-Cook algorithm and proper modify the
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN35
+
+
+last element of output. Thus is obvious that error boundary of the first no − 1 output points
+in modified Toom-Cook convolution is equal to the boundary of Toom-Cook convolution
+for input size n − 1. The computation of the last no th output point include two parts: we
+compute the partial result using Toom-Cook convolution for input n−1 and add the missing
+                   (n−1)
+value. sno m(n) = sno    + hnh B m(n)n: x So:
+
+                                              |ŝm(n)
+                                                 no   − sm(n)
+                                                         no | ≤
+
+
+                                          
+|sno (n−1) | γ (nh ) + β (n−1) + α(n−1) + 1 ε+O(ε2 )+|hnh | |Bn: m(n)T | |x|(β (n) +1)ε+O(ε2 ) =
+
+                                         n                                       o
+= |sno (n−1) | + |hnh | |Bn: m(n)T ||x| max γ (nh ) + β (n−1) + α(n−1) + 1, β n + 1 ε + O(ε2 )
+
+                                                                                                          
+
+    For DNN convolution the kernel size nh is almost always greater than or equal to 3 and
+nh ≤ n. If we compute the convolution then from dot product error analysis we know that
+γ (nh ) ≥ nh − 1, β (n−1) ≥ n − 2 and α(n−1) ≥ n − 2. In this case γ (nh ) + β (n−1) + α(n−1) + 1 ≥
+nh + 2n − 4, while β (n) + 1 ≤ n + 2. When nh ≥ 3 the maximum in formula 18 is always
+equal to γ (nh ) + β (n−1) + α(n−1) + 1. So we can formulate following corollary:
+
+Corollary 4. If we use the kernel size nh ≥ 3 computing for 1D convolution using modified
+Toom-Cook algorithm then the componentwise error for last output element is bounded as
+follows:
+
+        |ŝ(m(n))
+           no     − sm(n)
+                     no | ≤
+(19)             (n−1)
+                                                                                          
+         ≤ |ATq:       | |G(n−1) | |h|      |B (n−1)T | |x(n−1) | + |hnh | |Bn: m(n)T | |x| Rε + O(ε2 )
+
+                                                 
+where R = γ (nh ) + β (n−1) + α(n−1) + 1
+
+  Assuming any elements in matrices Gm(n) , B m(n)T and Am(n)T and linear summation
+while compute the dot product we have following boundaries:
+
+Corollary 5.
+
+|ŝ(m(n))
+   no     − sm(n)
+             no | ≤
+            (n−1)
+ ≤ (|ATq:           |(|G(n−1) ||h|   |B (n−1)T ||x(n−1) | + |hnh ||Bn: m(n)T ||x|)(nh + 2n + 2)ε + O(ε2 )
+
+
+
+                        Appendix D. Tests results for Chebyshev nodes
+  The table below presented the error of convolution computations for different sizes with
+Chebyshev points and the points we found the best. The column ”Ratio” presents how
+many times the error for Chebyshev points is bigger then for points we found.
+36ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN
+
+
+                  1D             1D           1D         2D             2D              2D
+          n    Our points     Chebyshev      Ratio    Our points     Chebyshev         Ratio
+          4    2.49E-08     3.51E-08     1.41    7.65E-08     1.01E-07     1.32
+          5    5.21E-08    5.535E-08     1.06    2.46E-07     2.12E-07     8.62
+          6    7.32E-08     1.04E-07     1.42    3.49E-07     5.65E-07     1.62
+          7    1.00E-07     1.68E-07     1.68    7.11E-07     1.70E-06     2.39
+          8    1.23E-07     3.78E-07     3.07    9.21E-07     6.50E-06     7.06
+          9    2.59E-07     6.76E-07     2.61    4.07E-06     2.59E-05     6.36
+         10    3.87E-07     1.48E-06     3.82    8.23E-06     1.09E-04 1.32E+01
+         11    6.62E-07     3.18E-06     4.80    2.53E-05     4.84E-04 1.91E+01
+         12    8.42E-07     7.46E-06     8.86    3.67E-05     2.18E-03 5.94E+01
+         13    1.56E-06     1.53E-05     9.81    1.24E-04     1.00E-02 8.06E+01
+         14    2.10E-06     3.21E-05    15.29    2.32E-04     4.72E-02 2.03E+02
+         15    3.91E-06     7.12E-05    18.21    6.35E-04     2.31E-01 3.64E+02
+         16    5.06E-06     1.56E-04    30.83    1.04E-03        1.10   1.06E+03
+         17    1.68E-05     3.53E-04    21.01    1.31E-02        5.43   4.15E+02
+         18    2.36E-05     8.03E-04    34.03    0.24E-02       26.91   1.12E+04
+         Table 9. Error for one- and two-dimensional convolution for Chebyshev
+         points and points we found. Column ”Ratio” present how many times the
+         error for Chebyshev points is bigger then for points we found.
+
+
+
+                                       Acknowledgements
+  This work was supported by Science Foundation Ireland grant 12/IA/1381, and in part
+by Science Foundation Ireland grant 13/RC/2094 to Lero – the Irish Software Research
+Centre (www.lero.ie).
+
+                                             References
+ 1. Grey Ballard, Austin R. Benson, Alex Druinsky, Benjamin Lipshitz, and Oded Schwartz, Improving the
+    numerical stability of fast matrix multiplication, SIAM Journal on Matrix Analysis and Applications
+    37 (2016), no. 4, 1382–1418.
+ 2. Norman L. Biggs, Discrete mathematics, 2nd. ed., Oxford University Press, New York, NY, USA, 2002.
+ 3. Dario Bini and Grazia Lotti, Stability of fast algorithms for matrix multiplication, Numerische Mathe-
+    matik 36 (1980), no. 1, 63–72.
+ 4. Richard E. Blahut, Fast algorithms for signal processing, Cambridge University Press, New York, NY,
+    USA, 2010.
+ 5. Marco Bodrato, Towards optimal toom-cook multiplication for univariate and multivariate polynomials
+    in characteristic 2 and 0, Arithmetic of Finite Fields (Berlin, Heidelberg) (Sunar B. Carlet C., ed.),
+    Lecture Notes in Computer Science, vol. 4547, Springer-Verlag, 2007, pp. 116–133.
+ 6. Stephen A. Cook, On the minimum computation time of functions, Ph.D. thesis, Harvard University,
+    Cambridge, Mass., 1966.
+ 7. James Demmel, Ioana Dumitriu, Olga Holtz, and Robert Kleinberg, Fast matrix multiplication is stable,
+    Numerische Mathematik 106 (2007), no. 2, 199–224.
+ 8. James Demmel and Yozo Hida, Accurate and efficient floating point summation, SIAM Journal on
+    Scientific Computing 25 (2004), 1214–1248.
+ 9. Walter Gautschi, Norm estimates for inverses of Vandermonde matrices, Numerische Mathematik 23
+    (1974), 337–347.
+10.         , How (un)stable are Vandermonde systems?, Asymptotic and Computational Analysis 124
+    (1990), 193–210.
+ ERROR ANALYSIS AND IMPROVING THE ACCURACY OF WINOGRAD CONVOLUTION FOR DNN37
+
+
+11. David Goldberg, What every computer scientist should know about floating-point arithmetic, ACM
+    Computing Surveys 23 (1991), no. 1, 5–48.
+12. Gene H. Golub and Charles F. Van Loan, Matrix Computations, fourth ed., Johns Hopkins Studies in
+    the Mathematical Sciences, Johns Hopkins University Press, Baltimore, MD, 2013. MR 3024913
+13. Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun, Deep residual learning for image recognition,
+    2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR), June 2016, pp. 770–778.
+14. Nicholas J. Higham, Accuracy and stability of numerical algorithms, 2nd. ed., SIAM Publications,
+    Philadelphia, PA, 2002.
+15. David Huffman, A method for the construction of minimum-redundancy codes, Proceedings of the IRE
+    40 (1952), no. 9, 1098–1101.
+16. William Kahan, The improbability of probabilistic error analyses for numerical computations, Slides
+    from Statistics Colloqium, University of California, Berkeley, February 1996.
+17. Donald E. Knuth, The art of computer programming, Addison-Wesley, USA, 1998.
+18. Andrew Lavin and Scott Gray, Fast algorithms for convolutional neural networks, 2016 IEEE Conference
+    on Computer Vision and Pattern Recognition (CVPR) (Las Vegas, Nevada), IEEE, 2016, pp. 4013–4021.
+19. Victor Y. Pan, How bad are vandermonde matrices?, SIAM J. Matrix Analysis Applications 37 (2016),
+    no. 2, 676–694.
+20. Keshab K. Parhi, Vlsi digital signal processing systems: Design and implementation, John Wiley and
+    Sons, New York, 2007.
+21. Siegfried M. Rump, Takeshi Ogita, and Shin’ichi Oishi, Accurate floating-point summation part I: faith-
+    ful rounding, SIAM Journal on Scientific Computing 31 (2008), no. 1, 189–224.
+22.         , Accurate floating-point summation part II: sign, k-fold faithful and rounding to nearest, SIAM
+    Journal on Scientific Computing 31 (2008), no. 2, 1269–1302.
+23. Ivan W. Selesnick and C. Sidney Burrus, Extending Winograd’s small convolution algorithm to longer
+    lengths, 1994 IEEE International Symposium on Circuits and Systems, ISCAS (London, England),
+    IEEE, May 1994, pp. 449–452.
+24. Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed, Dragomir Anguelov, Dumitru
+    Erhan, Vincent Vanhoucke, and Andrew Rabinovich, Going deeper with convolutions, Proceedings of
+    the 2015 IEEE Conference on Computer Vision and Pattern Recognition (CVPR), June 2015, pp. 1–9.
+25. Richard Tolimieri, Myoung An, and Chao Lu, Algorithms for discrete fourier transform and convolution,
+    2nd. ed., Springer-Verlag, New York, NY, USA, 1997.
+26. Andrei L. Toom, The complexity of a scheme of functional elements realizing multiplication of integers,
+    Soviet Mathematics – Doklady 3 (1963), 714–716.
+27. Lloyd N. Trefethen and David Bau, Numerical linear algebra, SIAM, Philadelphia, 1997.
+28. Kevin Vincent, Kevin Stephano, Michael Frumkin, Boris Ginsburg, and Julien Demouth, On improving
+    the numerical stability of winograd convolutions, Proceedings of the 5th International Conference on
+    Learning Representations (Toulon, France), 2017, https://openreview.net/forum?id=H1ZaRZVKg, p. 4.
+29. James H. Wilkinson, Rounding errors in algebraic processes, Dover Publications, New York, NY, USA,
+    1994.
+30. Shmuel Winograd, Arithmetic complexity computations, SIAM Publications, Bristol, England, 1980.
+31.         , Signal processing and complexity of computation, IEEE International Conference on Acoustics,
+    Speech, and Signal Processing, ICASSP (Denver, Colorado), IEEE, April 1980, pp. 94–101.
+

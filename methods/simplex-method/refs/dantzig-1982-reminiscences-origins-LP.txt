@@ -1,0 +1,657 @@
+AO-A112 060    STANFORD UNIV CA SYSTEMS OPTIMIZATION LAB                   F/G 9/2
+               REMINISCENCES ABOUT THE ORIGINS OF LINEAR PROGRAMMING. (U)1
+               APR 81 6 B OANTZIG                              NOOO14-75-C-0267
+
+UNCLASSIFIED   SOL-81l-5                        SBI-AD-E750   153           "L
+
+
+
+
+     NEEEEhE
+                     L2A   12.2
+                   L. 16    a-
+              t.     340   120M
+
+
+
+
+11111
+ L25                       1.6
+
+
+
+MICROCOPY RESOLUTION TESTCHART
+            ]                           Systems
+             dL                         Optimization
+ooLaboratory
+
+
+
+
+0
+
+
+
+
+o
+
+
+
+
+                                                       DTIW
+                                                       ELE
+                                                       MAR 1 7 1982
+
+    Department of Operations Research                  M              "
+    Stanford University                                     A
+    Stanford, CA 94305
+    j fordishibution
+      Thisdrent      has    bnp1rooil
+            public release and sale; its
+                     Isunlimited.
+                                           I                      -
+                             SYSTEMS OPTIMIZATION LABORATORY
+                            DEPARTMENT OF OPERATIONS RESEARCH
+     *                             STANFORD) UNIVERSITY
+                               STANFORD, CALIFORINIA 9ii305
+
+
+
+
+                  REMINISCENCES ABOUT THE ORIGINS OF LIEAR PROGRAMEING
+
+
+                                            by
+
+                                   George B. Oantzig
+                               I'ECHWICA   REPORT SOL. 81-5
+
+                                       April 1981
+
+
+
+                                                                     DTIC"8
+                                                                  SEL .-YiI
+                                                                           A
+         Research and reproduction of this report were partially supported by
+         the Department of Energy Contract AMO3-76SF00326, PA# DE-ATO3-76ER72018;
+         Office of Naval Research Contract N00014-75-C-0267; National Science
+         Foundation Grants 1CS76-81259, MCS-7926009 and ECS-8012974.
+
+*~       Reproduction in whole or In part Is permitted for any purposes of the
+         United States Government.   This document has been approved for public
+         release and sale; its distribution Is unlimited.
+                  REMINISCENCES ABOUT THE ORIGINS OF LINEAR PROGRAMMING
+
+
+                                                          1
+                                      George B. Oantzig
+
+           ABSTRACT: Some recollections about the early days of linear
+           programming, the contributions of von Neumann, Leontief,
+           Koopmans and others, and about some of the extensions that
+           have taken place from 1950-1970 and some from 1970-1980.
+
+           Linear Programing is viewed as a revolutionary development
+
+I          giving us the ability for the first time to state general
+           objectives   and    to find,
+           optimal policy decisions to
+                                           by means of
+                                              practical
+                                                              the simplex method,
+                                                          decision    problems of
+           great complexity.
+
+
+           In the years following its conception in 1947, in connection with the
+
+    planning activities of the military, linear progr             ing has come into wide
+    use.
+           In academic circles mathematicians, economists, and those who go by
+    the name of Operations Researchers or Management Scientists, have written
+    hundreds of books on the subject and, of course, an unaccountable number
+    of articles.
+          Interestingly enough, In spite of Its wide applicability to everyday
+    problems, linear programming was unknown prior to 1947.    It is true that
+    two or three individuals may have been aware of its potential -- for
+    example Fourier in 1823 and de la Vdallee Poussin in 1911. But these were
+    Isolated cases.    Their works were soon forgotten.   Kantorovich in 1939
+    made an extensive proposal        that was neglected by U.S.S.R. It was only
+    after the major developments In mathematical programming had taken place
+    in the West (1959),        that Kantorovich's paper became known.        To give you
+    some idea of how meager the research effort was:                Motzkin in his Ph.D.
+    thesis   lists   only     42 papers   before   1936 on llne;ir    inequality    systems
+    authored by such names as Stokes, Dines, McCoy,
+
+    1.     This research was paritally supported by the Department of Energy
+           Contract AHO3-76SFO0326, PA # DE-ATO3-76ER72018; Office of Naval
+           Research Contract N00014-75-C-0267; National Science Foundation
+           Grants MCS-7681259, MCS-7926009 and ECS-8012974.
+
+
+
+
+             it                                                                            l:
+                                           I...
+         My own contributions to the field grew out of my World War II
+    experience. I had become an expert on programming planning methods using
+    desk calculators. In 194.6 I was the Mathematical Advisor to the U.S. Air
+    Force Comptroller. I had just formally completed my Ph.D. and was looking
+    for an academic position. In order to entice me into not taking another
+    job, colleagues challenged me to see what could be done to mechanize the
+    planning process. I was asked to find a way to more rapidly compute a
+    time-staged deployment, training and logistical supply program. In those
+    days mechanization meant using analog devices or punch card equipment.
+         Consistent with my training as a mathematician, I set out to formu-
+    late a model. I was fascinated by the work of Wassily Leontief who pro-
+    posed in 1932 a simple matrix structure which he called the Interindustry
+    Input-Output Model of the American Economy. It was simple in concept and
+    could be implemented in sufficient detail to be useful for practical
+    planning. I soon saw that it had to be generalized.       Leontief's was a
+    steady-state model and what was needed was a highly dynamic model, one
+    that could change over time. In Leontlef's model there was a one-to-one
+    correspondence between the production processes and the items produced by
+    these processes.     What was needed was a model with many alternative
+    activities. The application was to be large scale, hundreds of items and
+    activities.    Finally it had to be computable.       Once the model was
+    formulated, there had to be a practical way to compute what quantities of
+    these activities to engage in that was consistent with their respective
+    input-output characteristics and with given resources.        The model I
+    formulated would be described today as a time-staged, dynamic linear
+    program with a staircase matrix structure.        Initially there was no
+    objective function; explicit goals did not exist because practical
+    planners simply had no way to implement such a concept.
+         A simple example illustrates the fundamental difficulty of formu-
+    lating a planning problem using an activity analysis approach. Consider
+    the problem of assigning 70 men to 70 jobs.     An "activity" consists In
+    assigning the i-th man to the J-th job. The restrictions are: (1) each
+    man must be assigned, there are 70 such, and (2) each job must be filled,
+    also 70. The level of an activity is either 1, meaning it will be used or
+    0, meaning it will not. Thus are 2 x 70 or 140 restrictions, 70 x 70 or
+    1900 activities with 4900 corresponding zero-one decision variables.
+    Unfortunately there are 70! different possible solutions or ways to make
+    the assignments. The problem is to compare one with another and select one
+    which is "best" by some criterion.
+
+
+
+
+:                                        2
+                                                         1001
+
+
+     Now 70! is a big number, greater than 10         Suppose we had an IBM
+370-168 available at the time of the big bang 15 billion years ago. Would
+it have been able to look at all the 70! combinations by the year 1981?
+No!   Suppose instead it could examine 1 billion assignments per second?
+The answer is still no. Even if the Earth were filled with such computers
+all working in parallel, the answer would still be no. If, however, there
+were 1050 earths or 1044 suns all filled with nano-second speed
+computers all programmed in parallel from the time of the big bang until
+sun grows cold, then perhaps the answer is yes.
+     This simple example illustrates why up to 1947, and for the most part
+to this day, a great gulf exists between man's aspirations and his
+actions. Man may wish to state his wants in terms of an objective to be
+extremized but there are so many different ways to go about It, each with
+its advantages and disadvantages, that it was impossible to compare them
+all and choose which among them is the best.     Invariably man has turned
+to a leader whose "experience" and "mature judgment" would guide the way.
+Those in charge like to do this by simply issuing a series of ground rules
+or edicts to be executed by those developing the program.      This was the
+situation in late 1946.   I had formulated a model that satisfactorly rep-
+resented the technological relations usually encountered in pratice.      In
+place of an explicit goal or objective function were a large number of ad
+hoc ground rules issued by those in authority to aid the selection.
+Without the latter, there would be, in most cases, an astronomical number
+of feasible solutions to choose from.
+     All that I have related up to now in the early development took place
+before the advent of the computer, more precisely, before in late 1946 we
+were aware that it was going to exist.
+     To digress for a moment, I would like to say a few words about the
+electronic computer.   To me, and I suppose to all of us, one of the most
+startling developments of all time is the penetration of the computer into
+almost every phase of human activity. Before a computer can be intel-
+ligently used, however,a model must be formulated and good algorithms
+developed.   To build a model requires the axiomatization of a subject
+matter field.     In time this gives rise to a whole new mathematical
+discipline which is studied for its own sake.     Thus, with each new pen-
+etration of the computer, a new science is born.
+     Von Neumann notes this tendency to axiomatize in his paper on The
+General and Logical Theory of Automata. In It he states that automata
+have been playing a continuously increasing role in the natural sciences.
+Automata have begun to invade certain parts of mathematics too, partic-
+ularly but not exclusively mathematical physics or applied mathematics.
+
+
+
+
+                                      3
+         Their role in mathematics presents an interesting counterpart to certain
+         functional aspects of organization In nature.   The natural systems (e.g.,
+         central nervous system) are of enormous complexity and it is clearly
+         necessary first to subdivide what they represent Into several parts which
+         to a certain extent are independent, elementary units.    The problem then
+         consists of understanding how these elements are organized as a whole. It
+         is the latter problem which Is likely to attract those who have the back-
+         ground and tastes of the mathematician or a logician. With this attitude,
+         he will be Inclined to forget the origins and then, after the process of
+     m   axiomatization is complete, concentrate on the mathematical aspects. (End
+         of the paraphrase of von Neumann.)
+              By mid-1947 I decided that the objective had to be made explicit. I
+         formulated the planning problem as a set of axioms. The axioms concerned
+         the relations between two kinds of sets:   the first were the set of items
+         being produced or consumed and the second the set of activities or pro-
+         duction processes in which items could be inputed or outputed in fix pro-
+         portions as long as the proportions were non-negative multiples of each
+         other.   The resulting mathematical system to be solved was the minimiza-
+     *   tion of a linear form subject to linear equations and inequalities.    The
+         use of the linear form as the objective function to be extremized was the
+         novel feature.
+              Now came the non-trivial question: Can one solve such systems? At
+         first I assumed the Economists had worked on this problem.    So I visited
+         T.C. Koopmans in June 1947 at the Cowles Foundation at the University of
+         Chicago to learn what I could from mathematical economists.       Koopmans
+         became quite excited.    During World War II he worked     for the Allied
+         Shipping Board on a transportation model and so he had the theoretical as
+         well as the practical planning background necessary to appreciate what I
+         was presenting. He saw immediately the Implications for general economic
+         planning.    From that time on, Koopmans took the lead in bringing the
+         potentialities of linear programming models to the attention of young
+         economists like K. Arrow, P. Samuelson, H. Simon, R. Dorfman, L. Hurwicz
+         to name but a few.      Their research led to several Nobel Prizes in
+         Economics.
+              Seeing that economists did not have a method of solution, I next
+ m       decided to try my own luck at finding an algorithm. I owe a great debt to
+         3erzy Neyman, the mathematical statistician, who guided my graduate work
+*        at Berkeley.    My thesis was on two famous unsolved problems In math-
+.*       ematical statistics which I mistakeningly thought was a homework assign-
+         ment and solved. One of them, later published joint with Wald, was on the
+         Neyman-Pearson Lemma.    In today's terminology, my thesis was on the
+
+
+
+
+                                             4
+       existence of Lagrange multipliers (or dual variables) for a general linear
+       program over a continuum of variables each bounded between zero and one
+       and satisfying linear constraints expressed in the form of Lebesgue
+       integrals. There    was also a linear objective to be extremized.      The
+       particular geometry used in my thesis was in the dimension of the columns
+       instead of the rows. This column geometry gave me the insight that made
+       me believe the Simplex Method would be a very efficient solution technique
+       for solving linear programs. This I proposed In the summer of 1947 and by
+       good luck It worked!
+             It was nearly a year later however In 1948, before we realized just
+       how powerful the Simplex Method really was. In the meantime, I decided to
+       consult with the "great" Johnny von Neumann to see what he could suggest
+       in the way of solution techniques. He was considered by many as the lead-
+       Ing mathematican In the world. On October 3, 1947, I visited him for the
+       first time at the Institute for Advanced Study at Princeton.      I remember
+       trying to describe to von Neumann, as I would to an ordinary mortal, the
+       Air Force problem. I began with the formulation of the linear programming
+       model In terms of activities and items, etc.       Von Neumann did something
+       which I believe was uncharacteristic of him.    "Get to the point," he said
+       Impatiently.    Having at times a somewhat low kindling-point, I said to
+       myself "O.K., if he wants a quicky, then that's what he'll get." In under
+       one minute I slapped the geometric and the algebraic version of the
+       problem on the blackboard. Von Neumann stood up and said "Oh that!" Then
+*for        the next hour and a half, he proceeded to give me a lecture on the
+       mathematical theory of linear programs.
+             At one point seeing me sitting there with my eyes popping and my
+       mouth open (after all I had searched the literature and found nothing),
+       von Neumann said: "I don't want you to think I am pulling all this out of
+       my sleeve on the spur of the moment like a magician. I have just recently
+       completed a book with Oscar Morgenstern on the Theory of Games. What I am
+       doing is conjecturing that the two problems are equivalent.       The theory
+       that I an outlining for your problem is an analogue to the one we have
+       developed for games.      Thus I learned about Farkas' Lemma, and about
+       duality for the first time.     Von Neumann promised to give my problem some
+       thought and to contact me In a few weeks. He did write to me proposing an
+       Iterative scheme which Alan Hoffman and his group at the Bureau of
+       Standards around 1952 compared with the Simplex Method and also with pro-
+       posals of Motzkin.    The Simplex Method came out a clear winner.
+             As a result of another visit to Princeton In June 1948, I met Al
+       Tucker.    Soon Tucker and his students H. Kuhn and 0. Gale began their
+       historic work on game theory, nonlinear programming and duality theory.
+
+
+
+
+                                             5
+    The   Princeton group   became the   focal point among   mathematicians   doing
+    research In these fields.   Twelve years later I remember a conversation
+    with Professor Tucker, who had been reading the manuscript of my book
+    Linear Programming and Extensions.     Our conversation went like this:
+I   "Why", he asked, "do you    ascribe duality to von Neumann and not to my
+    group?"  "Because he was the first to show it to me."    He said, "that is
+    strange for we have found nothing in writing about what von Neumann has
+    done. What we have Is his paper On a Maximizing Problem.    "True," I said,
+    "but let me send you a paper I wrote as a result of my first meeting with
+    von Neumann."   I sent him my report A Theorem on Linear Inequalities,
+    dated 5 January 1948, which contained (as far as I know) the first
+
+    rigorous proof of duality. Later Tucker asked me, "Why didn't you publish
+    it?", to which I replied:    "Because it was not my result -- it was von
+    Neumann's. All I did was write up, for internal circulation, my own proof
+    of what von Neumann outlined. It was my way of educating the people in my
+    office In the Pentagon." Today everyone cites von Neumann as the orig-
+    Inator of the duality theorem and credits Tucker, Kuhn and Gale as the
+    publishers of the first rigorous proof.
+         Not too long after my first meeting with Tucker there was a meeting
+    of the Econometric Society in Wisconsin attended by well-known statisti-
+    cians, mathematicians and economists like Hotelling, Koopmans, von
+    Neumann, and many others all well known today who were then just starting
+    their careers. I was a young unknown. I remember being quite frightened
+    with the idea of presenting for the first time to such a distinguished
+    audience the concept of linear programming.
+         After my talk, the chairman called for discussion.      For a moment
+    there was silence; then a hand raised. It was Hotelling's. I must hasten
+    to explain that Hotelling was huge. He used to love to swim in the ocean
+    and when he did, it is said that the level of the ocean rose perceptively.
+    This huge whale of a man stood up in the back of the room. His expressive
+    face took on one of those all-knowing smiles we all know so well. He said
+    devastatingly: "But we all know the world is non-linear". Then he majes-
+    tically sat down. And there I was, a virtual unknown, frantically trying
+    to compose the proper reply to the great Hotelling.
+         Suddenly another hand in the audience was       raised.    It was von
+    Neumann. "Mr. Chairman, Mr. Chairman," he said, "If the Speaker does not
+    mind, I would like to reply for him."    Naturally I agreed. Von Neumann
+    said: "The spe!er titled his talk "Linear Programming' and he carefully
+    stated his axioms. If you have an application that satisfies the axioms,
+    use it. If it does not, then don't," and he sat down.         In the final
+    analysis, of course, Hotelling      was  right.     The  world   is highly
+
+
+
+
+                                           6
+       non-linear. Fortunately systems of linear inequalities      (as opposed to
+       equalities) permits us to approximate most of the kinds of non-linear
+       relations encountered in practical planning.
+            In 1949, exactly two years from the time the linear progamming was
+       first started, the first conference on mathematical programming (sometimes
+       referred to as the first Symposium on Mathematical Programming) was held
+       at the University of Chicago. Koopmans, the organizer, later titled the
+       proceedings of the conference "Activity Analysis of Production and
+       Allocation."    Economists like Koopmans, Arrow, Samuelson, Hurwicz,
+       Dorfman, Georgescu-Roegen, and Simon, mathematicians like Tucker, Kuhn,
+       and Gale and Air Force types like Marshall Wood, Murray Ceisler, and
+       myself all made contributions.
+            The advent or rather the promise of the electronic computer, the
+       exposure of theoretical mathematicans and economists to real problems
+       during the war, the interest in mechanizing the planning process, and the
+       availability of money for such applied research all converged during the
+       period 1947-1949. The time was ripe.     The research accomplished in these
+-!:1   two short years, in my opinion, is       one of the remarkable events of
+       history.   The Proceedings of the Conference remains to this very day an
+       important basic reference, a classic!
+            While editing the proceedings, Koopmans asked me to do something to
+       get rid of a condition I assumed to prove the Simplex Method. He wanted
+       me to try to prove that the algorithm would converge without a non-
+       degeneracy assumption, an assumption which I felt initially was        rea-
+       sonable. After all what was the probability of four planes In three space
+       meeting In a point (for example)! But then something unexpected happened.
+       It turned out that although the probability of a L.P. being degenerate was
+       zero, every practical problem tested by my branch in the Air Force turned
+       out to be so. Degeneracy couldn't happen but it did.       It was the rule
+       not the exception!
+            I proposed a method of perturbation of the RHS as a way of avoiding
+       degeneracy when using the simplex method. The proofs I outlined and gave
+       as homework exercises to classes that I was teaching at the time.
+       Edmondston and others turned in proofs (March 1951).     In the summer of
+       1951, Philip Wolfe, then a student at Berkeley, spent the Summer with me
+       at the Pentagon and proposed a lexicographic interpretation of the per-
+       turbation idea which Wolfe, Orden and I published as a Joint paper. A.
+       Charnes independently developed a different perturbation scheme.     Years
+       later, Wolfe proposed a third way (based on my inductive proof      of  the
+       simplex method) that is, in my opinion, the best one because it resolves
+       degeneracy using only one extra column of information.      Whether or not
+
+
+
+
+                                            7
+               I!
+     such a scheme is needed in practice has never been settled. It has been
+     observed recently (1981) that even when there Is no degeneracy, there is a
+     high probability of near degeneracy. This suggests that pivot selection
+     criteria should be designed to seek feasible solutions In directions away
+     from degenerate and near degenerate basic feasible solutions.     Doing so
+     should reduce the total number of iterations.
+          The simplex method is also a powerful theoretical tool for proving
+     theorems. To prove theorems It is essential that the algorithm include a
+     way of avoiding degeneracy.
+          In the 1950's and 1960's many new subfields began to emerge. I have
+     only time to say a few words about each.
+          Non-linear programming began around 1951 with the famous
+              Kuhn-Tucker Conditions which are related to the
+              Fritz-3ohn    Conditions   (1948).       Later  Terry
+              Rockafeller, P. Wolfe, R. Cottle,          and others
+              developed the theory of non-linear programming and
+              extended the notions of duality.
+          Commerical Applications were begun In 1951 by Charnes and
+              Cooper.    Soon thereafter, practical applications
+              began to dominate.
+          Network Flow Theory began to evolve around 1954. Ford,
+              Fulkerson, and Hoffman showed the connections to graph
+              theory. Recent research on combinatorial optimization
+              is an outgrowth of their research.
+          Large-Scale Methods (my field) began In 1955 with my paper
+              "Upper Bounds, Block Triangular Systems, and Secondary
+              Constraints".    In 1959-60 Wolfe and I published our
+              papers on the Decomposition Principle.
+          Stochastic Programming began In 1955 with my paper "Linear
+              Programming under Uncertainty", an approach which has
+              been greatly extended by R. Wets in the 1960's.
+              Important contributions to this field have been made by
+              A. Charnes. Stochastic Programming is, in my opinion,
+              one of the most promising fields for future research,
+              one closely tied to large-scale methods.
+          Integer Programming began In 1958 by R. Gomory. Unlike the
+              earlier work on the Travelling Salesman Problem by
+              Fulkerson, 3ohnson and myself, Gomory showed how to
+              systematically generate the cutting planes.     Branch
+              and bound techniques, which we also used in our paper.,
+              have been studied by E. Balas and many others. Branch
+
+
+
+
+v8
+
+
+                I2
+         and bound has turned out to be the most successful
+         approach in practice for solving Integer Programs.
+     Complementary Pivot Theory was started around 1962-63 by
+         Richard Cottle and myself and greatly extended by
+         Cottle.   It was an outgrowth of Wolfe's method for
+         solving quadratic programs. In 1964 Lemke and Howson
+         applied the algorithm to bimatrix games.       In 1965
+         Lemke extended the approach to other non-convex
+         programs.   In the   1970's,       Scarf,   Kuhn,   and Eaves
+         extended it to solving fixed point problems. Lemke's
+         results represent a historic breakthrough into the
+         non-convex domain.
+     Polynomial Time Algorithms. In 1978 L.G. Khachian showed
+         that an ellipsoidal type algorithm could solve all
+         linear programs in polynomial time.        It Is an
+         important theoretical result that unhappily cannot be
+         used to solve problems encountered in practice
+         because It is hopelessly slow. This leaves open the
+         question why the simplex method solves the wide class
+         of practical linear programs encountered in approx-
+         Imately linear time. Current research Is concerned
+         with proving theorems about the expected number of
+         iterations.
+
+     In the late 1960's and 1970's the various subfields of the math-
+ematical programming that I just outlined have each, in turn, grown expo-
+nentially. It is impossible for me in this short presentation to sketch
+these developments.
+     Before closing let me tell some stories about how various linear pro-
+gramming terms arose. The military refer to their various plans or pro-
+posed schedules of training, logical supply and deployment of combat units
+as a program. When I had first analyzed the Air Force planning problem
+and saw that it could be formulated as a system of linear inequalities, I
+called my first paper: Programming in a Linear Structure. In the summer
+of 1948, Koopmans and I visited the RAND Corporation. One day we took a
+walk near the Santa Monica beach.      Koopmans said:    "Why not shorten
+Programming in a Linear Structure to Linear Programming?"       I replied:
+"That's it! From now on that will be its name." Later that day I gave a
+talk at RAND, the title Linear Programming ".      The term    athematical
+Progrimming Is due to Robert Dorfman who felt as early as 1949 that the
+term linear programming was too restrictive.      The term Siplex Method
+
+
+
+
+                                        9
+     arose out of a discussion with T. Motzkin who felt that the approach that
+     I was using In the geometry of the columns was best described as a move-
+     ment from one simplex to a neighboring one. Mathematical Programming is
+     also responsible for many terms which are now standard in mathematical
+     literature.   Terms like Arg Kin, Arg Max, Lexico-Kax, Lexico-Nin.     The
+     term Dual is not new. But surprisingly the term primal, introduced around
+     1954, Is. It came about this way:     W. Orchard-Hays, who is responsible
+     for the first commerical grade L.P. software, said to me at RAND one day
+     around 1954:   "We need a word that stands for 'the original problem of
+     which this Is the dual'."   I, in turn, asked my father, Tobias Dantzig,
+-J   mathematician and author, well-known for his books popularizing the
+     history of mathematics. He knew his Greek and Latin. Whenever I tried to
+     bring up the subject of linear programming, Toby (as he was affectionately
+     known), would become bored.   But on this occasion he did give the matter
+     some thought and suggested Primal as the natural antonym since both primal
+     and dual derive from the Latin.    Itwas Toby's one and only contribution
+     to linear programming;  his sole contribution unless, of course, you want
+     to count the training he gave me in classical mathematics or his part in
+     my conception.
+          If I were asked to summarize my early and perhaps my most important
+     contributions to linear programming, I would say they are three:
+          (1) Recognizing (as a result of five war-time years as a practical
+              program planner) that most practical planning relations could be
+                reformulated as a system of linear inequalities.
+          (2)    Expressing criteria for selection of good or best plans in terms
+                of explicit goals (e.g., linear objective forms) and not In terms
+                of ground rules which are at best only a means for carrying out
+             the objective not the objective Itself.
+          (3) Inventing   the   simplex method which  transformed a   rather
+              interesting approach to economic theory into a basic tool for
+              practical planning of large complex systems.
+     The tremendous power of the simplex method is difficult to realize.      To
+     solve by brute force the Assignment Problem which I mentioned earlier
+     would require a solar system full of nano-second electronic computers
+     running from the time of the big bang until the time the Universe grows
+     cold to scan all the permutations In order to be certain to find the one
+     which Is best. Yet it takes only a second to find the Optimum using an IBM
+     370-168 and standard simplex method software.
+          In retrospect it is interesting to note that the original problem
+     that started my research Is still   outstanding -- namely the problem of
+     planning or scheduling dynamically over time.      Many proposals have been
+
+
+
+
+                                            10
+     made on ways to solve large-scale systems of this type such as the Nested
+     Decomposition Principle. Today this Is an active, exciting and difficult
+     field having important long term planning applications that could con-
+It   tribute to the well-being and stability of the world.
+          Prior to linear programming it was not meaningful to explicitly state
+     general goals and so objectives were confused with the ground rules for
+     solution. Ask a military commander what the goal is and he will say "The
+     goal is to win the war." Upon being pressed to be more explicit, a Navy
+     man will say "The way to win the war is to build battleships," or, if he
+     is an Air Force general, he will say "The way to win is to build a great
+     fleet of bombers."    Thus the means becomes the objectives and these in
+     turn spawn new ground rules as to how to go about building bombers or
+     space shuttles that again become confused with the goals, etc., down the
+     line.
+         The ability to state general objectives and then find optimal policy
+     solutions to practical decision problems of great complexity is a revolu-
+     tionary development. In certain areas such as planning in the petroleum
+     and chemical industries, linear programming has come into widespread use
+     for cost minimization.   In other areas such as modeling the dynamics of
+     growing populations of the world against a diminishing resource base, its
+     potential for raising the standard of living has scarcely been realized.
+
+
+
+
+                                         11
+                    UNCLASSIFIED
+SCURITY CLASSIFICAION OF THIS PAIN t
+                               "9on      '
+                        REPORT DOCUMTA&TM PME
+                                                               ,,,._,,,._.
+                                                                                                          Comma aWsIN)"
+                                                                                                       RKAD IITRU1OS
+     . REPORT NUME                                                    ov   ACCESsOR NO     S. RECIPIV'rS CATALOG NUuNSE
+           SOL 81-5                                                t___)____________
+4.        TiTLE easE allmuj                                                                1.   TYPE OF REPORT & PERIOD COVEREo
+
+
+           REMINISCENCES ABOUT THE ORIGINS OF                                                   Technical Report
+           LINEAR PROGRAMMING                                                              S. PERFORMING Oqa. REPORT NUMBER
+
+7. AUTNORq)                                                                                S. -CONTRACTOR BRANT NUMER(e)
+           George B. Dantzig                                                                     N00014-75-C-0267
+
+
+9. PERFORMING ORGANIZATION NAME                       00 ADORESS                             0. PROGRAM CLEMENT. PROJECT. TASK
+           Department of Operations Research - SOL                                              ARA GWORK UNIT NUMERS
+           Stanford University                                                                    NR-047-143
+           Stanford, CA 94.305
+I.        CONTROLLING OFFICE NAME AND ADDRESS                                              St. REPORT DATS
+           Office of Naval Research - Dept. of the Navy                                           April 1981
+           800 N. Quincy Street                                                            IS. NUMBER Of PAGES
+           Arlington, VA           22217                                                          11
+ V4. MONITORING AGENCY NAME                AODM|WII 4Ihqa,t hu, Cin"1.f,,,
+                                                                         oN,.0             I1. SECUI T   CLASS. (of *.   rptj
+
+                                                                                                UNCLASSIFIED
+      *                                                                                         S..
+                                                                                                  DCkASSIP'ICATIOIDOWNGRtADINQ
+
+
+IS.       ODISTRIUTION STATEMENT (of dIo ROePiM)
+
+             This document has been approved for public release and sale;
+             its distribution is unlimited.
+
+
+
+t7.
+
+
+
+
+IS. SUPPLEMENTARY NOTES
+
+
+
+
+ S.KEY WORDS (CAoMU            a, ,n..       .   it    fesey   and Idbway 6FWk     a"W')
+                                    linear programming                           simplex method
+                                    input-output model                           large scale systems
+
+
+
+s.        ABSTRACT (Cmmt      an   me      old. U.neoe..       oWaNi 6Y
+                                                                      p              W
+                                                                                     bmm,)
+     Some recollections about the early days of linear programming, the
+     contributions of von Neumann, Leontief, Koopmans and others and about some
+     of the extensions that have taken place from 1950-1970 and some from
+     1970-1980 are discussed.   Linear programming is viewed as a revolutionary
+     development givinq us the ability for the first time to state qeneral
+     objectives and to find, by means of the simplex method, optimal policy
+     decisions to practical decision problems of great complexity.
+
+            FORMI
+      i
+     D IJAN         7   3      ,ITo"      OI Nov so isO
+                                         orw                   O6TEEA
+                                                                           56UT      CLSSFIATO         OFTI    -AeIMweaae
+

@@ -1,0 +1,866 @@
+                                                        SETS WITH MORE SUMS THAN DIFFERENCES
+
+
+
+
+arXiv:math/0608148v2 [math.NT] 10 Aug 2006
+                                                                              MELVYN B. NATHANSON
+
+
+
+
+                                                      Abstract. Let A be a finite subset of the integers or, more generally, of any
+                                                      abelian group, written additively. The set A has more sums than differences
+                                                      if |A + A| > |A − A|. A set with this property is called an MSTD set. This
+                                                      paper gives explicit constructions of families of MSTD sets of integers.
+
+
+                                                                                   1. MSTD sets
+                                               Let G be an abelian group, written additively, and let A and B be subsets of G.
+                                             We define the sumset
+                                                                          A + B = {a + b : a ∈ A, b ∈ B}
+                                             and the difference set
+                                                                          A − B = {a − b : a ∈ A, b ∈ B}.
+                                             In particular, if A = B, then
+                                                                            A + A = {a + a′ : a, a′ ∈ A}
+                                             and
+                                                                           A − A = {a − a′ : a, a′ ∈ A}.
+                                                Let [a, b] denote the interval of integers {a, a + 1, a + 2, . . ., b}, and let |A| denote
+                                             the cardinality of the set A.
+                                                Since G is abelian, for every pair a, b of distinct elements of G we have
+                                                                                    a+b=b+a
+                                             but
+                                                                                    a − b 6= b − a
+                                             unless a − b has order 2. This suggests that if A is finite, then we should “usually”
+                                             have |A−A| ≥ |A+A|. Thus, sets with more sums than differences (MSTD) should
+                                             be rare. On the other hand, elements are omitted from A − A in pairs: If c ∈ / A − A,
+                                             then −c ∈/ A − A. This provides an opportunity to construct sets with more sums
+                                             than differences. We shall call a finite set A with |A + A| > |A − A| an MSTD set.
+                                                For example, the set
+                                             (1)                            A1 = {0, 2, 3, 4, 7, 11, 12, 14}
+
+                                                Date: October 30, 2018.
+                                                2000 Mathematics Subject Classification. Primary 11B05, 11B13,11B25,11B75.
+                                                Key words and phrases. Sumsets, difference sets, MSTD sets.
+                                                This is the text of a lecture at the SIAM Conference on Discrete Mathematics in Victoria,
+                                             British Columbia, on June 27, 2006. This work was supported in part by grants from the NSA
+                                             Mathematical Sciences Program and the PSC-CUNY Research Award Program.
+                                                                                           1
+2                                MELVYN B. NATHANSON
+
+
+is an MSTD set of integers with A1 + A1 = [0, 28] \ {1, 20, 27} and A1 − A1 =
+[−14, 14] \ {±6, ±13}, hence |A1 + A1 | = 26 and |A1 − A1 | = 25. The set
+(2)                          A2 = {0, 2, 3, 4, 7, 9, 13, 14, 16}
+is also an MSTD set, with A2 + A2 = [0, 32] \ {1, 24, 31} and A2 − A2 = [−16, 16] \
+{±8, ±15}, hence |A2 + A2 | = 30 and |A2 − A2 | = 29.
+   For every set A of integers and every integer x, we define the dilation x ∗ A =
+{xa : a ∈ A}. If A is an MSTD set of integers, then, for all integers x 6= 0 and y,
+the set
+                            x ∗ A + {y} = {xa + y : a ∈ A}
+is also an MSTD set, and so the property of having MSTD is an affine invariant of
+the ring of integers.
+   In this paper we provide explicit constructions of infinite families of MSTD sets
+that contains the sets A1 and A2 , and we also give an algorithm to construct MSTD
+sets of integers from MSTD sets in finite abelian groups. This answers a question
+posed by Nathanson [3].
+   The first examples of MSTD sets of integers appear in Marica [2] and Freiman-
+Pigarev [1]. Ruzsa [6, 7, 8] used probability methods to show the existence of MSTD
+sets. Roesler [5] proved that, in the collection of all sets of size k in {1, 2, . . . , n},
+the average number of sums does not exceed the average number of differences. On
+the other hand, O’Bryant [4] recently proved that a positive proportion of the sets
+in {1, 2, . . . , n} have more sums than differences.
+
+                2. A construction of MSTD sets of integers
+   The subset A of an abelian group G is called symmetric with respect to a∗ if
+a∗ ∈ G and
+                                        A = a∗ − A.
+If A is symmetric with respect to a∗ , then A has the same number of sums as
+differences, since
+                |A + A| = |A + (a∗ − A)| = |a∗ + (A − A)| = |A − A|.
+For example, the arithmetic progression {a, a + m, a + 2m, . . . , a + (k − 1)m} is
+symmetric with respect to a∗ = 2a + (k − 1)m. For every d ≥ 1, the d-dimensional
+generalized arithmetic progression
+        L = {a + x1 m1 + · · · + xd md : ℓi ≤ xi ≤ ℓi + ki − 1 for i = 1, . . . , d}
+in the group G is symmetric with respect to
+                                        d
+                                        X
+                            a∗ = 2a +         (2ℓi + ki − 1)mi ) .
+                                        i=1
+
+If A is a finite set of integers that is symmetric with respect to a∗ , then a∗ =
+min(A) + max(A).
+   In this section we shall construct infinite families of MSTD sets of integers. Each
+MSTD set will be constructed by adjoining a single element to a symmetric set that
+is a small perturbation of a generalized arithmetic progression.
+                    SETS WITH MORE SUMS THAN DIFFERENCES                            3
+
+
+  We begin with an examination of the set A1 = {0, 2, 3, 4, 7, 11, 12, 14}. Observe
+that A1 \ {4} is symmetric with respect to 14, and that
+                   A1 = {0, 2, 3, 4, 7, 11, 12, 14}
+                       = {0, 2, 3, 7, 11, 12, 14} ∪ {4}
+                       = {0, 2} ∪ {3, 7, 11} ∪ (14 − {0, 2}) ∪ {4}.
+Hegarty and Roesler (personal communication) observed that this set belongs to
+the following infinite sequence of MSTD sets: For k ≥ 3, let
+                 A∗ = {0, 2} ∪ {3, 7, 11, . . . , 4k − 1} ∪ {4k, 4k + 2}
+and
+                                    A = A∗ ∪ {4}.
+To see that the set A is an MSTD set of integers, we note thatA∗ is symmetric and
+so |A∗ + A∗ | = |A∗ − A∗ |. Since 8 ∈ (A + A) \ (A∗ + A∗ ), it suffices to prove that
+|A − A| = |A∗ − A∗ |. For this, we only need to show that A∗ − {4} ⊆ A∗ − A∗ , and
+this is true because
+                                1 = 3 − 2 ∈ A∗ − A∗
+                                4 = 7 − 3 ∈ A∗ − A∗
+                          4k − 4 = (4k − 1) − 3 ∈ A∗ − A∗
+                          4k − 2 = (4k) − 2 ∈ A∗ − A∗ .
+  We can generalize this construction as follows.
+Theorem 1. Let m, d, and k be integers such that m ≥ 4, 1 ≤ d ≤ m− 1, d 6= m/2,
+and k ≥ 3 if d < m/2 and k ≥ 4 if d > m/2. Let
+                          B = [0, m − 1] \ {d}
+                          L = {m − d, 2m − d, . . . , km − d}
+                         a∗ = (k + 1)m − 2d
+                         A∗ = B ∪ L ∪ (a∗ − B)
+                          A = A∗ ∪ {m}.
+The set A is an MSTD set of integers.
+Proof. The set A∗ is symmetric with respect to a∗ , and so
+                               |A∗ + A∗ | = |A∗ − A∗ |.
+Also, 2m ∈ A + A. We shall prove that 2m ∈
+                                         / A∗ + A∗ .
+   Assume that 2m = a + a ∈ A + A with a ≤ a′ . Then m ≤ a′ ≤ 2m and so
+                          ′    ∗     ∗
+
+a ∈
+ ′
+   / B. Also,
+                min(a∗ − B) ≥ a∗ − (m − 1) = km − 2d + 1 > 2m
+if (k − 2)m ≥ 2d, and this inequality holds if k ≥ 4 or if k ≥ 3 and d ≤ m/2. Thus,
+a′ ∈/ a∗ − B.
+    Since 3m − d > 2m, we have a′ ∈ L only if a′ = 2m − d. Therefore, if a′ ∈ A∗ ,
+then a′ = 2m − d and a = d. Since d ∈   / B and m − d 6= d, it follows that a ∈/ A∗
+and so 2m ∈    ∗    ∗
+            / A + A . This proves that
+                             2m ∈ (A + A) \ (A∗ + A∗ )
+4                                MELVYN B. NATHANSON
+
+
+and so
+                                  |A + A| > |A∗ + A∗ |.
+  We shall prove that A−A = A∗ −A∗ . It suffices to show that A∗ −{m} ⊆ A∗ −A∗ .
+Note that 0 ∈ A∗ implies that A∗ ⊆ A∗ − A∗ .
+  Since m = (2m − d) − (m − d) ∈ L − L, it follows that
+         {m} − B = {1, 2, . . . , m − 1, m} \ {m − d} ⊆ B ∪ (L − L) ⊆ A∗ − A∗
+and also B − {m} ⊆ A∗ − A∗ . Similarly,
+               L − {m} = {−d, m − d, . . . , (k − 1)m − d} ⊆ L ∪ {−d}.
+If 1 < d < m − 1, then {1, d + 1} ⊆ B ∪ L ⊆ A∗ and d ∈ A∗ − A∗ . If d = 1, then
+{2, 3} ⊆ B ∪ L and 1 ∈ A∗ − A∗ . If d = m − 1, then m + 1 = 2m − d ∈ L, 2 ∈ B,
+and so m − 1 ∈ B − L ⊆ A∗ − A∗ . Therefore,
+                                  L − {m} ⊆ A∗ − A∗ .
+    Finally, we must prove that
+                  a∗ − B − {m} = {a∗ − b − m : b ∈ B} ⊆ A∗ − A∗ .
+If d = m − 1, then a∗ = (k − 1)m + 2 and
+     A∗ = [0, m − 2] ∪ {1, m + 1, 2m + 1, . . . , (k − 1)m + 1} ∪ (a∗ − [0, m − 2]).
+If b ∈ [0, m − 4], then
+                   a∗ − b − m = a∗ − (b + 2) − (m − 2) ∈ A∗ − A∗ .
+If b = m − 3, then
+                  a∗ − b − m = a∗ − (m − 4) − (m + 1) ∈ A∗ − A∗ .
+If b = m − 2, then
+                  a∗ − b − m = a∗ − (m − 3) − (m + 1) ∈ A∗ − A∗ .
+   Suppose that 1 ≤ d ≤ m − 2. For b ∈/ {d − 1, m − 1}, we have b + 1 ∈ B and so
+a∗ − (b + 1) ∈ a∗ − B. Since m − 1 ∈ B, we have
+                  a∗ − b − m = (a∗ − (b + 1)) − (m − 1) ∈ A∗ − A∗ .
+If b = m − 1, then
+                          a∗ − b − m = (k − 1)m − 2d + 1
+                                    = ((k − 1)m − d) − (d − 1)
+                                    ∈ L − B ⊆ A∗ − A∗ .
+If b = d − 1 and d 6= m − 2, then 2 ≤ d ≤ m − 3 and
+                          a∗ − b − m = a∗ − (d − 1) − m
+                                    = (a∗ − (d + 1)) − (m − 2)
+                                    ∈ A∗ − A∗ .
+The last case is b = d − 1 and d = m − 2. Then m ≥ 5, k ≥ 4, and
+                           a∗ = (k + 1)m − 2d = (k − 1)m + 4
+                         SETS WITH MORE SUMS THAN DIFFERENCES                                    5
+
+
+and
+                          a∗ − b − m = (k − 1)m + 4 − (d − 1) − m
+                                       = (k − 3)m + 7
+                                       = (k − 2)m + 2 − (m − 5)
+                                       ∈ L − B ⊆ A∗ − A∗ .
+Therefore,
+                            a∗ − B − m ⊆ A∗ − A∗
+and so A − A = A∗ − A∗ . This completes the proof.                                               
+  The MSTD set A1 is the case m = 4, d = 1, and k = 3 of Theorem 1.
+  Next we consider the MSTD set A2 = {0, 2, 3, 4, 7, 9, 13, 14, 16}. This set is a
+perturbation of a two-dimensional generalized arithmetic progression:
+ A2 = {0, 2, 3, 4, 7, 9, 13, 14, 16}
+       = ({0, 2} ∪ {3, 7} ∪ {9, 13} ∪ {14, 16}) ∪ {4}
+       = {0, 2} ∪ {3 + 6x1 + 4x2 : 0 ≤ x1 ≤ 1 and 0 ≤ x2 ≤ 1} ∪ (16 − {0, 2}) ∪ {4}.
+The following sequence of sets extends this example.
+Theorem 2. For k ≥ 2, let
+     A∗ = {0, 2} ∪ {3, 7, 11, . . . , 4k − 1} ∪ {9, 13, 17, . . . , 4k + 5} ∪ {4k + 6, 4k + 8}
+        = {0, 2} ∪ {3 + 6x1 + 4x2 : 0 ≤ x1 ≤ 1 and 0 ≤ x2 ≤ k − 1} ∪ (16 − {0, 2})
+and
+                               A = A∗ ∪ {4}.
+Then A is an MSTD set of integers.
+Proof. It suffices to show that 4 − A∗ ⊆ A∗ − A∗ , and this follows from
+                                    1 = 3 − 2 ∈ A∗ − A∗
+                                    4 = 7 − 3 ∈ A∗ − A∗
+                                    5 = 7 − 2 ∈ A∗ − A∗
+                              4k + 2 = (4k + 5) − 3 ∈ A∗ − A∗
+                              4k + 4 = (4k + 6) − 2 ∈ A∗ − A∗ .
+This completes the proof.                                                                        
+Lemma 1. Let m ≥ 4 and let r and s be integers such that
+                                r ≥ 1 and r + 1 ≤ s ≤ m − 1.
+Let
+                                  B = [0, r − 1] ∪ [s, m − 1].
+If
+(3)                             s ≤ 2r − 1 and 2s ≤ m + r − 1
+then
+                                       2B = [0, 2m − 2].
+If
+(4)                              s ≤ 2r − 1 or 2s ≤ m + r − 1
+6                                 MELVYN B. NATHANSON
+
+
+then
+                          B − B = [1 − m, m − 1].
+Let m ≥ 4 and 1 ≤ r ≤ m − 2 and let
+                                   B = [0, m − 1] \ {r}.
+Then
+                               B − B = [−(m − 1), m − 1].
+If 2 ≤ r ≤ m − 3, then
+                                   B + B = [0, 2m − 2].
+If r = 1, then
+                                B + B = [0, 2m − 2] \ {1}.
+If r = m − 2, then
+                            B + B = [0, 2m − 2] \ {2m − 3}.
+Proof. This is a straightforward calculation. If s ≤ 2r − 1 and 2s ≤ m + r − 1, then
+              2A = [0, 2r − 2] ∪ [s, m + d − 2] ∪ [2s, 2m − 2] = [0, 2m − 2].
+If s ≤ 2r − 1 or 2s ≤ m + r − 1, then
+    (A − A) ∩ [0, m − 1] = [0, r − 1] ∪ [s − r + 1, m − 1] ∪ [0, m − 1 − s] = [0, m − 1]
+and so A − A = [1 − m, m − 1].
+   If s = r + 1, then 1 ≤ r ≤ m − 1 and B = [0, m − 1] \ {r}. Condition (4) always
+satisfied, and condition (3) is equivalent to 2 ≤ r ≤ m − 3. The proofs for the cases
+r = 1 and r = m − 2 are similar.                                                   
+   The following theorem produces explicit families of MSDT sets constructed from
+2-dimensional arithmetic progressions.
+Theorem 3. Let m and d be integers such that
+     (i) m ≥ 4
+    (ii) 1 ≤ d ≤ m − 2 and d 6= m/2
+   (iii) if d < m/2, then d 6= m/3
+   (iv) if d > m/2, then d 6= 2m/3.
+For k ≥ 3, let
+                                      a∗ = (k + 2)m
+                                 B = [0, m − 1] \ {d}
+         L = {2m − d, 3m − d, . . . , km − d} ∪ {2m + d, 3m + d, . . . , km + d}
+                              A∗ = B ∪ L ∪ ({a∗ } − B)
+                                      A = A∗ ∪ {m}.
+Then A is an MSTD set of integers.
+Proof. The set A∗ is symmetric with respect to a∗ and so
+                                 |A∗ + A∗ | = |A∗ − A∗ |.
+Since
+                           A∗ ∩ [0, 2m] = B ∪ {2m − d}
+and d ∈ / B, we have 2m ∈ / A∗ + A∗ and so 2m ∈ (A + A) \ (A∗ + A∗ ). Thus, it
+suffices to show that A − A = A∗ − A∗ . We need only prove that
+                                  A∗ − {m} ⊆ A∗ − A∗ .
+                     SETS WITH MORE SUMS THAN DIFFERENCES                        7
+
+
+Since d ∈ B − B by Lemma 1 and since m = (3m − d) − (2m − d) ∈ L − L, it follows
+that
+           {m} − B = [1, m] \ {m − d} ⊆ (B − B) ∪ (L − L) ⊆ A∗ − A∗
+and so
+                                 B − {m} ⊆ A∗ − A∗ .
+  The inequalities 1 ≤ d < m/2 and d 6= m/3 imply that m − 2d 6= d, m − 2d ∈ B,
+and so
+                     m + d = (2m − d) − (m − 2d) ∈ L − B.
+The inequalities m/2 < d ≤ m − 2 and d 6= 2m/3 imply that 2m − 2d 6= d,
+2m − 2d ∈ B, and so
+                       m + d = (3m − d) − (2m − 2d) ∈ L − B.
+Also, m − d ∈ B. Therefore,
+                       L − {m} ⊆ B ∪ L ∪ (L − B) ⊆ A∗ − A∗ .
+   Suppose that 1 ≤ d ≤ m − 3. If b ∈ B and b 6= m − 1, then Lemma 1 implies
+there exist b1 , b2 ∈ B such that m + b = b1 + b2 , and so
+         a∗ − b − m = (k + 1)m − b = ((k + 2)m − b1 ) − b2 ∈ ({a∗ } − B) − B.
+If d = m − 2 and b = m − 3, then 2m − 3 ∈
+                                        / B + B but m ≥ 5 and
+             a∗ − b − m = km + 3 = (km + d) − (d − 3) ∈ (a∗ − B) − B.
+For all d ∈ [1, m − 2] we have
+              a∗ − (m − 1) − m = km + 1 = (km + d) − (d − 1) ∈ L − B
+and so
+             {a∗ } − B − {m} ⊆ (({a∗ } − B) − B) ∪ (L − B) ⊆ A∗ − A∗ .
+This completes the proof.                                                       
+
+  The next theorem gives a method to construct MSTD sets of integers from
+generalized arithmetic progressions of dimension d for every d ≥ 1.
+Theorem 4. Let m ≥ 4 and let B be a subset of [0, m − 1] such that
+                                 B + B = [0, 2m − 2]
+and
+                              B − B = [−m + 1, m − 1].
+Let L∗ be a (d − 1)-dimensional arithmetic progression contained in [0, m − 1] \ B
+such that min(L∗ ) − 1 ∈ B. Let k ≥ 2 and let L be the d-dimensional arithmetic
+progression
+                           L = (m − L∗ ) + m ∗ [1, k].
+Let
+              a∗ = min(L) + max(L) = (k + 3)m − min(L∗ ) − max(L∗ )
+and
+                              A∗ = B ∪ L ∪ ({a∗ } − B).
+Then A = A∗ ∪ {m} is an MSTD set of integers.
+8                             MELVYN B. NATHANSON
+
+
+Proof. The set A∗ is symmetric with respect to a∗ and so
+                              |A∗ + A∗ | = |A∗ − A∗ |.
+Since B ∩ L∗ = ∅ and
+                         A∗ ∩ [0, 2m] = B ∪ ({2m} − L∗ )
+we have 2m ∈/ A∗ + A∗ and so 2m ∈ (A + A) \ (A∗ + A∗ ). The set A will be an
+MSTD set if A − A = A∗ − A∗ , and for this it suffices to show that
+                              A∗ − {m} ⊆ A∗ − A∗ .
+  Note that the condition B + B = [0, 2m − 2] implies that 0, m − 1 ∈ B. In
+particular, A∗ ⊆ A∗ − A∗ .
+  Since m ∈ L − L, we have
+                {m} − B ⊆ [1, m] ⊆ (B − B) ∪ (L − L) ⊆ A∗ − A∗
+and so
+                               B − {m} ⊆ A∗ − A∗ .
+Also,
+               L − {m} = ({m} − L∗ ) ∪ ((m − L∗ ) + m ∗ [1, k − 1])
+                        ⊆ (B − B) ∪ L
+                        ⊆ A∗ − A∗ .
+Finally, let a∗ − b − m ∈ a∗ − B − {m}. If b 6= m − 1, then there exist b1 , b2 ∈ B
+such that m + b = b1 + b2 , and so
+             a∗ − b − m = (a∗ − b1 ) − b2 ∈ (a∗ − B) − B ∈ A∗ − A∗ .
+If b = m − 1, then
+             a∗ − b − m = a∗ − 2m + 1
+                         = (k + 3)m − min(L∗ ) − max(L∗ ) − 2m + 1
+                         = (k + 1)m − max(L∗ ) − (min(L∗ ) − 1)
+                         ∈L−B
+                         ⊆ A∗ − A∗
+because (m − max(L∗ )) + km ∈ L and min(L∗ ) − 1 ∈ B. This completes the
+proof.                                                                
+  Theorem 4 is a powerful tool for constructing MSTD sets. For example, let
+P be any (d − 1)-dimensional arithmetic progression of nonnegative integers with
+min(P ) = 0 and max(P ) = M. Choose integers r and s so that
+                                      r ≥M +2
+and
+                           r + M + 1 ≤ s ≤ 2r − 1.
+Choose an integer m such that
+                                 2s ≤ m + r − 1.
+Let
+                            B = [0, r − 1] ∪ [s, m − 1]
+                     SETS WITH MORE SUMS THAN DIFFERENCES                             9
+
+
+and
+                                   L∗ = {r} + P.
+Then L∗ is a (d − 1)-dimensional arithmetic progression contained in [0, m − 1] \ B,
+and min(L∗ ) − 1 = r − 1 ∈ B. By Lemma 1, we have B + B = [0, m − 2] and
+B − B = [1 − m, m − 1]. The sets B and L∗ satisfy the conditions of Theorem 4.
+  A slight variation of the proof of Theorem 4 gives the following result.
+Theorem 5. Let m ≥ 4 and let B be a subset of [0, m − 1] such that
+                                   B + B = [0, 2m − 2]
+and
+                           B − B = [−m + 1, m − 1].
+      ∗
+Let L be a (d−1)-dimensional arithmetic progression contained in [0, m−1]\B such
+that min(L∗ ) − 1 ∈ B and m ∈
+                            / L∗ + L∗ . Let k ≥ 2 and let L be the d-dimensional
+arithmetic progression
+                           L = (m − L∗ ) + m ∗ [0, k].
+Let
+             a∗ = min(L) + max(L) = (k + 3)m − min(L∗ ) − max(L∗ )
+and
+                           A∗ = B ∪ L ∪ ({a∗ } − B).
+Then A = A ∪ {m} is an MSTD set of integers.
+            ∗
+
+
+                    3. Finite abelian groups and lattices
+   Let A be a nonempty subset of an abelian group. For all integers h ≥ 0, we
+define the h-fold sumset hA inductively:
+                           0A = {0}
+                           1A = A
+                           2A = A + A
+                           hA = (h − 1)A + A for all h ≥ 3.
+For nonnegative integers h and k we define the generalized sum-difference set
+            hA − kA = {a1 + · · · + ah − a′1 − · · · − a′k : aj ∈ A
+                            for j = 1. . . . , h and a′ℓ ∈ A for ℓ = 1, . . . , k}.
+   Let G be a finite abelian group. Since every finite abelian group is isomorphic
+to a direct product of cyclic groups, we can assume that
+                              G = Z/m1 Z × · · · × Z/md Z,
+where m1 , . . . , md are integers greater than 1. Then
+                                     |G| = m1 · · · md .
+Let Z denote the standard d-dimensional integer lattice. The sublattice ΛG of Zd
+      d
+
+determined by the group G is
+              ΛG = {(q1 m1 , . . . , qd md ) ∈ Zd : qi ∈ Z for i = 1, . . . , d}.
+The fundamental integer parallelepiped in Zd defined by G is the set
+            PG = {(r1 , . . . , rd ) ∈ Zd : 0 ≤ ri ≤ mi − 1 for i = 1. . . . , d}
+10                                     MELVYN B. NATHANSON
+
+
+Every lattice point in Zd is uniquely the sum of an element in PG and an element
+in ΛG , that is,
+(5)                                          Zd = PG ⊕ ΛG .
+We define the canonical embedding ϕ of G into the fundamental integer paral-
+lelepiped PG of the lattice ΛG by
+(6)                        ϕ(u1 + m1 Z, . . . , ud + md Z) = (r1 , . . . , rd )
+where ri is the unique integer such that
+(7)                                       ri ≡ ui       (mod mi )
+and
+(8)                                         0 ≤ ri ≤ mi − 1.
+We define a map
+                                               π : Zd → PG
+by
+                                     (x1 , . . . , xd ) 7→ (r1 , . . . , rd )
+where
+                                          ri ≡ xi       (mod mi )
+and
+                                            0 ≤ ri ≤ mi − 1.
+     For integers s ≤ t, we define
+              ΛG (s, t) = {(q1 m1 , . . . , qd md ) ∈ ΛG : s ≤ qi < t for i = 1, . . . , d}.
+Then
+(9)                                      |ΛG (s, t)| = (t − s)d
+
+
+(10)                   ΛG (s1 , t1 ) + ΛG (s2 , t2 ) = ΛG (s1 + s2 , t1 + t2 − 1)
+and
+(11)                   ΛG (s1 , t1 ) − ΛG (s2 , t2 ) = ΛG (s1 − t2 + 1, t1 − s2 )
+In particular, we have the generalized sum-difference relation
+(12)                   hΛG (0, t) − kΛG (0, t) = ΛG (−kt + k, ht − h + 1).
+Lemma 2. Let A be a nonempty subset of the finite abelian group G = Z/m1 Z ×
+· · · × Z/md Z. For all integers h ≥ 1 and k ≥ 0,
+       (i)
+                                ϕ(hA − kA) = π(hϕ(A) − kϕ(A))
+      (ii)
+                          hϕ(A) − kϕ(A) ⊆ ϕ(hA − kA) + ΛG (−k, h).
+      (iii)
+                     ϕ(hA − kA) ⊆ hϕ(A) − kϕ(A) + ΛG (−h + 1, k + 1).
+                         SETS WITH MORE SUMS THAN DIFFERENCES                                        11
+
+
+Proof. (i) If (s1 , . . . , sd ) ∈ ϕ(hA−kA), then the group G contains elements a1 , . . . , ah , a′1 , . . . , a′k
+such that
+                          (s1 , . . . , sd ) = ϕ(a1 + · · · ah − a′1 − · · · − a′k ).
+For j = 1, . . . , h and i = 1, . . . , d, we can write
+(13)                            aj = (r1j + m1 Z, . . . , rdj + md Z)
+with
+(14)                                          0 ≤ rij ≤ mi − 1.
+Similarly, for ℓ = 1, . . . , k and i = 1, . . . , d, we have
+                                                            ′
+(15)                            a′ℓ = (r1ℓ
+                                        ′
+                                           + m1 Z, . . . , rdℓ + md Z)
+with
+                                                   ′
+(16)                                          0 ≤ riℓ ≤ mi − 1.
+There exist unique integers qi and s′i such that 0 ≤ s′i ≤ mi − 1 and
+                                   h
+                                   X                k
+                                                    X
+                                                           ′
+                                            rij −         riℓ = qi mi + s′i .
+                                      j=1           ℓ=1
+
+The ith component of the group element
+                           a1 + · · · + ah − a′1 − · · · − a′ℓ ∈ hA − kA
+is                                                   
+                                h
+                                X             k
+                                              X
+                                     rij −          ′ 
+                                                    riℓ  + mi Z = s′i + mi Z
+                                j=1           ℓ=1
+
+and so
+             (s1 , . . . , sd ) = ϕ (a1 + · · · + ah − a′1 − · · · − a′ℓ ) = (s′1 , . . . , s′d ).
+Therefore, si = s′i for i = 1, . . . , d and
+                                   h
+                                   X                k
+                                                    X
+                                                           ′
+(17)                                        rij −         riℓ = qi mi + si .
+                                      j=1           ℓ=1
+
+     Since
+                        ϕ(aj ) = (r1j , . . . , rdj ) ∈ ϕ(A) for j = 1, . . . , h
+and
+                        ϕ(a′ℓ ) = (r1ℓ
+                                    ′             ′
+                                       , . . . , rdℓ ) ∈ ϕ(A) for ℓ = 1, . . . , k
+it follows that
+                 ϕ(a1 ) + · · · + ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k )
+                                                                              
+                                    Xh         Xk             Xh         k
+                                                                         X
+                                                    ′                       ′ 
+                                =       r1j −     r1ℓ  ,...,      rdj −   rdℓ
+                                        j=1           ℓ=1              j=1       ℓ=1
+
+                                 = (q1 m1 + s1 , . . . , qd md + sd )
+                                 ∈ hϕ(A) − kϕ(A)
+12                                    MELVYN B. NATHANSON
+
+
+and so
+     π (ϕ(a1 ) + · · · + ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k )) = π(q1 m1 + s1 , . . . , qd md + sd )
+                                                                 = (s1 , . . . , sd )
+                                                                 ∈ π(hϕ(A) − kϕ(A)).
+Therefore,
+                              ϕ(hA − kA) ⊆ π(hϕ(A) − kϕ(A)).
+Similarly,
+                              π(hϕ(A) − kϕ(A)) ⊆ ϕ(hA − kA).
+This proves (i).
+   (ii) Every lattice point in the generalized sum-difference set hϕ(A) − kϕ(A) is of
+the form
+                               ϕ(a1 ) + · · · + ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k )
+with a1 , . . . , ah , a′1 , . . . , a′k ∈ G. Using the same notation as above, we see that the
+ith coordinate of this lattice point is
+                                   h
+                                   X             k
+                                                 X
+                                                        ′
+(18)                                     rij −         riℓ = qi mi + si
+                                   j=1           ℓ=1
+
+where
+                                            0 ≤ s i ≤ mi − 1
+and
+                                   (s1 , . . . , sd ) ∈ ϕ(hA − kA).
+Moreover,
+                   −kmi ≤ −k(mi − 1) ≤ qi mi + si ≤ h(mi − 1) < hmi
+and so
+(19)                                          −k ≤ qi < h
+for i = 1, . . . , d. Therefore,
+                                 (q1 m1 , . . . , qd md ) ∈ ΛG (−k, h)
+and
+                      ϕ(a1 ) + · · · +ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k )
+                                         = (q1 m1 + s1 , . . . , qd md + sd )
+                                         = (s1 , . . . , sd ) + (q1 m1 , . . . , qd md )
+                                         ∈ ϕ(hA − kA) + ΛG (−k, h).
+   (iii) If (s1 , . . . , sd ) ∈ ϕ(hA−kA), then there exist elements a1 , . . . , ah , a′1 , . . . , a′k ∈
+G such that
+                           (s1 , . . . , sd ) = ϕ(a1 + · · · + ah − a′1 − · · · − a′k ).
+Since the ith component of ϕ(a1 ) + · · · + ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k ) is (18), we
+have
+                      ϕ(a1 ) + · · · +ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k )
+                                         = (q1 m1 + s1 , . . . , qd md + sd )
+                                         = (s1 , . . . , sd ) + (q1 m1 , . . . , qd md ).
+                        SETS WITH MORE SUMS THAN DIFFERENCES                                             13
+
+
+Equivalently,
+   (s1 , . . . , sd ) = ϕ(a1 ) + · · · + ϕ(ah ) − ϕ(a′1 ) − · · · − ϕ(a′k ) − (q1 m1 , . . . , qd md )
+                  ∈ hϕ(A) − kϕ(A) − ΛG (−k, h)
+                  = hϕ(A) − kϕ(A) + ΛG (−h + 1, k + 1).
+This completes the proof.                                                                                
+Theorem 6. Let A be a nonempty subset of the finite abelian group G = Z/m1 Z ×
+· · · × Z/md Z. Let ϕ : G → PG be the canonical embedding defined by (6), (7),
+and (8). Let
+                            Bt = ϕ(A) + ΛG (0, t) ⊆ Zd .
+Then
+                     hBt − kBt ⊆ ϕ(hA − kA) + ΛG (−kt, ht)
+and
+          hBt − kBt ⊇ ϕ(hA − kA) + ΛG (−kt + h + k − 1, ht − h − k + 1).
+Moreover,
+                       |hBt − kBt | ≤ |hA − kA|((h + k)t)d
+and
+                |hBt − kBt | ≥ |hA − kA|((h + k)t − 2(h + k − 1))d .
+Proof. By Lemma 2 (ii),
+                       hϕ(A) − kϕ(A) ⊆ ϕ(hA − kA) + ΛG (−k, h).
+It follows from (10)–(12) that
+         hBt − kBt = h (ϕ(A) + ΛG (0, t)) − k (ϕ(A) + ΛG (0, t))
+                        = hϕ(A) − kϕ(A) + hΛG (0, t) − kΛG (0, t)
+                        ⊆ ϕ(hA − kA) + ΛG (−k, h) + ΛG (−kt + k, ht − h + 1)
+                        = ϕ(hA − kA) + ΛG (−kt, ht).
+Applying (5) and (9), we obtain
+                        |hBt − kBt | ≤ |ϕ(hA − kA) + ΛG (−kt, ht)|
+                                        = |ϕ(hA − kA)||ΛG (−kt, ht)|
+                                        = |hA − kA|((h + k)t)d .
+  Similarly, by Lemma 2 (iii),
+                  ϕ(hA − kA) ⊆ hϕ(A) − kϕ(A) + ΛG (−h + 1, k + 1).
+and so
+hBt − kBt = h (ϕ(A) + ΛG (0, t)) − k (ϕ(A) + ΛG (0, t))
+             = hϕ(A) − kϕ(A) + ΛG (−kt + k, ht − h + 1)
+             = hϕ(A) − kϕ(A) + ΛG (−h + 1, k + 1) + ΛG (−kt + h + k − 1, ht − h − k + 1)
+             ⊇ ϕ(hA − kA) + ΛG (−kt + h + k − 1, ht − h − k + 1).
+Therefore,
+                  |hBt − kBt | ≥ |hA − kA|((h + k)t − 2(h + k − 1))d .
+                                                                                                         
+14                              MELVYN B. NATHANSON
+
+
+Theorem 7. Let G = Z/m1 Z × · · · × Z/md Z be a finite abelian group, and let ϕ
+be the canonical embedding of G into the fundamental integer parallelepiped PG of
+the lattice ΛG . Let A be a nonempty subset G and let h1 , h2 , k1 , k2 be nonnegative
+integers such that h1 ≥ 1, h2 ≥ 1,
+                                   h1 + k1 = h2 + k2
+and
+                             |h1 A − k1 A| > |h2 A − k2 A|.
+For every sufficiently large integer t, the set of lattice points
+                                 Bt = ϕ(A) + ΛG (0, t)
+satisfies the inequality
+                           |h1 Bt − k1 Bt | > |h2 Bt − k2 Bt |.
+Proof. Let h1 + k1 = h2 + k2 = c. By Theorem 6,
+            |h1 Bt − k1 Bt |   |h1 A − k1 A|((h1 + k1 )t − 2(h2 + k2 − 1))d
+                             ≥
+            |h2 Bt − k2 Bt |            |h2 A − k2 A|((h2 + k2 )t)d
+                              |h1 A − k1 A| (ct − 2c + 2)d
+                            ≥
+                              |h2 A − k2 A|      (ct)d
+                                                         d
+                              |h1 A − k1 A|        2c − 2
+                            =                 1−
+                              |h2 A − k2 A|          ct
+Since
+                                               d
+                                        2c − 2)
+                                lim  1−            =1
+                                t→∞        ct
+it follows that
+                            |h1 Bt − k1 Bt | > |h2 Bt − k2 Bt |
+for all sufficiently large t. This completes the proof.                             
+
+Theorem 8. Let G = Z/m1 Z × · · · × Z/md Z be a finite abelian group, and let ϕ
+be the canonical embedding of G into the fundamental integer parallelepiped PG of
+the lattice ΛG . Let A be a nonempty subset G such that
+                                  |A + A| > |A − A|.
+For every sufficiently large integer t, the set of lattice points
+                                 Bt = ϕ(A) + ΛG (0, t)
+satisfies the inequality
+                                 |Bt + Bt | > |Bt − Bt |.
+Proof. Apply Theorem 7 with (h1 , k1 ) = (2, 0) and (h2 , k2 ) = (1, 1).            
+
+  The final step is to embed a finite set of lattice points in Zd into the integers.
+For a = (a1 , . . . , ad ) ∈ Zd , define
+                            kak = max(|ai | : i = 1, . . . , d).
+                        SETS WITH MORE SUMS THAN DIFFERENCES                                        15
+
+
+Lemma 3. Let m be a positive integer, and consider the group homomorphism
+ψ : Zd → Z defined by
+                                   Xd
+                           ψ(a) =      ai mi−1
+                                                    i=1
+                                 d
+for all a = (a1 , . . . , ad ) ∈ Z . If kak < m and ψ(a) = 0, then a = 0.
+Proof. Suppose that a ∈ Zd satisfies kak < m and ψ(a) = 0. The inequality
+kak < m implies that |ai | ≤ m − 1 for all i = 1, . . . , d. If a 6= 0, let r be the largest
+integer such that ar 6= 0. Then ψ(a) = 0 implies that
+                                                      r−1
+                                                      X
+                                      ar mr−1 = −           ai mi−1
+                                                      i=1
+
+but this is impossible since
+                                           |ar mr−1 | ≥ mr−1
+and
+                                         r−1
+                                         X
+                                     −         ai mi−1 ≤ mr−1 − 1.
+                                         i=1
+
+This completes the proof.                                                                           
+
+Theorem 9. Let L be a positive integer, and let A be a nonempty finite subset of
+Zd . Let m be an integer such that
+                                     m > 2L max(kak : a ∈ A).
+Define ψ : Zd → Z by
+                                                          d
+                                                          X
+                                  ψ(a1 , . . . , ad ) =         ai mi−1 .
+                                                          i=1
+
+If h and k are nonnegative integers such that
+                                                h+k ≤L
+then
+                                |hA − kA| = |hψ(A) − kψ(A)|.
+Proof. Since ψ is a homomorphism, we have
+                               ψ(hA − kA) = hψ(A) − kψ(A).
+We must show that the map ψ : hA − kA → Z is one-to-one. Let u, v ∈ hA − kA
+such that ψ(u) = ψ(v). The set A contains lattice points aj = (a1,j , . . . , ad,j ) and
+bj = (b1,j , . . . , bd,j ) for j = 1, . . . , h, and lattice points a′ℓ = (a′1,ℓ , . . . , a′d,ℓ ) and
+b′ℓ = (b′1,ℓ , . . . , b′d,ℓ ) for ℓ = 1, . . . , k such that
+
+                              u = a1 + · · · + ah − a′1 − · · · − a′k
+and
+                               v = b1 + · · · + bh − b′1 − · · · − b′k .
+16                               MELVYN B. NATHANSON
+
+                             Ph              Pk
+                                j=1 ai,j −
+                                                    ′
+The ith coordinate of u is                     ℓ=1 ai,ℓ , and so
+                                    h
+                                    X               k
+                                                    X
+                            kuk ≤         kaj k +         ka′k k
+                                    j=1             ℓ=1
+                                 ≤ (h + k) max(kak : a ∈ A)
+                                   m
+                                 < .
+                                    2
+Similarly,
+                                    h               k
+                                    X               X                m
+                            kvk ≤         kbj k +         kb′k k <
+                                    j=1
+                                                                     2
+                                                    ℓ=1
+and so
+                                      ku − vk < m.
+If ψ(u) = ψ(v), then ψ(u − v) = 0. By Lemma 3, it follows that u = v and the map
+ψ is one-to-one.                                                               
+
+                              4. A counting argument
+     In this section we prove that the finite abelian group
+                                    G = Z/nZ × Z/2Z
+contains MSTD sets.
+  Let Ω be the set of all subsets of G of the form
+             A = {(i + nZ, εi + 2Z) : i = 0, 1, . . . , n − 1 and εi ∈ {0, 1}}.
+Then |Ω| = 2n and |A| = n for all A ∈ Ω. If g = (b + nZ, δ + 2Z) is in the difference
+set A − A, then there exist a = (i + nZ, εi + 2Z) ∈ A and a′ = (j + nZ, εj + 2Z) ∈ A
+such that g = a − a′ , or, equivalently,
+               (b + nZ, δ + 2Z) = (i + nZ, εi + 2Z) − (j + nZ, εj + 2Z)
+                                 = (i − j + nZ, εi − εj + 2Z).
+If b + nZ = nZ, then i ≡ j (mod n) and so i = j. It follows that εi = εj and δ ≡ 0
+(mod 2). This implies that for every set A ∈ Ω, if (nZ, δ + 2Z) ∈ A − A, then δ ≡ 0
+(mod 2), that is,
+                              (nZ, 1 + 2Z) ∈/ A−A
+and so
+                              |A − A| ≤ |G| − 1 = 2n − 1.
+We shall prove that there exists A ∈ Ω such that A + A = G, that is,
+                                      |A + A| = 2n
+and so A is an MSTD set. Indeed, we shall prove that A + A = G for almost all
+sets A ∈ Ω.
+Theorem 10. Let
+                                    G = Z/nZ × Z/2Z
+and let Ω be the set of all subsets of G of the form
+             A = {(i + nZ, εi + 2Z) : i = 0, 1, . . . , n − 1 and εi ∈ {0, 1}}.
+                     SETS WITH MORE SUMS THAN DIFFERENCES                              17
+
+
+Let Ψ(G) denote the number of A ∈ Ω such that A + A = G. Then
+                            (       √ 
+                                       2n
+                              2n 1 − 2n/2    if n is odd
+                     Ψ(G) ≥
+                               n      2n
+                                          
+                              2 1 − 2n/2     if n is even.
+Proof. Let
+                           g = (b + nZ, δ + 2Z) ∈ G
+and let φ(g) denote the number of A ∈ Ω such that g ∈
+                                                    / A + A. Then
+                                          X
+                            |Ω| − Ψ(G) ≤      φ(g).
+                                                       g∈G
+
+   Consider first the case that n is odd. There is a unique congruence class a0 +nZ ∈
+Z/nZ such that 2a0 ≡ b (mod n), and (a0 + nZ, ε + 2Z) ∈ A for some ε ∈ {0, 1}.
+If δ ≡ 0 (mod 2), then
+         g = (b + nZ, 2Z) = (a0 + nZ, ε + 2Z) + (a0 + nZ, ε + 2Z) ∈ A + A
+and φ(g) = 0.
+   If δ ≡ 1 (mod 2), then (a0 + nZ, ε + 2Z) + (a0 + nZ, ε + 2Z) 6= g. If a 6≡ a0
+(mod n), then b − a 6≡ a (mod n). It follows that Z/nZ \ {a0 + nZ} is the union of
+(n − 1)/2 disjoint sets of the form {aj + nZ, b − aj + nZ}, for j = 1, . . . , (n − 1)/2.
+         (n−1)/2                                                                  (n−1)/2
+Let {εj }j=0     be any sequence of 0’s and 1’s. We define the sequence {ε′j }j=1
+by
+                                   ε′j = δ − εj + 1.
+Defining the set A ∈ Ω by
+                                      (n−1)/2                                (n−1)/2
+         A = {(aj + nZ, εj + 2Z}j=0                 ∪ {(b − aj + nZ, ε′j + 2Z}j=1
+we see that g ∈
+              / A + A. It follows that
+                              (
+                                0                    if δ ≡ 0      (mod 2)
+                     φ(g) =
+                                2(n+1)/2             if δ ≡ 1      (mod 2)
+and so                                         
+                       X                  |G|
+                             φ(g) =                 2(n+1)/2 = n2(n+1)/2
+                                           2
+                       g∈G
+and
+                                                      X
+                               Ψ(G) ≥ |Ω| −                 φ(g)
+                                                      g∈G
+
+                                          = 2n − n2(n+1)/2
+                                                    √ !
+                                             n        2n
+                                          =2    1 − n/2 .
+                                                    2
+   There is a similar argument in the case that n is even. If b is odd, then the
+congruence 2x ≡ b (mod n) has no solution, and Z/nZ can be partitioned into n/2
+pairs of elements that sum to b. It follows that φ(g) = 2n/2 . There are exactly n/2
+elements in the group Z/nZ with odd b, and so n elements in the group G with
+odd b. Therefore,                X
+                                      φ(g) = n2n/2 .
+                                   g∈G
+                                  b odd
+18                                   MELVYN B. NATHANSON
+
+
+     If b is even, then there is an integer a0 such that
+                        b + nZ = 2(a0 + nZ) = 2(a0 + n/2 + nZ).
+If δ ≡ 0 (mod 2), then φ(g) = 0. If δ ≡ 1 (mod 2), then Z/nZ \ {a0 + nZ, a0 +
+n/2 + nZ} can be partitioned into (n − 2)/2 pairs of elements that sums to b. It
+follows that φ(g) = 4 · 2(n−2)/2 = 2(n+2)/2 and
+                          X           n
+                              φ(g) =       2(n+2)/2 = n2n/2 .
+                                       2
+                             g∈G
+                            b even
+
+Therefore,
+                                       X
+                                             φ(g) = 2n2n/2
+                                       g∈G
+and
+                                                    X
+                                     Ψ(G) ≥ |Ω| −         φ(g)
+                                                    g∈G
+
+                                          = 2n − n2(n+2)/2
+                                                        
+                                                     2n
+                                          = 2n 1 − n/2 .
+                                                    2
+This completes the proof.                                                                        
+
+                                         5. Problems
+   It would be interesting to classify the structure of all MSTD sets of integers. We
+can stratify this problem in the following way. Let F (Z) denote the set of all finite
+sets of integers. Define the function n : F (Z) → Z by
+                                 n(A) = |A + A| − |A − A|.
+What is the range of this function? Is it possible to construct, for every integer t,
+a set A ∈ F (Z) with n(A) = t? Can we describe all sets A with n(A) = 1?
+   Acknowledgements. The idea of constructing of MSTD sets of lattice points and
+integers from MSTD subsets of finite abelian groups is due to Terence Tao [9], and
+I thank him for his permission to include it in this paper. I also thank Boris Bukh
+and Peter Hegarty for helpful discussions.
+
+                                         References
+[1] G. A. Freiman and V. P. Pigarev, The relation between the invariants R and T , Number-
+    theoretic studies in the Markov spectrum and in the structural theory of set addition (Russian),
+    Kalinin. Gos. Univ., Moscow, 1973, pp. 172–174.
+[2] J. Marica, On a conjecture of Conway, Canad. Math. Bull. 12 (1969), 233–234.
+[3] M. B. Nathanson, Problems in additive number theory, 1, arXiv: math.NT/0604340, 2006.
+[4] K. O’Bryant, Many sets have more sums than differences, arXiv: math.NT/0608131, 2006.
+[5] F. Roesler, A mean value density theorem of additive number theory, Acta Arith. 96 (2000),
+    no. 2, 121–138.
+[6] I. Z. Ruzsa, On the cardinality of A + A and A − A, Combinatorics year (Keszthely, 1976),
+    vol. 18, Coll. Math. Soc. J. Bolyai, North-Holland–Bolyai Tàrsulat, 1978, pp. 933–938.
+[7]         , Sets of sums and differences, Séminaire de Théorie des Nombres de Paris 1982–1983
+    (Boston), Birkhäuser, 1984, pp. 267–273.
+[8]         , On the number of sums and differences, Acta Math. Sci. Hungar. 59 (1992), 439–447.
+[9] T. Tao, personal communication, 2006.
+                 SETS WITH MORE SUMS THAN DIFFERENCES   19
+
+
+Lehman College (CUNY),Bronx, New York 10468
+E-mail address: melvyn.nathanson@lehman.cuny.edu
+

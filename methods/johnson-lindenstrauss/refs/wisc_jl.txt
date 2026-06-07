@@ -1,0 +1,324 @@
+CS731 Spring 2011 Advanced Artificial Intelligence
+
+Random Projection
+Lecturer: Xiaojin Zhu
+
+jerryzhu@cs.wisc.edu
+
+Random projection is a powerful technique behind compressive sensing and matrix completion.
+
+1
+
+The Johnson-Lindenstrauss Lemma
+
+n
+When n points in some high dimensional space are randomly projected down to O( log
+2 ) dimensions, with
+large probability the pairwise squared distances between the points change by a factor of no more than 1 ± .
+Note the original dimensionality does not matter. This is a statistical property based on concentration of
+measure. It is useful as an efficient dimension reduction tool.
+The following theorem considers projecting a random vector onto a fixed subspace, which is equivalent
+to projecting a fixed vector onto a random subspace.
+
+Lemma 1 Let Y ∈ Rd be chosen uniformly from the surface of the d-dimensional sphere. Let Z =
+(Y1 , Y2 , . . . , Yk ) be the projection onto the first k coordinates, where k < d. Then for any α < 1 and
+β > 1,
+
+
+
+
+k
+d
+kZk2 ≤ α
+≤ exp
+(1 − α + log α)
+(1)
+Pr
+k
+2
+
+
+
+
+k
+d
+kZk2 ≥ β
+≤ exp
+(1 − β + log β) .
+(2)
+Pr
+k
+2
+With this, one can prove the Johnson-Lindenstrauss Lemma.
+Theorem 1 (Johnson-Lindenstrauss) Let x1 , . . . , xn ∈ Rd , and let  ∈ (0, 1). Let k be a positive integer
+satisfying
+8δ log n
+k≥ 2
+(3)
+ − 23 /3
+where δ ≥ 1. Then a random projection Πk : Rd 7→ Rk satisfies
+
+
+k
+n(n − 1)
+k
+2
+2
+2
+.
+P r (1 − ) kxi − xj k ≤ kΠk (xi ) − Πk (xj )k ≤ (1 + ) kxi − xj k , ∀i 6= j ≥ 1 −
+d
+d
+n2δ
+q
+If Πk is a good projection, then the scaled mapping fk (x) = kd Πk (x) satisfies
+(1 − )kxi − xj k2 ≤ kfk (xi ) − fk (xj )k2 ≤ (1 + )kxi − xj k2 , ∀i 6= j.
+
+(4)
+
+(5)
+
+That is, fk approximately preserves distance.
+In addition to preserving pairwise distances, random projection also approximately preserves inner products.
+Theorem 2 Let x, y ∈ Rd with kxk2 , kyk2 ≤ 1. Assume that Φ is a k × d random matrix with independent
+N (0, 1/d) entries. Then for all  > 0,
+
+
+
+
+d
+−k2
+>
+>
+Pr
+(Φx) (Φy) − x y ≥  ≤ 2 exp
+(6)
+k
+C1 + C2 
+√
+√
+where C1 = 4e/ 6π ≈ 2.5 and C2 = 8e ≈ 7.7.
+1
+
+Random Projection
+
+2
+
+2
+
+Compressive Sensing
+
+Consider signal f ∈ Rn , e.g., an image with n pixels. Assuming there is some orthonormal basis Ψn×n =
+[ψ1 . . . ψn ], e.g. wavelets, that
+n
+X
+f (t) =
+ψi (t)xi .
+(7)
+i=1
+
+The intuition is that the coefficients x = [x1 . . . xn ] is sparse (having many zeros) or nearly so for many
+real signals under an appropriate basis. You may not know which coefficients are significant, though (i.e.,
+x may not be sorted in any way). Say you don’t see f or x. Instead, you can take a few measurements. A
+measurement is
+>
+yj = φ>
+(8)
+j f + j = φj Ψx + z,
+where φj ∈ Rn is a sensing vector that you choose, and z is noise. Your noisy measurement is yj . How many
+measurements do you need in order to recover f ? Clearly, if it is noiseless, n measurements with φj = ej
+(the canonical basis, or in fact any basis) is sufficient to recover f . Can you do better?
+Say x is S-sparse, i.e., having S nonzero elements. If you know the location of those nonzero elements,
+you only need S measurements with φj = ψk where k is a nonzero location in x. What if you do not know
+the nonzero locations? What if you do not even know Ψ before you measure the signal? Is there a way to
+take advantage of the knowledge that x is S-sparse?
+Compressive sensing offers a surprising solution: you only need O(S log(n/S)) random measurements,
+and there is a very efficient way to recover x (or f ). Let us consider the m × n sensing matrix
+A = ΦΨ
+
+(9)
+
+y = Ax + z,
+
+(10)
+
+where Φ = [φ1 . . . φm ]> and m ≤ n. We have
+
+where y is the vector of m measurements.
+For integer S, define the isometry constant δS of a matrix A to be the smallest number such that
+(1 − δS )kxk2 ≤ kAxk2 ≤ (1 + δS )kxk2
+
+(11)
+
+for all S-sparse x. Roughly speaking, the matrix A has the restricted isometry property (RIP) of order S if
+δS is not close to one. If our goal is to recover S-sparse signal x from y and A is RIP of order 2S, then any
+difference between two S-sparse targets xi − xj (which is at most 2S-sparse) is approximately preserved in
+the measurements yi and yj :
+(1 − δ2S )kxi − xj k2 ≤ kyi − yj k2 = kA(xi − xj )k2 ≤ (1 + δ2S )kxi − xj k2 .
+
+(12)
+
+Conceptually, this allows us to “enumerate” all S-sparse x0 and compare its measurement y 0 = Ax0 to the
+actual observed measurement y. The closest x0 is the solution. As we see below, there is a much more elegant
+algorithm.
+√
+Theorem 3 (Noiseless Case) Assume δ2S < 2 − 1. Given measurement y = Ax, the solution x∗ to
+min
+
+kx0 k1
+
+(13)
+
+s.t.
+
+Ax0 = y
+
+(14)
+
+√
+≤ C0 / Skx − xS k1
+
+(15)
+
+≤ C0 kx − xS k1 ,
+
+(16)
+
+x0 ∈Rn
+
+obeys
+kx∗ − xk2
+∗
+
+kx − xk1
+
+where xS is the vector x with all but the largest S components set to 0.
+
+Random Projection
+
+3
+
+Note if x is already S-sparse, this indicates perfect recovery. Also note that this involves a tractable `1
+minimization problem.
+√
+Theorem 4 (Noisy Case) Assume δ2S < 2 − 1. Given noisy measurement y = Ax + z, the solution x∗
+to the LASSO problem
+min
+
+kx0 k1
+
+(17)
+
+s.t.
+
+kAx0 − yk ≤ 
+
+(18)
+
+√
+≤ C0 / Skx − xS k1 + C1 .
+
+(19)
+
+x0 ∈Rn
+
+obeys
+kx∗ − xk2
+
+These theorems assume that we have A with the RIP property. Recall our A = ΦΨ where Ψ is a fixed
+orthonormal basis. It turns out that one can let the entries of Φ be
+1. sampling n column-vectors uniformly at random on the unit sphere in Rm ; or
+2. iid samples from N (0, 1/m); or
+√
+3. iid samples from Bernoulli(0.5, 0.5) on φij = ±1/ m.
+When
+m ≥ CS log(n/S),
+
+(20)
+
+with overwhelming probability, the resulting A obeys the RIP. Also note that these designs of the sensing
+matrix Φ is independent of Ψ. This means that sensing is “universal” and can be done without knowing
+what is the sparse basis Ψ of the signal (of course, one needs to know Ψ during recovery).
+
+3
+
+Matrix Completion
+
+Let M be an n1 × n2 matrix of rank r. Suppose we observe m entries of M . How large does m have to be
+to recover M ? We will show that it is a small number. However, there are a few conditions.
+Note the observed entries cannot be adversarially placed – if we miss a whole row when M is rank-1 outer
+product, there is no way to recover M . Therefore, one assumes that the locations are sampled uniformly at
+random.
+It is not enough for M to be low rank. Consider M = e1 e>
+1 . It is very difficult to hit the 1 by chance.
+Instead, we consider the following family of M ’s.
+Definition 1 Let U be a subspace of Rn of dimension r, and PU be the orthogonal projection onto U . Then
+the coherence of U is defined as
+n
+max kPu ei k2 .
+(21)
+µ(U ) =
+r 1≤i≤n
+We are interested in low coherence subspaces. Let the SVD of M be
+M=
+
+r
+X
+
+σk uk vk>
+
+(22)
+
+k=1
+
+with column and row spaces be U and V , respectively. The M we consider has two properties:
+1. The coherence max(µ(U ), µ(V )) ≤ µ0 for some positive µ0 ;
+p
+Pr
+2. The n1 × n2 matrix k=1 uk vk> has a maximum entry bounded by µ1 r/(n1 n2 ) in absolute value for
+some positive µ1 .
+
+Random Projection
+
+4
+
+For such M , we have the following theorem.
+Theorem 5 Let M be an n1 × n2 matrix of rank r satisfying the above two conditions. Suppose we observe
+m entries with locations sampled uniformly at random. Then there exist constants C, c such that if
+1/2
+
+m ≥ C max(µ21 , µ0 µ1 , µ0 n1/4 )nr(β log n)
+
+(23)
+
+for some β > 2, then the minimizer to the nuclear norm minimization problem
+min
+
+X∈Rn1 ×n2
+
+s.t.
+
+kXk∗
+
+(24)
+
+Xij = Mij for observed locations (i, j)
+
+(25)
+
+1/5
+is unique and equal to M with probability at least 1 − cn−β . For r ≤ µ−1
+the bound can be improved to
+0 n
+
+m ≥ Cµ0 n6/5 r(β log n)
+
+(26)
+
+with the same probability of success.
+Pr
+Here, the nuclear norm kXk∗ = k=1 σk is the sum of singular values of X. It is a convex approximation to
+the rank of X, i.e., the number of nonzero singular values. When X is symmetric and positive semi-definite,
+its nuclear norm is the same as its trace.
+
+

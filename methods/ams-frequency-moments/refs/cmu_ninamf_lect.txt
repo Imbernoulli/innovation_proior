@@ -1,0 +1,314 @@
+10-806 Foundations of Machine Learning and Data Science
+Lecturer: Avrim Blum
+
+1
+
+Lecture 18: November 9, 2015
+
+Streaming Algorithms II
+
+Today we continue our discussion of streaming algorithms. Recall the setting: we are observing a
+sequence (a stream) of m items from a domain of size n, where we think of both m and n as very
+large. Our goal is to compute some statistic or summary or sketch of this stream using as little
+space as we can, ideally logarithmic in m and n.
+We begin with the problem of estimating the number of distinct elements in the data stream that
+we got partway through last time.
+
+1.1
+
+Estimating the number of distinct elements
+
+Intuition: if you pick t real numbers uniformly at random in [0, 1], independently, then the expected
+value of the minimum is 1/(t + 1); we won’t prove this here but it is a fun puzzle. This suggests
+the following. Suppose we had a hash function h that mapped each element in the domain to a
+uniform random number in some range {1, . . . , r}, independently. (As we saw earlier, having a
+truly independent random mapping is too much to hope for, but let’s imagine.) If the data stream
+has t distinct elements and r  t, then the expected value of min{h(ai ) : ai in the stream} would
+r
+. The key point here is that multiple copies of the same element hash the
+be approximately t+1
+same way (since h is a function), so {h(ai )} looks like t random numbers between 1 and r. So,
+from the minimum, we could get an estimate of t. We could then repeat this with multiple hash
+functions if we want to improve our accuracy.
+We’ll now implement this idea using a generalization of universal hashing called “2-universal” or
+“pairwise-independent” hashing. Formally, a set H is a 2-universal or pairwise independent family
+of hash functions if for any two distinct elements x 6= x0 in the domain, and any two elements y, y 0
+in the range,
+Pr [h(x) = y ∧ h(x0 ) = y 0 ] = 1/r2 ,
+h∈H
+
+where r is the size of the range. Note that our specific scheme using binary matrices also has this
+property if we remove the all-zeroes element from the domain (since that always hashes to 0).
+We’re going to focus on getting within a factor of 2 of the correct answer. Note that we’re not going
+to have a hash table now—that would be too big since we’ll need r to be larger than t. Instead,
+we’ll just be keeping track of the minimum hash value seen, which takes only O(log r) bits per hash
+function. Let’s now consider a single hash function chosen at random from our 2-universal family.
+Claim 1 Suppose the data stream a1 , a2 , . . . has t distinct values. Then, for a 2-universal hash
+family H,
+
+
+Pr min(h(ai )) ≤
+
+h∈H
+
+i
+
+r
+4t
+
+
+
+≤
+
+1
+4
+
+
+
+and
+
+1
+
+
+
+Pr min(h(ai )) ≤
+
+h∈H
+
+i
+
+r
+2t
+
+
+
+≥
+
+3
+8
+
+1
+r
+is at most 4t
+; in fact, it’s exactly
+Proof: First, for any given element ai , the chance that h(ai ) ≤ 4t
+1
+r
+equal to 4t if 4t is an integer. So just using the union bound, if there are t distinct elements, the
+r
+is at most 1/4.
+probability that the minimum is ≤ 4t
+r
+1
+Now, by the same reasoning, the chance that h(ai ) ≤ d 2t
+e is at least 2t
+. In fact, to make this
+r
+1
+analysis cleaner, let’s assume 2t is an integer so the probability is equal to 2t
+. We now argue that
+r
+the probability that the minimum is ≤ 2t is at least 3/8. For this we use 2 steps of inclusionexclusion, called the “Boole-Bonferroni inequalities.” These say that for any set of events Ai ,
+
+#
+
+"
+X
+i
+
+Pr(Ai ) −
+
+X
+
+Pr(Ai ∩ Aj ) ≤ Pr
+
+[
+
+Ai ≤
+
+i
+
+i<j
+
+X
+
+Pr(Ai ).
+
+i
+
+Notice that RHS is the union bound, but now we want to use the LHS. Specifically, since our hash
+r
+r
+∧ h(aj ) ≤ 2t
+) = 4t12 . So, applying the
+function is 2-universal, for any pair ai , aj , Pr(h(ai ) ≤ 2t
+t 1
+1
+r
+1
+1
+3
+inequality we get that Pr[∃i s.t. h(ai ) ≤ 2t ] ≥ 2 − 2 4t2 ≥ 2 − 8 = 8 .
+Now let’s perform this with k random hash functions and look at the minima produced by each
+r
+, and by Hoeffding bounds, for
+hash function. We expect at most 1/4 of the minima to be below 4t
+r
+sufficiently large k, with high probability we will have less than 5/16 of the minima below 4t
+. In the
+r
+other direction, we expect at most 5/8 of the minima to be above d 2t e and by Hoeffding bounds,
+for sufficiently large k, with high probability we will have less than 11/16 of the minima above
+r
+5
+d 2t
+e. So, this means that for sufficiently large k, with high probability the 16
+× 100th percentile q
+satisfies:
+r
+r
+≤ q ≤ d e.
+4t
+2t
+So, for r  t, this means that with high probability we have:
+t(1 − o(1)) ≤
+
+1.2
+
+r
+≤ 2t.
+2q
+
+Estimating frequency moments
+
+Let F [i] denote the frequency (number of occurences) of element ai . We’re now going to look at
+P
+the problem of estimating frequency moments, defined as: fk = i F [i]k .
+Note: f1 is trivial (it’s just m). We can view f0 as the number of distinct elements if we adopt
+00 = 0, and we just looked at that. We will now consider fk for k ≥ 2.
+Here is an interesting algorithm called the AMS (Alon Matias Szegedy) algorithm:
+1. Pick a random element a in the stream and count how many times it appears from that point
+on (can you see how to modify our procedure for random sampling to do this?). Call this
+number of occurences r. Also, keep track of the total length of the stream m.
+2. Output X = m(rk − (r − 1)k ).
+The claim is that this gives an unbiased estimate, i.e., it is correct in expectation. (But the variance
+may be very large, so one has to repeat many times). Let’s see why it has the correct expected
+value.
+
+2
+
+Consider some element ai . By definition it occurs F [i] times. Our algorithm is counting occurences
+P
+of some element a. The chance we are counting ai is F [i]/m. So, E[X] = i E[X|a = ai ]F [i]/m.
+Now, what is E[X|a = ai ]? It’s not m(F [i]k − (F [i] − 1)k ) because we don’t necessarily count ai
+from the very first occurence. In fact, given that we are counting occurences of ai , it is equally
+likely that our total r will be any number from 1, 2, . . . , F [i]. So we get:
+F [i]
+
+1 X
+E[X|a = ai ] =
+m(rk − (r − 1)k ) =
+F [i] r=1
+
+
+
+m
+F [i]k .
+F [i]
+
+
+k
+i F [i] = fk . This means the expectation is exactly what we want.
+Unfortunately, the variance can be very high. If you calculate it out, you get V ar(X) ≈ n1−1/k (fk )2 .
+
+So, overall, E[X] =
+
+P
+
+If you then analyze effect of repetition, it turns out that to get within a constant factor, you need
+space roughly O(n1−1/k ) times some log factors in n and m. So it’s o(n) but a lot bigger than
+log(n). We’ll now see a better bound for k = 2.
+Here is an algorithm for f2 . Called the “tug-of-war” sketch.
+Let h be a 4-universal hash function from {1, ..., n} to {−1, 1}.1
+1. Initialize X = 0.
+2. When we see some item a, we update: X = X + h(a).
+3. Output X 2 .
+So, in the end, X =
+
+P
+
+i F [i]h(ai ). We’ll then repeat this several times and take the average.
+
+What is E[X]? Clearly this is 0.
+What is E[X 2 ]? This is E[( i F [i]h(ai ))2 ] = E[ i F [i]2 h(ai )2 ] + 2E[ i6=j F [i]F [j]h(ai )h(aj )] =
+2
+i F [i] , where the last equality is coming from the fact that h is pairwise independent, so
+E[h(ai )h(aj )] = 0. So, E[X 2 ] = f2 , i.e., our output is correct in expectation.
+P
+
+P
+
+P
+
+P
+
+But now we need to look at the variance of our output. This requires looking at E[X 4 ] which is
+why we wanted 4-wise independence.
+E[X 4 ] = E[
+
+P
+
+i,j,k,l F [i]F [j]F [k]F [l]h(ai )h(aj )h(ak )h(al )].
+
+We can simplify this by noticing that most terms are zero, except for those where i = j = k = l or
+where the indices pair up, like i = j and k = l. There are 3 ways to pair up indices, and then we
+have to count each pairing twice (equivalently, there are 6 ways to order {i, i, j, j}) so we get:
+E[X 4 ] = 6
+
+P
+P
+2
+2
+4
+2 2
+2 2
+i6=j F [i] F [j] +
+i F [i] ≤ 3( i F [i] ) = 3E[X ] .
+So, V ar(X 2 ) ≤ 2E[X 2 ]2 = 2f22 .
+P
+
+The fact that the variance of our output is comparable with the square of its expectation means
+that we get get low error by repeating not too many times and taking the average. Specifically,
+suppose we repeat r = 6/2 times and let Z be the average of the estimates X 2 . So we have
+E[Z] = f2 and now variance has dropped by a factor of r so we have V ar(Z) ≤ E[Z]2 2 /3.
+1
+
+This means that h looks like a truly random function with respect to all 4-tuples (and 3-tuples and pairs and
+singles). It turns out you can create these from small space too.
+
+3
+
+Now we can apply Chebyshev’s inequality, which says that for any random variable Z and any
+. Plugging in b = E[Z] we get
+value b we have Pr(|Z − E[Z]| > b) < V ar(Z)
+b2
+Pr(|Z − E[Z]| > E[Z]) <
+
+V ar(Z)
+< 1/3.
+2 E[Z]2
+
+So, there’s at most a 1/3 chance that our estimate is off by more than an  factor. If we want to
+reduce this failure probability, one nice thing we can do is repeat this whole process several times
+and take the median. Since these are independent trials, and each has at least a 2/3 probability
+of success, we can use Hoeffding bounds to say that whp more than half of them will be successful
+(in the sense of being within an  factor of the correct answer) and so the median will be correct.
+As an aside, this idea of hashing with random signs is used as a speedup technique in some learning
+algorithms—see work of Langford, Smola, and others. The idea is you take your large feature space,
+and then hash it to a smaller space, but do it with random signs. The idea is that if only a fairly
+small number of features are highly important, they will hopefully not collide with each other, and
+the other collisions will tend to cancel out due to the random signs.
+
+4
+
+

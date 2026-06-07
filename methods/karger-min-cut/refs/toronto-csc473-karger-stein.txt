@@ -1,0 +1,153 @@
+      CSC473: Advanced Algorithm Design                                             Winter 2020
+
+                   Week 2: The Karger-Stein Min Cut Algorithm
+      Aleksandar Nikolov
+
+
+In these notes we describe the Karger-Stein algorithm, which is a method to amplify the probability
+of success of Karger’s Contraction algorithm (described in the first week of class) without slowing
+it down much.
+Let us, again, fix an undirected, unweighted graph G = (V, E) with n nodes and m vertices. We have
+shown that the Contraction algorithm outputs any fixed global min cut E(S, S̄) with probability
+      2
+at n(n−1) . In order to get an algorithm with constant probability of success, we can then run the
+contraction algorithm Θ(n2 ) times, and output the minimum cut found by any of these runs. We
+have also shown that a single execution of the Contraction algorithm can be implemented in time
+O(n2 ). So, this gives an algorithm with constant probability of success and running time O(n4 ).
+In the these notes, we will show an improved algorithm by Karger and Stein, which achieves running
+time O(n2 log2 n). The main idea is to use the fact that the early contractions in the Contraction
+algorithm are much less likely to destroy the min cut.
+Let us fix any global minimum cut E(S, S̄), where S is a set which is not empty, and is not equal
+to V , and E(S, S̄) is the set of edges with exactly one endpoint in S. In class we introduced the
+notation Ei for the event that no edge of E(S, S̄) is contracted at the i-th contraction. We also
+showed that
+                                                                   n−i−1
+                           P(Ei | E1 and E2 and . . . and Ei−1 ) ≥       .
+                                                                   n−i+1
+Exercise 1. Show that the probability that no edges of E(S, S̄) are contracted during the first i
+contractions satisfies
+                                                          (n − i)(n − i − 1)
+                         P(E1 and E2 and ... and Ei ) ≥                      .                    (1)
+                                                              n(n − 1)
+More generally, show that for any 1 ≤ i < j ≤ n − 2
+                                                                       (n − j)(n − j − 1)
+            P(Ei and Ei+1 and ... and Ej | E1 and . . . and Ei−1 ) ≥                      .       (2)
+                                                                       (n − i + 1)(n − i)
+
+The important thing to notice about (1) is that the probability is at least a constant for a constant
+fraction of the values of i. For example, for i ≤ n − √n2 − 1, (1) gives
+
+                                                               n2      1
+                           P(E1 and E2 and ... and Ei ) ≥             ≥ .
+                                                            2n(n − 1)  2
+Similarly, suppose that we have made i − 1 contractions, and currently have ` = n − i + 1 remaining
+(super-)nodes. Then, by (2), after j = ` − √`2 − 1 additional contractions
+
+for j ≤ n − √`2 − 1, we have
+
+                                                                              `2      1
+            P(Ei and Ei+1 and ... and Ei+j−1 | E1 and . . . and Ei−1 ) ≥             ≥ .
+                                                                           2`(` − 1)  2
+
+                                                 1
+The main idea in Karger and Stein’s improved algorithm is to stop the Contraction algorithm after
+this many contractions, while the probability that no mistake was made is still large, and repeat
+not from the start, but from the current graph. This way later contractions, which are more likely
+to lead to an error, are repeated more often than the early ones, which are unlikely to lead to an
+error.
+
+
+Min-Cut(G)
+  // G can be a multigraph, with supernodes corresponding to sets of vertices.
+1 if G has two supernodes corresponding to S, S̄
+2        Output (S, S̄)
+3 Run the Contraction algorithm until √n2 + 1 supernodes remain.
+4 Let G0 be the resulting contracted multigraph.
+5 (S1 , S̄1 ) = Min-Cut(G0 ).
+6 (S2 , S̄2 ) = Min-Cut(G0 ). // The two recursive runs of Min-Cut are independent.
+7 Output the cut (Si , S̄i ) (i ∈ {1, 2}) with smaller |E(Si , S̄i )|.
+
+Theorem 1. The algorithm Min-Cut(G) runs in time O(n2 log n) and outputs a global min cut
+                                  1
+of G with probability at least O(log n) .
+
+
+Proof. Let us first analyze the running time, which is easier. The n − √n2 − 1 contractions take time
+O(n2 ) using the implementation using adjacency matrices described in class. Then we make two
+recursive calls on a multigraph with √n2 + 1 nodes. So, we have the recursion
+                                                        
+                                                    n
+                                   T (n) = 2T       √ + 1 + O(n2 ).
+                                                     2
+for the worst-case running time T (n).
+Exercise 2. Verify that the recursion above solves to T (n) = O(n2 log n).
+
+The hard part is to analyze the probability of success. Here it helps to imagine the recursion tree.
+It is just a binary tree, where each edge corresponds to one recursive call to Min-Cut(G0 ), and
+each node corresponds to one partial run of the Contraction algorithm. The height of the tree is
+O(log n), because after each level we recurse on a graph with approximately √n2 nodes.
+
+Let us say that a node of the tree is successful if there is some min cut of the original graph, so
+that no edge of the min cut is contracted during the partial run of the Contraction algorithm that
+corresponds to that node. By design, conditional on all ancestors of a node being successful, the
+node itself is successful with probability at least 12 . The algorithm overall succeeds in finding a min
+cut if there is path from the root to a leaf in the recursion tree that contains only successful nodes.
+We call a path containing only successful nodes a successful path.
+So, we need to analyze the probability that the recursion tree contains a successful path from the
+root to a leaf. Let us pose this problem abstractly. Let T be a complete binary tree of height h.
+Suppose that for every node u of T , the probability that u is successful, conditional on the ancestors
+of u being successful, is exactly 12 . Moreover, assume that for every node u, the subtrees below the
+left and the right child of u are independent. Let P (d) be the probability that there is a successful
+
+
+                                                     2
+path from the root to some node at distance d from the root of T . P (h) is a lower bound on the
+probability that Min-Cut(G) outputs a min cut of G.
+To finish the proof, we analyze P (d). By definition, P (0) = 21 . Also, P (d) equals
+
+P (d) = P(the root is successful)×
+         P(there is a successful path from a node of depth 1 to a node at depth d | the root is successful),
+
+where we can multiply the two probabilities because the two events are independent. The first
+probability is 12 . Note that, conditional on the root being successful, the probability that there is
+a successful path from the left child of the root to a node at depth d is P (d − 1), and similarly for
+the right child of the root: the subtrees under the two children are identically distributed to the
+first h − 1 levels of T . Also, the event that there is such a path from the left child and the event
+that there is such a path from the right child are independent. Then the probability that neither
+of these events holds is (1 − P (d − 1))2 , and we have
+                            1                                     1
+                     P (d) ≥ (1 − (1 − P (d − 1))2 ) = P (d − 1) − P (d − 1)2 .
+                            2                                     2
+Exercise 3. Verify that the function f (p) = p − 12 p2 is a non-decreasing function of p.
+
+                       1
+We claim that P (d) ≥ d+2 . We can prove this by induction. The base case is just P (0) = 12 . By
+induction, we can assume the claim holds up to d − 1, i.e. P (d − 1) ≥ 1/(d + 1). Using the exercise,
+we have
+                        1               1       1          1         1           1
+     P (d) ≥ P (d − 1) − P (d − 1)2 ≥      −         2
+                                                       ≥      −               =     ,
+                        2             d + 1 2(d + 1)     d + 1 (d + 1)(d + 2)   d+2
+
+where we used that 2(d + 1) ≥ d + 2 for all d ≥ 0.
+Finally, the probability that the algorithm finds a minimum cut is at least P (h), where h = O(log n)
+                                                                                                1
+is the height of the recursion tree. By the claim we just proved, this probability is P (h) ≥ h+2  ≥
+    1
+O(log n) , as we needed to show.
+
+
+To get an algorithm with constant probability of success, we just need to repeat the entire algorithm
+O(log n) times, and we get an algorithm with running time O(n2 (log n)2 ).
+It’s not hard to see that the total number of leaves in the recursion tree is Θ(n2 ). Another way
+to see this algorithm then is as a different way to repeat the contraction algorithm Θ(n2 ) times to
+amplify the probability of success. Now the runs are no longer independent: different runs reuse
+some of the same contraction steps. This saves a lot in running time, and hurts us only a little bit
+                                                                1
+in probability of success (which dropped from constant to O(log   n) .
+
+
+
+
+                                                   3
+

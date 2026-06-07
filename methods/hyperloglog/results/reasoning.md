@@ -6,7 +6,7 @@ Can I sample? Keep a small random subset, count distinct in it, scale up? No —
 
 That word "set" is the lever. How do I make something depend only on the set, automatically, while reading a stream with repeats? Hash. Push every record through a fixed hash function h, and treat the output bits as if they were independent fair coin flips — uniform over {0,1}^L, equivalently a uniform real in [0,1]. Two things fall out at once. First, identical records hash to identical bits, so any function I compute of the *collection of hash values* is really a function of the *set* of distinct hash values — repeats land on top of themselves and change nothing. Replication-insensitivity comes for free. Second, hashing hands me exactly the uniform randomness I'll need to do probability on. So from here on I don't think about the data; I think about n uniform random binary strings and what cheap, set-only summary of them betrays n.
 
-What summary? Rare patterns are evidence of large n. Look at the leading bits of a hashed string. The probability that a uniform string starts with k zeros and then a one — the pattern 0^k 1 — is 2^{-(k+1)}. So a run of k leading zeros happens about once in 2^{k+1} strings. If I've drawn n strings and I've seen a leading-zero run of length k somewhere, that's mild evidence that n is at least around 2^{k}. Long leading-zero runs are a thermometer for log₂ n. For the bitmap version, let r be the zero-based position of the first 1-bit, which is exactly the length of the leading-zero run. Among n distinct values, the largest r I observe should sit near log₂ n. Later, when I store a register instead of a bitmap, it will be cleaner to use the one-based position ρ = r + 1.
+What summary? Rare patterns are evidence of large n. Look at the leading bits of a hashed string. The probability that a uniform string starts with k zeros and then a one — the pattern 0^k 1 — is 2^{-(k+1)}. So a run of k leading zeros happens about once in 2^{k+1} strings. If I've drawn n strings and I've seen a leading-zero run of length k somewhere, that's mild evidence that n is at least around 2^{k}. Long leading-zero runs are a thermometer for log₂ n. For the bitmap version, let r be the zero-based position of the first 1-bit, which is exactly the length of the leading-zero run. Among n distinct values, the largest r I observe should sit near log₂ n. If I later keep a single rank instead of a bitmap position, the one-based value ρ = r + 1 is cleaner: it is the position of the leftmost 1-bit.
 
 Let me make that concrete the way the Flajolet–Martin probabilistic-counting idea does. Keep a bit-vector BITMAP[0..L-1], all zero. For each element, set BITMAP[r(hash(x))] = 1. Bit i gets turned on the first time some hashed value has exactly i leading zeros before its first 1, which happens with per-element probability 2^{-(i+1)}. So after n distinct elements, bit 0 has been hit about n/2 times, bit 1 about n/4 times, and so on — the low bits are almost surely 1, the high bits almost surely 0, and there's a fuzzy transition around i ≈ log₂ n. The position of that transition encodes the cardinality. The clean thing to read off is R = the position of the *leftmost zero* in the bitmap: below R everything's filled, above R it's empty, and R ≈ log₂ n.
 
@@ -26,7 +26,7 @@ Note what averaging in the exponent does — 2^{S/m} = (∏_j 2^{R_j})^{1/m} is 
 
 But stare at the memory: m bitmaps, each L bits. A whole 32-bit vector per bucket — and what do I actually extract from each bitmap? One number, R_j, of size about log₂(n/m). I'm storing L bits to recover a single log₂ n-sized quantity. The bitmap is not literally the same as a maximum; its leftmost zero depends on which earlier positions have been filled, and holes matter. But the evidence it uses is still the same bit-pattern scale: a position around log₂(n/m) is where the action is. If I am willing to change the statistic and re-analyze its bias, I can ask for just one transition-sized integer per bucket.
 
-What if a bucket stores only the *maximum* ρ it has ever seen, now using the one-based position ρ = r + 1 — a single register M[j] = max over the bucket of the leftmost-1-bit position? The maximum leading-zero run among about n/m uniform strings is close to log₂(n/m). So M[j] is a small integer near log₂(n/m), shifted by one and a fixed distributional offset that the bias constant will absorb, and to store an integer of that size I need only about log₂ log₂ n bits — five bits comfortably covers cardinalities past 10^9. That's the collapse I wanted: from an L-bit bitmap per bucket down to a log-log-sized register per bucket. Memory goes from "log n per bucket" to "log log n per bucket." A register, not a vector.
+What if a bucket stores only the *maximum* ρ it has ever seen, now using the one-based position ρ = r + 1 — a single register M[j] = max over the bucket of the leftmost-1-bit position? The maximum leading-zero run among about n/m uniform strings is close to log₂(n/m). So M[j] is a small integer near log₂(n/m), shifted by one and a fixed distributional offset that the bias constant will absorb, and to store an integer of that size I need only about log₂ log₂ n bits — five bits comfortably covers cardinalities past 10^9. With a finite L-bit hash and p bucket bits, the suffix has only K = L - p bits; then a nonempty bucket records ranks ρ in 1..K+1, assigning the all-zero suffix the capped rank K+1 rather than pretending it has an infinite run. An untouched practical bucket can stay at 0. That's the collapse I wanted: from an L-bit bitmap per bucket down to a log-log-sized register per bucket. Memory goes from "log n per bucket" to "log log n per bucket." A register, not a vector.
 
 Now I have to re-derive the estimator around the max, because I changed the observable. M[j] ≈ log₂(n/m), so 2^{M[j]} is of the order of n/m per bucket, and I average across buckets the same way — arithmetic mean of M[j] in the exponent, which is the geometric mean of the 2^{M[j]}:
 
@@ -50,13 +50,41 @@ The harmonic mean is m·Z, which targets n/m, so m·(m·Z) = m²·Z targets n. U
 
 Same observable as before — max leading-zero run per bucket — only the evaluation function changed, from geometric to harmonic mean. And the harmonic form is gorgeous to compute: just accumulate Σ 2^{-M[j]} over the registers and invert.
 
-Now nail the bias constant α_m, because m²·Z has a fixed multiplicative bias, exactly as 2^R and the LogLog raw estimate did. Working under the idealized model (n uniform values, each bucket getting a Poisson-ish n/m of them), the expectation of the indicator Z can be pushed through — Poissonize the cardinality so the buckets decouple into independent Poisson flows, compute E[Z] under the Poisson model, then depoissonize back to fixed n. The mean-value analysis hands the correcting constant as an integral,
+Now nail the bias constant α_m, because m²·Z has a fixed multiplicative bias, exactly as 2^R and the LogLog raw estimate did. I can at least see where the constant must come from. To isolate that constant, I first remove finite-hash boundary effects and think with infinite suffixes and untouched buckets initialized to -∞; the finite program will cap ρ at K+1 and use the zero-initialized correction only at the end. In one bucket with ν hashed suffixes, the rank Y = ρ(w) satisfies P(Y ≥ k) = 2^{1-k}, so the maximum M has
 
-  α_m = ( m ∫_0^∞ ( log₂( (2+u)/(1+u) ) )^m du )^{-1},
+  P(M = k) = (1 - 2^{-k})^ν - (1 - 2^{-(k-1)})^ν.
+
+Fixed n makes the bucket occupancies multinomial, which tangles the registers together. Poissonize: let the total cardinality be Poisson with mean λ, so each bucket is an independent Poisson flow of rate x = λ/m. Then the probability that a bucket's maximum equals k becomes
+
+  g(x/2^k),  where g(u) = e^{-u} - e^{-2u}.
+
+The annoying part is the reciprocal in Z = 1/Σ2^{-M[j]}; it couples all the registers. But the identity 1/a = ∫_0^∞ e^{-at} dt separates it. After substituting the register probabilities, the expectation becomes an integral of a product:
+
+  E_P(λ)[Z] = ∫_0^∞ G(x,t)^m dt,  G(x,t) = Σ_{k≥1} g(x/2^k)e^{-t/2^k},  x = λ/m.
+
+Change variables t = xu. Now the object to understand is G(x,xu). The Mellin calculation says that, as x grows, this harmonic sum settles to
+
+  f(u) = log₂((2+u)/(1+u)),
+
+up to tiny periodic fluctuations. So the mean is asymptotically
+
+  E_P(λ)[Z] ≈ x ∫_0^∞ f(u)^m du = (λ/m) J_0(m),
+
+where J_0(m) = ∫_0^∞ f(u)^m du. Depoissonization then says the same leading term holds again for fixed n. To make α_m m² Z have mean n, I need α_m m² · (n/m)J_0(m) = n, hence
+
+  α_m = 1/(mJ_0(m)) = ( m ∫_0^∞ ( log₂( (2+u)/(1+u) ) )^m du )^{-1},
 
 and by Laplace's method its large-m limit is the clean number α_∞ = 1/(2 ln 2) ≈ 0.72134. For small m the integral isn't quite there, so I just evaluate it: α_16 = 0.673, α_32 = 0.697, α_64 = 0.709, and for m ≥ 128 the approximation α_m = 0.7213/(1 + 1.079/m) is faithful. With α_m in front, E is asymptotically unbiased.
 
-And the payoff I was chasing — the variance. Carrying the second moment of Z through the same Poissonization/depoissonization gives a standard error of β_m/√m with β_∞ = √(3 ln 2 − 1) ≈ 1.03896. So harmonic averaging buys 1.04/√m, down from LogLog's 1.30/√m, right at the ~1/√m floor. The fat-tailed buckets that cost LogLog its accuracy are exactly the ones the reciprocal sum discounts. That's the whole gain, and it came purely from swapping the mean.
+And the payoff I was chasing — the variance. The second moment uses the sibling identity 1/a² = ∫_0^∞ t e^{-at} dt, so the same separated integral appears with one extra factor of u:
+
+  J_1(m) = ∫_0^∞ u f(u)^m du,  Var(Z) ≈ (n/m)^2 (J_1(m) - J_0(m)^2).
+
+After multiplying by α_m m² and dividing by n, the relative standard deviation is
+
+  sqrt(J_1(m)/J_0(m)^2 - 1) = β_m/√m,  with β_m = sqrt(m(J_1(m)/J_0(m)^2 - 1)).
+
+Laplace's method on J_0 and J_1 gives β_∞ = √(3 ln 2 − 1) ≈ 1.03896. So harmonic averaging buys 1.04/√m, down from LogLog's 1.30/√m, right at the ~1/√m floor. The fat-tailed buckets that cost LogLog its accuracy are exactly the ones the reciprocal sum discounts. That's the whole gain, and it came purely from swapping the mean.
 
 Let me sanity-check the memory and range claims before I trust the formula. A register value itself is on the log₂ N scale, but storing that small integer costs only log₂ log₂ N + O(1) bits; in the 32-bit practical range, the value lies in 0..L+1-p, so 5-bit "short bytes" cover it. Take m = 2048 registers at 5 bits ≈ 1.3 kB packed; the predicted error is 1.04/√2048 ≈ 2.3%. So about a kilobyte-and-a-half with ordinary overhead counts to a billion at a couple percent. This sits near the two limits I can actually argue: any ε-approximate counter over a range up to N needs Ω(log log N) bits, because the cardinalities to be distinguished live on an exponential scale 1, (1+ε), (1+ε)², … and there are log_{1+ε} N of them, so log₂ log_{1+ε} N bits just to name the answer; and 1/√m is the order-statistics accuracy scale, which the harmonic estimator reaches up to the constant 1.04.
 
@@ -66,7 +94,7 @@ First the small-n regime. Initialize registers to 0 (so the structure is usable 
 
 Second the large-n regime. With a 32-bit hash there are only 2^{32} possible hashed values, so as n climbs toward 2^{32} distinct hashes start *colliding* — two distinct elements grab the same hash and the structure can't tell them apart, so E undercounts. Model it again as balls in bins: E really estimates the number of *distinct hashed values* seen, which after collisions is about 2^{32}(1 − e^{-n/2^{32}}). Invert that relation while E is still below the hash range: E* = −2^{32}·log(1 − E/2^{32}). So above E > 2^{32}/30, apply this large-range correction; if the raw estimate reaches 2^{32}, the 32-bit hash has saturated and no finite inversion remains. In the wide middle band, no correction. With all three regimes stitched together the estimate is Gaussian around the truth with σ ≈ 1.04/√m, landing within σ, 2σ, 3σ of the exact count about 65%, 95%, 99% of the time.
 
-Let me write it as a real program. The per-element work is: hash to a 32-bit word, peel off the first p bits for the bucket index j, feed the remaining 32-p bits to ρ to get the leading-zero count, and keep the max in register j. The estimate sums 2^{-M[j]} across registers, scales by α_m·m², and applies the small/large-range corrections whose thresholds are dimensioned for the 32-bit hash range.
+Let me write it as a real program. The per-element work is: hash to a 32-bit word, peel off the first p bits for the bucket index j, feed the remaining K = 32 - p bits to ρ, assign the all-zero suffix rank K+1, and keep the max in register j. The estimate sums 2^{-M[j]} across registers, scales by α_m·m², and applies the small/large-range corrections whose thresholds are dimensioned for the 32-bit hash range.
 
 ```python
 import math
@@ -81,8 +109,9 @@ def hash32(value):
     return int.from_bytes(sha1(data).digest()[:4], byteorder="big")
 
 def rho(w, max_width):
-    # position of the leftmost 1-bit of w within max_width bits
-    # = 1 + length of the leading-zero run; rho(all zero bits) = max_width + 1
+    # finite-suffix rank: 1 + leading-zero run; all-zero suffix maps to max_width + 1
+    if not (0 <= w < (1 << max_width)):
+        raise ValueError("w does not fit in max_width bits")
     return max_width - w.bit_length() + 1
 
 def alpha(m):

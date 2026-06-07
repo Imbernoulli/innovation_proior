@@ -1,0 +1,1437 @@
+                                                           COMBINATORICA 1(2) (1981) 169-197
+
+
+      THE ELLIPSOID METHOD AND ITS CONSEQUENCES
+             IN COMBINATORIAL OPTIMIZATION
+                                     M. GROTSCHEL
+               Universitat Bonn, Inst. fi.ir Okonometrie und Operations Research
+                                    D-5300 Bonn, F.R.G.
+                                        L. LOVASZ
+                A. J6zsef University, Bolyai Institute, Szeged, Hungary H-6720
+                                              and
+                                     A. SCHRIJVER *
+                                Inst. Actuariaat en Econometrie,
+                     University of Amsterdam, Amsterdam, The Netherlands
+                                  Received 20 February 1980
+
+L. G. Khachiyan recently published a polynomial algorithm to check feasibility of a system of
+linear inequalities. The method is an adaptation of an algorithm proposed by Shor for non-linear
+optimization problems. In this paper we show that the method also yields interesting results in
+combinatorial optimization. Thus it yields polynomial algorithms for vertex packing in perfect
+graphs; for the matching and matroid intersection problems; for optimum covering of directed cuts
+of a digraph; for the minimum value of a submodular set function; and for other important com-
+binatorial problems. On the negative side, it yields a proof that weighted fractional chromatic
+number is NP-hard.
+
+                                       O. Introduction
+
+        A typical problem in combinatorial optimization is the following. Given
+a finite set S of vectors in Rn and a linear objective function cT x, find
+(1)
+Generally S is large (say exponential in n) but highly structured. For example,
+S may consist of all incidence vectors of perfect matchings in a graph. We are
+interested in finding the value of (1) by an algorithm whose running time is pol-
+ynomial in n. Therefore, enumerating the elements of S is not a satisfactory
+solution.
+        The following approach was proposed by Edmonds [1965], Ford and Fulkerson
+[1962] and Hoffman [1960], and is the classical approach in combinatorial optimiza-
+tion. Let P denote the convex hull of S. Then clearly
+(2)                     max {cTxlxES} = max {cTxjxEP}.
+The right hand side here is a linear programming problem: maximize a linear ob-
+jective function on a polytope. Of course, to be able to apply the methods of linear
+programming, we have to represent Pas the set of solutions of a system of linear
+
+      * Research by the third author was supported by the Netherlands Organisation for the
+Advancement of Pure Research (Z.W.O.).
+      AMS subject classification (1980): 90 C XX, 05 C XX; 90 C 25, 90 C 10
+170                     M. GROTSCHEL, L. LOVASZ. A. SCHRIJVER.
+
+
+inequalities. Such a representation, of course, always exists, but our ability to find
+the necessary inequalities depends on the structure of S. However, in many cases
+these inequalities (the facets of P) can be described. There are some beautiful theo-
+rems of this kind, e.g. Edmonds' [1965] description of the matching polytope. In
+these cases, the methods of linear programming can be applied to solve (1). How-
+ever, until about a year ago there were two main obstacles in carrying out the above
+program even for nice sets S like the set of perfect matchings. First, no algorithm
+to solve linear programming with polynomial running time in the worst case was
+known. Second, the number of inequalities describing Sis typically large (exponen-
+tial in n) and hence even to formulate the linear program takes exponential space
+and time. Indeed, the well-known efficient combinatorial algorithms, like Edmonds'
+matching algorithm [1965] or Lucchesi's algorithm to find optimum coverings for
+directed cuts [1976] are based on different - ad hoe - ideas.
+         A recent algorithm to solve linear programs due to L. G. Khachiyan [1979],
+based on a method of Shor [1970], removes both difficulties. Its running time is
+polynomial; also, it is very insensitive to the number of constraints in the following
+sense: we do not need to list the faces in advance, but only need a subroutine which
+recognizes feasibility of a vector and if it is infeasible then computes a hyperplane
+separating it from P. Searching for such a hyperplane is another combinatorial
+optimization problem which is often much easier to solve. So this method, the
+ Ellipsoid Method, reduces one combinatorial optimization problem to a second one.
+ One might try to use this again to further transform the problem; but - inter-
+estingly enough - the method applied the second time leads back to the original
+ problem. (However, sometimes after a simple transformation of this second problem
+the repeated application of the Ellipsoid Method may further simplify the problem.)
+        The main purpose of this paper is to exploit this equivalence between
+problems. After formulating the optimization problem in Chapter 1 exactly, we
+survey the Ellipsoid Method in Chapter 2. In Chapter 3 we prove the equivalence
+of the optimization and the separation problem, and their equivalence with other
+optimization problems. So we show that optimum dual solutions can be obtained
+by the method (since the dual problem has, generally in combinatorial problems,
+exponentially many variables, the method cannot be applied to the dual directly).
+ Chapter 4 contains applications to the matching, matroid intersection, and branching
+ problems, while in Chapter 5 we show how to apply the method to minimize a sub-
+modular set function and, as an application, to give algorithmic versions of some
+ results of Edmonds and Giles [1977] and Frank [1979]. These include an algorithm
+ to find optimum covering of directed cuts in a graph, solved first by Lucchesi [1976].
+         It is interesting to point out that these applications rely on the deep theorems
+ characterizing facets of the corresponding polytope. This is in quite a contrast to
+ previously known algorithms, which typically do not use these characterizations
+ but quite often give them as a by-product.
+         The efficiency of the algorithms we give is polynomial but it seems much
+ worse than those algorithms developed before. Even if we assume that this efficiency
+ can be improved with more work, we do not consider it the purpose of our work
+ to compete with the special-purpose algorithms. The main point is that the ellipsoid
+ method proves the polynomial solvability of a large number of different combinat-
+ orial optimization problems at once, and hereby points out directions for the search
+for practically feasible polynomial algorithms.
+                  ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                     171
+
+
+       Chapter 6 contains an algorithm to find maximum independent sets in perfect
+graphs. The algorithm makes use of a number 9(G) introduced by one of the
+authors as an estimation for the Shannon capacity of a graph (Lovasz [1979]).
+Finally, in Chapter 7 we note that the vertex-packing problem of a graph is in a
+sense equivalent to the fractional chromatic number problem, and comment on
+the phenomenon that this latter problem is an example of a problem in NP which
+is NP-hard but (as for now) not known to be NP-complete.
+
+
+      1. Optimization on convex bodies: formulation of the problems and the results
+
+       Let K be a non-empty convex compact set in Rn. We formulate the following
+two algorithmic problems in connection with K.
+(1)   Strong optimization problem: given a vector cERn, find a vector x in K which
+      maximizes cT x on K.
+(2)   Strong separation problem: given a vector yERn, decide if yEK, and if not,
+      find a hyperplane which separates y from K; more exactly, find a vector cERn
+      such that cTy>max {cTxlxEK}.
+
+Examples. Let K be the set of solutions of a system of linear inequalities
+
+(3)                            af x :§ b; (i = I, ... , m)
+
+(aiERn, biER). Then the strong separation problem can be solved trivially: we sub-
+stitute x = y in the constraints. If each of them is satisfied, yEK. If constraint
+a[ x:§bi is violated, it yields a separating hyperplane. On the other hand, the
+optimization problem on K is just the linear programming problem.
+       As a second example, let K be given as the convex hull of a set {vi, ... , vm}
+of points in R". Then the optimization problem is easily solved by evaluating the
+objective function at each of the given points and selecting the maximum. On the
+other hand, to solve the separation problem we have to find a vector c in R" such
+that
+(4)                            CT y > CT Vi   ("l --   I , ••• , m)
+
+So this problem requires finding a feasible solution to a system oflinear inequalities;
+this is again essentially the same as linear programming.
+        Note that the convex hull of {vio ... , vm} is, of course, a polytope and so
+it can be described as the set of solutions of a system of linear inequalities as well.
+But the number of these inequalities may be very large compared to m and n, and
+so their determination and the checking is too long. This illustrates that the solvability
+of the optimization and separation problems depends on the way K is given and
+not only on K.
+        We do not want to make any a priori arithmetical assumption on K. Thus
+it may well be that the vector in K maximizing cT x has irrational coordinates. In
+this case the formulation of the problem is not correct, since it is not clear how to
+172                     M. GR()TSCHEL, L. LOVASZ. A. SCHRIJVER
+
+
+state the answer. Therefore we have to formulate two weaker and more complicated,
+but more correct problems.
+(5) (Weak) optimization problem: given a vector cEQn and a number e>O, find
+    a vector yEQn such that d(y, K):§e and y almost maximizes cTx on K, i.e.
+    for every xEK, cT x:§cT y+e. {Here d(y, K) denotes the euclidean distance
+    of y from K.)
+(6) (Weak) separation problem: given a vector yEQn and a number e>O, conclude
+    with one of the following: (i) asserting that d(y, K):§e; (ii) finding a vector
+    cEQn such that llcll~l and for every xEK, cTx~cTy+e.
+We shall always assume that we are given a point a0 and O<r:§R such that
+(7)                            S(a 0 , r) ~ K ~ S(a 0 , R),
+where S(a0 , r) denotes the euclidean ball of radius r about a0 • The second inclusion
+here simply means that K is bounded, where a bound is known explicitly; this is quite
+natural to assume both in theoretical and in (possible) practical applications. The
+first assumption, namely that K contains an explicit ball, is much less natural and we
+make it for purely technical reasons. What it really means is that K is full-dimensional,
+or at least we are given the affine subspace it spans and also that we are given a
+ball in this subspace contained in K. At the end of Chapter 3 we shall show that
+some assumption like this must be made.
+         So we define a convex body as a quintuple (K, n, a0 , r, R) such that n~2, K
+is a convex set in Rn, a0 EK, O<r:§R and (7) is satisfied.
+         Let :f(' be a class of compact convex bodies. We assume that each KE%
+has some encoding. An input of the optimization problem for :fC is then the code
+of some member K of%, a vector cEQn, and a number e>O. Inputs of the other
+problems are defined similarly. The length of the input is defined in the (usual)
+binary encoding. Thus the length of the input is at least n + jlog r I+ jlog RI + jlog ej.
+An algorithm to solve the optimization problem for the class :f(' is called polynomial
+if its running time is bounded by some polynomial of the size of the input.
+         The fact that the running time must be polynomial in jlog ej is crucial: it
+means that running the algorithm fore= 1/2, 1/4, ... we get a sequence of approxima-
+tions which converge exponentially fast in the running time. Other approximation
+algorithms for linear programming (Motzkin and Schoenberg [1954]) have only
+polynomial convergence speed. This exponential convergence rate enables Khachiyan
+to obtain an exact optimum in polynomial time (essentially by rounding) and us
+to give the combinatorial applications in this paper.
+
+
+                                2. The ellipsoid method
+
+       Let us first describe the simple geometric idea behind the method. We start
+with a convex body Kin Rn, included in a ball S(a0 , R)=E0 , and a linear objective
+function cT x. In the k-th step there will be an ellipsoid Ek> which includes the set
+Kk of those points x of K for which cT x is at least as large as the best found so far.
+We look at the centre xk of Ek. If xk is not an element of K, then we take a hyper-
+plane through xk which avoids K. This hyperplane H cuts Ek into two halves; we
+                  ELLIPSOID METHOD ANO COMBINATORIAL OPTIMIZATION                     173
+
+
+pick that one which includes Kk and include it in a new ellipsoid EH 1 , which is
+essentially the ellipsoid of least volume containing this half of Ek> except for an
+allowance for rounding errors. Geometrically, this smallest ellipsoid can be de-
+scribed as follows. Let F=EknH, and let y be the point where a hyperplane
+parallel to H touches our half of Ek. Then the centre of this smallest ellipsoid divides
+the segment xky in ratio I :n, the ellipsoid intersects Hin F, and touches Ek in y.
+Ek+ 1 then arises by blowing up and rounding. If xkEK, then we cut with the hyper-
+plane cTx=cT xk similarly. The volumes of the ellipsoids Ek will tend to 0 ex-
+ponentially and this guarantees that those centres xk which are in K will tend to an
+optimum solution exponentially fast.
+        In what follows, let !lxll denote the euclidean norm of the vector x and let
+llAll denote the norm of the matrix A, i.e.
+                          llAll = max {II Axil: llxll = 1}.
+For symmetric matrices, llAll is the maximum absolute value of the eigenvalues
+of A, and also max {\xTAx\: llxll=l}.
+        We turn to the exact formulation of the procedure. Let KcR" be a compact
+convex set, S(a0 , r)~K~ S(a0 , R), cTx a linear objective function and e>-0.
+Without loss of generality, assume that e-<r, llcll ~I, and n~2. Assume that
+there is a subroutine SEP to solve the (weak) separation problem for K. This means
+that given a vector yE Q" and () >-0, SEP either concludes that yE S(K, b) or yields
+a vector d such that
+(1)                          max {dTxjxEK} :§ dry+i5.
+To solve the weak optimization problem on K we run the following algorithm. Let
+
+(2)                               N = 4n2f1og 2R;!cll     1,
+(3)
+and
+(4)                                       p = 5N.
+ We now define a sequence x 0 , x1 , ... of vectors and a sequence A0 , Ai, ... of positive
+ definite matrices as follows. Let x 0 =a0 and A 0 =R2 I. Assuming that xk, Ak are
+ defined, we run the subroutine SEP with y = xk and b. If it c_oncludes that xkE S (K, <5)
+ we say that k is a feasible index, and set a=c. If SEP yields a vector dERn such
+ that lldll ~ 1 and
+ (5)                         max {dTx: xEK} :§ dTxk+lJ,
+ then we call k an infeasible index and let a= -d. Next define
+ (6)                                bk = Ak a/Y aT Aka,
+
+ (7)
+
+
+ (8)
+174                       M. GR6TSCHEL, L. LOVAsZ, A. SCHRIJVER
+
+
+
+(With   n   2
+              instead of 2n~~ 3 , we would get the smallest ellipsoid including the
+       n2 - 1               n
+appropriate half of Ek; see Gacs and Lovasz (1979]. Here we take this larger factor
+because of rounding errors.) Further let
+
+(9)
+
+where the sign ::::: means that the left hand side is obtained by rounding the right
+hand side to p binary digits behind the decimal point, taking care that Ak+ 1 is
+symmetric.
+        The sequence (xk), k feasible, will give good approximations for the optimum
+solution of our problem. To prove this, we shall need some lemmas, which will
+also illuminate the geometric background of the algorithm.
+        First we introduce some further notation. Let
+
+(10)
+and
+(11)
+
+(2.1) Lemma. The matrices A 0 , A 1 , ... , AN are positive definite. Moreover,
+
+
+
+Proof. By induction on k. For k=O all the statements are obvious. Assume that
+they are true for k. Then note first that
+
+(13)                     (A*)-1 -       2n2 ( -1   2    aaT )
+                           k      -   2n 2 +3 Ak +n-1° aTAka '
+
+as it is easy to verify by computation, and hence At is positive definite. Using this
+it follows easily that
+
+(14)
+and so
+(15)
+Further,
+(16)
+and so
+                           1                                         1
+(17)    llxH1il ~ llxkll + n+ 1 iibkll +llxk+1-xtll :::§ lla 0 1! +R2k+ n+ 1 R2k+ yn2-P
+                ~ llaGll+R2k+l.
+                    ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                      175
+
+Further, by (13),
+(18)
+
+                                   2 2                2                         1 11
+                                                                       n-1 llA-
+                                = 2n 2n+3 (11A-k l + n-1 II Ak- 11) -< n+l
+                                -c::            1              1
+                                                                              k      ·
+
+
+Let A.0 denote the least eigenvalue of Ak+ 1 and let v be a corresponding eigenvector,
+llvll =I. Then
+(19)    A0 = vTAk+1v = vTAtv+vT(Ak+ 1 -A;)v ~ [l(At)- 1 \\- 1 -\IAH 1 -At!I
+                     n-1                        n-l
+              ;;;,:; --l!A- 1 \l- 1 -n2-P;;;,:; - - R24-k-n2-P > R24-Ck+ 1 >
+              - n+l k                       -   n+I                         ·
+This proves that Ak+ 1 is positive definite and also that
+(20)
+(2.2) Lemma. Let µ denote the n-dimensional volume. Then
+
+(21)
+
+Proof. The volwne of Et can be calculated from the volume of Ek; this is easy if
+one notices that it suffices to consider the case Ak=l. Rounding errors can be
+estimated similarly as in the previous proofs. I
+       Set
+(22)                      'k = max {cT xilO ;§ j < k, j feasible},
+and
+(23)
+
+(2.3) Lemma. Ek~Kk> for k=O, 1, ... , N.
+Proof. By induction on k. For k=O the assertion is obvious. Let xEKHi· Then
+
+(24)
+and also
+(25)
+
+where ak equals the auxiliary vector a used in step k (if k is a feasible index we do
+not even have the ()here). Write
+(26)
+
+where al y=O (since bk and ak are not perpendicular because of the positive de-
+finiteness of Ak> such a decomposition of x always exists). By (24),
+176                      M. GR6TSCHEL, L. LOVASZ, A. SCHRIJVER
+
+
+Hence t;€; 1. On the other hand, (25) yields
+(28)
+Now we have
+(29)
+
+where the remainder term R1 can be estimated easily by similar methods to those
+in the proof of Lemma (2.1), and it turns out that R1 <1/12n 2 . For the main term
+we have by (13), (26), (27), (28) and (12):
+
+(30)           (x-xt)TAt- 1 (x-xt) =      2 ~~ 3 ((t- n~ 1) bk+ Yr.
+
+
+
+                :s  2n2 (~-2t(l-t))
+                - 2n 2 +3 n2 - l n-1
+                 _     2n4           4c5         2n       4c5 llA_ 111
+                s             +                         +--
+                - 2n 4 +n 2 -3 (n-l)YalAkak 2n 4 +n 2 -3 n-1
+                                                                 k
+
+
+
+                     2n4     4c5R- 2 4N      1
+                :s
+                - 2n +n -3
+                     4 2
+                           +   n-1 -
+                                        :Sl-~-
+                                            12n 2 •
+Hence (x-xk+iY Ak"J1 (x-xk+J:§l, and so xEEk+i·            I
+       Now we are able to prove the main theorem in this section.
+(2.4) Theorem. Let j be a feasible index for which
+(31)
+
+Then cTxi~max {cTxjxEK}-e.
+Proof. Let us observe first that Lemmas (2.2) and (2.3) imply that
+
+(32)
+
+where Vn is the volume of the n-dimensional unit ball. On the other hand, let
+
+(33)
+
+and yEK such that cT y='· Consider the cone whose base is the (n-1)-dimensional
+ball of radius r and centre x 0 in the hyperplane er x =er x 0 and whose vertex is
+                  ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                177
+
+
+Y· The piece of this cone in the half-space cTx?Ecrx. is contained in KN. The
+                                                    1
+volume of this piece is
+
+(34)
+Hence
+                                                   n-1
+
+(35)              (-cT xi :§ e-N/4n2R ( , _cTXo )-;;-( nV. )l/nllclll/n.
+                                           r          vn-1
+We still need an upper bound on(. Since
+(36)
+we finally have
+(37)
+
+
+                  3. Equivalence of optimization and other problems
+
+       First we prove the equivalence of the (weak) separation problem and the
+(weak) optimization problem, for any given K. More exactly, this means the
+following.
+(3.1) Theorem. Let :/{ be a class of convex bodies. There is a polynomial algorithm
+to solve the separation problem for the members of :/{, if and only if there is a po-
+lynomial algorithm to solve the optimization problem for the members of$.
+       A class :I{ such that there exists a polynomial algorithm to solve the op-
+timization problem (or the separation problem) for members of :I{ will be called
+solvable.
+Proof. (I) The "only if" part. In view of the results of Chapter 2, the only thing
+to check is that the algorithm described there is polynomial-bounded. This follows
+since by assumption, the subroutine SEP is polynomial, hence the number of
+digits in the entries of a is polynomial and so the computation of xk+l and Ak+ 1
+requires only a polynomial number of steps. All other numbers occurring have
+only a polynomial number of digits, by Lemma (2.1). The number of iterations is
+also polynomial. Hence the algorithm runs in polynomial time.
+        (II) The "if" part. Without loss of generality assume that a0 =0. Let K*
+ be the polar of K, i.e.,
+(1)                       K* = {ul uTx :§ 1 for each xEK}.
+
+It is well-known that K* is a convex body, (K*)*=.K, and
+
+(2)                           S(O, 1/R) ~ K* ~ S(O, 1/r).
+If :I{ is a class of convex bodies with a0 =0, let :/{*= {K* IKE$}.
+
+6
+ 178                     M. GROTSCHEL, L. LOVASZ, A. SCHRIJVER
+
+
+ (3.2) Lemma. The separation problem for a class f* of convex bodies with a0 =0
+ is polynomially solvable if! the optimization problem is polynomially solvable for
+ the class ;/[.
+       Since (%*)*=%, this lemma immediately implies the "if" part of the
+theorem: if the optimization problem is polynomially solvable for ff then the
+separation problem is polynomially solvable for ff*. But then by part (I), the
+optimization problem is polynomially solvable for ff* and so using the lemma
+again, it follows that the separation problem is polynomially solvable for ~
+Proof of the Lemma. (I) The "if" part. Let K*Ef*, vERn and e>O. Using the
+optimization subroutine for K, with objective function v and error sr, we get a vector
+zERn such that d(z, K);;§c:r, and
+(3)                          vT z ~ max {vTxlxEK}-er.
+                                                   1
+Now if vT z:§ I then vT x;;§ I +sr and hence v0=-1- - vEK*. Therefore llvoll ;;§ l/r,
+                                                      +er
+whence d(v, K*);;§flv-v0 fl:§e.
+      On the other hand, if vT z> 1 then z is a solution of the separation problem
+for K*. In fact, let z0 EK such that llz-z0 ll :§er. Then for every uEK*, !lull:§! l/r,
+and so
+(4)
+which proves that z is a solution of the separation problem for K*.
+       (II) The "only if" part follows by the "if" part of the Theorem (which we
+already know). I
+       Let % and .ft' be two classes of convex bodies. Define
+(5)      % /\.ft'= {KnLJKE%, LE.ft', dimK = dimL, a0 (K) = a 0 (L)}.
+(3.3) Corollary. If% and .ft' are solvable then so is $'/\.ft'.
+Proof. The separation problem for ff /\.ft' goes trivially back to the separation
+problems for% and .ft'. I
+(3.4) Corollary. Let% be a class of convex bodies with a0 =0. Then ff is solvable
+if!%* is solvable.
+      The proof is trivial by Lemma (3.2).
+      Let R1+ be the non-negative orthant in Rn. Next we study convex bodies
+K such that there are e>O, R >O with
+(6)                       Ri+ n S(O, (}) ~ K ~ R7+ n S(O, R),
+and if xEK, 0:§y;;§x, then yEK.
+The anti-blocker of K is defined by
+(7)             A(K) = {yER7+JYT x ;;§ 1 for every xEK}.
+Moreover, A(%)={A(K)!KE%}.
+(3.5) Corollary. Let% be a class of convex bodies satisfying (6). Then ff is solvable
+iJJ A ( Jf") is solvable.
+                  ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                       179
+
+        The proof is the same as that of Lemma (3.2).
+        Next we want to show that without the assumption that K contains a ball,
+or even without the explicit knowledge of this ball, there is no algorithm at all to
+solve the optimization problem. More exactly, we consider a class of full-dimen-
+sional convex bodies in R2, and assume that for each of these bodies there is an
+"oracle" or "black box'', which, if we plug in a point yER 2, tells us whether or
+not y is contained in the body and if not, prints out a separating hyperplane in
+the sense of the strong separation problem. We may require that the output is
+always rational but may allow arbitrary real vectors as input. Now we are given
+one of the black boxes together with the information that a0 =0 is contained in
+the body described by this black box, and that it is contained in some disc about 0.
+We are also given a linear objective function cTx which we would like to maximize
+in the sense of the weak optimization problem. Note that if, in addition, we would
+be given an r>O and the information that the body contains the disc of radius r
+about 0, then this problem could be solved: this is just the contents of Theorem (3.1).
+However, we are going to show by an "adversary" argument that there is no algo-
+rithm at all to solve the weak optimization problem if no ball contained in the
+bodies is explicitely known.
+        Let L(t, <p) denote the segment of length t which ends in 0 and forms an
+angle of <p with the positive half of the x-axis. Let K(t, <p, r) denote the neighborhood
+of L(t, <p) of radius r. We assume that O<t;;§ 1, O<r;;§ 1, and 0;;§<p;;§90°, r, t, <pEQ.
+Our adversary designs one or more black boxes for every t, <p, and r; he does this
+so - and generously tells this to us - that if y~ K(t, <p, r) then the machine in
+the box checks whether or not yEK(I, <p, r) and if the answer is "no" the separating
+line it constructs will also separate y from K(l, <p, r ). Otherwise, the separating
+algorithm in the box may be arbitrary.
+        Assume that we are given a box and the information that it is one of the
+boxes constructed above. Then we know that the convex body described by the
+box is contained in the disc of radius 2 about 0 and that it contains 0 in its interior.
+Suppose that we have an algorithm to solve the weak optimization problem with
+(say) the objective function x+y. By a usual argument, this algorithm must also
+work if our adversary is allowed to exchange one black box for the other during
+the run of the algorithm, provided this second black box would have given the same
+answers to the previous questions as the one used so far. So if we describe a strategy
+for the adversary to switch boxes so that after an arbitrary number of steps there
+are still two black boxes which would have given the same answers as obtained
+previously but for which the maxima of x +y over the corresponding convex bodies
+are essentially different (by more than 1/2, say), then the counterstrategy of the
+adversary is succesful and our algorithm is wrong.
+        Now the strategy of our adversary is the following: he always gives us a box
+for some K(l, <p, r) and such that all the previously checked points are outside
+K(I, <p, r) (except for 0, if we had happened to ask this superiluus question). It is
+easy to see that he can do this: if we ask a point outside the current K(I, <p, r) he
+does not have to interfere, and if we ask a point inside, he can construct a K(l, l/J, s)
+which is contained inside K(l, <p, r) but avoids y, and can replace the current black
+box by a black box for K(l, ijl, s).
+        It is clear that at each step, not only the current K(I, <p, r) but also K(t, <p, r)
+is compatible with all the previous answers, for every 0;;§t~l, but the maxima of
+180                     M. GRc5TSCHEL, L. LOYAsz, A. SCHRIJVER
+
+
+
+x + y over K(l, cp, r) and K (   !, r)
+                                   <p,          differ by more than 1/2. This completes
+the proof.
+        Let us remark that the same argument would show that the weak optimization
+problem is not solvable algorithmically, using a strong separation oracle, for the
+class of non-full-dimensional bounded convex bodies.
+        Finally we show that for polytopes many of the results are even nicer. By
+a rational polytope we mean a quadruple (P; n, a 0 , T) where Pisa full-dimensional
+polytope (in Rn), a0 Elnt P, and every component of a0 as well as of every vertex of
+P is a rational number with numerator and denominator not exceeding T in ab-
+solute value. (This definition is much in the spirit of our previous discussion: the
+vertices of P must be rational in order to be able to explicitly present them and
+explicit bounds must be known for their complexity.)
+(3.6)Theorem.Let(P; n,a0 , T)bearationalpolytope. Then S(a0 ,r)~P~S(a0 ,R),
+where R=2nT and r=(2T)-n 2 -n. Furthermore, every facet of P can be written
+as aT x ;§b, where a (;CO) is an integral vector, b is an integer, and the entries of
+a as well as b are less than T' = (nT)".
+      Thus every rational polytope can be viewed as a convex body, with r and R
+as above. A certain converse of this assertion holds as well.
+(3.7) Theorem. Let P~R" be a polytope, a0 Elnt P, and assume that every component
+of a0 is a rational number with numerator and denominator less than T in absolute
+value. Also assume that every facet of P can be written as aTx;§b, where a (;CO)
+is an integral vector, b is an integer and the entries of a as well as b are less than T
+in absolute value. Then (P; n, a0 , T') is a rational polytope where T' =(nT)".
+      The proof of these two theorems is rather straightforward arithmetic and
+is omitted (cf. Lemmas 1-2 in Gacs and Lovasz [1981]).
+(3.8) Theorem. Let :Y( be a class of rational polytopes. Suppose that :Y( is solvable.
+Then the strong optimization problem and the strong separation problem are solvable
+for :Y( in time polynomial inn, log T, and log S, where Sis the maximum of the absolute
+values of the numerators and denominators occurring in c (in y, respectively).
+
+Proof. Let (P; n, a0 , T)Ef. cEZ", Q=2T2•+ 1 and
+(10)
+
+We prove that max {dTx IxEP} is attained at a unique vertex of P and that this
+vertex maximizes cT x as well.
+       For let x 0 be a vertex of P maximizing dT x and let x1 be another vertex. Write
+                                                   1
+(11)                                Xo-X1 = -z,
+                                                   ('/.
+
+
+where 0<rx<T2" is an integer and z=(zl> ... , z.)T is an integral vector with
+lzil <2T2"+ 1 = Q. Then
+(12)                 0 ;§ dT(x 0 -xJ = ..!..{Q"crz+
+                                         ('/.
+                                                          ZQi- z
+                                                          j=l
+                                                                1
+                                                                    1}.
+                 ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                     181
+
+
+Here er z~O, since it is an integer and if er z:=§ -1, then the first term in the bracket
+is larger in absolute value than the second. Hence
+
+(13)
+
+for every vertex x1 , i.e., x 0 indeed maximizes the objective function er x over P.
+Also note that the second term in (12) is non-zero since z:r!O. Hence
+
+(14)                            ar (xo - x v\ ;;;,,- ..!..IX ;;;,,- -y2n
+                                                                      1-
+
+and so x 0 is the unique vertex of P maximizing the objective function dT x.
+      Now use the hypothesized polynomial algorithm to find a vector yERn
+such that
+(15)                      d(y, P) ~ s =       :o lldlJ-1n-1/2y-2n-a
+and    dry~drx 0 -e.   We claim that
+                                                            I
+(16)                                  \\y-xo\I :§ 2y 2 •
+For let y 0 be the point of P next toy. Represent y 0 as a convex combination of n+ 1
+vertices of P, one of which is x 0 :
+                                 n                                  n
+(17)                      Yo = _2 A.ix;,
+                               i=O
+                                                 A;~ 0,            Z Ai= 1.
+                                                                  i=O
+
+
+
+
+Hence
+                               1-A.
+(19)                            T2n ° ~ e(\\d\\ + 1) ~ 2e\\dll
+and
+(20)        \\Y-Xo\I :§ llY-Yo\\ +llYo-Xo\I :§ e+(l-Ao) Iii~ 1 ~~o X;-Xoll
+                   ~ e+(l -A.0)2 YnT:5 e+4elldll                ynr n+ ~ l/2T2.
+                                                                           2   1
+
+Now it is rather clear how to conclude: round each entry of y to the next rational
+number with denominator less than T; the resulting vector is x 0 • The rounding can
+be done by using the technique of continued fractions. We leave the details to
+the reader.
+       The separation algorithm can be obtained by applying the previous algorithm
+to P* (assuming that a 0 =0, possibly after translation). I
+        If the strong separation problem concludes that yEP then it is nice to have
+ a "proof" of that, i.e., a representation of y as a convex combination of vertices of P.
+ This problem can also be solved.
+182                          M. GR0TSCHEL,L. LOVASZ, A.SCHRIJVER
+
+
+(3.9) Theorem. Let :% be a solvable class of rational polytopes. Then there exists
+an algorithm which, given (P; n, a0 , T)E:ft and a rational vector yEP, yields vertices
+x 0 ,xio ... ,x,, of P and coefficients A.0 ,A.1 , ••. ,A.,,~O such that ).0 +.A.1 + ... +A.,,=l
+and A.0 x 0 +A.1 x 1 + ... +A.,,x,,=y, in time polynomial inn, log T and log S, where S
+is the maximum absolute value of numerators and denominators of components of y.
+Proof. We construct a sequence x 0 , x1 , ... , x,, of vertices, y 0 , y1 , ... , y,, of points
+and F1 , F 2 , ••• , F,, of facets of P as follows. Let x 0 be any vertex of P, and let
+y 0 =y. Assume that Xi. Yt and F; are defined for i~j. Let Yi+l be the last point
+of P on the semi-line from xi through Yi• let
+(21)
+
+where O<s<(nT)- 3" 1• Let FJ+ 1 be a facet separating Y}+i from P, and let xi-tl
+be a vertex of F1 n ... n Fi+l · It is straightforward to prove by induction that
+X1>YtEFi for j~i,yEconv(x 0 , ••• ,x;,y;), and dim(F1 n ... nF)=n-j. Hence
+x,,=y,, and so y is contained in the convex hull of x 0 , ••• , x,,.
+       The procedure described above is easy to follow with computation. The
+vertex of F1 n ... nF1 can be obtained as follows. Let alx~b; be the inequality
+corresponding to facet F;; then maximize the objective function ( 1~ a1 x. We
+                                                                                  i    )T
+leave the details to the reader.     I
+       The "dual" form of this theorem will also play an important role in the
+sequel. It shows that if we consider optimization on P as a linear program, an
+optimal dual basic solution can be found in polynomial time, if the class is solvable.
+(3.10) Theorem. Let :% be a solvable class of rational polytopes. Then there exists
+a polynomial-bounded algorithm which, given (P; n, a 0 , T)EJt'; cEQ" provides facets
+                                                                                       n
+a[x~b 1      (i=l, ... ,n)   and rationals    A. 1 ~0   (i=I, ... ,n)   such that     Z A.1a1=c
+                                                                                      i=l
+        n
+and    Z A.1b1=max {cTxlxEP}.
+       i=l
+        The proof is easy by considering :% *.
+
+
+                      4. Matroid intersection, branchings and matchings
+
+       We now apply the methods described in the previous chapters to a number
+of combinatorial problems. As said in the introduction our main aim is to show the
+existence of polynomial algorithms for certain combinatorial problems, and these
+algorithms are not meant as substitutes for the algorithms developed for these
+problems before (see Lawler [1976] for a survey). However, in the next chapters
+we shall show the existence of polynomial algorithms also for certain problems
+which were not yet solved in this sense. The algorithms found there, though pol-
+ynomial, in general do not seem to have the highest possible rate of efficiency, and
+the challenge remains to find better algorithms.
+       First we apply the ellipsoid method to matroid intersection (cf. Edmonds
+[1970, 1979], Lawler [1970D. Note that given a matroid (V, r), the corresponding
+                  ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                  183
+
+
+matroid polytope is the convex hull of the characteristic vectors of independent
+sets. The idea .is very simple: given an integral "weight" function w on V, the trivial
+"greedy algorithm" finds an independent set V' maximizing Z w(v). That is,
+•                                                                  vEV'
+it finds a vertex x of the corresponding matroid polytope maximizing the objective
+function wrx, in time bounded by a polynomial in !VI and log llwll. So the class
+of matroid polytopes is solvable. Therefore, by Corollary (3.3) also intersections of
+matroid polytopes are solvable. Since the intersection of two matroid polytopes
+has integer vertices again, this provides us with a polynomial algorithm for matroid
+intersection. (In fact, we obtain a polynomial algorithm for common "fractional"
+independent sets for any number ofmatroids.) Obviously, we may replace "matroid"
+by "polymatroid". In Chapter 5 we shall extend this algorithm to a more general
+class of polytopes, and we shall show there how to obtain optimal integral dual
+solutions.
+        In this application, and in the following examples we leave it to the reader
+to check that without loss of generality we may transform the polytopes in question
+to full-dimensional polytopes, and to find a vector a 0 and a number T such that
+(i) each numerator and denominator occurring in the components of the vertices
+of the polytope, and in those of a 0 , do not exceed Tin absolute value, (ii) a 0 is an
+internal point of the polytope, and (iii) log T is bounded by a polynomial in the
+size of the original combinatorial problem (in most cases we have T= 1).
+        Also the second application is illustrative for the use of the method. Let
+G = (V, E) be a complete graph, with IV I even, and let P be the perfect matching
+polytope in QE, i.e., P is the convex hull of the characteristic vectors of perfect
+matchings in G. So the strong optimization problem for this polytope is equivalent
+to the problem of finding a maximum weighted perfect matching. Edmonds [1965]
+showed that P consists of all vectors x in QE such that
+                             (i) x(e) ~ 0       (eEE)
+                            (ii)    Z x(e) = 1 (vE V),
+                                    e3v
+
+                            (iii)   Z x(e) ~ 1 (E' odd cut).
+                                    eEE'
+
+Here a set E' of edges is an odd cut if E' is the set of edges with exactly one end-
+point in V', where V' is some subset of V of odd cardinality. From this characteriz-
+ation one can derive a good algorithm for the strong separation problem for P a'>
+follows. Given a vector x in QE one easily checks in polynomial time conditions
+(i) and (ii) above. In case of violation one finds a hype~plane separatin~ x from P.
+To check condition (iii) it suffices to have a polynomial method findmg an odd
+cut E' minimizing Z x (e): if this minimum is not less than 1 we may conclude
+                     eEE'
+that x is in P, and otherwise E' yields a separating hyperplane. Now Padberg and
+Rao [1979] showed that such a method can be derived easily from Ford-Fulkerson's
+min-cut algorithm.
+       So the class of perfect matching polytopes i.s solvable, and hen?e there
+exists a polynomial algorithm finding maximum "."eighted. perfect I?atchm!Jis (cf.
+Edmonds [1965]). One similarly derives a polynomial algonthm findmg maximum
+weighted "b-matchings" (cf. Padberg and Rao [1979]).
+184                     M. GRClTSCHEL, L. LOVASZ, A. SCHRINER
+
+
+         A third application shows the existence of a polynomial algorithm for finding
+optimum branchings in a directed graph (cf. Chu and Liu [1965], Edmonds [1967]).
+Let D=(V, A) be a digraph, and let r be ~ome fixed vertex ?f D, called ~he root.
+A branching is a set A' of arrows of D makmg up a rooted directed spannmg tree,
+with root r. A rooted cut is a set A' of arrows with A' =J-(V') for some non-empty
+set V' of vertices not containing r, where J-(V') denotes the set of arrows entering
+V'. It follows from Edmonds' branching theorem [1973] that the convex hull of
+(the incidence vectors of) the sets of arrows containing a branching as a subset
+(i.e., the sets intersecting each rooted cut), is a polytope P in RA defined by the
+following linear inequalities:
+(1)                       (i)     0 :§ x(a) :§ 1 (aEA),
+                        (ii)      Z x(a) ~ 1     (A' rooted cut).
+                                a EA'
+
+So there exists an algorithm which, given a digraph D =(V, A), a root r, and a non-
+negative integral weight function w defined on A, determines a branching of mini-
+mum weight, in time polynomially bounded by !VI and log llwll, if and only if the
+strong optimization problem is solvable for the class of polytopes P arising in this
+way. By Theorem (3.1) and (3.8) it is enough to show that the strong separation
+problem is solvable. Indeed, if xERA one easily checks condition (i) above and one
+finds a separating hyperplane in case of violation. To check condition (ii), we can
+find a rooted cut A' minimizing Z x(a) in time polynomially bounded by IVI
+                                        a EA'
+and log T (where T is the maximum of the numerators and denominators occurring
+in x), namely by applying Ford-Fulkerson's max flow-min cut algorithm to the
+corresponding network with capacity function x, source r and sink s, for each
+s,t:.r. If the minimum is not less than 1 we conclude xEP, and otherwise A' determines
+a separating hyperplane. (Again, see Chapter 5 for a more general approach.)
+         In fact this branching algorithm is one instance of a more general procedure.
+Let C be a clutter, i.e., a finite collection of finite sets no two of which are contained
+in each other. The blocker B(it) of$ is the collection of all minimal sets intersecting
+every set in cff (minimal with respect to inclusion). E.g., if $ is the collection of
+branchings in a digraph, then B(S) is the collection of minimal rooted cuts. One
+easily checks that B(B(©'))=S for every clutter <ff. Sometimes an even stronger
+duality relation may hold. Let V = U©', and let P be the convex hull of the charac-
+teristic vectors (in RY) of all subsets of V containing some set in $. Clearly, each
+vector x in P satisfies:
+(2)                            (i) 0 :§ x(v) :§ 1 (vEV),
+                           (ii)     Z x(v) ~ 1    (V'EB(S)),
+                                   vEV'
+
+as these inequalities hold for incidence vectors of sets in $. In case P is com-
+pl~tely determined by these linear inequalities, $ (or the hypergraph (V, S)) is
+said to have the Q+-max flow-min cut-property or the Q+-MFMC-property (cf.
+Seymour [1977]). Thus the clutter of all branchingsin a digraph has the Q+-MFMC-
+property, as we saw above. Fulkerson [1970] showed the interesting fact that a clutter
+$has the Q+-MFMC-property if and only if its blocker B(I) has the Q+-MFMC-
+property.
+                 ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                   185
+
+
+       Now one easily extends the derivation of a polynomial algorithm for branch-
+ings from such an algorithm for rooted cuts as described above, to the following
+theorem.
+(4.1) Theorem. Let 15 be a class of clutters with the Q+-MFMC-property, such that
+there exists an algorithm which.finds, given iffE<t!f and wEZ~ (where V= U tC ), a set
+V' in$ minimizing Z w(v), in time bounded by a polynomial in JVI and log llwll.
+                    vEV'
+Then the same is true for the class of blockers of clutters in CC.
+
+        One should be careful with how the clutter $ is given. Perhaps formally
+the most proper way to formulate the theorem is as follows: there exists an algorithm
+A and a polynomial f (x) such that given a "minimization algorithm" for some
+clutter g with the Q+-MFMC-property, with "time bound" g (log llwll), and given
+some vector uEZ~ (V= Ug), A finds a set V' in B(tff) minimizing Z u(v) in
+                                                                          vEV'
+time bounded by f(IVI ·logllull ·g(JVI log !lull)).
+        Among the other instances of Theorem (4.1) are the following. Let D=(V, A)
+be a digraph. A directed cut is a set A' of arrows of D such that A' ='5-(V') for
+some nonempty proper subset V' of V with i)+(V')=0 (as usual, 8-(V') and
+i)+ (V') denote the sets of arrows entering and leaving V', respectively). A covering
+is a set of arrows intersecting each directed cut, i.e., a set of arrows whose con-
+traction makes the digraph strongly connected. Let <ff be the clutter of all minimal
+directed cuts. If follows from the Lucchesi-Younger theorem [1978] that tff has
+the Q+-MFMC-property, and an easy adaptation of Ford-Fulkerson's max fiow-
+min cut algorithm yields a polynomial algorithm for finding minimum weighted
+directed cuts, given some nonnegative weight function on the arrows. (To this end
+we could add for each arrow also the reversed arrow with infinite capacity). Hence,
+by Theorem (4.1) there exists a polynomial algorithm for finding minimwn weighted
+coverings in a digraph (such algorithms were found earlier by Lucchesi (1976],
+Karzanov [1979] and Frank (1981]).
+        In fact we do not need to call upon Ford-Fulkerson algorithm for finding
+minimwn weighted cuts; such an algorithm can be derived also from Theorem (4.1).
+Indeed, let D =(V, A) be a digraph and let r and s be two specified vertices. Let
+if be the clutter of all directed r-s-paths (considered as sets of arrows). So the
+blocker B(g) of iff consists of all minimal r-s-cuts. It follows from the max fiow-min
+cut theorem that iff has the Q+-MFMC-property. There exists an (easy) polynomial
+algorithm for finding shortest paths (Dijkstra [1959)), hence there exists a polynomial
+algorithm for finding minimum weighted cuts.
+        Theorem (4.1) also applies to T-cuts and T-joins. Let G=(V, E) be an
+undirected graph, and let T be a set of vertices of G of even size. A set E' of edges
+                                                                     n
+of G is called a T-cut if there exists a set V 1 of vertices with IV' TI odd such that
+E' is the set of edges of G intersecting V' in exactly one vertex. A T-join is a set
+E' of edges with the property that T coincides with the set of vertices of odd valency
+in the graph (V, E'). One easily checks that the clutter if of all minimal T-cuts has
+as blocker the clutter of all minimal T-joins, and Edmonds and Johnson [1970]
+showed that r1 has the Q+-MFMC-property. Padberg and Rao [1979] adapted
+the Ford-Fulkerson minimum cut algorithm to obtain a polynomial algorithm
+to find minimum weighted T-cuts, given a nonnegative weight function on the edges
+186                       M. GROTSCHEL, L. LOYAsz, A. SCHRIJVER
+
+
+(cf. also Chapter 5). Hence there exists a polynomial algorithm for finding minimum
+weighted T-joins, which was demonstrated earlier by Edmonds and Johnson [1970].
+As special cases we may derive a polynomial algorithm for the Chinese postman
+problem (take T to be the set of vertices of odd valencey in G), and again a polynomial
+algorithm for finding minimum weighted perfect matchings (take T= V, and add
+a large constant to all weights; it is easy to derive conversely from a polynomial
+algorithm for minimum weighted perfect matchings, a polynomial algorithm for
+minimum weighted T-joins).
+        From Theorem (3.10) we know that if <(5 is a class of clutters with the pro-
+perties as described in Theorem (4.1), then there exists an algorithm to find optimal
+dual solutions, that is, given cffE<(j and wEZT:;. (where V= U&'), to find sets E1 , ... , Et
+in B(lff), with t:§IVI, and nonnegative numbers A1 , •.• ,Ar such that
+(3)                           (i)   AiXE1 + ... +AtXE, :§ w,
+                             (ii)   A1 + ... +Ar= min ,2 w(v)
+                                                   V'E4 vEV'
+
+(where XE denotes the characteristic vector in Rv of E), in time polynomially bounded
+by !VI and log llwll- So in the special cases discussed above this provides us with
+polynomial algorithm to find optimal fractional packings of branchings, rooted
+cuts, coverings, directed cuts, r-s-cuts, r-s~paths (i.e., optimum fractional r-s-
+fiow), T-joins, T-cuts. Similarly, polynomial algorithms for finding optimum frac-
+tional two-commodity flow, and for fractional packings of two-commodity cuts
+may be derived (cf. Hu [1963, 1973]). Moreover, a recent theorem of Okamura and
+Seymour [1979] implies the existence of a polynomial algorithm for finding optimum
+fractional multicommodity :flows in planar undirected graphs, provided that all
+sources and all sinks are on the boundary of the infinite face.
+         It is not necessarily true that if cff has the Q+cMFMC-property, we can
+take the A.1 , ... , A1 in the dual solution to be integers. If this is the case for each wEZ~
+then cff is said to have the Z+-MFMC-property; and if for each such w we can take
+the A.1 , ... , At to be half-integers, cff has the tZ+-MFMC-property. E.g., the clutters
+of branchings, rooted cuts, coverings, r-s-cuts, r-s-paths all have the Z+-MFMC-
+property (proved by Fulkerson [1974], Edmonds [1973], Lucchesi and Younger
+[1978], Ford and Fulkerson [1956], and Fulkerson [1968], respectively), and the
+clutters of T-joins, two-commodity cuts, two-commodity paths, and multicom-
+modity cuts in planar graphs (with commodities on the boundary), have the tZ+-
+MFMC-property (proved by Edmonds and Johnson [1970], Hu [1963], Seymour
+[1978], and Okamura and Seymour [1979], respectively). Edmonds and Giles [1977]
+posed the problem whether the clutter of directed cuts has the Z + -MFM C-property,
+but this was recently disproved by Schrijver [1980].
+         We were not able to derive from the ellipsoid method in general a polynomial
+algorithm for optimum (half-) integer dual solutions, if such solutions exist. How-
+ever, in the case of optimwn packings of (rooted, directed, r-s-, T-) cuts we can
+find by Theorem (3.10) an optimum fractional solution in which the number of
+cuts with nonzero coefficient is at most !VI- Hence, by well-known techniques
+(cf. Edmonds and Giles [1977], Frank [1979], Lovasz [1975]) we can make these
+cuts laminar (i.e., non-crossing) in polynomial time, and we can find (half-)integer
+coefficients for the new collection of cuts, again in polynomial time, thus yielding
+an optimum (half-) integer packing of cuts.
+                 ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                   187
+
+
+       We do not know whether the class ~ of all clutters with the Q+-MFMC-
+property is polynomially solvable in the sense of Theorem (4.1) (in which case
+Theorem (4.1) would become trivial). In Chapter 6 we shall see this indeed is the
+case for its anti-blocking analogue.
+       In this chapter, as well as in the next chapters we see that the existence of
+polynomial algorithms can be derived from the ellipsoid method for many problems
+for which such algorithms have been designed before. However, we were not able
+to derive such an algorithm for the following two problems, for which (complicated)
+polynomial algorithms are known: the problem of finding a maximum weighted
+independent set of vertices in a K1 , 3 -free graph (Minty [1980]), and that of finding
+a maximum collection of independent lines in a projective space (Lovasz [1980D.
+A main obstacle to derive such algorithms from the ellipsoid method is that so far
+no characterizations in terms of facets of the corresponding convex-hull polytopes
+have been found.
+       However, if G=(V, E) is a K1 , 3 -free graph, let P be the convex hull of the
+characteristic vectors of independent sets in G. So Minty showed that the optimiza-
+tion problem for the class of these polytopes is solvable, and hence, by Theorems
+(3.5) and (3.8), also the strong separation problem is solvable. This amounts to
+the following. Given a weight function w on V, one can find in polynomial time
+a maximum weighted "fractional clique'', i.e., a function x: V-Q+ such that
+ Z x(x):§:l for each independent subset V' of V, with Z w(v)x(v) as large
+vEV'                                                           vEV
+as possible. Similarly one can find a minimwn fractional colouring (cf. Chapter 7).
+       So although a theoretical description of the facets of P has not yet been
+found, these facets can be identified by the separation algorithm. Perhaps a descrip-
+tion of the facets yields a direct, not too complicated algorithm for the separation
+problem, and then one may derive in turn by the ellipsoid method a polynomial
+algorithm for the independent set problem in K1 , 3 -free graphs.
+       The problem of finding a maximum weighted collectio.n of independent lines
+in a projective space is still open. Again, it might be possible to derive such an
+algorithm from a characterization in terms of facets of the corresponding convex-
+hull polytope, but such a characterization has not been found so far.
+
+
+                    S. Submodular functions and directed graphs
+
+       In this chapter we show the existence of a polynomial algorithm finding
+the minimum value of a submodular set function, and we derive polynomial algo-
+rithms for the optimization problems introduced by Edmonds and Giles [1977]
+and by Frank [1979].
+        Let X be a finite set, let F be a collection of subsets of X closed under union
+and intersection, and let f be an integer-valued submodular function defined on
+flF, that is, let /: F-Z be such that
+(1)                   f(X') +f(X") ~ f(X' n X") +f(X' U X")
+for X', X"E!F. Examples ofsubmodularfunctions are the rank functions ofmatroids,
+and the function f defined on all sets V' of vertices of a capacitated digraph by:
+ f(V') is the sum of the capacities of the arrows leaving V'.
+188                     M. GRbTSCHEL, L. LOVAsz, A. SCHRIJVER
+
+
+
+(5.1) Theorem. There exists an algorithm to find X' in ff minimizing f (X'), in time
+polynomially bounded by IXI and log B, where Bis some (previously known) upper
+bound for lf(X')I (X'Eff).
+        So as special cases we can decide in polynomial time, given a matroid (X, r)
+and a weight function w on X, whether w is in the corresponding matroid polytope
+(i.e., whether Z w(x);§r(X') for each subset X' of X), and we can derive a po-
+              x EX'
+lynomial algorithm for finding minimwn capacitated cuts in networks.
+        We need to make some requirements on the way ff and f are given. First
+we should know an upper bound B for l/(X')! (X'Eff). Secondly, we must know
+in advance the sets nff and LJ ff, as well as for Which pairs X1, X2 in X there exists
+X'Eff with x1 EX' and x 2 ~X'. This makes it possible to decide whether a given
+subset X' of X is in ff, and it allows us to assume without loss of generality that
+ nff=0 and Uff=X. Finally, given X' in ff we must be able to find f(X').
+It is enough to know that f (X') can be calculated in time polynomial in IX! and
+log B, or that some oracle gives the answer. Most of the special-case submodular
+functions fulfil these requirements.
+Proof. We shall reduce the minimization problem for submodular functions to
+the strong separation problem for polymatroid polytopes. Since the class of poly-
+matroid polytopes is solvable (as optimization can be done by the greedy algorithm
+- see Edmonds [1970]), this will solve the problem.
+       Since we know an upper bound B for If (X')I we can find the minimum value
+off by applying binary search. So it suffices to have a polynomial algorithm finding
+an X' in ff with f (X')<K, or deciding that no such X' exists, for any given K.
+Since adding a constant to the values of f does not violate submodularity we can
+take K=O. Now if f(0)<0 we can take X'=0. Hence we may assume that f(0)=0.
+       Let g be the function defined on ff by
+(2)                            g(X') = f(X')+2BIX'I,
+for X'Eff. So g is nonnegative, integral, monotone and submodular. Moreover,
+f (X')<O if and only if g(X')<2B!X'!. Next define for each subset X' of X the set
+(3)                          X' = n{X"EfflX' ~ X"}.
+
+(Note that X' can be determined in polynomial time.) Let h (X') = g(X') for each
+subset X' of X. One easily checks that h again is nonnegative, integral, monotone
+and submodular. Moreover, the problem of the existence of an X' in ff with g(X')
+<2BIX'I is equivalent to that of the existence of a subset X' of X with h(X')
+<2BIX'I· But the latter problem is just a special case of the strong separation
+problem for the vector 2B times the incidence vector of X and the polymatroid
+polytope corresponding to h:
+(4)                   {vER!I 2: v(x) :§ h(X') for all X' ~ X}
+                             xEX'
+
+(by Theorem (3.8) the separation algorithm yields facets as separating hyperplanes,
+i.e., subsets X' of X violating the inequality). As the optimization problem is solvable
+for the class of these polytopes we are finished. I
+                 ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                  189
+
+       We apply the algorithm for finding the minimum value of a submodular
+function to theorems of Edmonds and Giles and of Frank.
+       Let D=(V, A) be a digraph, and let ff be a collection of subsets of V such
+that if V', V"Eff and V'nv",,,:0 and V'UV"r"V then V'nV"Eff and
+V' U V"Eff. Let f be an integer-valued function defined on ff such that for all
+ V',V"Effwith V'nV"r"0 and V'UV"r"V we have
+(5)                     f(V') +f(V") ~ f(V' n V") +f(V' UV").
+Denote by ()+ (V') and e>-(V') the sets of arrows leaving (entering, respectively)
+the set V' of vertices. Let vectors b, c, dEZA be given, and consider the linear pro-
+gramming maximization problem
+(6)                             maximize           Z c(a)x(a),
+                                                 a EA
+where xERA such that
+(7)               (i)   d(a) ~ x(a) ~ b(a)                           (a EA),
+
+                 (ii)      Z        x(a)-      Z        x(a)~f(V')   (V'Eff).
+                        aEli+(V')           aEli-(V')
+
+
+Edmonds and Giles showed that this problem has an integer optimum solution;
+this is equivalent to the fact that the polytope defined by the linear inequalities
+(7) has integral vertices. Edmonds and Giles also showed that the dual minimization
+problem can be solved with integral coefficients.
+        As special cases of Edmonds and Giles' result one has Ford and Fulkerson's
+max flow-min cut-theorem, the Lucchesi-Younger theorem on packing directed
+cuts and minimum coverings, Edmonds' (poly-)matroid intersection theorem,
+and theorems of Frank [1981) on orientations of undirected graphs. Moreover, one
+may derive the theorem due to Frank that if f is an integral submodular function
+defined on a collection ff and g is an integral supermodular function on ff (i.e.,
+ -g is submodular) such that g(X')~f(X') for all X' in ff, then there exists an
+integral modular function h on ff (i.e., both sub- and supermodular) such that
+g(X')~h(X')~f (X') for all X' in ff.
+        We shall give an algorithm which solves the maximization problem (6) in
+time polynomially bounded by IVI and log B, where B is some (previously known)
+upper bound on lf(X')I (X'Eff), llhll, llcll and lldll. We must know in advance for
+each pair of vertices v1 , v2 of D whether v1 EV' and v2 1 V' for some V' Eff (this
+makes it possible to decide whether V'Eff). Moreover we must have a subroutine
+calculating f(V') if V'Eff, in time polynomially bounded by \VI and log B.
+        First of all, we may suppose that d(a)<b(a) for each arrow a, since if
+d(a)>b(a) the polytope (7) is empty, and if d(a)=b(a) we can remove the arrow
+a from the digraph and replace f(V') by f(V')±d(a) if aEC>+(V'). We may even
+assume that the polytope (7) is full-dimensional and that we know an interior
+point x whose components have numerators and denominators not larger than
+a polynomial in \VI and B. Otherwise we can extend the digraph D with one new
+vertex v0 and with new arrows (v 0 , v) for each "old" vertex v of D. Define d(a)
+ =-nB, b(a)=O and c(a)=2nnBn+4 for the new arrows a. One easily checks that the
+corresponding new polytope is full-dimensional, and one easily finds an x as required.
+190                     M. GROTSCHEL, L. LOY.ASZ, A. SCHRUVER
+
+
+Moreover, the solutions of the original optimization problem correspond exactly
+to those solutions x of the new problem with x(a)=O for each new arrow a.
+        Assuming the polytope (7) to be full-dimensional, by Theorem (3.8) it is
+enough to show that the strong separation problem is solvable. Let xEQA. One
+easily checks in polynomial time whether condition (i) is fulfilled. In case of violation
+we find a separating hyperplane. To check condition (ii) it suffices to find a set V'
+in ff minimizing
+(8)                   g(V'):=/(V')- Z x(a)+ .Z x(a)
+                                       a€1l+(V')         aEll-(V')
+
+in time polynomial in log B and log T, where T is the maximum of the numerators
+and denominators occurring in x. Note that g is submodular, hence we can appeal
+to the algorithm finding the minimum value of a submodular function. To this
+end we have to multiply the values by a factor to make the function integral (this
+factor is bounded above by r 1v1 1), and we have to apply the algorithm for each
+vI> v2 in V with v1 ~v2 , to the function restricted to {V'Eff jv1 EV', v2 ~ V'}, since
+this collection is closed under union and intersection. Note that these requisites
+do not affect the polynomial boundedness of the required time.
+        So we proved that the class of "Edmonds-Giles" polytopes is solvable.
+Hence, by Theorem (3.10) we can find an optimum solution for the dual linear
+programming problem. In general, this solution will be fractional, but one can make
+this solution integral by making the collection of sets in ff with non-zero dual
+coefficient laminar, by the well-known techniques (see Edmonds and Giles [1977]),
+in polynomial time. Now the (possibly fractional) coefficients can be replaced by
+integer coefficients, and these coefficients can be found by solving a linear program
+of polynomial size.
+        This can be used to show the following. Let f be a submodular function de-
+fined on the subsets of the set V, and define g by
+                                                    t
+(9)                              g(V') = min Z /(VJ
+                                                   i=l
+
+for V' ~ V, where the minimum ranges over all partitions of V' into nonempty
+classes Vi, ... , Vi (t~O). Then g is the largest submodular function with g§.f
+and g(0) =0. Now a partition attaining the minimum in (9) can be found in po-
+lynomial time, since it can be translated straightforwardly into an optimal integral
+dual solution for an Edmonds-Giles linear programming problem: Let v0 be a new
+point. Construct the graph G on vertex set VU {v0} by connecting every point of
+ V to v0 by an arc. Take d(a)=O, b(a)=l, c(a)=l for every arc a.
+        We leave it to the reader to derive by similar methods a polynomial algorithm
+for finding the solution to the following optimization problem, designed by Frank
+(1979]. Let D=(V, A) be a digraph, and let ff be a collection of subsets of V such
+that if V', V"E.fF and V'n V"~0 then V'n V"E.fF and V'U V"E.fF. Let f be
+a nolUlegative integral function defined on .fF such that
+(9)                    f(V') +f(V'') ~j(V' n V'') +f(V' UV")
+if V', V"E.fF and V' n V" ~0. Let b, c, dEZi. Consider the linear programming
+problem
+(10)                        minimize Z c(a)x(a),
+                                           a€A
+                  ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                      191
+
+
+where xERA such that
+(11)                      (i)   d(a) ;§ x(a) ;§ b(a)      (aEA),
+                         (ii)      Z
+                                aE.5+(V')
+                                            x(a) ~f(V')   (V'EF).
+
+Frank showed that this problem, and its dual, have integer solutions. As special
+cases one may derive again Ford and Fulkerson's max fl.ow-min cut theorem and
+Edmonds polymatroid intersection theorem, and also Fulkerson's theorem on
+minimum weighted branchings [1974].
+          We finally remark that the algorithm for finding a set V' in F minimizing
+ f(V'), where f is a submodular function defined on ff, can be modified to a po-
+lynomial algorithm for finding a set V' in F of odd size minimizing f (V'). This
+extends Padberg and Rao's algorithm [1979] to find minimum odd cuts. More gen-
+erally, let ~~F be such that if V'E~ and V"EF"'-.~ then V'nV"E~ or
+ V'U V"E~. (E.g., ~ is the collection of sets in F intersecting V0 in a number of
+elements not divisible by k, for some fixed subset V0 of V and some natural number
+k.) Then there exists a polynomial algorithm to find V' in C§ minimizing f(V')
+(by this we mean: f(V')=min {f(V'')IV"EC§}). This algorithm needs, besides
+the prerequisites for § and f as above, a polynomial subroutine deciding whether
+a given set V' is in~- Without loss of generality we may assume that 0~ C§ and V~ C§.
+         The algorithm is defined by induction on !VI· Suppose the algorithm has
+been defined for all such structures with smaller IVI. Find a set V' in F such that
+0 ;;CV' ;;e V which minimizes f (V'). This can be done by applying the polynomial
+algorithm described above to the function f restricted to the collection
+{V' EF Iv1 E V', v2 ~ V'}, for all v1 , v2 in V. If V' E~ we are finished. If V' ~ C§ there
+will be a set V" in ~minimizing f (V'') such that V"~ V' or V'~ V". Indeed,
+if V"EC§ minimizes f(V'') then either V'n V"EC§ or V'U V"EC§; in the former
+case we have
+(12)                     f(V'n V'') + f(V'UV") ;§j(V')+f(V".),
+                        f(V'n V") "@:.j(V'),
+                        j(V'UV') "@:.j(V'),
+as V' and V" minimize f(V') and f (V') for V'E§ and V"EC§, respectively. Hence
+ f(V'n V')=f(V"). If V'U V"EC§ we can exchange U and n in this reasoning.
+Now there exists an algorithm finding V"EC§ with V"~ V' minimizing f(V'},
+and an algorithm finding V"E~ with V"~ V' minimizing f (V"), for these algo-
+rithms follow straightforwardly from the previously defined algorithms for sets
+of size IV'I and l~V'I· We leave it to the reader to check that this gives us a po-
+lynomial algorithm.
+
+                          6. Independent sets in perfect graphs
+
+       In the previous chapters we have applied the ellipsoid method to classes of
+polytopes. We now apply the method to a class of non-polytopal convex sets, in
+order to obtain a polynomial algorithm finding maximum (weighted) independent
+sets and minimum colorings of perfect graphs (cf. Lovasz [1972]). Applying these
+192                    M. GRCITSCHEL, L. LOVASZ, A. SCHRIJVER
+
+
+
+algorithms to the complement, we get algorithms to find maximum weighted clique
+and minimum weighted covering by cliques.
+       Let G=(V, E) be an undirected graph, and let a(G) denote the independence
+number of G, i.e., the maximum number of pairwise non-adjacent vertices. Let
+a*(G) denote the fractional independence number of G, i.e., the maximum value of
+ Z c(v) where the c(v) are nonnegative real numbers such that Z c(v):§ 1
+vEV                                                                        vEC
+for each clique C of G. So a(G)~a*(G), and furthermore G is perfect if and only
+if rx.(G')=a*(G') for each induced subgraph G' of G. Since a*(G) is the optimum
+of a linear programming problem, we could try to calculate rx.*(G) by means of the
+ellipsoid method; but the size of this problem is not polynomially bounded as
+there can exist too many cliques C.
+        However, the following number 8(G) was introduced in Lovasz [1979].
+                                                                     n
+Suppose V={l, ... ,n}. Then 9(G) is the maximum value of           .~ bu,        where
+                                                                   l,J=l
+B=(bii) belongs to the following convex body of matrices
+
+        {B=(bi,)IB is positive semidefinite with trace at most I, and b;i=O
+(1)              if i and j are adjacent vertices of G (i~j)}.
+If B belongs to this class we shall say that B represents G. It was shown that ix(G)
+~9(G)~a*(G). (In fact, 8(G) is an upper bound for the Shannon capacity of G.)
+We show that 9(G) can be calculated (approximated) by the ellipsoid method in
+time bounded by a polynomial in jVj. This allows us to find ct(G) for graphs G with
+a (G) = 9 (G), in particular for perfect graphs.
+        In fact we exhibit an algorithm finding the maximum weight Z w(v),
+                                                                             vEA
+where A is an independent set in a perfect graph, given some nonnegative integral
+weight function on V, in time polynomially bounded by !VI and log llwll· Obviously,
+this maximum weight is equal to ct(Gw), where the graph Gw arises from G by re-
+placing each vertex v of G by w(v) pairwise non-adjacent new vertices and where
+two vertices of Gw are adjacent iff their originals in G are adjacent. Note that if
+G is perfect then also any Gw is perfect (cf. Lovasz; [1972]). Moreover, 9(Gw) is
+equal to the maximwn value of
+(2)
+
+
+where B=(bu) represents G. This can be seen as follows. If B=(bii) represents
+G then, by replacing each entry bii by a matrix of size wiXwi with constant entries
+(w;wi)- 1 f2 bii, we obtain a matrix B' representing Gw, with
+
+
+(3)
+
+
+Conversely, if B' represents Gw, then, by replacing the wiXwi submatrix induced
+by the copies of i and j, by the sum of its entries divided by Vwiwi, we obtain
+a matrix B representing G, satisfying (3) again.
+                 ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                    193
+
+
+       To approximate .9(Gw) up to an error of at most e>O, we can replace
+Vw; w1 of (2) by some rational number wiJ with
+(4)                                 lmiJ-Vwiw11 < e/2n 2
+(taking . miJ=w1;), where the denominators of the roil are at most 2n 2/e. Then
+.9(Gw) differs by at most le from the maximum value of Z w;1biJ with B=(bu)
+                                                                         i,j
+representing G. So we need to approximate this last number with accuracy le, which
+can be done by the ellipsoid method.
+       To apply the ellipsoid method we replace the set (1) by a full-dimensional
+convex body, by forgetting the coordinates below the main diagonal, as well as the
+coordinates (i, j) for adjacent i and j. We end up with a full-dimensional convex
+body in the ( n+(~)- !El)-dimensional space. One easily finds an interior point
+a0 in it, and radii r and R such that the convex body contains S(a0 , r) and is con-
+tained in S(a0 , R), and such that the logarithms of r and R and of the numerators
+and denominators occurring in a0 are bounded (in absolute value) by a polynomial
+in n (fixed over all graphs G). So we may apply Theorem (3.1). We show that the
+separation problem is solvable for the class of convex bodies obtained in this way.
+Let b be some vector in the (n+(~)-IEl)-dimensional space. Extend this vector,
+in the obvious way, to a symmetric nXn-matrix B=(bi1) with biJ=O if i and j
+are adjacent vertices of G. If Tr B>l, the separation problem is trivial. Suppose
+that Tr B:§. l. Find a basis for the columns; without loss of generality assume that
+these are columns 1, ... , k. Then the principal submatrix B' =(biJ){:l;::3 is non-
+singular and has rank B' =rank B. It is easy to prove that B is positive semidefinite
+iff B' is positive definite, which in turn is equivalent to
+(5)                            det Bt = det (b IJ..)1::: 1 ···• 1 > O
+                                                    i-1,•...  ,t     '
+
+for t= 1, ... , k. Since these determinants can be calculated in polynomial time,
+thereby we have checked in polynomial time whether B belongs to the convex set
+(1). If, moreover, we find that Bis not positive semidefinite then let t be the smallest
+index for which det Br< 0. Let <p 1 denote ( - l)i times the (i, t)-th minor of B,
+(i= 1, ... , t), and <p 1 =0 if i>t. Then
+
+(6)
+
+for every positive semidefinite matrix (piJ). By definition, and by simple computation,
+                           n   n
+(7)                       Z Z cpi<pJ biJ = det Br • det B         1 -1 :§.   0,
+                          i=l J=l
+
+ (if t= I, then det Bo= 1, by definition). So the matrix (cp;cp1)7,J=l is a solution of
+ the separation problem.
+         Therefore, by Theorem (3.1), we can approximate the m~um value of
+ I ro11 b11 for B=(biJ) in (1) with accuracy le (and hence 8(Gw) with accuracy e),
+194                     M. GROTSCHEL, L. LOYAsz, A. SCHRUVER
+
+
+in time polynomially bounded by IVJ, llog eJ and log T where T is the maximum
+among the denominators and numerators occurring in (w1j). If we know that
+o:(Gw)=.9.(Gw) it follows that .9.(Gw) is an integer, and we can take e=t. In partic-
+ular there exists an algorithm which calculates o:(Gw) for perfect graphs G in time
+polynomially bounded by !VI and log l\wll.
+        We can find an explicit maximum weighted independent set in a perfect
+graph as follows. Compare o:(Gw) with a(G~.), where G' and w' arise from G and
+w by removing vertex 1 from G and the corresponding component from w. If
+a(G~.)=a(Gw) we replace G by G' and w by w'; otherwise we leave G and w un-
+changed. Next we try to remove vertex 2 similarly, and so on. At the end we are
+left with a collection of vertices forming a maximum weighted independent set in G.
+        So given a perfect graph G=(V, E) and a weight function won V we can
+find an independent set V' maximizing Z w(v). This implies that the strong
+                                                vEV'
+optimization problem is solvable for the class of convex hulls of the independent
+sets in perfect graphs. For perfect graphs G=(V, E) this convex hull is given
+by the linear inequalities
+(8)                          (i)   x(v) ~ 0          (vEV),
+                            (ii)   Z x(v) ~ 1 (C clique).
+                                   vEC
+
+This yields that also the strong separation problem is solvable for this class, but
+this is not interesting anymore, as it amounts to finding a maximum weighted
+clique in a perfect graph, i.e., a maximum weighted independent set in the com-
+plementary graph, which is perfect again.
+          However, by Theorem (3.10) we can find an optimal (fractional) dual solution
+for the corresponding linear programming problem. So, given wEZ~, we can find
+cliques C1 , ... , C1 and positive real numbers .lc1 , ... ,At (t~IVD such that Jc1 + ...
+... +.lc1 =o:(Gw) and
+(9)                                      _,Z .lci=wi
+                                          j
+                                         iECJ
+
+for each vertex i, in polynomial time. But for perfect graphs a:(G) is equal to the
+minimum number of cliques needed to cover V (i.e., to the chromatic number of
+the complementary graph), which means that there exist integers ),1 , .. ., .At with
+the required properties. Indeed we can find such integers as follows.
+                    =
+       First, if w 1, each clique Ci with Jci >0 intersects all maximum-sized
+independent sets. So we can remove clique C1 from G, thus obtaining a graph G'
+with o:(G')=a:(G)-1, and we can repeat the procedure for G'. After o:(G) repetitions
+we have found a:(G) cliques covering V.
+       If w is arbitrary, let .lcj be the lower integer part of .Ai, and let
+(10)                                wj = W;- _,Z Aj.
+                                                 j
+                                                iECJ
+
+Since (..1.i-.lcj)<l we know by (9) that wi<t:§!!VJ. Therefore, Gw. has at most
+JVl 2 vertices, and as in the previous paragraph a covering with a:(Gw.) cliques can
+be found in time polynomially bounded by IVl 2 • This covering, together with the
+                    ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                      195
+
+
+cove~ing by C1, .- .. , Ci with coefficients A.~, ... , A.;, yields an optimum integral dual
+solution as required.
+  .    We remark that the algorithm to find a(G) clearly works for all graphs G
+with rx(~)=9(G) but that our method to find an explicit maximum independent
+~et requires that a(G') =8-(G') for induced subgraphs G' of G. This holds for all
+induced subgraphs if and only if G is perfect, as was shown by Lovasz [1981].
+
+
+                 7. Intractability of vertex-packing and fractional colouring
+
+        The ellipsoid method yields a certain "polynomial equivalence" of combi-
+natorial problems, in the sense that there exists a polynomial algorithm for one
+problem iff such an algorithm exists for some other problem. We can use this
+principle also in the negative: if some problem is "hard" (e.g., NP-complete) then
+it follows that also certain other problems are hard.
+        We apply this to the problem of determining the independence number a(G)
+of a graph G, which is known to be NP-complete (cf. Garey and Johnson [1979]).
+More precisely, and more generally: given a graph G=(V, E), a weight function
+w: V- Z+ and a number K, the problem of deciding whether there exists an in-
+dependent set V' of vertices such that _:2 w(v)~K (i.e., whether a(Gw)~K)
+                                                 1>EV'
+is NP-complete. To formulate this in terms of polytopes, let P(G) be the convex
+hull of the characteristic vectors of independent sets in G. Then the strong optimiza-
+tion problem for the class of polytopes P(G), is NP-complete.
+         Now consider the anti-blocker A(P(G)) of P(G) (cf. Chapter 3). By Corollary
+(3.5) the strong optimization problem for the class of polytopes A (P(G)) is solvable
+iff it is solvable for the class of polytopes P(G). This remains true if we restrict
+G to a subclass of the class of all graphs.
+         Now the strong optimization problem for A(P(G)) asks for a maximum
+weighted fractional clique, i.e., for a vector x in R~ such that .:2x(v);§1 for
+                                                                           vEV'
+each independent set V', and such that             Z w(v)x(v)    is as large as possible,
+                                                  vEV
+given some weight function w in Z~ . By linear programming duality this maximum
+is equal to the weighted fractional chromatic number, i.e., to the minimum value
+y!,(G) of A.1 + ... +A.r, where A.i. ... , Ai are positive numbers for which there exist
+independent sets V1 , ... , V1 such that for every vertex v we have
+(1)                                       ~ A.i = w(v)
+                                           j
+                                         vEV1
+(we can take tO§ IVJ). Hence, given a class of graphs, there exists a polynomial
+algorithm determining a(Gw) for each graph G in this class and for each weight
+function w, iff such an algorithm exists determining the fractional chromatic number
+for each such G and w. In fact, the ellipsoid method shows that both problems are
+"Turing reducible" to each other (cf. Garey and John~on [1979]). This implies
+that since the former problem for the class of all graphs is NP-complete, the latter
+problem is both NP-hard and NP-easy, i.e., NP-equivalent.           .
+       In fact the problem of determining the fractional chromatic number belongs
+to the class NP, as in order to show in polynomial time that 1'~ (G);§K we can
+
+ 7*
+196                         M. GROTSCHEL, L. LOVASZ, A. SCHRIJVER
+
+
+
+bound the numerators and denominators of the J..j by Jlwll • IVllvJ. So the fractional
+colouring problem is not only Turing reducible, but even polynomial reducible
+to the independence number problem, but we do not know the other way around.
+       Since the problem of determining o:(G) is already NP-complete if we restrict
+G to planar cubic graphs the problem of determining y!(G) remains to be NP-
+equivalent if G is restricted similarly. The problem of determining the fractional
+chromatic number y!(G) and that of determining the chromatic number y(G) seem
+to be incomparable with respect to hardness. For cubic graphs G, y(G) can be de-
+termined easily in polynomial time, but the problem of determining r!(G) is NP-
+equivalent. In contrast to this, for line graphs G of cubic graphs the problem of
+determining y(G) is NP-complete (Holyer [1979]), whereas y!(G) can be determined
+in polynomial time (since o:(Gw) can be determined in polynomial time by the
+matching algorithm).
+       Acknowledgement. We are indebted to J. Edmonds, B. Korte, R. Karp,
+R. Bland, A. Bachem, M. Padberg, D. Shmoys, and many other colleagues who
+participated in the discusssion and correspondence during which the idea of this
+paper arose and details took shape.
+
+                                            References
+[1965) CHu YoENG-nN and Lru TSENG-HUNG, On the shortest arborescence of a directed graph,
+       Scientia Sinica 4 (1965) 1396-1400.
+[1959) E. W. DDKSTRA, A note on two problems in connexion with graphs, Numer. Math. I (1959)
+       269-271.
+[1965] J. EDMONDS, Maximum matching and a polyhedron with 0, 1-vertices, J. Res. Nat. Bur.
+       Standards Sect. B 69 (1965) 125-130.
+[1967) J. EDMONDS, Optimum branchings, J. Res. Nat. Bur. Standards Sect. B 71 (1967) 233-240.
+[1970] J. EDMONDS, Submodular functions, matroids, and certain polyhedra, in: Combinatorial
+       structures and their applications, Proc. Intern. Con/. Calgary, Alb., 1969 (R. Guy, H. Hanani,
+       N. Sauer, and J. SchOnheim, eds.), Gordon and Breach, New York, 1970, 69-87.
+[19701 J. EDMONDS and E. L. JOHNSON, Matching: a well-solved class of integer linear programs,
+       ibid. 89-92.
+[1973] J. EDMONDS, Edge-disjoint branchings, in: Combinatorial algorithms, Courant Comp. Sci.
+       Symp. Monterey, Ca., 1972 (R. Rustin, ed.), Acad. Press, New York, 1973, 91-96.
+[1979] J. EDMONDS, Matroid intersection, Annals of Discrete Math. 4 (1979) 39--49.
+[1977] J. EDMONDS and R. GILES, A min-max relation for submodular functions on graphs, Annals
+       of Discrete Math. 1(1977)185-204.
+[1973] J. EDMONDS and E. L. JOHNSON, Matching, Euler tours and the Chinese postman, Math.
+       Programming 5 (1973) 88-124.
+[1956] L. R. FORD and D. R. FULKERSON, Maximum flow through a network, Canad. J. Math.
+       8 (1956) 399--404.
+[1962] L. R. FORD and D. R. FULKERSON, Flows in networks, Princeton Univ. Press, Princeton,
+       N. J., 1962.
+[1980] A. FRANK, On the orientations of graphs, J. Combinatorial Theory (B) 28 (1980) 251-260.
+[1979] A. FRANK, Kernel systems of directed graphs, Acta Sci. Math. (Szeged) 41 (1979) 63-76.
+[1981) A. FRANK, How to make a digraph strongly connected, Combinatorica I (2) (1981) 145-153.
+[1968) D. R. FULKERSON, Networks, frames, and blocking systems, in: Mathematics of the decision
+       sciences, Part I (G. B. Dantzig and A. F. Veinott, eds.), Amer. Math. Soc., Providence,
+       R. I., 1968, 303-334.
+[1970] D. R. FULKERSON, Blocking polyhedra, in: Graph theory and its applications, Proc. adv.
+       Seminar Madison, Wis., 1969 (B. Harris, ed.), Acad. Press, New York, 1970, 93-112.
+[1974] D. R. FULKERSON, Packing rooted directed cuts in a weighted directed graph, Math. Pro-
+       gramming 6 (1974) 1-13.
+                    ELLIPSOID METHOD AND COMBINATORIAL OPTIMIZATION                            197
+
+[1981] P. GAcs and L. LovAsZ, Khachiyan's algorithm for linear programming, Math. Programming
+        Studies 14 (1981) 61-68.
+[1979] M. R. GAREY and D. S. JoHNSON, Computers and intractability: a guide to the theory of
+        NP-completeness, Freeman, San Francisco, 1979.
+[1960] A. J. HOFFMAN, Some recent applications of the theory of linear inequalities to extremal
+        combinatorial analysis, in: Combinatorial analysis, Proc. JOth Symp. on Appl. Math. Co-
+        lumbia Univ., 1958 (R. E. Bellman and M. Hall, Jr, eds.), Amer. Math. Soc., Providence,
+        R. I., 1960, 113-127.
+[1979] I. HOLYER, The NP-completeness of edge-colouring, SIAM J. Comp., to appear.
+[1963] T. C. Hu, Multicommodity network flows, Operations Res. 11 (1963) 344-360.
+[1973] T. C. Hu, Two-commodity cut-packing problem, Discrete Math. 4 (1973) 108-109.
+[1979] A. V. KARZANov, On the minimal number of arcs of a digraph meeting all its directed cutsets,
+        to appear.
+[1979] L. G. KHACHIYAN, A polynomial algorithm in linear programming, Doklady Akademii
+        Nauk SSSR 244 (1979) 1093-1096 (English translation: Soviet Math. Dok/. 20, 191-194).
+[1970] E. L. LAWLER, Optimal matroid intersections, in: Combinatorial structures and their ap-
+        plications, Proc. Intern. Conf. Calgary, A/b., 1969 (R. Guy, H. Hanani, N. Sauer, and J.
+        Schonheim, eds.), Gordon and Breach, New York, 1970, 233-235.
+[1976] E. L. LAWLER, Combinatorial optimization: networks and matroids, Holt, Rinehart and
+        Winston, New York, 1976.
+[1972] L. LovAsz, Normal hypergraphs and the perfect graph conjecture, Discrete Math. 2 (1972)
+        253-267.
+[1975] L. LoVASZ, 2-Matchings and 2-covers of hypergraphs, Acta Math. Acad. Sci. Hungar.
+        26 (1975) 433-444.
+[1978] L. LovAsz, The matroid matching problem, Proc. Con/. Algebraic Methods in Graph Theory
+        (Szeged, 1978), to appear.
+[1979] L. LovAsz, On the Shannon capacity of a graph, IEEE Trans. on Information Theory 25
+        (1979) 1-7.
+ [1981] L. LovAsz, Perfect graphs, in: More selected topics in graph theory (L. W. Beineke and R. J.
+        Wilson, eds), to appear
+ [1976] C. L. LUCCHESI, A minimax equality for directed graphs, Doctoral Thesis, Univ. Waterloo,
+        Waterloo, Ont., 1976.
+ [1978] C. L. LUCCHESI and D. H. YOUNGER, A minimax relation for directed graphs, J. London
+         Math. Soc. (2) 17 (1978) 369-374.
+ [1980] G. J. MINTY, On maximal independent sets of vertices in claw-free graphs, J. Combinatorial
+         Theory (B), 28 (1980) 284-304.
+ [1954] T. S. MoTZKIN and I. J. SCHOENBERG, The relaxation method for linear inequalities, Canad.
+         J. Math. 6 (1954) 393-404.
+ [1979] H. OKAMURA and P. D. SEYMOUR, Multicommodity flows in planar graphs, J. Combinatorial
+         Theory (B), to appear.
+ [1979] M. W. PADBERG and M. R. RAo, Minimum cut-sets and b-matchings, to appear.
+ (1980] A. ScHRIJVER, A counterexample to a conjecture of Edmonds and Giles, Discrete Math. 32
+         (1980) 213-214.
+ [1977] P. D. SEYMOUR, The matroids with the max-flow min-cut property, J. Combinatorial Theory
+         ( B) 23 (1977) 189-222.
+ [1978] P. D. SEYMOUR, A two-commodity cut theorem, Discrete Math. 23 (1978) 177-181.
+ [1970] N. Z. SHOR, Convergence rate of the gradient descent method with dilatation of the space,
+         Kibernetika 2 (1970) 80-85 (English translation: Cybernetics 6 (1970) 102-108).
+

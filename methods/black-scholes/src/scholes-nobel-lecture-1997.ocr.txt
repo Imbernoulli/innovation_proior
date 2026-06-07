@@ -1,0 +1,1558 @@
+127
+
+DERIVATIVES IN A DYNAMIC ENVIRONMENT
+
+Nobel Lecture, December 9, 1997
+by
+Myron S. SCHOLES
+
+Graduate School of Business, Stanford University, Stanford, CA, USA and
+Long-Term Capital Management, L.P., One East Weaver Street, Greenwich,
+CT 06831-5146, USA
+
+1. INTRODUCTION*
+
+The trading of financial derivatives on organized exchanges has exploded
+since the early 1970s. The trading of off-exchange financial derivatives on the
+so-called “Over-the-Counter” or “OTC” market has exploded since the mid-
+1980s. Academic and applied research on financial derivatives, which was in-
+itiated by the Black-Scholes and Merton option-pricing research in the late
+1960s and early 1970s, also has exploded. As a result, three industries have
+blossomed: an exchange industry in derivatives, an OTC industry in synthetic
+products, and an academic industry in derivative research, populated by
+scientists in and out of academic institutions. The academic industry has seen
+a growth of research and course offerings in economics and business schools
+in the areas of options, futures, risk management, financial engineering, and
+by marrying institutional and derivative modeling, a richer approach to fi-
+nancial intermediation and innovation under uncertainty. In addition, busi-
+ness schools and economics departments have competition from new re-
+search and courses in mathematics departments and engineering schools in
+the mathematics of derivative pricing and alternative stochastic processes,
+and in law schools in understanding contracting under uncertainty.
+
+The academic industry has produced myriad innovative research papers
+following the fundamental insights of Black and Scholes (1973) and Merton
+(1973). The Chicago Board of Trade and Chicago Mercantile Exchange ini-
+tiated the exchange industry by developing financial options and futures con-
+tracts on securities; they have spawned the growth of many new derivative ex-
+changes around the world. The first was the Chicago Board of Trade’s
+sponsorship of the Chicago Board Options Exchange in 1973. Moreover,
+some exchanges such as the Options Market in Stockholm have transported
+the technology used to trade derivatives to other markets in Europe and Asia.
+
+“| would like to thank Robert C. Merton for many years of fruitful and exciting discussions on
+these topics. In addition, I would like to thank my many colleagues at the University of Chicago,
+MIT, and Stanford University, for their ideas and stimulating discussions. Most important has
+been the support and involvement of Merton H. Miller in my career: I owe him a tremendous
+debt and cherish his friendship. I miss Fischer Black; I miss his friendship, his insights, and his
+good humor.
+
+
+===PAGEBREAK===
+
+128 Economic Sciences 1997
+
+These exchanges succeed by producing the derivative contracts that add
+value for individuals and institutions around the world. The OTC industry,
+which has grown to prominence since the mid-1980s, first in the United
+States and now in every corner of the globe, is now larger in size than the ex-
+change industry. Financial institutions in the OTC industry offer customized
+derivative products to meet the specific needs of each of their clients; the ex-
+change industry offers standardized products to reach a richer cross-section
+of demand.
+
+Each industry requires original research to understand the pricing and
+production costs of the products and financial services that they bring to
+their clients. Derivative research is quickly transferred to practice; moreover,
+practice stimulates both academic and applied research. Some of the best
+research is conducted outside of academic institutions and academics have
+found a home in each of the three industries. Graduates from mathematics,
+computer sciences, engineering and physics compete and cooperate with
+those trained in financial economics for research and structuring positions in
+both the exchange and OTC industry.
+
+It is difficult to define financial derivatives in a dynamic environment. The
+purest among us might argue that any security is a derivative if its price dyna-
+mics depend on the dynamics of some other underlying asset or assets and
+time. This broad definition allows not only for what currently exists but also
+what new derivative instruments will be developed in the future with en-
+hanced understanding and changing production costs. The popular press,
+however, tends to limit the definition to include financial options, futures and
+forward contracts either traded on an exchange or issued in the OTC in-
+dustry. In the future they may come to be called financial products.
+
+The will of Alfred Nobel states, in part, that the Nobel Prize shall be award-
+ed for an “important discovery or invention.” Fischer Black’s and my discov-
+ery was how to price options and to provide a way to manage risk. Robert
+Merton developed an important alternative proof of the pricing technology
+and extended the approach in many directions including how to price op-
+tions with dividends, how to price options when the interest rate is not con-
+stant, and how to apply a more general structure to price many other con-
+tingent contracts.
+
+Black and Scholes have over the years been accused of inventing deriva-
+tives, at least those derivative products that have been claimed to have had
+bad economic consequences for their users. It is seldom remembered that
+these contracts have two sides: if a buyer loses, the ultimate seller might gain.
+Only if losses cause dead-weight costs is there a net loss to society. It is said
+that “every successful idea has a thousand fathers, and every failure is an or-
+phan.” Over the years we have been granted both distinctions. We did not,
+however, invent derivatives. Options existed in many financial contracts prior
+to the Black-Scholes and Merton pricing technologies. Options were noted to
+have been traded on the Amsterdam Stock Exchange in the late 17" century
+and traded on the Chicago Board of Trade into the early 1930s. As described
+in Cootner (1964), research in option pricing goes back as far as Bachelier’s
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 129
+
+Ph.D. thesis in 1900. Although they are not generally thought of as options,
+myriad securities and investment decisions have been made in the past and
+are being made currently that could be evaluated using the Black-Scholes
+technology. The technology was an invention that facilitated multiple inven-
+tions in each of the three industries. What J did not realize at the time of the
+invention was how the technology would evolve and how it would be used to
+produce new types of securities with imbedded options at lower cost than
+could be accomplished prior to the development of the technology. This en-
+hanced the efficiency set of demanders and suppliers of capital, not only in
+the United States but also around the world.
+
+With the Christmas season approaching at these Nobel award ceremonies
+in Stockholm, I will invoke the “Past,” the “Present” and the “Future,” as
+Charles Dickens did in “A Christmas Carol,” to describe the evolution of
+derivatives in a dynamic environment. I do not mean to draw too fine a pa-
+rallel, however. That is, I am not implying that through the eyes of Mr.
+Scrooge the past for derivatives was bright with hope and innocence, and the
+present is dark and foreboding and the future, without changing our ways,
+presents a bleak picture. On the contrary, many in academics and those in
+practice have often asked for a glimpse of the past; that is, how we developed
+the technology and the model, and the past gives insights into the present. It
+was a time of innocence. It was a time of discovery. It is a tradition at these
+Nobel award ceremony lectures to describe the age of innocence. Iam hono-
+red and thank the Nobel Prize Committee for this wonderful opportunity do
+so. I wish that Fischer Black were alive today to share this honor with us.
+
+Twenty-five years is a tender age for the new academic and the new ex-
+change industry. Fifteen years is still a young age for the new OTC industry.
+The Present, which I date from the late 1980s to current time, shows an in-
+dustry that has experienced growing pains, and many, including regulators,
+are worried that it still has not come of age. And, will the Future be bleak?
+No, there will be failures, but the industries will thrive because derivative in-
+struments will provide progressively lower-cost solutions to investor and entity
+problems than will competing alternatives. These lower-cost solutions will in-
+volve the unbundling and repackaging of coarse financial products into their
+constituent parts to satisfy client demands. The process will continue to
+evolve as advances in information technology drive down the cost of provid-
+ing alternative and more productive solutions.
+
+2. THE PAST
+
+Although Black (1989) and Bernstein (1992) described their versions of the
+development of the option-pricing technology, this lecture, however, gives
+me an opportunity to add to their description through my recollection of
+things past. My formal training at the University of Chicago was in financial
+economics, statistics and economics. At Chicago, Merton Miller, the 1990
+Nobel laureate, and Eugene Fama, a prolific scholar, stimulated my excite-
+ment in economics and a new branch of economics, which has come to be
+
+
+===PAGEBREAK===
+
+130 Economic Sciences 1997
+
+called financial economics. I also owe a similar and considerable debt to my
+fellow classmates at Chicago, most notably, Jack Gould, Michael Jensen and
+Richard Roll.
+
+The three strands of financial economics that most set the tone for my fu-
+ture research were arbitrage and the notion of substitutes; the efficient mar-
+kets hypothesis; and the capital asset pricing model.’ These strands gave a
+mathematical basis to the models of finance, in a general equilibrium frame-
+work. Modigliani and Miller (see Miller (1988) for a retrospective)
+were making profound breakthroughs that provided a general equilibrium
+model for corporate finance. Their arbitrage arguments, which demonstrat-
+ed how a firm’s value was independent of how it financed its activities, had a
+profound effect on the way I analyze and model many problems in econom-
+ics. The Fama (1965) and Samuelson (1965b) efficient-markets hypothesis
+that states that, in a well-functioning capital market, the dynamics of asset pri-
+ces are described by a submartingale and that the best estimate of the value of
+a security is today’s price, was revolutionary to economics. Their insights gave
+me an important framework to think about the dynamics of asset prices and
+how markets adjust to “news.” It set the stage for empirical testing of how in-
+formation was incorporated into security prices and gave me a vehicle to ap-
+ply my statistics and computer skills in a financial economics context. For
+example, Jensen (1968) had used the concepts of the efficient-markets
+hypothesis to test whether mutual funds, which were professionally managed
+and spent considerable sums of money to discover undervalued assets, could
+outperform randomly-selected investments on a risk-adjusted basis. Roll
+(1970) had tested the efficiency of the bond market controlling for changes
+in expected returns impounded in bond prices. In my own work, Scholes
+(1972), I used the concepts of efficient markets and substitutes (arbitrage) to
+test the extent to which security prices were influenced by the size of the sales
+of large blocks of securities or by changes in the information set. Following
+on the work of Markowitz (1952, 1959), the Sharpe (1964), and Lintner
+(1965) the capital asset pricing model provided a general equilibrium model
+of asset prices under uncertainty. This became the fundamental model for
+measuring the risk of a security. It was elegant to condense the required rela-
+tive rates of return on securities into a simple reduced-form equation that de-
+pended only on their “betas,” a measure of their relative contribution to the
+risk of the optimal portfolio.
+
+The capital structure models, the efficient-markets hypothesis, and the
+capital asset pricing model had the common central themes of arbitrage and
+market equilibrium: securities with similar economic risk had to exhibit simi-
+lar returns to prevent arbitrage profits. This principle applies to all securities,
+whether they are common stock, bonds, or hybrid instruments. Through par-
+ticipation in seminar presentations at the University of Chicago, I became
+
+1 | am sure that Fischer Black would pick at least the efficient-markets hypothesis and the capi-
+tal asset pricing model as most influential in the development of his thinking in financial
+economics.
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 131
+
+generally aware of the nature of warrants and convertible bonds. I was una-
+ware, however, of the interest in warrant pricing and the research that had
+been conducted at MIT on this topic in the 1960s even though I became an
+Assistant Professor at the Sloan School of Management at MIT in 1968.
+
+I did not meet Robert Merton until the spring of 1969, when he was inter-
+viewing for a position at the Sloan School. We began interacting in the fall of
+1969. We talked then about his current research on dynamic applications of
+the capital asset pricing model with changing opportunity sets and my work,
+at the time, including tests of the capital asset pricing model. We did not talk
+about warrant pricing even though Fischer Black and I were working on the
+problem. I guess we did not appreciate that each of us had an interest in this
+research area.
+
+In the summer of 1968, a research project at Wells Fargo Bank in San
+Francisco convinced me that the passive management of assets could be a
+viable contender to actively managed portfolios. In my report to Wells Fargo
+Bank, I recommended that they initiate passive investment strategies and of-
+fer them to their clients, the forerunner to so-called “index funds.” That fall,
+on the suggestion of Michael Jensen, I had lunch with Fischer Black, who he
+had met because of Jensen’s research on mutual funds. Fischer was employed
+at Arthur D. Little, a consulting firm in Cambridge, Mass. We had several
+other lunches that fall and Fischer suggested that he was thinking of leaving
+Arthur D. Little to start his own consulting firm. At about the same time, John
+McQuown at Wells Fargo Bank asked whether I wanted to conduct research
+that would describe the tradeoff of risk and return in the market as a fore-
+runner to introducing passive investment strategies to their clients. Without
+research, they were not willing to offer index-fund-like products to clients.
+Being an Assistant Professor, I was restricted as to the number of days I could
+consult. I asked Fischer whether he wanted to join forces on the project. It
+was obvious from our lunch discussions that he had very similar ideas, and
+was starting a research project with Jensen on measuring risk and return. We
+joined forces and worked together to test the capital asset pricing model (see
+Black, Jensen and Scholes (1972)). We developed the concept of the zero-
+beta portfolio to test the model. If we could create a zero beta-minimum vari-
+ance portfolio by buying low beta stocks and selling high beta stocks and
+achieve realized returns on this portfolio that were significantly different
+from the interest rate this would violate the predictions of the original capital
+asset pricing model.
+
+In the winter of 1969, I agreed to direct the Masters thesis of an MIT
+graduate student who had garnered a time series of warrant and underlying
+stock prices and wanted to apply the capital asset pricing model to value the
+warrants. I read all of the articles relating to warrant pricing in Paul Cootners’
+book of readings on The Random Character of Stock Prices (1964). One in-
+cluded paper, by Case Sprenkle and dated 1960, seemed the most relevant to
+me, but Sprenkle used an exogenously determined discount rate to discount
+the expected terminal value of the warrant to its present value.
+
+What seemed apparent was that the expected return of the warrant could
+
+
+===PAGEBREAK===
+
+132 Economic Sciences 1997
+
+not be constant for each time period because the risk of the warrant changed
+with changes in the stock price and with changes in time to maturity. For ex-
+ample, if the warrant was far “in-the-money,” that is, the underlying stock
+price was far above the exercise price, and the warrant was almost sure to be
+exercised, its price would change almost dollar for dollar with a change in the
+underlying stock price. The percentage change in the value of the warrant,
+however, would be greater than the percentage change in the value of the
+common stock because the warrant was a leveraged instrument. On the other
+hand, if the warrant was “out-of-the-money,” that is, the underlying stock
+price was less than the exercise price, the warrant price would move far less
+than dollar for dollar with the price of the common stock (for example, $.5
+for $1 move in the common). The percentage change in the price of the war-
+rant, however, would be even greater than that of the in-the-money warrant.
+
+As a result, the expected return on the warrant could not be constant each
+period if the beta of the stock was constant each period. I thought about
+using the capital asset pricing model to establish a zero-beta portfolio of com-
+mon stock and warrants by selling enough shares of common stock per each
+warrant held each period to create a zero-beta portfolio. Given I could create
+a zero-beta portfolio, the expected return on the net investment in this port-
+folio would be equal to the riskless rate of interest. I knew that I would have to
+change the number of shares of stock each period to retain my zero-beta
+portfolio. But, after working on this concept, off and on, I still couldn’t figure
+out analytically how many shares of stock to sell short to create a zero-beta
+portfolio.
+
+Fischer and I continued working on tests of the capital asset pricing model
+and the development of investment products based on the implications of
+our research throughout 1969. In the summer or early fall of 1969, I discus-
+sed with Fischer my earlier experience with warrants, my attempt at creating
+the zero-beta portfolio, and my inability to determine the changing number
+of shares needed each period to create the zero-beta portfolio. He described
+to me his research on warrants and that he was frustrated in his inability to
+progress further than he had to that time. He showed me a sheet of paper,
+which described the relation between the return on the warrant and the un-
+derlying stock. Following on earlier work by Jack Treynor, Fischer had used a
+Taylor Series expansion of w(x,t), where “w” is the warrant price, “x” is the
+current stock price and “t” is time to maturity to show the relation between
+the change in the warrant price as a function of the change in the price of the
+common stock and a decrease in the time to maturity of the option. Ignoring
+terms of second order with regard to time, over a short period of time, this
+expansion was:
+
+Aw(x, t) = w, Ax + wy At + /, w,, Ax*At
+
+where A is the change symbol, and the subscripts refer to partial derivatives
+with respect to the first or second arguments.
+Not surprisingly, Fischer had used the capital asset pricing model to de-
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 133
+
+scribe the relation between the expected return on the warrant and the mark-
+et and the expected return on the common stock and the market. By
+substituting for the change in the warrant price as a function of changes in
+the stock price and time in the capital asset pricing relation, it became ob-
+vious on how to create a zero-beta portfolio that would have an expected rate
+of return equal to the interest rate (for we assumed a constant interest rate).
+Consider the returns over a very short period of time on two alternative in-
+vestment strategies: under (1), we acquire the warrant, and enough bonds
+earning at interest, r, per period, such that our investment in strategy (1) is
+the same as in alternative strategy (2), in which we buy w, of stock. The fol-
+lowing is the investment and the return on these two alternative strategies:
+
+Investment Return
+
+(1) Buy warrant w w, Ax + Wy At + 1/, wy, Ax? At
+Bonds w,xX-W r At(w, x — w)
+
+(2) Buy Stock w, x w, Ax
+
+The investment was constructed to be the same in strategy (1) and strategy
+(2). The risk appears to be the same in both strategies. The only uncertain
+term is Ax, the change in the stock price, and the total uncertainty due to
+changes in the stock price is the same in both strategies. Ax? involves the
+change in the stock price squared, a form of variance, which as At becomes
+small approaches x*o?, the stock price squared times the instantaneous vari-
+ance of the underlying returns on the common stock, which is assumed to be
+constant.
+
+Since the risk is the same and the investment is the same under both strate-
+gies, to prevent arbitrage, the returns must be the same over a short period of
+time. After equating the returns on strategy (1) with the returns on strategy
+(2), and substituting for Ax’, we find:
+
+Qn?
+rwtw,xrt+wotl/,wy, xo =0
+
+This is the Black-Scholes differential equation. The initial condition for a war-
+rant or call option is that w(x,t*) = Max(x - c, 0), where t* is the maturity
+date of the option, and c is the exercise price of the option. The only requir-
+ed inputs to value the option, other than its initial conditions, are r, the in-
+terest rate, and 0%, the variance rate per unit time on the returns on the un-
+derlying stock. We were both amazed that the expected rate of return on the
+underlying stock did not appear in the differential equation.
+
+Although the number of shares needed to create a zero-beta portfolio each
+period was w, it was not obvious to us how to find w,. The next step in solving
+the problem was to realize that since the warrant valuation depended only on
+the variability of returns and not the expected return on the underlying com-
+mon stock, it was arbitrary what expected return was assumed for the under-
+lying common stock. The same warrant valuation equation would result be-
+cause we had hedged out the risk of the common stock in establishing the
+
+
+===PAGEBREAK===
+
+134 Economic Sciences 1997
+
+zero-beta portfolio or the alternative replicating portfolio, as above. We as-
+sumed that the expected return on the common stock was equal to the inter-
+est rate over the next short period of time, or in terms of the capital-asset
+pricing model that the common stock had a zero beta.
+
+With the assumption of constant return and variance of return, the distri-
+bution of returns on the underlying stock at expiration of the warrant would
+be lognormally distributed. We used the Sprenkle formulation to find the ter-
+minal value of the warrant using a constant interest rate as the expected
+rate of return on the stock. But, we wanted the present value of the warrant.
+The key here was to realize that although the warrant would have greater
+price variability than the underlying stock, if we assume that the stock had a
+zero beta, the warrant would have a zero beta. If the warrant had a zero beta
+each period of time, the warrant had also to return the interest rate, r, each
+period of time.
+
+If we had decided to value the warrant using the actual expected return on
+the common stock or, for that matter, any other appreciation rate, the dis-
+count rate to value the warrant would depend on time and changes in the
+stock price. It does not for the zero-beta case. Using Sprenkle’s formula with
+the assumption that the expected return on common stock and the discount
+rate for the warrant was equal to a constant interest rate, we obtained the
+Black-Scholes option-pricing formula.
+
+w(x,t) =x N(d,) -c e"™") N(dy)
+
+where N(d) is the cumulative normal density function, c is the exercise price,
+t* is the expiration date, and t is the current date, t*—t is the remaining num-
+ber of periods in the life of the option, and “e” is the exponential operator.
+Lastly,
+
+d, = [Inx/c + (r+ 1/20?) (t*-t)] /o Vt*-t
+d, =d,-o Vt*-t
+
+We checked the formula against the differential equation and, as we expect-
+ed, it fit. We were sure that we had the correct formula for valuing call op-
+tions or warrants, the right to buy an asset at a fixed price, the exercise price,
+at maturity of the right, its expiration date. With minor adjustments we could
+value a put option, the right to sell an asset under similar terms.
+
+From the formula, we were finally able to compute w,, which was equal to
+N(d,), the required number of shares to hedge the option. The number of
+shares will change over time and as the price of the underlying security
+changes with respect to the exercise price. But, given the assumptions it is a
+known quantity each time period.
+
+The formulation also suggests the technology necessary to price any con-
+tingent claim that depends on an underlying asset’s price (or even other
+state variables) and time. This is so even with differential known pay-outs,
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 135
+
+such as dividends on a stock or coupons on a bond, that are not received by
+the option holder. The technology suggests that what is necessary is to hedge
+the stochastic term, Ax, to create an alternative investment that is riskless.
+Merton (1973) formalized these relations.
+
+We had spent a considerable amount of time working to finish up several
+other papers including our paper on testing the capital asset pricing model.
+As a result, we finished a draft of the paper sometime in the winter of 1970.
+We did not know whether our formulation was exact, but intuitively we
+thought investors could diversify away any residual risk that was left. For lar-
+ger price changes in the common stock, the hedge position of being long the
+option and short the appropriate number of shares of stock would tend to
+make money whether the market went up or down, and would lose money on
+small changes in the market portfolio. The risk of the position appeared to be
+independent of market risk. We programmed the model and tried to under-
+stand the sensitivity of the price of the option to changes in the stock price,
+time to maturity, volatility, and the interest rate.
+
+We presented a draft of the paper at a conference on capital market theo-
+ry sponsored by Wells Fargo Bank in July of 1970. Later that summer, on va-
+cation together, Fischer and I worked out the applications of the option-pric-
+ing framework to the pricing of risky debt and other capital structure issues.
+We viewed the common stock of a company with debt in its capital structure
+as a call option. The equity holders have an option to buy back the firm from
+the debt holders by paying off the face amount of the debt at its maturity. The
+equity holders will not buy back the firm from the debt holders at the matu-
+rity of the debt if the face amount of the debt is less than the value of the
+firm’s assets; they will turn the remaining assets of the firm over to the debt
+holders. For us, it was exciting to realize that the equity of a corporation was
+an option, and that our framework applied far more broadly than the valu-
+ation of warrants or put and call options. The methodology provided a
+systematic approach that relied on arbitrage to value the capital structures of
+firms, and to understand how management decisions affect the relative
+values of debt and equity in the firm’s capital structure.
+
+As it turned out, Robert Merton, who had written an earlier paper on the
+valuation of warrants with Paul Samuelson (see Samuelson and Merton,
+1969) following on Samuelson (1965a) early work on warrent valuation, had
+expected to attend our session at the Wells Fargo conference, but he over-
+slept and missed the session. In the winter and spring of 1970, Fischer and I
+searched the academic literature to determine how close others were to our
+invention. Fischer and I realized that the Samuelson and Merton paper con-
+tained an equilibrium model to value warrants but they did not value the war-
+rant continuously. Given that there was friendly rivalry between the two
+teams, Fischer and I wanted to progress, on our own, as far as we could prior
+to the conference.
+
+After the conference, in the early fall, Robert Merton and I discussed the
+Black-Scholes valuation methodology and option-valuation formula. He was
+not convinced that using the capital asset pricing model framework was suffi-
+
+
+===PAGEBREAK===
+
+136 Economic Sciences 1997
+
+cient. It seemed to him that, as the interval of adjustment of the hedge be-
+came closer to continuous time, there might still be covariance between the
+hedged position and the market return. Merton and I speculated that one
+way that there would be no such covariance would be if the return on the op-
+tion was perfectly correlated with the return on the stock in continuous time,
+and therefore the hedge was exact. Merton later proved that the hedged po-
+sition in continuous time was riskless, and that the replicating portfolio argu-
+ment was exact. Fischer and I used this derivation in the final version of the
+paper because it relied on arbitrage and not on any underlying model of
+capital market equilibrium. However, we still presented the capital asset pric-
+ing model derivation of the model, as it provided us with the many insights
+we used to unlock the puzzles of option pricing.
+
+Merton (1973) then started working on his paper on various aspects of the
+option formula. He incorporated his alternative proof of the option-pricing
+model. He also showed that the right to exercise a call option prior to matur-
+ity is not valuable for a non-dividend paying stock, but valuable for a put op-
+tion on a similar stock. He also showed how to incorporate changes in inter-
+est rates into the valuation methodology, and generalized the formula to
+handle other state variables.
+
+To our dismay, when we submitted a version of our paper entitled “A
+Theoretical Valuation Formula for Options, Warrants, and Other Securities”
+(October, 1970) to the Journal of Political Economy, it was rejected without
+review. The Review of Economics and Statistics also rejected the paper. Fischer
+felt that the paper was rejected because he was not an academic; I felt that I
+was an unknown Assistant Professor and the paper would not be considered
+to be broad enough for those academic journals. With the help of Merton
+Miller and Eugene Fama, who took an interest in the paper and stepped in
+on our behalf, the Journal of Political Economy agreed to consider the paper if
+we revised it and broadened its applicability. We had planned to publish the
+corporate-finance-capital structure applications in a subsequent paper but we
+broadened the original paper and showed how corporate liabilities could be
+viewed as options.. The final version of the paper was published in 1973 in the
+Journal of Political Economy under the title “The Pricing of Options and Cor-
+porate Liabilities.”
+
+2.1 The Aftermath
+
+In Black and Scholes (1972), we tested the option pricing model using data
+recorded in a transactions diary of a broker in the over-the-counter option’s
+market provided to us by another Master’s student at MIT. The diary listed
+the prices at which he sold options to his clients. Using simple estimates of
+the volatility, the model generally performed well. It produced profits if one
+could buy options at diary-market prices if the model indicated a higher value
+than the market and sell options at diary-market prices if the model indicated
+a lower value than the market. Each trading day, we assumed that the model
+could be used to determine the hedge ratio, the delta, and undertook these
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 137
+
+hedges (assuming that transaction costs were zero). We regressed the daily re-
+turns on our hedged portfolio on the market returns. As expected, the port-
+folio returns were uncorrelated with the market returns, but the model pro-
+duced substantial and significant abnormal profits. The market appeared to
+ignore information available in the historical data on estimating volatility.
+
+When we assumed that we could buy the undervalued and sell the over-
+valued options at model prices and hedge out the underlying stock risk, we
+incurred significant losses. These losses were incurred because using simple
+estimates of the volatility ignored information on future volatility that the
+market was using to price the options. When actual realized volatility over the
+life of the option was used to compute the model prices, buying undervalued
+and selling overvalued options at model prices generated returns that were
+insignificantly different from zero.
+
+It became apparent to us that the transaction costs of dealing in the over-
+the-counter market were quite large. The dealers would only sell options. As
+a result, the market in put and call options was quite small. The world was
+about to change. In the early 1970s, various studies were commissioned to
+provide an economic justification for a new options exchange. As a result,
+The Chicago Board Options Exchange (CBOE) was born in 1973 almost
+simultaneously with the publication of the Black-Scholes and Merton option-
+pricing papers. The reduction in transaction costs and the transparency of
+the market were justifications enough for the subsequent success of the op-
+tions market.
+
+It is ironic that these empirical tests of the Black-Scholes model were pub-
+lished in the Journal of Finance in the proceedings volume of the American
+Finance Association Meetings, in May of 1972, a full year prior to the publication
+of the model itself. Although we did not present it as such, it is ironic that the
+methodology in the paper is generally the same as that used today by finan-
+cial entities to manage the risks of their trading positions and to measure the
+performance of their traders.
+
+2.2 Historical Notes: From Theory to Practice
+
+Both the derivative exchange industry and the derivative academic industry
+grew significantly from 1973 to 1985. Financial economists started to interact
+with a broad set of practitioners and this led to a cross-fertilization of ideas
+among the participants in both industries.
+
+The option-pricing technology was adopted simply because it reduced
+transaction costs. For without a model, traders could neither price securities
+with imbedded options with sufficient accuracy to compete against other
+traders with models, nor could they reduce the risk of their positions to em-
+ploy their capital efficiently at a low enough cost to compete with other trad-
+ers. Although it is hard to prove, I do think that the success of the CBOE and
+other exchanges, in part, can be attributable to option-pricing models. As
+traders became familiar with these models, bid-offer spreads narrowed. As
+traders became more familiar with risk-management techniques they could
+take on larger position sizes to support the market. With a deeper and more
+
+
+===PAGEBREAK===
+
+138 Economic Sciences 1997
+
+efficient market, investors began to use options to facilitate their own invest-
+ment strategies.
+
+In those formative years, notable extensions and additions to the basic
+framework include important contributions by Black (1975, 1976), Banz and
+Miller (1978), Breeden and Litzenberger (1978), Brennan and Schwartz
+(1979), Cox and Ross (1976), Cox, Ross and Rubinstein (1979), Geske
+(1979), Harrison and Kreps (1979), Magrabe (1978), Merton (see Merton,
+1992a), Parkinson (1977), Richard (1978), Ross (1976), Rubinstein (1976),
+Scholes (1976), Sharpe (1978), and Vasicek (1977).
+
+In 1971, Fischer Black left Boston to become a Professor at the University
+of Chicago. In 1972, Robert Merton and I became consultants to Donaldson,
+Lufkin and Jenrette (DLJ) to build mathematical models to price so-called
+“Down-and-Out Options” and to build their options technology to price call
+options in the event of a launch of the CBOE. Leo Pomerance, the head of
+the DL] options group, was an options trader from the old school; he traded
+OTC options using intuition and experience without regard to a formal
+model. He later became the first chairman of the CBOE. At DL] we forged a
+marriage of the old-time trader types, with their mental set, with young
+mathematical modeling types, with their model assumptions, to add value for
+the firm.
+
+The spread of the option-valuation technology was rapid once the CBOE
+launched its first contracts on listed securities. Initially, many of the older-
+market-wise traders rejected using a model to price options. And, initially
+prices were not in line with prices predicted from using the Black-Scholes
+model adjusting for dividends and using relatively simple estimates of volati-
+lity to price the options. This left an opportunity for younger model-based
+traders to step in and profit from price discrepancies in the market. They
+used the model to price options and to determine the appropriate hedge
+ratios to reduce the risk of their positions. Generally, retaining these risks had
+zero present value because traders had little expertise in forecasting stock
+returns. By so doing they could undertake larger positions and enhance their
+profits by concentrating on risks that could add to their profits.
+
+In Galai (1975), Dan Galai, one of my Ph.D. students as the University of
+Chicago, where I had returned in 1973, tested the pricing of options on the
+CBOE in the first year of its existence using the model with simple historical
+estimates of the volatility. He found that the profits on trading options; that is,
+buying undervalued contracts and selling overvalued contracts each day to
+maintain a neutral risk position, were even greater than those found in our
+original tests. His strategies could achieve greater profits by reducing posi-
+tions if the prices of options return to model values prior to the expiration of
+the contract. Transaction costs could have reduced actual trading profits for
+other than the option dealers.
+
+By the end of the first year of trading options, it was no longer possible to
+use simple estimates of the historical volatility to spot opportunities in the
+market. Many of the clearing firms, who financed the positions of the option
+traders, used the model and the hedge ratios to determine the net risk of
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 139
+
+each of these traders. Fischer had started a service to provide option prices
+and the share-equivalent positions (hedge ratios) on each of the options trad-
+ed on the various exchanges. He used a more sophisticated estimate of vola-
+tility to price the options. He combined historical estimates adjusted for
+changes in stock-market levels, with the volatility implied by the prices of op-
+tions. As is true even to this day, as the market-price level of securities in-
+creases relative to a previous level over a relatively short period of time, the
+volatility of stocks tends to fall. This result is due, in part, to a reduction in the
+leverage of the underlying equities. Given the rate of interest, the price of the
+common stock, the dividend yields, the exercise price, and the maturity date
+of the option, the model can be used to infer the implied volatility that the
+market is using to price the option. In fact, even today, options are described
+in terms of implied volatility. Traders are asked whether they want to buy or
+sell volatility. Although his volatility estimates held some cache for a while, ad-
+vanced computer technology made Fischer’s pricing sheets obsolete after a
+few years.
+
+In fact, Texas Instruments marketed a hand-held calculator in 1977 that
+gave the Black-Scholes model values and hedge ratios. When I asked them for
+royalties, they replied that our work was in the public domain; when I asked,
+at least, for a calculator, they suggested that I buy one. I never did. Robert
+Merton and I continued to consult for DLJ. Working with Mathew Gladstein,
+we decided that the time might be appropriate to provide investors with a
+fund that protected their downside risk but allowed for some upside partici-
+pation in the performance of the stock market. To achieve this goal, we
+decided that the assets of the fund would be held in two parts: in any six-
+month period, 90% of the assets would be held in U.S. Treasury bills and 10%
+of the assets would be used to buy a diversified portfolio of call options. In
+several papers, Merton, Scholes and Gladstein (1978, 1982) simulated the
+performance characteristics of such a strategy using the underlying stocks of
+the options that were traded in the various markets. The return characteris-
+tics were as predicted by the theory: losses were truncated and gains were less
+than a direct investment in the underlying stocks. The returns on the strate-
+gy were non-linearly related to the market. We always stressed the role of op-
+tions as insurance. In early 1976, we attempted to launch Money Market/
+Options Investments under the auspices of Phoenix Investment Counsel of
+Boston. Unfortunately, the fund raised only a small amount of money. Our
+simulation results indicated that fully-covered investment strategies; that is, a
+sale of an option on a position in the underlying stock (for example, long 100
+shares of IBM and short a call option to buy 100 shares of IBM), would pro-
+vide returns of only the premium received on the option approximately 60%
+of the time. Call-option holders would call their stock away if the stock price
+were above the exercise price on expiration of the contract and would not ex-
+ercise call options if the stock price were below the exercise price at expira-
+tion. This strategy produces higher current income but with the possibility of
+capital losses just like a high-yield bond. The expected return, however, was
+less than the expected return on the money market-options strategy. At about
+
+
+===PAGEBREAK===
+
+140 Economic Sciences 1997
+
+this time other investment companies marketed the fully-covered strategy,
+which we thought exhibited inferior return characteristics for most investors,
+and naturally, to our dismay, were quite successful because of the promises of
+higher income (but at the unadvertised expense of expected capital losses.)
+
+3. THE PRESENT
+
+The past twenty years has seen a transformation of the entire financial ser-
+vices industry, first in the United States, and now around the world. During
+the 1970s and 1980s, regulations divided the activities of financial institutions
+into separate market segments. In the U.S., commercial banks handled de-
+posits and made commercial loans; investment banks were involved in mer-
+gers, acquisitions and underwriting; brokerage companies sold stocks and
+bonds; savings and loans, along with banks, initiated and held mortgages;
+and, insurance companies sold life, and property and casualty insurance pro-
+ducts. Many of the regulations were directed at preserving the profitability of
+these institutions by restricting competition, mainly at the expense of the
+users of these services. Each institution had a product focus; for example, de-
+posits, or life insurance, or commercial loans. No financial company served a
+broad range of its clients’ financial needs.
+
+As happens at times, it is not possible for regulators to protect the profita-
+bility of the industries they regulate. In the U.S., mutual funds competed with
+banks in providing deposit services after banks were not permitted to pay
+market interest rates on deposits in the early 1970s. The growth of institution-
+al investors managing pension funds and mutual funds forced the abolition
+of fixed commission rates to trade securities in the U.S. and around the
+world. The larger brokerage firms evolved to compete against the banks and
+the savings and loan associations in packaging and repackaging mortgages to
+broaden the extent of the market. Banks started to compete with brokerage,
+investment banks, and insurance companies in financing commercial real
+estate and financing highly-leveraged mergers and acquisitions, so-called
+“Leveraged Buyouts.” It is nearly impossible to maintain regulations that re-
+strict activities in one industry when new competitors not subject to costly re-
+gulations are attacking the profitable businesses of that industry.
+
+The driving force behind today’s tidal wave of financial innovation has
+been the reduction in the cost of computer and communications technology.
+This lower-cost technology has led to a globalization of the product and fi-
+nancial markets. Corporate and institutional needs have become more com-
+plex. Investors are demanding more services. Technology brings new compe-
+titors to the market who can offer similar and expanded services at lower cost
+than existing competitors can. The growth of lower cost providers of broker-
+age services such as Schwab, Fidelity, and Internet brokers are examples.
+
+Financial service firms today must decide which clients to serve, determine
+those clients’ needs and then decide which products and services add value
+for their clients as well as their own shareholders. Firms that were quite sim-
+ilar fifteen years ago have become very different today. For instance, J.P.
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 141
+
+Morgan, a wholesale bank, today differs far more from Citicorp, a retail bank
+than it did in the early 1980s. Conversely, firms that were quite different from
+each other fifteen years ago have become quite similar today. It is hard to dis-
+tinguish the activities of today’s J.P. Morgan from UBS, from Goldman Sachs
+or Merrill Lynch. Meanwhile, A.I.G. and Travelers, both insurance compani-
+es, these days offer a number of services that are similar to those offered by
+Goldman Sachs or UBS. Investment banks no longer merely structure and ad-
+vise in transactions but instead have moved to a more packaged, integrated,
+convenient financial-solutions approach, directed at solving the complex
+problems of their clients around the world.
+
+The many advances in financial theory have enabled financial services
+firms to meet those complex needs more effectively and at lower cost than
+was possible previously. The marriage of business school and economics de-
+partment graduates with engineers, mathematicians, physicists and computer
+scientists has led to more efficient and lower-cost financial engineering
+solutions to client problems.
+
+To date, the major growth in the use of derivatives has been fueled by
+trends toward securitization and the increased understanding of the role that
+derivatives can play in the unbundling, packaging, and transferring of risks.
+No longer do financial service firms only sell the same products they buy
+from clients. Instead, they break the products down into their component
+parts and either sell the parts or recombine them into new and hybrid cus-
+tom-tailored financial instruments. And, this unbundling and repackaging is
+only in the beginning stages of evolution.
+
+With information asymmetries between clients and their financial service
+providers, it would be prohibitively expensive for a client to develop close re-
+lations with many financial service firms. To be productive, the financial ser-
+vice firm must learn the needs of its clients and understand their businesses.
+Asa result, it can be expert to only a select client list. Clients find it inefficient
+to “shop” widely for new financial service firms. Creating custom-tailored so-
+lutions strengthens relations between the financial services firm and its
+clients. It would be too costly for each client to replicate the specialized ex-
+pertise required to engineer financial theory solutions; such talent would be
+underutilized most of the time. It would be analogous to every corporation
+maintaining an entire full-service law firm on its premises. Notwithstanding
+many regulators’ fears, it is not likely that all financial service firms will disap-
+pear if left to compete in the global arena. Product standardization will erode
+profits more quickly than in the past because more diverse entities, such as
+General Electric or Enron or accounting firms can compete in providing fi-
+nancial services using financial technology. New competition will enter various
+markets from global competitors. Although inefficient financial service firms
+will disappear more quickly than in the past, their clients will obtain more
+value-enhancing and less costly services from the remaining financial service
+firms. Financial products are becoming so specialized that, for the most part,
+it would be prohibitively expensive to trade them in organized markets.
+
+Financial service firms have become the leaders in using derivatives in their
+
+
+===PAGEBREAK===
+
+142 Economic Sciences 1997
+
+risk-management programs. Using information and option-pricing technolo-
+gy, financial services firms can not only value their commitments, such as
+guarantees and other derivative contracts, but also are moving to understand
+the sensitivities of their holdings to various market factors. They can decide
+what risks to transfer and what risks to retain.
+
+Tables 1 and 2 show the growth of derivative contracts trading since 1986 in
+both the exchange industry and in the OTC industry. The cells of the tables
+contain the “notional principal amounts outstanding” for various categories
+of derivative contracts. For example, the face amount of stock market index
+options (including call and put options) at the end of 1986 stood at $37.8 bil-
+lion and by the end of 1996 grew to $380.2 billion.’
+
+These tables indicate that the OTC market in derivatives has grown much
+faster than the exchange market in the last 10 years. In 1995, turnover on the
+major derivative exchanges around the world actually declined while OTC ac-
+tivity rose by 40 percent. The Bank for International Settlements estimated
+that outstanding OTC contracts exceeded $47.5 trillion in early 1995, much
+greater than the numbers reported in Table 2. To put these values into per-
+spective, the value of all outstanding debt in Europe, Japan and North
+America totaled $25.8 trillion in 1995.
+
+The growth of the OTC market will continue to outstrip the growth of the
+exchange market because the clients of the financial service firms need assis-
+tance to structure their financial programs. The current growth path is to
+provide more client-focused structured solutions to problems. Clients likely
+would find it less expensive to execute a program through their financial ser-
+vice firm than to execute it themselves in the exchange market. This is even
+more likely if the positions must be adjusted frequently to hedge risks.
+
+Moreover, the relative growth of the OTC market is overstated because the
+exchange markets require that entities post margin on contracts each day.
+Futures contracts are settled at the end of each day. Forward contracts, such
+as swaps and options written by OTC firms such as caps and floors, are not
+settled each day. The product offerings are different. The financial service
+firms and their counterparts rely on each other’s credit. Most financial ser-
+vice firms can post collateral on OTC contracts, which is very similar to sett-
+ling the contracts as in the case of posting margin on an exchange. These en-
+tities will use either the financial futures and options markets or the OTC
+markets. They will use the industry that provides services at lower cost. Many
+entities, however, are not indifferent to posting collateral. In particular, many
+
+2 See “International Capital Markets, Developments, Prospects and Key Policy Issues,”
+International Monetary Fund (September 1997) for the source of these statistics. The notional
+amount outstanding is not an economic measure of the size of the market. The notional amount
+of a swap or an option is the amount on which the contract is based. It is not the value that the
+security would trade at in the market. For example, if a call option to buy $100,000 of a major-
+market index trades at $5,000, the notional amount is recorded as $100,000 while the economic
+value is only $5,000. The economic value of swaps and options might be as low as 2% and 5% of
+the notional outstanding amounts of the contracts. These statistics provide estimates of the
+growth of the derivative market.
+
+
+===PAGEBREAK===
+
+143
+
+Myron A. Scholes
+
+‘suondems pur ‘s10orj ‘siepjoo ‘sdes Buripnpuy ,
+
+‘s1ayo Burpnypuy ,
+
+‘sUONNINSU! [PUONeUIAIUT BUIpNpUy ,
+
+68901S IASIL'LT SEOs IL PLES LOPE G6rP YP € 0GF'S 0'68F'S TL99'T 9°G98 Teo],
+T061'F GVOL'S SSL T 9°L66'T GPrs9 GLLE $19 SLES 6 LES 00 suondo ayes isa19q Uy
+L'¥66'T PLOT 8716 9°668 F098 6'L08 GLLS L6>P 9'6IE 8681 (sapts yoq Jo
+Suniodai 10} paisn{pe)
+sansediayunod [Ty
+sdems Aduatiny
+- SPLLT 8'°668'T 9'99T'T 6999 LILg 6 LEP 6 S66 6891 9861 suonesodior
+- 6°00 9°L06 UL66 8'ShS gg9T 6961 GOL 669 OLb SIUIUIUIIAOL)
+- O'SEh'E VPPLS LStL'T V190°T L986 T'L18 6 6LE a 5 0°006 suonmnysuy [eoueuly
+- 9'00T'L 6 SESh 6196 8'°088'T GPE 'l 606 ULbS S 1FS 9°906 (saquieu
+Vas] yueqsaiuy
+SP8SGT «=LOISSI «= 988 SLL9 8'098'¢ 1°990'¢ SIIss 9°G0‘T ram ct) a 6°689 sanaediayunod [Ty
+sdems aqvd ysasaqU]
+g66t eunf[ 4661 F661 £661 6661 T66I 0661 6861 8861 L861
+
+(sIeTOp “s*7) Jo SUOTTTG UT) 9661 PUnf—2861
+‘aonepossy saaneaLiag pue sdemg [euoneusajuy ayp Jo s1aquiayw aq} Jo sdemg AauaLM pur ayy sasayU] SupueysynG Jo anye, [ediourrg [PUoHON *Z aIqUL
+
+‘sind snyd sqeo ,
+6G 8901 G6E L'86 ST G0 60 10 00 00 00 JIYIO
+OFSTS 1:066'T SILS 0°909'T G68 0°L99 g'09¢ 0'096 PSoLI SS8sl O'L8 dye g-eIsy
+Less OTbSS L168‘T 6LLLT SPIT TOU G 19P O1S6 LLLI SL TSI adoinq
+L'668'F 9'6h8'F C6I8F 9'°8S6'F L'¥69% LISls $'896'T SSSI‘T L196 T82¢ TS8ig¢ eOUIWY YON
+9'F88'6 38816 G°Z98'8 VILL‘ PvEIP €$ 61S F'068°6 699L'T 8 P0E'I 6664 S819 [e1oL,
+6 08S $666 $'8ES L666 98S1 8 6sI L°$6 LOL 6 6P LL6 SLE suondo xapul jaye YOIS
+9861 GGLI €Lél OOIT 8°64 0°92 169 er UL6 SLI oF SoININ} XIPUl JOYTVU YIOIS
+G’OF GSP OGG OGL TTL 6°69 gg¢ 60S OSPF G'6S 6 6E suondo Aouasiny
+$0S € 8s LOPF LYE G96 £sI OLT O9oT Vél OFT GOL sainyny Aduaaing
+SLL S1PLS 9669S Po9Ss PET 9 SLOT 66S 6 L8E 6 6L6 9°61 SOFT suondo ayes satu]
+L166 PE98'G OLLL‘S L'896'F OSl6S L9S1S CPF 8'006'T F'S68 LL8h 0046 SOININF 3721 JS9IIIUT
+9661 S661 F661 S661 6661 1661 0661 6861 8861 L861 9861
+
+(sIeT]Op *S°/A) Jo suo Uy) 96-9861 ‘SuTpULIsING sjuMoUTy JediouLlg eEUOHON :s}uauM.NsUy [EUEULY eaNeaLre” poyaag Joy sjayrEW *] 2142L
+
+
+===PAGEBREAK===
+
+144 Economic Sciences 1997
+
+OTC swap and option contracts have a financial entity and a corporation as
+counterparts because the corporation is willing to pay the financial entity to
+post margin for it in the futures or options market. That is, the financial ser-
+vices firm enters into a swap with a corporate entity, which does not post col-
+lateral, and the financial service firm hedges its market risk by entering into
+an offsetting swap with another financial service firm or by using the ex-
+change-derivatives industry. In either case, the financial service firm posts col-
+lateral or margin on its transactions. It is the lower cost producer of margin
+services. Financial service firms have the capacity and the personnel to un-
+dertake the pricing of credit risk and can handle these transactions; many
+corporate entities currently do not.
+
+To the extent that collateral is not posted on the obligation, one conse-
+quence of the these transactions is that the financial service firm and the cor-
+poration are exposed to each other’s credit risk. The corporation buying a
+call option on an underlying debt instrument from the financial service firm
+has credit risk to the extent of the value of the call option. The financial ser-
+vice firm can fail to honor its obligation to deliver the underlying debt in-
+strument. The financial service firm holding a put option, issued by the cor-
+poration, on the same debt instrument is a creditor of the corporation to the
+extent of the value of the put option. A swap contract, which states that the
+corporation will receive a fixed rate of interest on an underlying debt instru-
+ment and pay a floating rate of interest, is equivalent to the corporation being
+long a call option and short a put option.
+
+The other major reason that the OTC industry will continue to grow faster
+than the exchange industry is that financial service firms and others need on-
+ly to hedge the remaining factor risks of their portfolio positions, which is a
+far smaller amount than their gross contracting with their clients. Moreover,
+depending on the costs, they can hedge either with another financial service
+firm or in the exchange industry. The financial service firm that hedges fac-
+tor risks retains the remaining risk, the so-called “basis risk,” of its net posi-
+tions.
+
+Another reason for the growth of the OTC market has been that the out-
+standing amounts in Table 2 do not necessarily represent net exposures. It
+might be less expensive for a corporation or a financial service firm to enter
+into an offsetting derivative contract with another counterparty than it would
+be to unwind the initial contract. If it does, the contract volume increases but
+the net exposure falls.
+
+3.1 The Present: The Pathologies
+
+From the perspective of market commentators, many regulators, and the
+public, derivatives tend to top the list of suspects when the stock market turns
+downward or when entities announce unanticipated financial losses. The
+press, the public and regulators fear derivatives, in part, because they are new
+and, in part, because their growth has appeared to be so explosive over the
+last ten years. Although they vastly overstate the economic exposure, notional
+amounts as high as $45 trillion cause worry. The press and others credit the
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 145
+
+market crash of 1987 to portfolio insurance, an attempt to dynamically repli-
+cate the returns on options. Even in this time, market pundits warn that
+forms of dynamic hedging could foster a severe market downturn. Widely
+publicized losses attributed to derivative trading in the 1990s include: the
+leveraged-derivative contracts issued by Bankers Trust to firms such as Proc-
+tor and Gamble and Gibson Greeting (over $150 million in losses); the loss of
+$1.5 billion by Shell Sekiyu, the losses incurred by Orange County investing
+in inverse floaters; the bankruptcy of Metallgesellschaft and Barings
+Corporation (both over $1 billion in losses) and many other losses by finan-
+cial service firms such as UBS, Salomon Brothers, etc. Obviously, many of
+these losses are overstated because there were gains made by the other side to
+these contracts: It is only the dead-weight costs to society that result in actual
+loss. For excellent discussions of the entire range of purported pathologies
+and an excellent review of the literature addressing these issues see Miller
+(1997), who argues that most, if not all, of the “diagnoses” of severe patholo-
+gies are misdiagnosed.
+
+Yet, the growth of these industries depicted in Tables 1 and 2 clearly sug-
+gests that these instruments have added net value. It is hard to believe such
+growth could continue for so many years without value being realized by the
+clients of financial service firms, the shareholders of these firms and the ex-
+changes. I have argued in Scholes (1995, 1996a) that the development of fi-
+nancial infrastructure might lag financial innovation. It is costly to develop
+controls and firm-wide understanding of new products that are in the proto-
+type phase of their development. Prototypes are built using existing infra-
+structure. For an innovation as long lasting and profitable as derivatives, the
+OTC industry, the exchange industry and the academic industry find it
+profitable to build the infrastructure necessary to support them. Each of
+these industries has a vested interest in profiting from adding value that is
+sustainable, so each will attempt to invest in the cost-effective infrastructure
+necessary to preserve this value.
+
+This is not to argue that we have seen the end of derivative failures. There
+will be losses sustained as in many other business activities. In 1997, the
+Governments of many countries in Asia could no longer support the losses of
+their financial institutions resulting from defaulted commercial and real es-
+tate loans. Although many banks had been economically bankrupt without
+the support of their Governments (that is; the value of their equity would ha-
+ve been effectively zero without Government implicit guarantees), the
+Governments allowed these banks to participate in any potential gains and
+sheltered them against bank runs by promising to pay off their depositors.
+These options were costly to society, and it will be difficult to prove that they
+were value enhancing. In part, other countries, through the grants made by
+the International Monetary Fund, as the lenders of last resort to these and
+other countries, may have written the put options that supported the activities
+of the financial institutions of the region and granting these options might
+have encouraged risk taking and even unprofitable activities.
+
+Moreover, absent government guarantees, some brokerage houses and
+
+
+===PAGEBREAK===
+
+146 Economic Sciences 1997
+
+banks in Japan probably would be bankrupt, because while these entities had
+promised clients protection against loss on any decline in value of Japanese
+stocks, they did not hedge their commitments. Clients might have paid for
+these put options through higher commission rates in Japan. These Japanese
+financial service entities, however, suffered severe losses when their clients ex-
+ercised these put rights during the decline in the value of Japanese stocks in
+the1990s. The entities currently are not required to value their commitments
+on a mark-to-the-market basis. As a result, neither regulators, nor investors
+nor even senior management could deduce the financial condition of the en-
+tities. In all probability, the extent of these losses could have been mitigated if
+risk management policies had been put in place.
+
+4. THE FUTURE
+
+The future will be a continuation of the present. Financial innovation will
+continue at the same or at even an accelerating pace because of the insatiable
+demand for lower-cost, more efficient solutions to client problems. Infor-
+mation and financial technology will continue to expand and so will the circle
+of understanding of how to use this technology. There is value to investing in
+education. Financial service firms will expand the use of this technology to
+manage their own activities. Otherwise, they will have to face mergers with
+other financial service entities. Although some would like to see derivatives
+wither in importance, they will not, for they have become essential mech-
+anisms in the tool kit of financial innovation.
+
+Scholes and Wolfson (1992) used the concepts of frictions and restrictions
+to illustrate how tax rules and other regulations affect investor and corporate
+behavior. As Merton (1992) argues, the functions of a financial system
+change far less than institutions. Institutions change because lower-cost solu-
+tions that reduce information asymmetries are found to facilitate transac-
+tions, to provide funding for large-scale investment projects, to transfer sa-
+vings across borders and into the future, and provide more efficient
+risk-sharing and diversification mechanisms.
+
+Most financial instruments are derivative contracts in one form or another.
+Black and Scholes (1973) pointed out that the equity holders of a firm with
+debt in its capital structure have an option to buy back the firm from its debt-
+holders at maturity of the debt. The high-yield bond (the so-called “junk
+bond”) is a riskier debt-option contract than more-highly rated corporate
+debt. Corporate debt and equity contracts are derivative to underlying invest-
+ments. Other lines of research on so-called “real options” indicate that even
+the investment decisions of firms are better understood by using an option
+framework rather than a more conventional present-value-analysis frame-
+work.
+
+Standard debt and equity contracts are institutional arrangements or box-
+es. They provide particular cash flows to investors with their own particular
+risk and return characteristics. These institutional arrangements survive only
+because they provide lower cost solutions than competing alternative ar-
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 147
+
+rangements. Competitive opportunities evolve over time with changing fric-
+tions and restrictions. Because of information asymmetries and regulatory re-
+strictions, investors might require a higher rate of return to hold these stan-
+dard-form contracts than contracts (now and in the future) of alternative
+design but of similar risk. Time will continue to blur the distinctions between
+debt and equity.
+
+The firm’s investment set is generally the composite of coarse bundles of
+payoffs. Firms issue claims to finance these activities, claims that themselves
+represent bundles of coarse cash flows. It will become more efficient for
+financial service firms to offer new derivative securities in various forms to
+break cash flows into finer gradients that can be tailored to the specific needs
+of demanders and suppliers of capital. In the process, dead-weight costs are
+mitigated, thereby reducing the cost of capital. The financial service firm can
+sell the newly created securities or retain them in whole or in part for its own
+account. It can create new products on its own name or use the OTC or ex-
+change markets to hedge its risks. Given information asymmetries, it will use
+the lower-cost solution.
+
+4.1 Investor Demands
+
+In recent years, we have witnessed a movement from a limited number of in-
+vestors holding an undiversified portfolio of their own home-country securi-
+ties to many more investors holding diversified portfolios domestically and in-
+ternationally. More and more investors around the world, who have never
+invested in financial products other than through social promises made by
+their governments, will become more willing to select from a broad class of
+“mutual-fund” type offerings. Although the diversity of products has grown,
+few tools are in place other than in academic circles that allow investors to
+make informed portfolio allocation decisions. As Franco Modigliani, the 1985
+Nobel laureate, has argued, individuals want to smooth consumption over the
+life cycle. If it were more cost efficient, investors would want to insure against
+contingencies, control risks more efficiently, and plan their investments effi-
+ciently to meet life-cycle needs. As information and financial technology be-
+come more easily available, financial service firms will repackage investments
+to meet these investor demands, and this will spur financial innovation. The
+financial service firm will offer products in its own name that promise speci-
+fic risk and return patterns; these firms will also offer products in the form of
+mutual funds. The classifications of investment products into stock funds,
+bond funds, growth, income, etc. will diminish in importance with reduced
+costs to understand risk, return, and contingent payoffs.
+
+Even today, the boxes that define institutional-fund arrangements have
+blurred. For example, if a pension fund manager wants to achieve a stock-in-
+dex fund return, she can invest with an index-fund provider that buys a di-
+versified portfolio of the index-fund stocks. She can achieve the same result,
+however, in myriad other ways including using another manager who might
+claim to have expertise in the bond market and can provide an enhanced re-
+turn over the index-fund return. To achieve this, the enhanced manager
+
+
+===PAGEBREAK===
+
+148 Economic Sciences 1997
+
+might undertake a complicated strategy. He might hold a portfolio of under-
+valued corporate and government bonds, hedge the credit risk of the corpo-
+rate bonds by selling stock short, and hedge the price risk of interest rate
+movements by using futures or options. He might buy stock-index futures to
+achieve the systematic risk exposure of the stock-index fund. Given costs, the
+manager might be able to produce a return in excess of that achieved by
+holding the index fund directly while the systematic risks of the two offerings
+would be exactly the same.
+
+The exchange industry will compete with the OTC industry to provide in-
+vestment products. If the exchange industry can provide efficient margining
+systems for those investors who can not post collateral in a cost efficient man-
+ner, those products that become standardized will most likely be ideally suited
+for the exchange industry: it can address a larger set of participants in a
+lower-cost marketplace. The exchange industry complements the OTC in-
+dustry; they will grow together.
+
+4.2 Corporate Demands for Derivatives
+
+Finance specialists have puzzled over the reasons why corporations hedge the
+risks of their cash flows. Under classical finance theory, it is often asked why
+shareholders of a firm pay it to incur costs to reduce risk when they can
+diversify on their own account. The firm’s managers should act as if the firm
+is risk neutral. Smith and Stulz (1985) provide three reasons, all tied to the
+cost of financial distress, why a firm might hedge its cash flows. Because of the
+convexity of the tax schedule, a firm might issue more debt only after hedg-
+ing its cash flows to reduce its expected operating losses and the resultant loss
+of tax benefits. Because of bankruptcy costs associated with high levels of
+debt, the firm that hedges can use more debt to finance its activities. As in
+Froot, Scharfstein, and Stein (1993), if the firm can hedge its cash flows, a
+reduction in the probability of financial distress reduces the expected costs of
+financial distress and, as a result, encourages investment in profitable projects
+that might have been foregone without such hedging. This argument is based
+on the observation that firms are reluctant to issue equity, and, instead, use
+retained earnings to finance investments before using the debt markets. Also,
+if a high-debt-to-equity firm were to become financially distressed it would not
+be possible to issue equity to finance business activities. Because owner-
+managers in smaller firms might not be able to diversify their holdings, hedg-
+ing the cash flows of the firm might be a lower-cost alternative than selling off
+pieces of the firm to outsiders and using the proceeds to diversify. If corpora-
+tions face these problems there are financial engineering solutions that might
+reduce their import.
+
+The corporate use of derivatives is not limited to hedging. Some corporate
+financial strategists believe that they can outperform other market partici-
+pants in forecasting the direction of interest rates or commodity prices. Stulz
+(1996) argues that firms that have such financial acumen can hedge their
+downside exposures by buying put options. This allows the financial officers
+of the firm to become more active managers. By buying put options or by
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 149
+
+reducing systematic risks, they can use more leverage and increase their per-
+sonal stakes by reducing the costs of financial distress. This tactical use of de-
+rivatives probably explains a significant part of the growth of the use of deri-
+vatives attributable to financial service firms and corporations, as shown in
+Tables 1 and 2.
+
+As reported in Stulz (1996), empirical evidence gathered from surveys of
+corporations indicates that large corporations without debt in their capital
+structures hedge cash flows more so than smaller corporations. And, those
+corporations that do hedge lift their hedges from time to time or do not fully
+hedge their exposures. It is these tactical uses of derivatives, an attempt to
+“beat” the market using highly leveraged strategies, that have been the cause
+of most of the reported financial losses. Obviously, the successful tactical users
+of derivatives are most often absent in press reports. It is unlikely, however,
+that corporate officials, on average, can outperform other market partici-
+pants.
+
+Large firms hedge cash flows, in part, to smooth reported financial earn-
+ings with the hope those smoother earnings will boost their price-to-earnings
+ratios. This might be a value-enhancing strategy if market participants can not
+discern whether the variability in earnings is caused by the firm’s taking sys-
+tematic exposures to market factors or by firm-specific risks.
+
+The Present is still young. The Future will bring many new solutions to
+solve corporate problems. Many corporations and financial entities still need
+to learn and evaluate to what extent hedging and risk control can be benefi-
+cial to their activities. Smaller firms and product markets are just now becom-
+ing familiar with the risk control aspects of these financial instruments. It
+may be surprising that in the United States the top 8 banks account for 94%
+(almost $19 trillion) of the total outstanding notional amount in the OTC
+market as of the end of 1996.’ As of this date, the knowledge base or the fi-
+nancial acumen needed to financial engineer solutions to client problems is
+highly concentrated.
+
+As in Scholes (1995, 1996a), I argue that corporations will use risk mana-
+gement techniques to reduce their level of equity capital, and, as a result of
+risk management techniques, some firms that would have gone public will
+remain private. Equity capital is an expensive form of financing. There are
+large differences between the knowledge base of insiders and outsiders.
+Insiders can not fully divulge their plans to outsiders for the fear that com-
+petitors will profit from this knowledge, and generally must sell shares at a dis-
+count. Moreover, tax and other considerations make the corporate form of
+undertaking activities in the U.S. and in other countries very expensive.
+
+Equity is a risk-management device. It is an “all purpose” risk cushion. The
+more equity a firm has, the more it cushions itself against outcomes that
+require it to go the capital markets in adverse times or when it might have to
+divulge its confidential operating plans to outside parties. Hedging, on the
+other hand, is targeted risk control. Hedging requires more refined knowl-
+
+3 See International Monetary Fund, op. cit.
+
+
+===PAGEBREAK===
+
+150 Economic Sciences 1997
+
+edge of the firm, and an understanding of the interaction of investment re-
+turns and financing alternatives. Moreover, it requires that the firm be able to
+warrant to others that it will maintain a strategy of hedging its activities to sup-
+port higher levels of debt. But as the costs to hedge fall relative to the costs of
+equity, firms will substitute hedging for equity.
+
+Moreover, hedging provides ancillary benefits as a measurement tool to
+help calibrate how the firm is making money. In a diverse, decentralized or-
+ganization, management information systems might not divulge the true
+source of profits within the organization; that is, did profits arise because sys-
+tematic risk exposures produced positive returns, or because the entity pos-
+sessed superior skills? Standard accounting neither provides risk manage-
+ment reports which decompose profitability into profits from market forces
+and profits from managerial efforts, whether the firm is a manufacturing or a
+financial firm, nor does it describe the sensitivities of the firm’s profit and loss
+to market factors. As more entities use financial engineering skills, the cur-
+rent accounting system will be under considerable pressure for change, as will
+many of the current forms of regulations and restrictions.
+
+Because of differences in the required knowledge of insiders and outsiders,
+the growth of the private equities market has reduced the disclosure costs of
+becoming a public corporation. Private equity allows expert management
+teams to leverage their activities. Private equity, however, is still an inefficient
+form of financing compared with potential lower-cost solutions. Ways will be
+found through financial engineering to provide private entities with the ad-
+vantages of the public market-risk sharing, liquidity, and pricing signals—
+while retaining the advantages of the private market-lower disclosure and
+agency costs. Financial engineering will foster the growth of the private cor-
+poration, and convert entities into alternative forms.
+
+Many firms hedge interest rate movements, foreign currency exposures, or
+commodity price exposures. Firms will learn to use stock-index options or fu-
+tures to reduce their risk exposures. The firm can reduce the beta of its own
+stock by hedging stock-market risks. Moreover, with this approach, the firm
+does not have to target risks. It can just hedge its own market risks or other
+factor risks, or the general stock-market risk that affect its stock price. This re-
+duces the economic risks of the firm to firm-specific risks, or residual risks,
+and reduces the need for equity to cushion adverse outcomes.
+
+I believe that the corporate form we know today will not be long-lived. With
+more knowledge and a better understanding of the power of financial en-
+gineering and of how to reduce asymmetric information costs, the costs of
+using financial engineering solutions will continue to fall. As more firms
+learn how to use these solutions, their profits will be enhanced and more in-
+vestment will follow the increase in demand. Risk management is only a step
+in the direction of producing synthetic entities.
+
+The firm of the future might be an organizational form far different from
+those used today. Some entities, such as electricity producers, aircraft manu-
+factures and users, natural resource producers and users, and financial ser-
+vice firms already are deciding what services to produce and what risks to re-
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 151
+
+tain; what services to rent and what risks to shed, based on their perceived
+competitive advantage.
+
+Financial service firms are building large capital bases to make markets
+around the world, and to put into practice specific knowledge to engineer so-
+lutions for their clients on a global basis and to create long-lived derivative
+products for issue in their own names. Their profits are made from modeling
+and understanding markets and providing value-added solutions for clients.
+A risk-management system provides information on what risks to keep and
+what risks to hedge. In addition, it provides a way to reduce information
+asymmetries between senior management and employees, and to provide the
+incentive system necessary to align the interests of the employees and the
+firm’s shareholders.
+
+A risk-management system must also address how a financial service firm
+handles crisis situations. To preserve its franchise, a financial service firm can
+insure against adverse price movements or unforeseen contingencies by hold-
+ing working capital as a reserve against adverse liquidity needs. Alternatively,
+the financial service firm might be able to buy options from the exchange
+markets or from the OTC markets (for example, lines of credit) at a lower
+dead-weight cost to insure against extreme price movements that could ad-
+versely affect its business. Maybe regulatory bodies, in effect, provide lower
+cost insurance.
+
+Because of tax and regulatory costs, financial-service firms might find that
+working capital held in corporate form is too expensive relative to other al-
+ternatives. For example, clients of financial service firms hold large quantities
+of passive wealth in mutual funds, insurance companies, pension funds, and
+various trusts as investment vehicles for individual savings. Financial-service
+firms and other entities must hold working capital to insure against adverse
+contingencies. With options and other forms of contingent capital arrange-
+ments, it will become possible to mobilize the capital in these client passive in-
+vestment vehicles and reduce the dead-weight costs of the current system.
+This could lower the cost of capital of financial service firms and the cost of
+providing financial services to their client base.
+
+Once again, information and financial technology will expand to reduce
+the costs of information asymmetries. Understanding and developing mar-
+kets for credit derivatives, understanding the implications of contingent ca-
+pital options under asymmetric information, and understanding what is the
+most efficient mechanisms to hold capital will change organizational forms,
+the boxes, and blur the distinctions between debt and equity, corporations
+and partnerships, and the demanders and suppliers of capital. The evolution
+of option technology will open up entire new institutional structures.
+
+5. CONCLUSION
+
+We started in the Past, the age of innocence, and we progressed to the Pres-
+ent, the age of understanding, growth, and maturation. The growth has not
+been without pains. A considerable amount of additional understanding and
+
+
+===PAGEBREAK===
+
+152 Economic Sciences 1997
+
+development awaits the users of the derivative technology in the Future—the
+age of excitement. Advances in communications and computing technology
+will allow for greater reduction in asymmetric information costs. The future
+growth of innovation using the option-pricing technology will be as great or
+greater than in the past. Organizational forms will change dramatically in a
+global environment. The exchange industry will continue to grow; the OTC
+industry will continue to grow, and the research necessary by academics and
+practitioners to understand and to foster the evolution will be so great that
+the academic industry will become more important than in the past. The
+need for highly trained and skilled practitioners that understand the technol-
+ogy will continue to increase on a global basis. None of these three industries
+has retained its past form and none will retain its present form. These eco-
+nomic organizational forms always will evolve and respond to the demands of
+economic agents.
+
+The capital asset pricing model, arbitrage and capital structure models,
+and the efficient markets hypothesis introduced me to key finance concepts
+that were the genesis of our development of the option-pricing technology. In
+a world of information asymmetries, derivative instruments provide lower
+cost solutions to financial contracting problems in a dynamic environment
+and these lower-cost solutions enhance economic efficiency.
+
+REFERENCES
+
+Bachelier, L., 1900, “Théorie de la Spéculation”, Annales de l'Ecole Normale Supérieure, 3,
+Paris: Gauthier-Villers. (English translation in Cootner, P. H., ed. The Random Character
+of Stock Market Prices, Cambridge, MA: MIT Press, 1964).
+
+Banz, R.W., and M. H. Miller, 1978, “Prices for State-Contingent Claims: Some Estimates
+and Applications,” Journal of Business 51, pp. 653-672.
+
+Bernstein, P. L., 1992, Capital Ideas: The Improbable Origins of Modern Wall Street, New York:
+Free Press.
+
+Black, F. and M. Scholes, 1973, “The Pricing of Options and Corporate Liabilities,” Journal
+of Political Economy, 81, 637-654.
+
+Black, F., and M. Scholes, 1972, “The Valuation of Option Contracts and a Test of Market
+Efficiency,” Journal of Finance, May, pp. 399-417.
+
+Black, F., M. Jensen and M. S. Scholes, 1972, “The Capital Asset Pricing Model: Some
+Empirical Tests,” Studies in the Theory of Capital Markets, Edited by M. Jensen, Praeger, Inc.
+
+Black, F., 1975, “Fact and Fantasy in the Use of Options,” Financial Analysts Journal 31, pp.
+36-41, 61-72.
+
+Black, F., 1976, “The Pricing of Commodity Contracts.” The Journal of Financial Economics 3,
+pp.167-179.
+
+Black, F., 1989, “How We Came Up with the Option Formula.” The Journal of Portfolio
+Management, Winter, pp. 4-8.
+
+Breeden, D.T., and R. H. Litzenbeger, 1978, “Prices of State-Contingent Claims Implicit in
+Option Prices,” Journal of Business 51, pp. 621-651.
+
+Brennan, M. J., and E. S. Schwartz, 1979, “A Continuous Time Approach to the Pricing of
+Bonds,” Journal of Banking and Finance 3, pp. 133-155.
+
+Cootner, P. H. (ed.) 1964, The Random Character of Stock Market Prices. MIT Press.
+
+Cox, J.C. and S.A. Ross, 1976, “The Valuation of Options for Alternative Stochastic
+Processes,” Journal of Financial Economics 3, pp. 145-166.
+
+
+===PAGEBREAK===
+
+Myron A. Scholes 153
+
+Cox, J. C., S. A. Ross and M. Rubinstein, 1979, “Option Pricing: A Simplified Approach,”
+Journal of Financial Economics 7, pp. 229-263.
+
+Fama, E., 1965, “The Behavior of Stock Prices,” Journal of Business 37, pp. 34-105.
+
+Froot, K., D. Scharfstein, and J. Stein, 1993, “Risk Management: Coordinating Corporate
+Investment and Financing Policies,” The Journal of Finance 48, pp. 1629-1658.
+
+Galai, D., 1975, “Pricing of Options and the Efficiency of the Chicago Board Options
+Exchange, Ph.D. dissertation, University of Chicago.
+
+Geske, R., 1979, “The Valuation of Compound Options,” Journal of Financial Economics 7,
+pp. 63-81.
+
+Harrison, J. M., and D. Kreps, 1979, “Martingales and Arbitrage in Multiperiod Securities
+Markets,” Journal of Economic Theory 2, pp. 381-408.
+
+Jensen, M. C. 1968, “The Performance of Mutual Funds in the Period 1945-64,” Journal of
+Finance 23, pp. 389-419.
+Lintner, J., 1965, “The Valuation of Risk Assets and the Selection of Risky Investments in
+Stock Portfolios and Capital Budgets,” Review of Economics and Statistics 47, pp. 768-83.
+Magrabe, W., 1978, “The Value of an Option to Exchange One Asset for Another,” Journal
+of Finance 33, pp. 177-186.
+
+Markowitz, H., 1952, “Portfolio Selection,” Journal of Finance 7, pp. 77-91.
+
+Markowitz, H., 1959, “Portfolio Selection: Efficient Diversification of Investment,” New
+York: Wiley.
+
+Merton, R. C., 1973, “Theory of Rational Option Pricing,” Bell Journal of Economic and
+Management Sciences 4, pp. 141-83.
+
+Merton, R.C., 1974, “On the Pricing of Corporate Debt: The Risk Structure of Interest
+Rates,” Journal of Finance, 29, pp. 449-470.
+
+Merton R.C., M. S. Scholes and M. L. Gladstein, 1978, “The Returns and Risk of Alternative
+Call Option Portfolio Strategies,” Journal of Business 51, pp. 183-242.
+Merton R.C., M. S. Scholes and M. L. Gladstein, 1982, “A Simulation of the Returns and
+Risk of Alternative Put Options Investment Strategies,” Journal of Business 55, pp. 1-55.
+Merton, R. C., 1992, “Financial Innovation and Economic Performance,” Journal of Applied
+Corporate Finance 4, pp. 12-22.
+
+Merton, R. C., 1992a, “Continuous-Time Finance,” (revised edition), Cambridge, MA: Basil
+Blackwell.
+
+Miller, M. H., 1988, “The Modigliani-Miller Propositions after Thirty Years,” Journal of
+Economic Perspectives 2, pp. 99-120
+
+Miller, M.H., 1997, Merton Miller on Derivatives, New York, N.Y.: John Wiley & Sons, Inc.
+
+Parkinson, M., 1977, “Option Pricing: The American Put,” Journal of Business 50, pp. 21-
+36.
+
+Richard, S., 1978, “An Arbitrage Model of the Term Structure of Interest Rates,” Journal of
+Financial Economics 6, pp. 33-57.
+
+Roll, R., 1970, The Behavior of Interest Rates: The Application of the Efficient Market Model to U.S.
+Treasury Bills, Basic Books, NY.
+
+Ross, S. A., 1976, “Options and efficiency,” Quarterly Journal of Economics 90, pp. 75-89.
+
+Rubinstein, M. E., 1976, “The Valuation of Uncertain Income Streams and the Pricing of
+Options,” Bell Journal of Economics 7, pp. 407-425.
+
+Samuelson, P. A. and R. C. Merton, 1969, “A Complete Model of Warrant Pricing that
+Maximizes Utility,” Industrial Management Review 10, pp. 17-46.
+
+Samuelson, P. A., 1965a, “Rational Theory of Warrant Pricing,” Jndustrial Management
+Review 6, pp. 13-31.
+
+Samuelson, P. A., 1965b, “Proof that Properly Anticipated Prices Fluctuate Randomly,”
+Industrial Management Review 6, pp. 41-49.
+
+Scholes, M. S., 1972, “The Market for Securities: Substitution Versus Price Pressure and the
+Effects of Information on Share Prices,” Journal of Business 45, pp. 179-211.
+
+Scholes, M. S., 1976, “Taxes and the Pricing of Options,” Journal of Finance 31, pp. 319-32.
+
+Scholes, M. S., and M. A. Wolfson, 1992, Taxes and Business Strategy: A Planning Approach,
+Englewood Cliffs, NJ: Prentice Hall.
+
+
+===PAGEBREAK===
+
+154 Economic Sciences 1997
+
+Scholes, M. S., 1995, “The Future of Futures,” Risk Management Problems & Solutions, Edited
+by W. H. Beaver and G. Parker, McGraw-Hill. pp. 349-369.
+
+Scholes, M. S. 1996, “Financial Infrastructure and Economic Growth,” The Mosaic of
+Economic Growth, Edited by R. Landau, Stanford, CA: Stanford University Press.
+
+Scholes, M. S., 1996a, “Global Financial Markets, Derivative Securities and Systemic Risks, ”
+Journal of Risk and Uncertainty 12, pp. 271 —286.
+
+Sharpe, W. F., 1964, “Capital Asset Pricing: A Theory of Market Equilibrium Under
+Conditions of Risk,” Journal of Finance 19, pp. 425-42.
+
+Sharpe, W.F., 1978, Investments, Englewood Cliffs, NJ.: Prentice Hall.
+
+Smith, C.W., and R.M. Stulz, 1985, “The Determinants of a Firm’s Hedging Policies,”
+Journal of Financial and Quantitative Analysis 20, pp. 391-405.
+
+Stulz, R. M., 1996, “Rethinking Risk Management,” Journal of Applied Corporate Finance 9, pp.
+8-24.
+
+Vasicek, O. A., 1977, “An Equilibrium Characterization of the Term Structure,” Journal of
+Financial Economics 5, pp. 177-188.
+
+
+===PAGEBREAK===
+

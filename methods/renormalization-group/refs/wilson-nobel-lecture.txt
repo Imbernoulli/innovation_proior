@@ -1,0 +1,1542 @@
+THE RENORMALIZATION GROUP AND
+CRITICAL PHENOMENA
+Nobel lecture, 8 December 1982
+
+by
+KENNETH G. WILSON
+Laboratory of Nuclear Studies, Cornell University,
+Ithaca, New York 14853
+
+
+
+
+1. Introduction
+This paper has three parts. The first part is a simplified presentation of the basic
+ideas of the renormalization group and the ε expansion applied to critical pheno-
+mena, following roughly a summary exposition given in 19721. The second part
+is an account of the history (as I remember it) of work leading up to the papers
+in I971-1972 on the renormalization group. Finally, some of the developments
+since 197 1 will be summarized, and an assessment for the future given.
+
+II. Many Length Scales and the Renormalization Group
+There are a number of problems in science which have, as a common charac-
+teristic, that complex microscopic behavior underlies macroscopic effects.
+    In simple cases the microscopic fluctuations average out when larger scales
+are considered, and the averaged quantities satisfy classical continuum equ-
+ations. Hydrodynamics is a standard example of this where atomic fluctuations
+average out and the classical hydrodynamic equations emerge. Unfortunately,
+there is a much more difficult class of problems where fluctuations persist out
+to macroscopic wavelengths, and fluctuations on all intermediate length scales
+are important too.
+    In this last category are the problems of fully developed turbulent fluid flow,
+critical phenomena, and elementary particle physics. The problem of magnetic
+impurities in non-magnetic metals (the Kondo problem) turns out also to be in
+this category.
+    In fully developed turbulence in the atmosphere, global air circulation
+becomes unstable, leading to eddies on a scale of thousands of miles. These
+eddies break down into smaller eddies, which in turn break down, until chaotic
+motions on all length scales down to millimeters have been excited. On the scale
+of millimeters, viscosity damps the turbulent fluctuations and no smaller scales
+are important until atomic scales are reached.2
+    In quantum field theory, “elementary” particles like electrons, photons,
+protons and neutrons turn out to have composite internal structure on all size
+scales down to 0. At least this is the prediction ofquantum field theory. It is hard
+to make observations of this small distance structure directly; instead the particle
+scattering cross sections that experimentalists measure must be interpreted
+                                     K. G. Wilson                               103
+
+
+using quantum field theory. Without the internal structure that appears in the
+theory, the predictions of quantum field theory would disagree with the experi-
+mental findings.3
+   A critical point is a special example of‘ a phase transition. Consider, for
+example, the water-steam transition. Suppose the water and steam are placed
+under pressure, always at the boiling temperature. At the critical point: a
+pressure of’218 Atm and temperature                    the distinction between water
+and steam disappears, and the whole boiling phenomenon vanishes. The prin-
+cipal distinction between water and steam is that they have different densities.
+As the pressure and temperature approach their critical values, the difference
+in density between water and steam goes to zero. At the critical point one finds
+bubbles of steam and drops of water intermixed at all size scales from macro-
+scopic, visible sizes down to atomic scales. Away from the critical point, surface
+tension makes small drops or bubbles unstable; but as water and steam become
+indistinguishable at the critical point, the surface tension between the two phases
+vanishes. In particular, drops and bubbles near micron sizes cause strong light
+scattering, called “critical opalescence”, and the water and steam become milky.
+   In the Kondo effect, electrons of all wavelengths from atomic wavelengths
+up to very much larger scales, all in the conduction band of a metal, interact with
+the magnetic moment of each impurity in the metal.5
+   Theorists have difficulties with these problems because they involve very
+many coupled degrees of freedom. It takes many variables to characterize a
+turbulent flow or the state of a fluid near the critical point. Analytic methods are
+most effective when functions of only one variable one degree of freedom) are
+involved. Some extremely clever transformations have enabled special cases of
+the problems mentioned above to be rewritten in terms of independent degrees
+of freedom which could be solved analytically. These special examples include
+ Onsager’s solution of the two dimensional Ising model of a critical point, 6the
+solution of Andrei and Wiegmann of the Kondo problem,7 the solution of’ the
+Thirring model of a quantum field theory,8 and the simple solutions of noninter-
+acting quantum fields. ‘These are however only special cases; the entire problem
+of’ fully developed turbulence, many problems in critical phenomena and
+virtually all examples of strongly coupled quantum fields have defeated analytic
+techniques up till now .
+   Computers can extend the capabilities of‘ theorists, but even numerical
+computer methods are limited in the number of degrees of freedom that are
+practical. Normal methods of’ numerical integration fail beyond only 5 to 10
+integration variables; partial differential equations likewise become extremely
+difficult beyond 3 or so independent variables. Monte Carlo and statistical
+averaging methods can treat some cases of’ thousands or even millions of vari-
+ables but the slow convergence of these methods versus computing time used
+is a perpetual hassle. An atmospheric flow simulation covering all length scales
+of turbulence would require a grid with millimeter spacing covering thousands
+of miles horizontally and tens of miles vertically: the total number of grid points
+would be of order l025 far beyond the capabilities of any present or conceivable
+computer.
+104                                Physics 1982
+
+
+    The “renormalization group” approach is a strategy for dealing with problems
+ involving many length scales. The strategy is to tackle the problem in steps, one
+ step for each length scale. In the case ofcritical phenomena, the problem, tech-
+ nically, is to carry out statistical averages over thermal fluctuations on all size
+ scales. The renormalization group approach is to integrate out the fluctuations
+ in sequence starting with fluctuations on an atomic scale and then moving to
+ successively larger scales until fluctuations on all scales have been averaged out,
+    To illustrate the renormalization group ideas the case of’ critical phenomena
+ will be discussed in more detail. First the mean field theory of Landau will be
+ described, and important questions defined. The renormalization group will be
+ presented as an improvment to Landau’s theory.
+    The Curie point of a ferromagnet will be used as a specific example of a critical
+ point. Below the Curie temperature, an ideal ferromagnet exhibits spontaneous
+ magnetization in the absence of’ an external magnetic field; the direction of’ the
+ magnetization depends on the history of the magnet. Above the Curie tempera-
+ ture Tc, there is no spontaneous magnetization. Figure 1 shows a typical plot
+ of’ the spontaneous magnetization versus temperature. Just below the Curie
+ temperature the magnetization is observed to behave as (Tc -T)β, where β is an
+ exponent somewhere near l/3 (in three dimensions).9.10
+    Magnetism IS caused at the atomic level by unpaired electrons with magnetic
+ moments, and in a ferromagnet, a pair of nearby electrons with moments aligned
+ has a lower energy than if the moments are anti-aligned.10 At high temperatures,
+ thermal fluctuations prevent magnetic order. As the temperature is reduced
+ towards the Curie temperature, alignment of one moment causes preferential
+alignment out to a considerable distance called the correlation length        At the
+Curie temperature, the correlation length becomes infinite, marking the onset of
+preferential alignment of the entire system. Just above Tc , the correlation length
+ is found to behave as (T-Tc)-v, where v is about 2/3 (in three dimensions).11
+    A simple statistical mechanical model of a ferromagnet involves a Hamiltonian
+which is a sum over nearest neighbor moment pairs with different energies for
+ the aligned and antialigned case. In the simplest case, the moments are allowed
+only to be positive or negative along a fixed spatial axis; the resulting model is
+called the Ising model.12
+    The formal prescription for determining the properties of’ this model is to
+compute the partition function Z, which is the sum of the Boltzmann factor
+exp(-H/kT) over all configurations of the magnetic moments, where k is Boltz-
+ mann’s constant. The free energy F is proportional to the negative logarithm of Z.
+    The Boltzmann factor exp(-H/kT) is an analytic function of T near Tc, in
+fact for all T except T = 0. A sum of analytic functions is also analytic. Thus it is
+puzzling that magnets (including the Ising model) show complex non-analytic
+ behavior at T = Tc. The true non-analytic behavior occurs only in the thermo-
+dynamic limit of a ferromagnet ofinfinite size; in this limit there are an infinite
+ number of configurations and there are no analyticity theorems for the infinite
+ sums appearing in this limit. However, it is difficult to understand how even an
+infinite sum can give highly non-analytic behavior. A major challenge has been
+ to show how the non-analyticity develops.
+                                     K. G. Wilson                              105
+
+
+
+
+                     13
+   Landau’s proposal was that if only configurations with a given magne-
+tization density M are considered then the free energy is analytic in M. For small
+M, the form of the free energy (to fourth order in M) is (from the analyticity
+assumption)
+
+                              F = V { R M2 + U M4 }                            (1)
+where V is the volume of the magnet and R and U are temperature-dependent
+constants. (A constant term independent of M has been omitted). In the absence
+of an external magnetic field, the free energy cannot depend on the sign of M,
+hence only even powers of M occur. The true free energy is the minimum of
+F over all possible values of M. In Landau’s theory, R is 0 at the critical
+temperature, and U must be positive so that the minimum of F occurs at
+M = 0 when at the critical temperature. The minimum of F continues to be at
+M = 0 if R is positive: this corresponds to temperatures above critical. If R is
+negative the minimum occurs for non-zero M, namely the M value satisfying
+
+                           0 =      = ( 2 R M + 4 U M3 )                       (2)
+or
+
+                                                                               (3)
+
+This corresponds to temperatures below critical.
+   Along with the analyticity of the free energy in M, Landau assumed analyticity
+in T, namely that R and U are analytic functions of T. Near       this means that
+106                                  Physics 1982
+
+
+to a first approximation, U is a constant and R (which vanishes at T,) is pro-
+portional to T-Tc (It is assumed that dR/dT does not vanish at          Then,
+below Tc , the magnetization behaves as
+
+                                   M     (Tc -T)1/2                                 (4)
+i.e. the exponent β is 1/2 which disagrees with the evidence, experimental and
+theoretical, that β is about l/3.9
+    Landau’s theory allows for a slowly varying space-dependent magnetization.
+The free energy for this case takes the Landau-Ginzburg form14
+
+                    F   =                                                           (5)
+
+where B(x) is the external magnetic field. The gradient term is the leading term
+in an expansion involving arbitrarily many gradients as well as arbitrarily high
+powers of M. For slowly varying fields M(x) high er powers of gradients are small
+and are neglected. (Normally the                  term has a constant coefficient - in
+this paper this coefficient is arbitrarily set to 1) . One use of this generalized free
+energy is to compute the correlation length above            For this purpose let B(x)
+be very small δ function localized at x = 0. The U term in F can be neglected,
+and the magnetization which minimize the free energy satisfies
+
+                                                    =                               (6)
+The solution M(x) is
+
+                                                                                    (7)
+and the correlation length can be read off to be
+
+
+
+
+Hence near        . is predicted to behave as                 which again disagrees
+with experimental and theoretical evidence.
+   The Landau theory assumes implicitly that analyticity is maintained as all space-
+dependent fluctuations are averaged out. The loss of analyticity arises only
+when averaging over the values of the overall average magnetization M. It is this
+overall averaging, over          , which leads to the rule that F must be minimized
+over M, and the subsequent non-analytic formula (4) for M. To be precise, if the
+volume of the magnet is finite,           must be integrated over M, with analytic
+results. It is only in the thermodynamic limit V           that the average of
+is constructed by minimizing F with respect to M. and the nonanalyticity of
+Eqn. (4) occurs.
+   The Landau theory has the same physical motivation as hydrodynamics.
+Landau assumes that only fluctuations on an atomic scale matter. Once these
+have been averaged out the magnetization M(x) becomes a continuum, con-
+tinous function which fluctuates only in response to external space-dependent
+stimuli. M(x) (or, if it is a constant, M) is then determined by a simple classical
+equation. Near the critical point the correlation function is itself the solution of
+the classical equation (6).
+                                                         K. G. Wil s o n                                                  107
+
+                                                                                                                             15
+     I n a w orl d wit h gr e at er t h a n f o ur di m e n si o n s, t h e L a n d a u pi ct ur e i s c orr e ct.
+F o ur di m e n si o n s i s t h e di vi di n g li n e - b el o w f o ur di m e n si o n s, fl u ct u ati o n s o n
+all s c al e s u p t o t h e c o r r el ati o n l e n gt h a r e i m p o rt a nt a n d L a n d a u t h e or y br e a k s
+d o w n, a s will b e s h o w n b el o w. A n e arli er crit eri o n b y Gi n z b ur g al s o w o ul d
+             16                                                                                          15
+
+
+
+pr e di ct t h at f o ur di m e n si o n s i s t h e di vi di n g li n e.
+     T h e r ol e of l o n g w a v el e n gt h fl u ct u ati o n s i s v er y m u c h e a si er t o w or k o ut n e ar
+f o u r di m e n si o n s w h er e t h eir eff e ct s a r e s m all. T hi s i s t h e o nl y c a s e t h at will b e
+di s c u s s e d h er e. O nl y t h e eff e ct s of w a v el e n gt h s l o n g c o m p ar e d t o at o mi c s c al e s
+will b e di s c u s s e d, a n d it will b e a s s u m e d t h at o nl y m o d e st c orr e cti o n s t o t h e
+L a n d a u t h e or y ar e r e q uir e d. F or a m or e c ar ef ul di s c u s si o n s e e r ef. 1 7.
+     O n c e t h e at o mi c s c al e fl u ct u ati o n s h a v e b e e n a v er a g e d o ut, t h e m a g n eti z ati o n
+i s a f u n cti o n M( x) o n a c o nti n u u m, a s i n L a n d a u t h e or y. H o w e v er, l o n g w a v e-
+l e n gt h fl u ct u ati o n s ar e still pr e s e nt i n M( x) - t h e y h a v e n ot b e e n a v er a g e d
+o ut - a n d t h e all o w e d f or m s of 1 4( x) m u st b e st at e d wit h c ar e. T o b e pr e ci s e,
+s u p p o s e fl u ct u ati o n s wit h w a v el e n gt h s < 2 π L          h a v e b e e n a v er a g e d o ut, w h er e
+L i s a l e n gt h s o m e w h at l a r g e r t h a n at o mi c di m e n si o n s. T h e n M( x) c a n c o nt ai n
+o nl y F o u ri e r m o d e s wit h w a v el e n gt h s >                      T hi s r e q ui r e m e nt w ritt e n o ut,
+m e a ns
+
+
+
+
+w h e r e t h e i nt e g r al o v e r             m e a ns                 d is         t h e n u m b er of s p a c e di m e n-
+si o n s, a n d t h e li mit o n w a v el e n gt h s m e a n s t h at t h e i nt e g r ati o n o v e r k i s r e st ri ct e d
+t o v al u e s of          wit h          < L- 1.
+    A v er a gi n g o v er l o n g w a v el e n gt h fl u ct u ati o n s n o w r e d u c e s t o i nt e gr ati n g o v er
+t h e v a ri a bl e s             f or all                   T h er e ar e m a n y s u c h v ari a bl e s; n or m all y t hi s
+w o ul d l e a d t o m a n y c o u pl e d i nt e gr al s t o c arr y o ut, a h o p el e s s t a s k. C o n si d er a bl e
+si m plifi c ati o n s will b e m a d e b el o w i n or d er t o c arr y o ut t h e s e i nt e gr ati o n s.
+    W e n e e d a n i nt e g r a n d f o r t h e s e i nt e g r ati o n s. T h e i nt e g r a n d i s a c o n st r ai n e d
+s u m of t h e B olt z m a n n f a ct or o v er all at o mi c c o nfi g ur ati o n s. T h e c o n str ai nt s a n
+t h at all         f or          L- 1 a r e h el d fi x e d. T hi s i s a g e n er ali z ati o n of t h e c o n str ai n e d
+s u m i n t h e L a n d a u t h e o r y; t h e diff e r e n c e i s t h at i n t h e L a n d a u t h e or y o nl y t h e
+a v er a g e m a g n eti z ati o n i s h el d fi x e d. T h e r e s ult of t h e c o n str ai n e d s u m will b e
+writt e n            si mil arl y t o L a n d a u t h e or y e x c e pt f or c o n v e ni e n c e t h e e x p o n e nt i s
+writt e n F r at h er t h a n F / k T (i. e. t h e f a ct or 1 / k T i s a b s or b e d i nt o a n u n c o n v e n-
+ti o n al d efi niti o n of F). T h e e x p o n e nt F d e p e n d s o n t h e m a g n eti z ati o n f u n cti o n
+M( x) of E q. ( 9). W e s h all a s s u m e L a n d a u’ s a n al y si s i s still v ali d f or t h e f or m of F,
+n a m el y F i s gi v e n b y E q. ( 5). H o w e v er, t h e i m p ort a n c e of l o n g w a v el e n gt h
+fl u ct ati o n s m e a n s t h at t h e p a r a m et e r s R a n d U d e p e n d o n L. T h u s F s h o ul d b e
+d e n ot e d F L :
+
+                            F L=
+                                      I
+                                                                                                                         ( 1 0)
+(i n t h e a b s e n c e of a n y e xt er n al fi el d) (i n t h e si m plifi e d a n al y si s pr e s e nt e d h er e,
+t h e c o effi ci e nt of ∇ M ( x) i s u n c h a n g e d at 1). T h e a s s u m pti o n will b e r e vi e w e d
+                                  2
+
+
+
+
+l at e r.
+108                                  Physics 1982
+
+
+   The L dependence of RL and U L will be determined shortly. However, the
+breakdown of analyticity at the critical point is a simple consequence of this L
+dependence. The L dependence persists only out to the correlation length fluc-
+tuations with wavelengths           will be seen to be always negligible. Once all
+wavelengths of fluctuations out to L          have been integrated out, one can use
+the Landau theory; this means (roughly speaking) substituting             and      in
+the formulae (4) and (8) for the spontaneous magnetization and the correlation
+length. Since is itself non-analytic in T at T = T, the dependence of        and
+on introduces new complexities at the critical point. Details will be discussed
+shortly.
+   In order to study the effects of fluctuations, only a single wavelength scale will
+be considered; this is the basic step in the renormalization group method. To be
+precise, consider only fluctuations with wavelengths lying in an infinitesimal
+interval L to         To average over these wavelengths of fluctuations one starts
+with the Boltzmann factor          where the wavelengths between L and
+are still present in M(x), and then averages over fluctuations in M(x) with wave-
+lengths between L and             The result of these fluctuation averages is a free
+energy FL+bl. for a magnetization function (which will be denoted                with
+wavelengths >            only. The Fourier components of MH(x) are the same
+that appear in M(x) except that        IS now restricted to be less than
+
+   The next step is to count the number of integration variables                lying
+between l/L and                  To make this count it is necessary to consider a
+finite system in a volume V. Then the number of degrees of freedom with wave-
+lengths between           and               is given by the corresponding phase space
+volume, namely the product of k space and position space volumes. This product
+is (apart from constant factors like π, etc.)
+   It is convenient to choose the integration variables not to be the
+but linear combinations which correspond to localized wave packets instead of
+plane waves. That is, the difference                    should be expanded in a set
+of wave packet functions            each of which has momenta only in the range
+l/L to               but which is localized in x space as much as possible. Since
+each function         must (by the uncertainty principle) fill unit volume in phase
+space, the position space volume for each            is
+
+                                        =                                    (11)
+and there are        wavefunctions             We can write
+
+                           M ( x ) = MH ( x ) + Σ m n ψ n ( x )               (12)
+and the integrations to be performed are integrations over the coefficients m,,.
+   Because of the local nature of the Landau-Ginzburg free energy, it will be
+assumed that the overlap of the different wavefunctions        can be neglected.
+Then each m 11 integration can be treated separately, and only a single such
+integration will be discussed here. For this single integration, the form of M(x)
+can be written
+
+                             M(x) = M H ( x ) + m ψ ( x )                    (13)
+                                        K G. Wilson                              109
+
+
+since only one term from the sum over n contributes within the spatial volume
+occupied by the wavefunction
+   The other simplification that will be made is to treat M H(x) as if it were a
+constant over the volume occupied by     (x). In other words the very long wave-
+lengths in MH(x) are emphasized relative to wavelengths close to L.
+   The calculation to be performed is to compute
+
+                                                                                (14)
+                                       I
+where         and FL, involve integration only over the volume occupied by
+In expanding out                  the following simplifications will be made. First,
+all terms linear in     are presumed to integrate to 0 in the x integration defining
+F L. Terms of third order and higher in    are also neglected. The function        is
+presumed to be normalized so that
+
+                                                                                (15)
+
+and due to the limited range ofwavelengths in           there results
+
+                                                                                (16)
+The result of these simplifications is that the integral becomes
+
+                                                                                (17)
+
+
+
+                             =                                                  (18)
+
+The logarithm must be rewritten as an integral over the volume occupied by
+       this integral can then be extended to an integral over the entire volume V
+when the contributions from all other          integrations are included. Also the
+logarithm must be expanded in powers of MH; only the          and     terms will be
+kept. Further it will be assumed that RL, changes slowly with L. When L is at the
+correlation length 1 /L2 and RL, are equal (as already argued) so that for values
+of L intermediate between atomic sizes and the correlation length, R L, is small
+compared to 1/L2. Expanding the logarithm in powers of RL+GUt,Mi, to second
+order (to obtain an        term) gives (of. Eq. (11)):
+
+                                           = terms independent of MH
+
+                                                                                 (19)
+One can rewrite         as an integral over the volume           There results the
+equations
+
+                            =                                                    (20)
+                                    =                                            (21)
+or
+
+                                                                                 (22)
+110                                 Physics 1982
+
+
+
+                                                                                 (23)
+                             dL
+
+These equations are valid only for L            for L > there is very little further
+change in RL, or UL, due to the switchover in the logarithm caused by the dom-
+inance of RL rather than 1/L2. If d is g reater than 4, it can be seen that RL and UL
+are constant for large L, as expected in the Landau theory. For example, if one
+assumes RL. and UL. are constant for large L it is easily seen that integration of
+(22) and (23) only gives negative powers of L. For d<4 the solutions are not
+constant. Instead, UL behaves for sufficiently large L as
+
+
+                                            9
+
+(which is easily seen to be a solution of (23)), RL. satisfies the equation
+
+
+                                                                                 (25)
+
+whose solution is
+
+                      R L=
+                                            3
+
+where c is related to the value of RL. at some initial value of L. For large enough L,
+t h e L-2 term can be neglected.
+   The parameter c should be analytic in temperature, in fact proportional to
+T-T,. Hence, for large L
+
+
+                                                                                 (27)
+which is analytic in T for fixed L. However the equation for       is
+
+                                                                                 (28)
+Let
+
+                                      ε =       4-d                              (29)
+then the correlation length exponent is
+                                       1         1
+
+which gives v = 0.6 in 3 dimensions. Similarly, the spontaneous magnetization
+below    behaves as          giving
+
+
+
+
+  These computations give an indication of how non-trivial values can be
+obtained for β and v. The formulae derived here are not exact, due to the severe
+simplifications made, but at least they show that β and v do not have to be l/2
+and in fact can have a complicated dependence on the dimension d.
+  A correct treatment is much more complex. Once M H(x) is not treated as a
+                                       K G. Wilson                                 111
+
+
+constant, one could imagine expanding MH(x) in a Taylor’s series about its value
+at some central location xo relative to the location of the wavefunction          thus
+bringing in gradients of MH. In addition, higher order terms in the expansion
+of the logarithm give higher powers of MH. All this leads to a more complex form
+for the free energy functional FL. with more gradient terms and more powers of
+M H. The whole idea of the expansion in powers of MH and powers of gradients
+can in fact be called into question. The fluctuations have an intrinsic size (i.e.,
+m 2 has a size    L2 as a consequence of the form of the integrand in Eq. 17) and
+it is not obvious that in the presence of these fluctuations, M is small. Since
+arbitrary wavelengths of fluctuations are important the function M is not
+sufficiently slowly varying tojustify an expansion in gradients either. This means
+that FL [M] could be an arbitrarily complicated function of M, an expression it
+is hard to write down, with thousands of parameters, instead of the simple
+Landau-Ginzburg form with only two parameters RL and UL.
+    Fortunately, the problem simplifies near 4 dimensions, due to the small
+magnitude of U L , which is proportional to ε = 4-d. All the complications
+neglected above arise only to second order or higher in an expansion in U L which
+means second order or higher in ε. The computations described here are exact
+to order ε . See Ref. 17.
+    The renormalization group approach that was defined in 1971 embraces both
+practical approximations leading to actual computations and a formalism. 17 The
+full formalism cannot be discussed here but the central idea of “fixed points” can
+be illustrated.
+    As the fluctuations on each length scale are integrated out a new free energy
+functional FL+δL is generated from the previous functional F L . This process is
+repeated many times. If FL and F L+δL are expressed in dimensionless form, then
+one finds that the transformation leading from FL to           is repeated in identical
+form many times. (The transformation group thus generated is called the “renor-
+malization group"). As L becomes large the free energy FL approaches a fixed
+point of the transformation, and thereby becomes independent of details of the
+system at the atomic level. This leads to an explanation of the universality18,, of
+critical behavior for different kinds of systems at the atomic level. Liquid-gas
+transitions, magnetic transitions, alloy transitions, etc. all show the same critical
+exponents experimentally; theoretically this can be understood from the hy-
+pothesis that the same “fixed point” interaction describes all these systems.
+    To demonstrate the fixed point form of the free energy functional, it must be
+put into dimensionless form. Lengths need to be expressed in units of L, and M,
+R L , and UL rewritten in dimensionless form. These changes are easily deter-
+mined: write
+                   x = Ly                                                          (32)
+             M(x) =                                                              (33)
+                R L,                                                             (34)
+                UL=                                                              (35)
+                FL =                                                             (36)
+112                                Physics 1982
+
+
+The asymptotic solution for the dimensionless parameters rL and uL. is
+
+
+
+
+Apart from the term in rL, these dimensionless parameters are independent of L,
+denoting a free energy form which is also independent of L. The c term designates
+an instability of the fixed point, namely a departure from the fixed point which
+grows as L increases. The fixed point is reached only if the thermodynamic
+system is at the critical temperature for which c vanishes; any departure from
+the critical temperature triggers the instability.
+   For further analysis of the renormalization group formalism and its relation
+to general ideas about critical behavior, see e.g. ref. 17.
+
+II I. Some History Prior to 1971
+The first description of a critical point was the description of the liquid-vapor
+critical point developed by Van der Waals, 19 developed over a century ago fol-
+lowing experiments of Andrews.19 Then Weiss provided a description of the
+Curie point in a magnet.“’ Both the Van der Waals and Weiss theories were
+special cases of Landau’s mean field theory.” Even before 1900, experiments
+indicated discrepancies with mean Geld theory; in particular the experiments
+indicated that β was closer to l/3 than l/2.19 In 1944, Onsager 6 published his
+famous solution to the two dimensional Ising model,12 which explicity violated
+the mean field predictions. Onsager obtained v = 1 instead of the mean field
+prediction v = l/2, for example. In the 1950’s, Domb, Sykes, Fisher and others21
+studied simple models of critical phenomena in three dimensions with the help
+of high temperature series expansions carried to very high order, exacting critical
+point exponents by various extrapolation methods. They obtained exponents
+in disagreement with mean field theory but in reasonable agreement with experi-
+ment. Throughout the sixties a major experimental effort pinned down critical
+exponents and more generally provided a solid experimental basis for theoretical
+studies going beyond mean field theory. Experimentalists such as Voronel;
+Fairbanks, Buckingham, and Keller; Heller and Benedek; Ho and Litster,
+Kouvel and Rodbell, and Comly; Sengers; Lorentzen; Als-Nielsen and Dietrich;
+Birgeneau and Shirane; Rice; Chu; T eaney; Moldover; Wolf and Ahlers all
+contributed to this development, with M. Green, Fisher, Widom, and Kadanoff
+providing major coordination efforts.” Theoretically, Widom 23 proposed a
+scaling law for the equation of state near the critical point that accommodated
+non-mean field exponents and predicted relations among them. The full set of
+scaling hypotheses were developed by Essam and Fisher, Domb and Hunter,
+Kadanoff, and Patashinskii, and Pokrovskii. 24 See also the inequalities of
+Rushbrooke 25 and Griffith.26
+  My own work began in quantum field theory, not statistical mechanics. A
+convenient starting point is the development ofrenormalization theory by Bethe,
+Schwinger, Tomonaga, Feynman, Dyson and others27 in the late 1940’s. The
+                                            K G. Wilson                                       113
+
+
+first discussion of the “renormalization” group appeared in a paper by Stueckel-
+berg and Petermann, 28 published in 1953.
+     In 1954 Murray Gell-Mann and Francis Low published a paper entitled
+“Quantum Electrodynamics at Small Distances” 29 which was the principal
+inspiration for my own work prior to Kadanoffs formulation 30 of the scaling
+hypothesis for critical phenomena in 1966.
+     Following the definition of Quantum Electrodynamics (QED) in the 1930’s
+by Dirac, Fermi, Heisenberg, Pauli, Jordan, Wigner, et al.27 , the solution of QED
+was worked out as perturbation series in e o , the “bare charge” of QED. The
+QED Lagrangian (or Hamiltonian) contains two parameters: e o , and m o , the
+latter being the “bare” mass of the electron. As stated in the introduction in QED
+the physical electron and photon have composite structure. In consequence of
+this structure the measured electric charge e and electron mass m are not
+identical to eo and m,, but rather are given by perturbation expansions in powers
+of eo. Only in lowest order does one find e = eo, and m = mo. Unfortunately, it
+was found in the 30’s that higher order corrections in the series for e and m are
+all infinite, due to integrations over momentum that diverge in the large momen-
+tum (or small distance) limit.”
+     In the late 1940’s renormalization theory was developed, which showed that
+the divergences of Quantum Electrodynamics could all be eliminated if a change
+of parametrization was made from the Lagrangian parameters e o and m o to the
+measurable quantities e and m, and if at the same time the electron and electro-
+magnetic fields appearing in the Lagrangian were rescaled to insure that observ-
+able matrix elements (especially of the electromagnetic field) are finite.27
+     There are many reparametrizations of Quantum Electrodynamics that
+eliminate the divergences but use different finite quantities than e and m to
+replace e o and m o . Stueckelberg and Petermann observed that transformation
+groups could be defined which relate different reparametrizations - they called
+these groups “groupes de normalization ” which is translated “renormalization
+group”. The Gell-Mann and Low paper, 29 one year later but independently,
+presented a much deeper study of the significance of the ambiguity in the choice
+of reparametrization and the renormalization group connecting the difference
+choices of reparametrization. Gell-Mann and Low emphasized that e, measured
+in classical experiments, is a property of the very long distance behavior of QED
+(for example it can be measured using pith balls separated by centimeters,
+whereas the natural scale of QED is the Gompton wavelength of the electron,
+     10-11 cm). Gell-Mann and Low showed that a family ofalternative parameters
+     could be introduced, any one of which could be used in place of e to replace
+e o . The parameter        is related to t h e b e h a v i o r o f Q E D a t a n a r b i t r a r y
+momentum scale          instead of at very low momenta for which e is appropriate.
+     The family of parameters         introduced by Gell-Mann and Low interpolate
+between the physical charge e and the bare charge e , namely e is obtained as the
+low momentum                  limit of     and eo is obtained as the high momentum
+            limit of
+114                                  Physics 1982
+
+
+      Gell-Mann and Low found that       obeys a differentia1 equation, of the form
+
+                                           =                                     (39)
+where the ϕ function has a simple power series expansion with non-divergent
+coefficients independently of the value of λ, in fact as λ→∞ ϕ becomes a function
+of    alone. This equation is the forerunner of my own renormalization group
+equations such as (22) and (23).
+   The main observation of Gell-Mann and Low was that despite the ordinary
+nature of the differential equation, Eq. (38), the solution was not ordinary, and
+in fact predicts that the physical charge e has divergences when expanded in
+powers of eo, or vice versa. More generally, if is expanded in powers of the
+higher order coefficients contain powers of      and these coefficients
+diverge if either λ or go to infinity, and are very large if is either very
+large or very small.
+   Furthermore, Gell-Mann and Low argued that, as a consequence of Eqn. (38),
+eo, must have a fixed value independently of the value of e; the fixed value of e o
+could be either finite or infinite.
+   When I entered graduate school at California Institute of Technology, in 1956,
+the default for the most promising students was to enter elementary particle
+theory, the field in which Murray Gell-Mann, Richard Feynman, and Jon
+Mathews were all engaged. I rebelled briefly against this default, spending a
+summer at the General Atomic Corp. working for Marshall Rosenbluth on
+plasma physics and talking with S. Chandrasekhar who was also at General
+Atomic for the summer. After about a month of work I was ordered to write up
+my results, as a result of which I swore to myself that I would choose a subject
+for research where it would take at least five years before I had anything worth
+writing about. Elementary particle theory seemed to offer the best prospects of
+meeting this criterion and I asked Murray for a problem to work on. He first
+suggested a topic in weak interactions of strongly interacting particles (K
+mesons, etc.) After a few months I got disgusted with trying to circumvent totally
+unknown consequences of strong interactions, and asked Murray to find me a
+problem dealing with strong interactions directly, since they seemed to be the
+bottleneck. Murray suggested I study K meson-nucleon scattering using the
+Low equation in the one meson approximation. I wasn’t very impressed with
+the methods then in use to solve the Low equation, so I wound up fiddling with
+various methods to solve the simpler case of pion-nucleon scattering. Despite
+the fact that the one meson approximation was valid, if at all, only for low ener-
+gies, I studied the high energy limit, and found that I could perform a “leading
+logarithms” sum very reminiscent of a very mysterious chapter in Bogoliubov
+and Shirkov’s field theory text31 ; the chapter was on the renormalization group.
+   In 1960 I turned in a thesis to Cal Tech containing a mish-mash of curious
+calculations. I was already a Junior Fellow at Harvard. In 1962 I went to CERN
+for a year. During this period (1960-1963) I partly followed the fashions of the
+time. Fixed source meson theory (the basis for the Low equation) died, to be
+replaced by S matrix theory. I reinvented the “strip approximation” (Ter-
+Martirosyan had invented it first 32) and studied the Amati-Fubini-Stanghellini
+                                      K G. Wilson                                115
+
+
+theory of multiple production. I was attentive at seminars (the only period of
+                                 33
+
+
+
+my life when I was willing to stay fully awake in them) and I also pursued back
+ waters such as the strong coupling approximation to fixed source meson theory?
+    By 1963 it was clear that the only subject I wanted to pursue was quantum
+field theory applied to strong interactions. I rejected S matrix theory because
+ the equations of S matrix theory, even if one could write them down, were too
+ complicated and inelegant to be a theory; in contrast the existence of a strong
+ coupling approximation as well as a weak coupling approximation to fixed
+ source meson theory helped me believe that quantum field theory might make
+ sense. As far as strong interactions were concerned, all that one could say was
+ that the theories one could write down, such as pseudoscalar meson theory, were
+ obviously wrong. No one had any idea of a theory that could be correct. One
+could make these statements even though no one had the foggiest notion how to
+solve these theories in the strong coupling domain.
+    My very strong desire to work in quantum field did not seem likely to lead to
+ quick publications; but I had already found out that I seemed to be able to get
+jobs even if I didn’t publish anything so I did not worry about ‘publish or perish’
+ questions.
+    There was very little I could do in quantum field theory - there were very
+ few people working in the subject, very few problems open for study. In the
+ period 1963-1966 I had to clutch at straws. I thought about the “ξ-limiting”
+ process of Lee and Yang.” I spent a major effort disproving Ken Johnson’s
+ claims”’ that he could define quantum electrodynamics for arbitrarily small eo, in
+ total contradiction to the result of Gell-Mann and Low. I listened to K. Hepp
+ and others describe their results in axiomatic field theory 37 ; I didn’t understand
+ what they said in detail but I got the message that I should think in position space
+ rather than momentum space. I translated some of the work I had done on
+ Feynman diagrams with some very large momenta (to disprove Ken Johnson’s
+ ideas) into position space and arrived at a short distance expansion for products
+ of quantum field operators. I described a set of rules for this expansion in a
+ preprint in 1964. I submitted the paper for publication; the referee suggested
+ that the solution of the Thirring model might illustrate this expansion. Unfor-
+ tunately, when I checked out the Thirring model, I found that while indeed there
+ was a short distance expansion for the Thirring model,38 my rules for how the
+ coefficient functions behaved were all wrong, in the strong coupling domain.
+ I put the preprint aside, awaiting resolution of the problem.
+    Having learned the fixed source meson theory as a graduate student, I con-
+ tinued to think about it. I applied my analysis of Feynman diagrams for some
+ large momenta, to the fixed source model. I realized that the results I was
+ getting became much clearer if I made a simplification of the fixed source model
+ itself, in which the momentum space continuum was replaced by momentum
+ slices. 39 That is, I rubbed out all momenta except well separated slices, e.g.,
+  1          2,                             ,Λn                  etc. with A a large
+ number.
+    This model could be solved by a perturbation theory very different from the
+ methods previously used in field theory. The energy scales for each slice were
+116                                Physics 1982
+
+
+very different, namely of order Λn for the n th slice. Hence the natural procedure
+was to treat the Hamiltonian for the largest momentum slice as the unperturbed
+Hamiltonian, and the terms for all lesser slices as the perturbation. In each slice
+the Hamiltonian contained both a free meson energy term and an interaction
+term, so this new perturbation method was neither a weak coupling nor a strong
+coupling perturbation.
+   I showed that the effect of this perturbation approach was that if one started
+with n momentum slices, and selected the ground state of the unperturbed
+Hamiltonian for the n th slice, one wound up with an effective Hamiltonian for
+the remaining n-l slices. This new Hamiltonian was identical to the original
+Hamiltonian with only n-l slices kept, except that the meson-nucleon coupling
+constant g was renormalized (i.e., modified): the modification was a factor in-
+volving a non-trivial matrix element of the ground state of the n th-slice Hamil-
+tonian. 39
+   This work was a real breakthrough for me. For the first time I had found a
+natural basis for renormalization group analysis: namely the solution and elim-
+ination of one momentum scale from the problem. There was still much to be
+done: but I was no longer grasping at straws. My ideas about renormalization
+were now reminiscent of Dyson’s analysis of Quantum Electrodynamics.“’ Dyson
+argued that renormalization in Quantum Electrodynamics should be carried
+out by solving and eliminating high energies before solving low energies. I
+studied Dyson’s papers carefully but was unable to make much use of his work.”
+   Following this development, I thought very hard about the question “what
+is a field theory”, using the φ + interaction of a scalar field (identical with the
+Landau-Ginzburg model of a critical point 14 discussed in my 1971 papers) as an
+example. Thoughout the ‘60’s I taught quantum mechanics frequently, and I
+was very impressed by one’s ability to understand simple quantum mechanical
+systems. The first step is a qualitative analysis minimizing the energy (defined
+by the Hamiltonian) using the uncertainty principle; the second step might be a
+variational calculation with wavefunctions constructed using the qualitative
+information from the first step; the final stage (for high accuracy) would be a
+numerical computation with a computer helping to achieve high precision. I
+felt that one ought to be able to understand a field theory the same way.
+   I realized that I had to think about the degrees of freedom that make up a
+field theory. The problem of solving the φ 4 theory was that kinetic term in the
+Hamiltonian (involving             was diagonal only in terms of the Fourier com-
+ponents       of the field, whereas the φ + term was diagonal only in terms of the
+field       itself. Therefore I looked for a compromise representation in which
+both the kinetic term and the interaction term would be at least roughly diagonal.
+I needed to expand the field        x ) i n terms of wavefunctions that would have
+minimum extent in both position space and momentum space, in other words
+wavefunctions occupying the minimum amount of volume in phase space. The
+uncertainty principle defines the lower bound for this volume, namely 1, in
+suitable units. I thought of phase space being divided up into blocks of unit
+volume. The momentum slice analysis indicated that momentum space should
+be marked off on a logarithmic scale, i.e. each momentum space volume should
+                                       K G. Wilson                                117
+
+
+correspond to a shell like the slices defined earlier, except that I couldn’t leave
+out any momentum range so the shells had to be e.g...., 1 < |k| < 2, 2 <         < 4,
+etc. By translational invariance the position space blocks would all be the same
+size for a given momentum shell, and would define a simple lattice of blocks.
+The position space blocks would have different sizes for different momentum
+shells.
+   When I tried to study this Hamiltonian I didn’t get very far. It was clear that
+the low momentum terms should be a perturbation relative to the high momen-
+tum terms but the details of the perturbative treatment became too complicated.
+Also my analysis was too crude to identify the physics of highly relativistic
+particles which should be contained in the Hamiltonian of the field theory.”
+   However, I learned from this picture of the Hamiltonian that the Hamiltonian
+would have to be cutoff at some large but finite value of momentum k in order to
+make any sense out of it, and that once it was cutoff, I basically had a lattice
+theory to deal with, the lattice corresponding roughly to the position space blocks
+for the largest momentum scale. More precisely, the sensible procedure for
+defining the lattice theory was to define phase space cells covering all of the cutoff
+momentum space, in which case there would be a single set of position space
+blocks, which in turn defined a position space lattice on which the field φ w o u l d
+be defined. I saw from this that to understand quantum field theories I would
+have to understand quantum field theories on a lattice.
+   In thinking and trying out ideas about “what is a field theory” I found it very
+helpful to demand that a correctly formulated field theory should be soluble by
+computer, the same way an ordinary differential equation can be solved on a
+computer, namely with arbitrary accuracy in return for sufficient computing
+power. It was clear, in the ‘60’s, that no such computing power was available
+in practice; all that I was able to actually carry out were some simple exercises
+involving free fields on a finite lattice.
+   In the summer of 1966 I spent a long time at Aspen. While there I carried out
+a promise I had made to myself while a graduate student, namely I worked
+through Onsager’s solution of the two dimensional Ising model. I read it in
+translation, studying the field theoretic form given in Lieb, Mattis and Schultz.‘”
+   When I entered graduate school, I had carried out the instructions given to
+me by my father and had knocked on both Murray Gell-Mann’s and Feynman’s
+doors, and asked them what they were currently doing. Murray wrote down the
+partition function for the three dimensional Ising model and said it would be
+nice if I could solve it (at least that is how I remember the conversation).
+Feynman’s answer was “nothing”. Later, Jon Mathews explained some of
+Feynman’s tricks for reproducing the solution for the two dimensional Ising
+model. I didn’t follow what Jon was saying, but that was when I made my
+promise. Sometime before going to Aspen, I was present when Ben Widom
+presented his scaling equation of state, 23 in a seminar at Cornell. I was puzzled
+by the absence of any theoretical basis for the form Widom wrote down; I was
+at that time completely ignorant of the background in critical phenomena that
+made Widom’s work an important development.
+   As I worked through the paper of Mattis, Lieb, and Schultz, I realized there
+118                                 Physics 1982
+
+
+should be applications of my renormalization group ideas to critical phenomena,
+and discussed this with some of the solid state physicists also at Aspen. I was
+informed that I had been scooped by Leo Kadanoff and should look at his pre-
+p r i n t .3 0
+    Kadanoff's idea was that near the critial point one could think of blocks of
+magnetic moments, for example containing 2x2x2 atoms per block, which
+would act like a single effective moment, and these effective moments would have
+a simple nearest neighbor interaction like simple models of the original system.
+The only change would be that the system would have an effective temperature
+and external magnetic field that might be distinct from the original. More
+generally the effective moments would exist on a lattice of arbitrary spacing L
+times the original atomic spacing; Kadanoffs idea was that there would be
+L-dependent temperature and field variables T L . and hL , and that T2 L, and h2 L.
+would be analytic functions of TL. and hL. At the critical point, TL, and hL, would
+have fixed values independent of L. From this hypothesis Kadanoff was able to
+derive the scaling laws of Widom, 23 Fisher, etc. 24
+    I now amalgamated my thinking about field theories on a lattice and critical
+phenomena. I learned about Euclidean (imaginary time) quantum field theory
+and the “transfer matrix” method for statistical mechanical models and found
+there was a close analogy between the two (see Ref. 17). I learned that for a field
+theory to be relativistic, the corresponding statistical mechanical theory had to
+have a large correlation length, i.e., be near a critical point. I studied Schiff’s
+strong coupling approximation to the φ 4 theory, 44 and found that he had ignored
+renormalization effects; when these were taken into account the strong coupling
+expansion was no longer so easy as he claimed. I thought about the implications
+of the scaling theory of Kadanoff, Widom et al. applied to quantum field theory,
+along with the scale invariance of the solution of the Thirring model” and the
+discussion of Kastrup and Mack of scale invariance in quantum field theory. 45
+These ideas suggested that scale invariance would apply, at least at short
+distances, but that field operators would have non-trivial scale dimensions
+corresponding to the non-trivial exponents in critical phenomena. I redid my
+theory of short distance expansions based on these scaling ideas and published
+               46
+the result. My theory did not seem to lit the main experimental ideas about
+                                                                                    47
+short distance behavior (coming from Bjorken’s and Feynman’s analysis
+of deep inelastic electron scattering) but I only felt confused about this problem
+and did not worry about it.
+    I returned to the fixed source theory and the momentum slice approximation.
+I made further simplifications on the model. Then I did the perturbative analysis
+more carefully. Since in real life the momentum slice separation factor Λ would
+be 2 instead of very large, the ratio 1/Λ of successive energy scales would be l/2
+rather than very small, and an all orders perturbative treatment was required in
+ 1/Λ. When the lower energy scales were treated to all orders relative to the high-
+est energy scale, an infinitely complicated effective Hamiltonian was generated,
+with an infinite set of coupling constants. Each time an energy scale was elimin-
+ated through a perturbative treatment, a new infinitely complicated Hamil-
+tonian was generated. Nevertheless, I found that for sufficiently large Λ I could
+                                      K. G. Wilson                                119
+
+
+mathematically control rigorously the effective Hamiltonians that were gener-
+ated; despite the infinite number of couplings I was able to prove that the higher
+orders of perturbation theory had only a small and boundable impact on the
+effective Hamiltonians, even after arbitrarily many iterations. 48
+   This work showed me that a renormalization group transformation, whose
+purpose was to eliminate an energy scale or a length scale or whatever from a
+problem, could produce an effective interaction with arbitrarily many coupling
+constants, without being a disaster. The renormalization group formalism based
+on fixed points could still be correct, and furthermore one could hope that only
+a small finite number of these couplings would be important for the qualitative
+behavior of the transformations, with the remaining couplings being important
+only for quantitative computations. In other words the couplings should have an
+order of importance, and for any desired but given degree of accuracy only a
+finite subset of the couplings would be needed. In my model the order of import-
+ance was determined by orders in the expansion in powers of l/Λ. I realized
+however that in the framework of an interaction on a lattice, especially for
+Ising-type models, locality would provide a natural order of importance - in
+any finite lattice volume there are only a finite number of Ising spin inter-
+actions that can be defined. I decided that Kadanoffs emphasis on the nearest
+neighbor coupling of the Ising model30 should be restated: the nearest neighbor
+coupling would be the most important coupling because it is the most localized
+coupling one can define, but other couplings would be present also in Kadanoff's
+effective “block spin” Hamiltonians. A reasonable truncation procedure on
+these couplings would be to consider a finite region, say 3 3 or 4 3 lattice sites in
+size, and consider only multispin couplings that could fit into these regions (plus
+translations and rotations of these couplings).
+   Previously all the renormalization group transformations I was familiar with
+involved a fixed number of couplings: in the Gell-Mann-Low case just the
+electric charge      in Kadanoffs case an effective temperature and external field.
+I had tried many ways to try to derive transformationsjust for these fixed number
+ofcouplings, without success. Liberated from this restriction, it turned out to be
+easy to define renormalization group transformations; the hard problem was
+to find approximations to these transformations which would be computable in
+practice. Indeed a number renormalization group transformations now exist
+(see Section IV and its references).
+   In the fall of 1970 Ben Widom asked me to address his statistical mechanics
+seminar on the renormalization group. He was particularly interested because
+Di Castro and Jona-Lisinio had proposed applying the field theoretic renormal-
+ization group formalism to critical phenomena, 49 but no one in Widom’s group
+could understand Di Castro and Jona-Lasinio’s paper. In the course oflecturing
+on the general ideas of fixed points and the like I realized I would have to provide
+a computable example, even if it was not accurate or reliable. I applied the phase
+space cell analysis to the Landau-Ginzburg model of the critical point and tried
+to simplify it to the point of a calculable equation, making no demands for
+accuracy but simply trying to preserve the essence of the phase space cell picture.
+The result was a recursion formula in the form of a nonlinear integral trans-
+120                                Physics 1982
+
+
+formation on a function of one variable, which I was able to solve by iterating
+the transformation on a computer. 50 I was able to compute numbers for expo-
+nents from the recursion formula at the same time that I could show (at least in
+part) that it had a fixed point and that the scaling theory of critical phenomena
+of Widom et al. followed from the fixed point formalism. Two papers of 1971 on
+the renormalization group presented this work. 50
+    Some months later I was showing Michael Fisher some numerical results
+from the recursion formula, when we realized, together, that the nontrivial
+fixed point I was studying became trivial at four dimensions and ought to be
+easy to study in the vicinity of four dimensions. The dimension d appeared in a
+simple way as a parameter in the recursion formula and working out the details
+was straightforward; Michael and I published a letter 51 with the results. It was
+almost immediately evident that the same analysis could be applied to the full
+Landau-Ginzberg model without the approximations that went into the recur-
+sion formula. Since the simplifying principle was the presence of a small co-
+efficient of the φ 4 term, a Feynman diagram expansion was in order. I used my
+field theoretic training to crank out the diagrams and my understanding of the
+renormalization group fixed point formalism to determine how to make use of the
+diagrams I computed. The results were published in a second letter in early
+ 1 9 7 2 .52 The consequent explosion of research is discussed in Part IV.
+    There were independent efforts on the same area taking place while I com-
+pleted my work. The connection between critical phenomena and quantum
+field theory was recognized by Gribov and Migdal and Polyakov 53 and by axiom-
+                                          54
+atic field theorists such as Symanzik T.T. Wu 55 worked on both field theory
+and the Ising model. Larkin and Khmelnitskii applied the field theoretic renor-
+malization group of Gell-Mann and Low to critical phenomena in four dimen-
+sions and to the special case of uniaxial ferromagnets in three dimensions, 56 i n
+both cases deriving logarithmic corrections to Landau’s theory. Dyson formu-
+lated a somewhat artificial “hierarchical” model of a phase transition which
+was exactly solved by a one dimensional integral recursion formula. 54 This
+formula was almost identical to the one I wrote down later, in the 1971 paper.
+Anderson’ worked out a simple but approximate procedure for eliminating mo-
+mentum scales in the Kondo problem, anticipating my own work in the Kondo
+problem (see Sec. IV). Many solid state theorists were trying to apply diagram-
+matic expansions to critical phenomena, and Abe 58 and Scalapino and Ferrell 59
+laid the basis for a diagrammatic treatment of models with a large number of
+degrees offreedom, for any dimension. (The limit of an infinite number of degrees
+of freedom had already been solved by Stanley60). Kadanoff was making exten-
+sive studies of the Ising model,61and discovered a short distance expansion for
+it similar to my own expansion for Geld theories. Fractional dimensions had
+been thought about before in critical phenomena. 62 Continuation of Feynman
+diagrams to non-integer dimensions was introduced into quantum Geld theory
+in order to provide a gauge invariant regularization procedure for non-abelian
+gauge theories:63 this was done about simultaneously with its use to develop the
+ε expansion.
+    In the late ‘60’s, Migdal and Polyakov64 developed a “bootstrap” formulation
+                                       K. G. Wilson                                 121
+
+
+of critical phenomena based on a skeleton Feynman graph expansion, in which
+all parameters including the expansion parameter inself would be determined
+self-consistently. They were unable to solve the bootstrap equations because of
+their complexity, although after the ε expansion about four dimensions was
+discovered, Mack showed that the bootstrap could be solved to lowest order in
+ε 65 . If the 1971 renormalization group ideas had not been developed, the Migdal-
+Polyakov bootstrap would have been the most promising framework of its time
+for trying to further understand critical phenomena. However, the renor-
+malization group methods have proved both easier to use and more versatile,
+and the bootstrap receives very little attention today.
+      In retrospect the bootstrap solved a problem I tried and failed to solve; namely
+how to derive the Gell-Mann-Low and Kadanoff dream of a fixed point involv-
+ing only one or two couplings - there was only one coupling constant to be
+determined in the Migdal-Polyakov bootstrap. However, I found the bootstrap
+approach unacceptable because prior to the discovery of the ε e x p a n s i o n n o
+formal argument was available to justify truncating the skeleton expansion to
+a finite number of terms. Also the skeleton diagrams were too complicated to test
+the truncation in practice by means of brute force computation of a large number
+of diagrams. Even today, as I review the problems that remain unsolved either
+by ε expansion or renormalization group methods, the problem of convergence
+of the skeleton expansion leaves me unenthusiastic about pursuing the bootstrap
+approach, although its convergence has never actually been tested. In the mean-
+time, the Monte Carlo Renormalization group 66 has recently provided a frame-
+work for using small number of couplings in a reasonably effective and non-
+perturbative way: see Section IV.
+      I am not aware of any other independent work trying to understand the re-
+normalization group from first principles as a means to solve field theory or
+critical phenomena one length scale at a time, or suggesting that the renor-
+malization group should be formulated to allow arbitrarily many couplings to
+appear at intermediate stages of the analysis.
+
+IV. Results after 1971
+There was an explosion of activity after 1972 in both renormalization group and
+E expansion studies. To review everything that has taken place since 1972 would
+be hopeless. I have listed a number of review papers and books which provide
+more detailed information at the end of this paper. Some principal results
+and some thoughts for the future will be outlined here. The “ε expansion” about
+four dimensions gave reasonable qualitative results for three dimensional
+systems. It enabled a much greater variety of details of critical behavior to be
+studied than was previously possible beyond the mean field level. The principal
+critical point is characterized by two parameters: the dimension d and the
+number of internal components n. Great efforts were made to map out critical
+behavior as a function of d and n. ε expansion and related small coupling
+expansions were carried to very high orders by Brézin, Le Guillou, Zinn-Justin, 67
+and Nickel”” led to precise results for d        3 .6 9 . 7 0 The large n limit and l/n
+expansion was pursued further.” A new expansion in 2 + ε dimensions was
+122                                    Physics 1982
+
+
+developed for n>2 by Polyakov. 7 2 For n = 1 there is an expansion in 1+ε
+dimensions. 73 The full equation of state in the critical region was worked out
+in the ε e x p a n s i o n 7 4 and l/n expansion. 75 The special case n = 0 was shown
+by De Gennes to describe the excluded volume problem in polymer configuration
+problems and random walks. 76 Corrections to scaling were first considered by
+W e g n e r77 . A recent reference is Aharony and Ahlers. 78
+   Besides the careful study of the principal critical point other types of critical
+points and critical behavior were pursued. Tricritical phenomena were in-
+vestigated by Riedel and Wegner, 79 where Landau theory was found to break-
+down starting in three dimensions instead of four. 80 More general multicritical
+                                   81                        82
+points have been analyzed. Effects of dipolar forces, other long range forces,83
+cubic perturbations and anisotropies were pursued. The problems of
+                                                 84,85
+
+
+
+dynamics of critical behavior were extensively studied. 86 Liquid crystal tran-
+sitions were studied by Halperin, Lubensky, and Ma. 87
+   Great progress has been made in understanding special features of two di-
+mensional critical points, even though two dimensions is too far from four for
+                                                                        88
+the ε expansion to be practical. The Mermin-Wagner theorem foreshadowed
+the complex character of two dimensional order in the presence of continuous
+symmetries. The number ofexactly soluble models generalizing the Ising model
+steadily increases. 89 Kosterlitz and Thouless 90 blazed the way for renormal-
+ization group applications in two dimensional systems, following earlier work
+by Berezinskii. 91 They analyzed the transition to topological order in the 2-
+dimensional xy model with its peculiar critical point adjoining a critical line at
+lower temperatures; for further work see José et al 92 and Fröhlich and
+S p e n c e 9 3 , 9 4 . Kadanoff and Brown have given an overview of how a number of
+the two-dimensional models interrelate. 95 A subject of burning recent interest
+is the two-dimensional melting transition. 96 Among generalizations of the Ising
+model, the 3 and 4 state Potts model have received special attention. The three-
+state Potts model has only a first order transition in mean field theory and an
+expansion in 6- ε dimensions but has a second order transition in two dimen-
+       97
+sions. Th e f our state Potts model has exceptional behavior in two dimen-
+sions (due to a “marginal variable”), which provides a severe challenge
+to approximate renormalization methods. Notable progress on this model has
+been made recently. 98
+    A whole vast area of study concerns critical behavior or ordering in random
+systems, such as dilute magnets, spin glasses, and systems with random external
+fields. Random systems have qualitative characteristics of a normal system in
+two higher dimensions as was discovered by Lacour-Gayet and Toulouse99 Imry,
+Ma, Grinstein, Aharony, 100 and Young”” and confirmed by Parisi and Sourlas102
+in a remarkable paper applying ‘supersymmetry’ ideas from quantum field
+t h e o r y . 1 0 3 The “replica method” heavily used in the study of random systems 104
+involves an                limit, where n is the number ofreplicas similar to the De Gennes
+          limit defining random walks. 7 6 There are serious unanswered questions
+surrounding this limiting process. Another curious discovery is the existence of
+an ε 1/2 expansion found by Khmelnitskii and Grinstein and Luther. 105
+    Further major areas for renormalization group applications have been in
+                                            K. G. Wilson                                       123
+
+
+percolation, 106 electron localization or conduction in random media, 1 0 7 t h e
+                                                                                         108
+problems of structural transitions and “Lifshitz” critical points,                           and the
+problem of interfaces between two phases.109
+    Much of the work on the ε expansion involved purely Feynman graph tech-
+niques; the high order computations involved the Callan-Symanzik formul-
+ation 1 1 0 of Gell-Mann Low theory. The computations also depended on the
+special diagram computation techniques of Nickel 68 and approximate formulae
+for very large orders of perturbation theory first discussed by Lipatov. 111 In
+lowest order other diagrammatic techniques also worked, for example the
+Migdal-Polyakov bootstrap was solved to order ε by Mack. 65
+    The modern renormalization group has also developed considerably, Weg-
+n e r77,112,113 strengthened the renormalization group formalism considerably. A
+                                                            114
+number ofstudies, practical and formal                          were based on the approximate recur-
+sion formula introduced in 1971. Migdal and Kadanoff 115 developed an alterna-
+tive approximate recursion formula (based on “bond moving” techniques).
+Real space renormalization group methods were initiated by Niemeijer and
+Van Leeuwen 116 and have been extensively developed since. 117, 118 The simplest
+real space transformation is Kadanoff's “spin decimation” transformation 119. 120
+where roughly speaking some spins are held fixed while other spins are summed
+over, producing an effective interaction on the fixed spins.
+    The decimation method was very successful in two dimensions where the spins
+on alternative diagonals of a square lattice were held fixed. 120 Other real space
+f o r m u l a t i o n s 1 1 6 , 1 1 7 involved kernels defining block spin variables related to sums
+of spins in a block (the block could be a triangle, square, cube, a lattice site plus
+all its nearest neighbors, or whatever).
+    Many of the early applications of real space renormalization group methods
+gave haphazard results - sometimes spectacularly good, sometimes useless.
+One could not apply these methods to a totally new problem with any confidence
+of success. The trouble was the severe truncations usually applied to set up a
+practical calculation; interactions which in principle contained thousands of
+parameters were truncated to a handful of parameters. In addition, where
+hundreds of degrees of freedom should be summed over (or integrated over) to
+execute the real space transformation, a very much simplified computation
+would be substituted. A notable exception is the exactly soluble differential re-
+normalization group transformation of Hilhorst, Schick and Van Leeuwen,
+which unfortunately can be derived only for a few two dimensional models. 121, 122.
+    Two general methods have emerged which do not involve severe truncations
+and the related unreliability. First of all, I carried out a brute force calculation
+for the two dimensional Ising model using the Kadanoff decimation approach119, 120
+(as generalized by Kadanoff). Many interaction parameters (418) were kept and
+the spin sums were carried out over a very large finite lattice. The results were
+very accurate and completely confirmed my hypothesis that the local
+couplings of the shortest range were the most important. Most importantly the
+results could be an optimization principle. The fixed point of Kadanoff's decimation
+transformation depends on a single arbitrary parameter; it was possible to
+determine a best value for this parameter from internal consistency consider-
+124                                 Physics 1982
+
+
+ations. Complex calculations with potentially serious errors always are most
+effective when an optimization principle is available and parameters exist to
+optimize on. 123 This research has never been followed up, as is often the case
+when large scale computing is involved. More recently, the Monte Carlo Re-
+                               66
+normalization group method, developed by Swendsen, myself, Shenker, and
+Tobochnik (see also Hilhorst and Van Leeuwen)“’ has proved very accurate and
+may shortly overtake both the high temperature expansions and the ε expansion
+as the most accurate source of data on the three dimensional Ising model. The
+Monte Carlo Renormalization Group is currently most successful on tw o
+dimensional problems where computing requirements are less severe: it has been
+applied successfully to tricritical models and the four-state Potts model. 124 I n
+contrast, the ε expansion is all but useless for two dimensional problems.
+Unfortunately, none of the real space methods as yet provide the detailed
+information about correlation functions and the like that are easily derived in
+the ε expansion.
+    A serious problem with the renormalization group transformations (real
+space or otherwise) is that there is no guarantee that they will exhibit fixed points.
+Bell and myself125 and Wegner in a more general and elegant way113 have shown
+that for some renormalization group transformations, iteration of a critical point
+does not lead to a fixed point, presumably yielding instead interactions with
+increasingly long range forces. There is no known principle for avoiding this
+possibility, and as Kadanoff has showed using his decimation procedure, 120 a
+simple approximation to a transformation can misleadingly give a fixed point
+even when the full transformation cannot. The treatment that I gave of the two
+dimensional Ising model has self consistency checks that signal immediately
+when long range forces outside the 418 interactions kept are becoming important.
+Nothing is known yet about how the absence of a fixed point would be manifested
+in the Monte Carlo renormalization group computations. Cautions about real
+space      renormalization group methods have also been advanced by Griffiths et
+a l .1 2 6
+   There is a murky connection between scaling ideas in critical phenomena and
+Mandelbrot’s “fractals” theory - a theory of scaling of irregular geometrical
+structures (such as coastlines). 127
+   Renormalization group methods have been applied to areas other than critical
+phenomena. The Kondo problem is one example. Early renormalization group
+work was by Anderson” and Fowler and Zawadowski. 128 I then carried out a very
+careful renormalization group analysis of the Kondo Hamiltonian, 129 producing
+effective Hamiltonians with many couplings for progressively smaller energy
+scales, following almost exactly the prescription I learned for fixed source meson
+theory. The result was the zero-temperature susceptibility to about 1 % accu-
+racy, which was subsequently confirmed by Andrei and Wiegmann’s 7 exact
+solution. Renormalization group methods have been applied to other Hamil-
+tonian problems, mostly one dimensional. 130 In multidimensional systems and
+in many one dimensional systems, the effective Hamiltonians presently involve
+too many states to be manageable.
+   The renormalization group has played a key role in the development of Quan-
+                                           K. G. Wilson                                    125
+
+
+turn Chromodynamics - the current theory of quarks and nuclear forces. The
+original Gell-Mann Low theory 29 and the variant due to Callan and Symanzik110
+was used by Politzer, Gross and Wilczek 1 3 1 t o s h o w t h a t n o n a b e l i a n g a u g e
+theories are asymptotically free. This means that the short distance couplings
+are weak but increase as the length scale increases; it is now clear that this is the
+only sensible framework which can explain, qualitatively, the weak coupling
+that is evident in the analysis of deep inelastic electron scattering results (off
+protons and neutrons) and the strong coupling which is evident in the binding of
+quarks to form protons, neutrons, mesons, etc. 132 I should have anticipated the
+idea of asymptotic freedom133 but did not do so. Unfortunately, it has been hard
+to study quantum chromodynamics in detail because of the effects of the strong
+binding of quarks at nuclear distances, which cannot be treated by diagram-
+matic methods. The development of the lattice gauge theory by Polyakov and
+myself 134 following pioneering work of Wegner135 has made possible the use of a
+variety of lattice methods on the problems of quantum chromodynamics, 136 in-
+cluding strong coupling expansions, Monte Carlo simulations, and the Monte
+Carlo renormalization group methods. 67 , 137 As computers become more powerful
+I expect there will be more emphasis on various modern renormalization group
+methods in these lattice studies, in order to take accurately into account the
+crossover from weak coupling at short distances to strong coupling at nuclear
+distances.
+   The study of unified theories ofstrong, weak and electromagnetic interactions
+makes heavy use of the renormalization group viewpoint. At laboratory energies
+the coupling strengths of the strong and electromagnetic interactions are too
+disparate to be unified easily. Instead, a unification energy scale is postulated at
+ roughly 10 15 GeV; in between renormalization group equations cause the strong
+and electroweak couplings to approach each other, making unification possible.
+Many grand unified theories posit important energy scales in the region between
+1 and 1015 GeV. It is essential to think about these theories one energy scale at a
+time to help sort out the wide range of phenomena that are predicted in these
+theories. See Langacker 138 for a review. The study of grand unification has made
+it clear that Lagrangians describing laboratory energies are phenomenological
+rather than fundamental, and this continues to be the case through the grand
+unification scale, until scales are reached where quantum gravity is important. It
+has been evident for a long time that there should be applications of the renor-
+malization group to turbulence, but not much success has been achieved yet.
+Feigenbaum 138 developed a renormalization group-like treatment of the conver-
+sion from order to chaos in some simple dynamical systems, 140 and this work
+may have applications to the onset of turbulence. Feigenbaum’s method is prob-
+ably too specialized to be of broader use, but dynamical systems may be a good
+starting point for developing more broadly based renormalization group
+methods applicable to classical partial differential equations. 141
+   In my view the extensive research that has already been carried out using the
+renormalization group and the ε expansion is only the beginning of the study
+of a much larger range of applications that will be discovered over the next
+twenty years (or perhaps the next century will be required). The quick successes
+126                               Physics 1982
+
+
+of the ε expansion are now past, and I believe progress now will depend rather
+on the more difficult, more painful exercises such as my own computations on
+the two dimensional Ising model and the Kondo problem, 120 or the Monte Carlo
+Renormalization group6 6 computations. Often these highly quantitative, de-
+manding computations will have to precede simpler qualitative analysis in order
+to be certain the many traps potentially awaiting any renormalization group
+analysis have been avoided.
+   Important potential areas of application include the theory of the chemical
+bond, where an effective interaction describing molecules at the bond level is
+desperately needed to replace current ab initio computations starting at the
+                           142
+individual electron level.      A method for understanding high energy or large
+momentum transfer Quantum Chromodynamics (QCD) cross sections (in-
+cluding non-perturbative effects) is needed which will enable large QCD back-
+grounds to be computed accurately and subtracted away from experimental
+results intended to reveal smaller non-QCD effects. Practical areas like per-
+colation, frost heaving, crack propagation in metals, and the metallurgical
+quench all involve very complex microscopic physics underlying macroscopic
+effects, and most likely yield a mixture of some problems exhibiting fluctuations
+on all length scales and other problems which become simpler classical problems
+without fluctuations in larger scales.
+   I conclude with some general references. Two semi-popular articles on the
+renormalization group are Wilson ( 1979) and Wilson (1975). Books include
+Domb and Green (1976); Pfeuty and Toulouse (1977); Ma (1976); Amit (1978);
+Patashinskii and Pokrovskii (1979) 143 ; and Stanley (1971)144. Review    articles
+                                                 145
+and conference proceedings include Widom (1975) ; Wilson and Kogut (1974);
+                               146
+Wilson (1975); Fisher (1974) ; Wallace and Zia (1978); Greer and Moldover
+(1981); and Lévy et al. (1980). 147
+   I thank the National Science Foundation for providing funding to me, first
+as a graduate student, then throughout most of my research career. The generous
+and long term commitment of the United States to basic research was essential to
+my own success. I thank my many colleagues at Cornell, especially Michael
+Fisher and Ben Widom, for encouragement and support. I am grateful for the
+opportunity to be a member of the international science community during two
+decades of extraordinary discoveries.
+                                                                                                   127
+
+
+REFERENCES
+
+ 1. Wilson, K. G. Physica 73, 119 (1974).
+ 2. See, e.g. Rose H. A. and Sulem, P. L.J. Physique 39, 441 (1978).
+ 3. See, c.g. Criegee L. and Knies, G. Phys. Rcpts. 83, 151 (1982).
+ 4. See, CRC Handbook of chemistry and Physics (62nd Edition), Weast, R. C. rd. (CRC Press,
+    Boca Raton, Florida, 1981), p. F-76.
+ 5. See, e.g., Anderson, P. W . J. Phys. C3, 2346 (1970).
+ 6. Onsager, L. Phys. Rev. 6.5, 117 (1944).
+ 7. Andrei, N. Phys. Rev. Lett. 45, 379 (1980; Phys. Lett. 87A, 299 (1982); Andrei, N. and
+    Lowcnstein, J, H. Phys. Rev. Lett. 46, 356 (1981): Wiegmann, P. B. Phys. Lett. 80A, 163
+    (1980); J. Phys. C14, 1463 (1981); Filyov V. M. Tzvrlik, A. M. and Weigmann, P. B. Phys.
+    Lett. 81A, 175 (1981).
+ 8. Johnson’, K. Nuovo Cimcnto 20, 773 (1961).
+ 9. The experimcntal measurements on fluids (e.g., SF 6, He 3, and various organic fluids.) give
+    β = 0.32 ± 0.02, while current theoretical computations give β = 0.325 ± 0.005: see Greer S.
+    C and Moldover, M. R. Annual Rcview of Physical Chemistry 32, 233 (1981) for data and
+    caveats.
+10. For experimental reviews, see e.g. Heller, P. Repts. Prog. Phys. 311, 731 (1967): Kadanoff, I..
+    Götze, W. Hamblen, D. Hecht, R. Lewis, E. A. S. Palciauskas, V. V. Rayl. M. Swift. ,J.
+    Aspres, D. Kane, ,J. Static Phenomena near Critical Points: Theory: and Experiment, Rev. Mod. Phys.
+    39, 395 (1967).
+Il. For the alloy transition in β brass see Als-Nielsen, J in Domb. C. and Green, M. S. eds.. Phase
+    Transitions and Critical Phenomena. Vol. 5a (Academic Press, New York. 1978) p.87. See Ref. 10
+    for carlier reviews of other systems.
+12. For a history of the Lcnz-Ising model see Brush. S. G Rev. Mod. Phys. 39, 883 (1967).
+13. Landau. L. D. Phys. Zurn. Sowjetunion 11, 545 (1937); English translation: ter Haar, D. Men
+    of Physics: I.. D. Landau. Vol II. II (Pergamon, Oxford. 1969).
+14. Ginzburg. V. L. and Landau. L. D. Zh. Eksperim. i Teor. Fiz. 20. 1061 (1950). See also
+    Schrieffer, J. Superconductivity [Benjamin. New York. 1964) p.19.
+15. Ginzburg, V.L 1.. Fiz. Tverd. Tela 2 2031 (1960). English translation: Soviet Physics: Solid St.
+    2 1824 (1960).
+16. Wilson, K. G. and Fisher. M. E. Phys. Rev. Letters 28. 240 (1972).
+17. Wilson. K G and Kogut. J. Phys. Repts. 12C. 75. 7.5 (1974).
+18. See, e.g.,   Guggcnhcim. E. A.J. Chem. Phys 13, 253 (1945): Griffiths. R. B. Phys. Rev. Letts.
+    24. 1479 (1970): Griffiths R. B. and Whcelcr, J. B. Phys. Rev. A2 1047 (1970): Kadanoff L. in
+    Phase Transitions and Critical Phenomena. Domb C. and Green. M. S. Eds. Vol. 5a (Academic.
+    New York, 1978, p. I .).
+19. See, e.g., DeBoer, J. Physica 7.7. 1 (1974): Klein, M.D. Physica 73, 28 (1971); Lcvelt. ]. 51. H.
+    Sengers, Physica 7.7, 73 (1974).
+20. Weiss. P. J. Phys. 6, 661 ( 1907).
+21. Sec. Domb. C. Proc. Roy. Soc. A199, 199 (1949) and, e.g. Fisher. M.E. E. Reports. Prog. Phys.
+    30, 615 (1967).
+22. See. e.g., ref: 10 and Ahlers, G. Revs. Mod. Phys. 52. 489 (1980).
+23. Wisdom, B. J. Chcm. Phys. 43, 3898 (1965).
+24. Essam J. W. and Fisher, M. E. J. Chem. Phys. 38, 802 (1963): Domb C. and Hunter. D. L.
+    Proc. Phys. Soc. 86, 1147 (1965) Kadanoff, L. P. Physics, 2. 263 (1966): Patashiniskii A. Z.
+    and Prokrovskii. V. L. Zh. Eksper. Teor. Fiz. 50. 439 (1966); English translation: Soviet
+    Physics-JETP 23,. 292 (1966).
+25. Rushbrookc. G. S.. 1963. J. Chcm. Phys. 39. 842.
+26. Griffiths, R. B.. 1965. Phys. Rev. Lett. 14, 623.
+27. See the reprint collection Schwinger, J. Ed Quantum Electrodynamics..    Dover. New York. 1958).
+28. Stueckelberg E. C. G. and Petermann. A Hclv. Phys. Acta 26. 499 (1953): see also Pcter-
+    mann. A. Phys. Rcpts. 53, I57 11979).
+29. Gell-Mann M. and Low. F. E. Phys. Rev. 95. 1300 (1954).
+128
+
+
+30. Kadanoff, L. P. Physics 2, 263 (1966).
+31. Bogoliubov N. N. and Shirkov, D. V. Introduction to the Theory of Quantized Fields (Interscience;
+    New York, 1959), Ch. VIII.
+32. Ter-Martirosyan, K. A. Zh. Eksperim. Teor. Fiz. 39, 827 (1960); Soviet Physics-JETP 12,
+      575 (1961).
+33. See, e.g. Wilson, K. G. Acta Physica Austriaca 17, 37 (1963-64) and references cited therein.
+34. Wenzel, G. Helv. Phys. Acta 13, 269 (1940); 14, 633 (1941); see also Henley E. M. and
+      Thirring, W. Elementary Quantum Field Theory (McGraw Hill, New York, 1962).
+35. Lee T. D. and Yang, C. N. Phys. Rev. 128,885 (1962).
+36. Johnson, K. Baker, M. and Willey, R. S. Phys. Rev. Lett. 11, 518 (1963). For a subsequent
+      view see Baker, M. and Johnson, K., Phys. Rev. 183, 1292 (1969); ibid D3,2516,2541 (1971).
+37. See e.g. Hepp, K. Acta Physica Austriaca 17, 85 (1963-64).
+38. See e.g. Lowenstein, J. H. Commun. Math. Phys. 16, 265 (1970); Wilson, K. G. Phys. Rev.
+      D2, 1473 (1970).
+39. Wilson, K. G. Phys. Rev. 140, B445 (1965).
+40. Dyson, F. J. Phys. Rev. 83, 608, 1207 (1951).
+41. Mitter, P. K., and G. Valent, 1977, Phys. Lett. B70, 65.
+42. See, e.g. Kogut J. and Susskind, L. Phys. Repts. 8C, 75 (1973) and referenccs cited therein.
+43. Schultz, T. D. Mattis, D. C. and Lieb, E. H. Rev. Mod. Phys. 36, 856 (1964).
+44. Schiff, L. I. Phys. Rev. 92, 766 (1953).
+45. See, e.g. Mack, G. Nucl. Phys. B5, 499 (1968) and references cited therein.
+46. Wilson, K. G. Phys. Rev. 179, 1499 (1969).
+47. Bjorken, J. Phys. Rev. 179, 1547 (1969); Feynman, R. P. Phys. Rev. Lett. 23, 1415 (1969): for a
+      review see Yan, T. M. Annual Review of Nuclear Science, 26, 199 (1976) and Feynman, R. P.
+      Photon-Hadron Interactions, Benjamin, W. A. (Reading, Mass, 1972).
+48. Wilson, K. G. Phys. Rev. D2, 1438 (1970).
+49. Di Castro, C. and Jona-Lasinio, G. Phys. Letters 29A, 322 (1969).
+50. Wilson, K. G Phys. Rev. B4, 3174, 3184 (1971).
+51. Wilson, K. G. and Fisher, M. E. Phys. Rev. Lett. 28, 240 (1972).
+52. Wilson. K. G. Phys. Rev. Lett. 28, 548 (1972).
+53. Gribov, V. N. and Migdal, A. A. Zh. Eksp. Teor .          Fiz. 5.5, 1498 (1968); English Translation:
+      Soviet Physics-JETP 28, 784 (1968); Migdal, A. A ibid. 59, 1015 (1970); JETP 32, 552
+      (1971); Polyakov, A. M. ibid. 55, 1026 (1968); JETP 28, 533 (1969): Polyakov, A.M . ibid. 57,
+      271 (1969); JETP 30, 151 (1970); Polyakov, A. M. ibid. 59, 542 (1970); JETP 32. 296 (1971).
+54. Symanzik, K.J. Math. Phys. 7, 510 (1966).
+55. Wu, T. T. Phys. Rev. 149, 380 (1966); McCoy, B. M. and Wu, T. T. The Two Dimensional Ising
+    Model (Harvard University Press, Cambridge, 1973); McCoy, B. M. Tracy, C. and Wu, ‘I‘. T.
+    Phys. Lett. MA, 283 (1977).
+56. Larkin, A. I. and Khmelnitskii, D. E. Zh. Eksp. Teor. Fiz. .56, 2087 (1969); English Transla-
+      tion: Soviet Physics JETP 29, 1 1123 (1969).
+57. Dyson, F.J. Commun. Math. Phys. 12, 91 (1969); see also Baker. G. A. Jr., Phys. Rev. B 5 ,
+    2622 (1972).
+58. Abe, R. Progr. Theor. Phys. (Kyoto) 48, 1414 (1972); ibid. 49, 113 (1973); Abe, R. and
+    Hikami, S. Phys. Letters 4 5 A , 1 1 (1973) Hikami, S. Progr. Theor. Phys. (Kyoto) 49, 1096
+      (1973).
+59. Ferrell, R. A. and Scalapino, D.J. Phys. Rev. Letters 29, 413 (1972): Phys. Letters 41A. 3 7 1
+      (1972).
+60. Stanley, H. E. Phys. Rev. 176, 718 (1968).
+61. Kadanoff L. P. Phys. Rev. Lett. 23, 1430 (1969); Phys. Rev. 188, 859 ( 1969).
+62. See, e.g. Fisher, M. E. and Gaunt, D. S. Phys. Rev. 133, A224 (1964); Widom, B. Mol. Phys.
+      25, 657 (1973).
+63. ‘t Hooft, G. and Veltman, M. Nucl. Phys. B44. 189           Bollini , C . G a n d G i a m b i a g i , J . J .
+      Phys. Letts. 40B, 566 (1972);      Ashmore, J. F. Lettere Nuovo Cimento 4. 289 (1972).
+64. Patashinskii, A. Z. and Pokrovskii, V. I.. Zh. Eksp. Teor. Fiz. 46, 994 (1964): English
+      Translation: Soviet Physics, JETP /9, 677 (1964); Polyakov, A. M Zh. ETF. Pis. Red. 12, 538
+                                               K. G. Wilson                                    129
+
+
+    (1970); English Translation: JETP Letters 12, 381 (1970); Migdal, A. A. Phys. Letts. 37B, 386
+    (1971); Mack, G. and Symanzik, K. Common Math Phys. 27,247 (1972) and references cited
+    therein.
+65. Mack, G. in Strong Interaction Physics, Rühl, W. and Vanira, A. eds. (Springer-Verlag,
+    Berlin, 1973), p.300.
+66. Swendsen, R. H. Phys. Rev. Lett. 42, 859 (1979); Phys. Rev. B20, 2080 (1979); Wilson, K. G.
+    Monte Carlo Calculation for the Lattice Gauge Theory, in Recent Developments in Gauge Theories,
+    ‘t Hooft, G. et al. Eds. (Plenum Press, New York, 1980); Shenker, S. and Tobochnik, J. Phys.
+    Rev. B22, 4462 ( 1980).
+67. See, e.g. the review of Zinn-Justin, J. Phys. Repts. 70, 109 (1981); see further Nickel, B.
+    Physica 106A, 48 (1981).
+68. Nickel, B. (unpublished), cited in Ref. 64 and prior papers.
+69. Parisi, G., 1980, J. Stat. Phys. 23, 49.
+70. Vladimirov, A. A., D. I. Kazakov, and O. Tarasov, 1979, Sov. Phys. JETP 50, 521.
+71. See, e.g. Ma, S. K. in Domb, C. and Green, M. S. eds. Phase Transitions and Critical Phenomena,
+    Vol. 6 (Academic Press, London, 1976), p.250, and references cited therein.
+72. Polyakov, A. M. Phys. Lett. 59B, 79 (1975); Migdal, A. A., Zh. Eksp. Tear. Fiz. 69,. 1457
+    (1975); English translation: Soviet Physics-JETP 42, 743 (1976); Brkzin, E. Zinn-Justin, ,J.
+    and LeGuillou, J, C. Phys. Rev. B14, 4976, (1976); Bhattacharjee, J. K. Cardy, J. L. and
+    Scalapino, D. J. Phys. Rev. B25, 1681 (1982).
+73. Wallace, D. J. and Zia, R. K. Phys. Rev. Lett. 35, 1399 (1979); Widom, B. (ref. 59).
+74. Brézin, E. Wallace, D. and Wilson, K. G. Phys. Rev. Letters, 29, 591 (1972); Phys. Rev. B7,
+    232 (1973); Avdeeva, G. M. and Migdal, A. A. Zh. ETF. Pis. Red. 16, 253 (1972); English
+    Translation: Soviet Physics-JETP Letters 16, 178 (1972); Avdeeva, G. M. Zh. Eksp. Tear.
+    Fiz. 64, 741 (1973), English Translation: Soviet Physics-JETP 37, 377 (1973).
+75. Brézin, E. and Wallace, D. J. Phys. Rev. B7, 1967 (1973); for a review see Ma S.-K. in Domb,
+    C. and Green, M. S. Eds., Phase Transitions and Critical Phenomena, Vol. 6 (Academic
+    Press, London, 1976) p.250.
+76. DeGennes, P. G. Phys. Letters 38A, 339 (1972); d es Cloiseaux, J. J. Phys. (Paris) 36, 281
+    (1975).
+77. Wegner, F. J., 1972a, Phys. Rev. B5, 4529.
+78. Aharony, A. and G. Ahlers, 1980, Phys. Rev. Lett. 44, 782.
+79. Riedel, E. K. and Wegner, F. J. Phys. Rev. Lett. 29, 349 (1972); Phys. Rev. B7, 248 (1973).
+80. Stephen, M. J., E. Abrahams, and J. P. Straley, 1975, Phys. Rev. B12, 256.
+81. See, e.g., Fisher, M. E. in A.I.P. Conference Proceedings #24, Magnetism and Magnetic
+     Materials 1974, p. 273.
+82. Fisher, M. E. and Aharony, A. Phys. Rev. Lett. 30, 559 (1973); Aharony, A. and Fisher, M. E.
+    Phys. Rev. B8, 3323 (1973); Aharony, A. Phys. Rev. B8, 3342, 3349, 3358, 3363 (1973);
+    Aharony, A. Phys. Letters 44A, 313 (1973).
+83. Suzuki, M. Phys. Letters, 42A, 5 (1972);        Suzuki, M. Progr. Theor. Phys. (Kyoto) 49, 424,
+    1106, 1440 (1973); Fisher, M. E. Ma, S. and Nickel, B. G. Phys. Rev. Letters 29, 917 (1972);
+    Baker Jr., G. A. and Golner, G. R. Phys. Rev. Letters 31, 22 (1973); Suzuki, M. Yamazaki, Y.
+    and Igarishi, G. Phys. Letters 42A, 313 (1972); Sak, J. Phys. Rev. B8, 281 (1973).
+84. Pfeuty, P. and Fisher, M. E. Phys. Rev. B6, 1889 (1972); Wallace, D. J. J. Phys. C6, 1390
+    (1973); Ketley, L. J. and Wallace, D. J. J. Phys. A6, 1667 (1973); Aharony, A. Phys. Rev.
+    Letters 31, 1494 (1973); Suzuki, M. Progr. Theor. Phys. (Kyoto) 49, 1451 (1973); Liu, I..
+    Phys. Rev. Letters 31, 459 (1973); Grover, M. K. Phys. Letters 44A, 253 (1973); Chang, T. S.
+    and Stanley, H. E. Phys. Rev. B8, 4435 (1973); Aharony, A. Phys. Rev. B8, 4270 (1973); A
+    recent reference is Blankschtein, D. and Mukamel, D. Phys. Rev. B25, 6939 (1982).
+85. Wegner, F. J., 1972b, Phys. Rev. B6, 1891.
+86. Halperin, B. I. Hohenberg, P. C. and Ma, S.-K. Phys. Rev. Letters 29, 1548 (1972); Suzuki,
+    M. and Igarishi, G. Progr. Theor. Phys. (Kyoto) 49, 1070 (1973): Suzuki, M. Phys. Letters
+    43A, 245 (1973); Suzuki, M. Progr. Theor. Phys. (Kyoto) 50, 1767 (1973); for a review see
+    Hohenberg, P. C. and Halperin, B. I. Revs. Mod. Phys. 49, 435 (1977); for a recent Monte
+    Carlo Renormalization Group method see Tobochnik, J, Sarker, S. and Cordery, R. Phys.
+ 130                                          Physics 1982
+
+
+       Rev. Lett, 46, 1417, (1981). Other recent references are Ahlers, G. Hohenberg, P. C. and
+       Kornblit, A. Phys. Rev. B25, 3136 (1982); Heilig, S. J. Luscombe, J. Mazrnko, G. F. Oguz, E.
+       and Valls, 0. T. Phys. Rev. B25, 7003 (1982).
+87. Halperin B. I., T. C. Lubensky, and S.-k. Ma, 1974, Phys. Rev. Letters, 32, 242.
+88. Mermin, N. D. and Wagner, H. Phys. Rev. Lett. 17, 1133 (1966); Mermin, N. D. J. Math.
+       Phys. 8, 1061 (1967); Hohenberg, P. C. Phys. Rev. 158, 383 (1967).
+89. See, e.g., Baxter, R. Exactly Solved Models in Statistical Mechanics, (Academic Press, New York,
+       1982).
+ 90. Kosterlitz,J. M. and Thouless, D. J. J. Phys. C6, 1181 (1973); Koster1itz.J. M. ,J. Phys. C7,
+       1046 (1974); for a review see Kosterlitz, J. M. and Thouless, D. J. Prog. Low Temp. Phys. 7,
+       373 (1978).
+ 91. Bcrezinskii, V. L. Zh. Eksp. Tear. Fiz. 59, 907 (1970); (Soviet Physics-JETP 32,493 (1971));
+       Berezinskii, V. I.. Zh. Eksp. Tear. Fiz. 61, 1144 (1971) (Soviet Physics-JETP 34,610 (1972)).
+ 92. José, J. V., L. P. Kadanoff, S. Kirkpatrick, and D. R. Nelson, 1977, Phys. Rev. B16, 1217.
+ 93. Frölich, J., and T. Spencer, 1981, Phys. Rev. Lett. 46. 1006.
+ 94. Fröhlich, J., and T. Spencer, 1981, Commun. Math. Phys. 81, 527.
+ 95. Kadanoff, L. P. and Brown. A. C. Annals Phys. (N.Y.) 121, 318 (1979).
+ 96. Nelson, D. R. and Halperin, B. I. Phys. Rev. B19, 2457 (1979); Young, A. P. Phys. Rev. B19,
+       1855 (1979).
+ 97. Baxter, R. J. J. Phys. C6, 2445 (1973)        rigorouus 2-d solution); see e.g., Banavar, J. R. Grest,
+       G. S and Jasnow, D. Phys. Rev. B25, 4639 (1982) and references cited therin (d>2).
+ 98. Nienhuis, B. Berker, A. N. Riedel, E. K. and Schick, M. Phys. Rev. Lett. 43. 737 (1979);
+       Swendsen, R. H. Andelman, D. and Berker, A. N. Phys. Rev. B24,6732 (1982) and references
+       cited therein.
+ 99. Lacour-Gayet, P., and G. Toulouse, 1974, J. Phys. 35. 425.
+100. Imry, Y. and Ma, S.-K. Phys. Rev. Lett. 35, 1399 (1975); Grinstein, G. Phys. Rev. Lctt. 37,
+       944 (1976); Aharony, A. Imry, Y. and Ma, S.-K. Phys. Rev. Lett. 37. 1367 (1976); a recent
+       reference is: Mukamel, D. and Grinstein, G. Phys. Rev. B25, 381 (1982).
+101. Young, A. P., 1977, J. Phys. C10, L257.
+102. Parisi, G. and Sourlas, N. Phys. Rev. Lctt. 43, 744 (1979).
+103. Parisi, G., and N. Sourlas, 1981, Phys. Rev. Lett. 46. 871.
+104. Edwards, S. F. and Anderson, P. W. J. Phys. F5, 965 (1975).
+105. Khmelnitskii, D. E. Zh. Eksp. Teor. Fiz. 68, 1960 (1975), (Sov. Phys.-JETP 41. 981 (1976)):
+     Grinstein, G. and Luther, A. Phys. Rev. B13, 1329 (1976).
+106. See, e.g., the review of Essam, J. W. Repts. Prog. Phys. 43. 833 (1980): a recent reference is
+       Lobb, C. J. and Karasek, K. R. Phys. Rev. B25, 492 (1982).
+107. Nagaoka, Y., and H. Fukuyama, editors, 1982, Anderson Localization Springer Series in Solid-
+       State Science (Springer-Berlin), Vol. 39.
+108. See, e.g., the review of Bruce, A. D. Adv. Phys. 29, 111 (1980); a recent paper is Grinstein. G.
+       and Jayaprakash, C. Phys. Rev. B25, 523 (1982).
+109. See Ref. 68 and references cited therein.
+110. Callan, C. G. Phys. Rev. D2, 1541 (1970); Symanzik, K. Commun. Math. Phys. 18. 227
+       (1970); Symanzik, K. Springer Tracts in Modern Physics 57. 222 (1971).
+1 I 111. Lipatov, L. N. Zh. Eksp. Teor. Fiz. 72, 411 (1977); English translation, Soviet Physics-JETP
+       45, 216 (1977).
+       Brezin, E. Le Guillou; J, C. and Zinn-Justin, J. Phys. Rev. D15. 1544, 1558 (1977).
+112. Wegner, F. J., 1974, J. Phys. C7, 2098.
+113. See, e.g. F. Wegner, in C. Domb and M. S. Green, eds., Phase Transitions and Critical Phenomena.
+       (Academic Press, London, 1976) p. 7.
+114. See, e.g., Golner, G. Phys. Rev. B8, 3419 (1973); Langer, J. S. and Bar-on, M. Ann Phys.
+       (N.Y.) 78, 421 (1973); Bleher, P. M. and Ya. Ya. G. Sinai. Commun. Math. Phys. 45, 247
+     (1975).
+115. Migdal, A. A. Zh. Eksp. Tear. Fiz. 69, 810, 1457 (1975); English Translations: Soviet
+       Physics-JETP 42, 413, 743 (1975), for a review and more references, see Kadanoff L. P.
+       Revs. Mod. Phys. 49,267 (1977).
+                                               K. G. Wilson                                         131
+
+
+116. See, e.g., Niemeijer, Th. and Van Leeuwen. J. M. J. in Domb, C. and Green, M. S. eds.,
+     Phase Transitions and Critical Phenomena, Vol. 6 (Academic Press, London, 1976), p. 425.
+117. See Ref. 80 and e.g., Riedel, E. K. Physica 106A, 110 (1981) and references cited therein.
+118. Burkhardt. T. W., and J. M. J. V an Leeuwen, 1982, Real-Space Renormalization (Springer,
+     Berlin)
+119. Kadanoff, I.. P., and A. Houghton, 1975, Phys. Rev. B11, 377.
+120. See Wilson, K. G. Rev. Mod. Phys. 47, 773 (1975) esp. Sect. IV.
+121. See Hilhorst H.J. and Van Leeuwen., J. M. J. Physica 106A, 301 (1981).
+122. Hilhorst. H. J., M. Schick, and J. M. J. V an Lceuwen, 1978. Phys. Rev. Lctt. 40, 1605.
+123. I thank Yves Parlange for reminding me of this.
+124. See, e.g. Swendsen, R. H. Andelman, D. and Berker, A. N. Phys. Rev. B 2 4 , 6 7 3 2 (1982):
+     Landau, D. P. and Swendscn R. H. Phys. Rev. Lett. 46, 1437 (1981).
+125. Bell, T. L. and Wilson, K. G. Phys., Rev. B10, 3935 (1974).
+126. See, e.g. Griffiths, R. B. Physica 106A, 59 (1981).
+127. See, e.g., Mandelbrot, Benoit B. The Fractal Geometry of Nature (Freeman, W. H. San Francisco,
+     1982);
+128. Fowler, M. and Zawadowski, A. Solid State Commun. 9, 471 (1971).
+129. Wilson, K. G. Revs. Mod. Phys. 47, 773 (1975); Krishna-Murthy, H. R. Wilkins, J. N. and
+     Wilson, K. G. Phys. Rev. Letters 35, 1101 (1975); Phys. Rev. B21, 1044, 1104 (1980).
+130. See. e.g. Drcll. S. D. Weinstein, M. and Yankielowicz, S. Phys. Rev. D17, 1769 (1977);
+     Jullien. R. Fields. ,J. N. and Doniach. S. Phys. Rev. Bl6. 4889 (1977); recent references are
+      Hanke, W. and Hirsch, J. E. Phys. Rev. B 2 5 , 6748 (1982); Penson, K. A. Jullien, R. and
+     Pfeuty, P. Phys. Rev. B25, 1837 (1982) and references cited therein.
+131. Politzcr, H. Phys. Rev. Lett. 30, 1346 (1973); Gross, D. and Wilczek, F. Phys. Rev. Lett. 30,
+      1343 (1973).
+132. Ser. e.g. Altarelli, G. Phys. Repts. 81, 1 (1982).
+133. Wilson, K. G. Phys. Rev. D3, 1818 (1971).
+134. Polyakov A. M. (unpublished); Wilson, K. G. Phys. Rev. D10. 2455 (1974).
+135. Wegner. F.J. Math. Phys. 12, 2259 (1971).
+136. See the review of Bander, M. Phys. Repts. 75, 205 (1981).
+137. Swendsen, R. H.. 1982, in Real-Space Renormalization, edited by J.W Burkhardt and J. M. J.
+      Van Leeuwen, (Springer. Berlin).
+138. Langacker P., 1981. Phys. Rep. 72, 183.
+139. Feigenbaum, M.J.J, Stat. Phys. 19, 25 (1978).
+140. Sec. e.g. Eckmann. J. P. Rev. Mod. Phys. 53. 643 (1981): Ott, E. Rev. Mod. Phys. 53. 655
+      (1981).
+141. See e.g. Coppersmith, S. and Fisher, D. Bell Laboratories preprint.
+142. See. e.g., Mulliken. R. S. Ann. Rev. Phys. Chem. 29, 1 (1978); Löwdin, P. 0. Adv. Quantum
+      Chem. 12, 263 (1980); Hirst. D. M. Adv. Chem. Phys. 50,517 (1982); Bartlett, R. J. Ann. Rev.
+      Phys. Chem. 32, 359 (1981): Case, D. A. Ann. Rev. Phys. Chem. 33. 151 (1982).
+143. Patashinskii, A. Z.. and V. L. Pokrovskii, 1979. Fluctuating Theory of Phase Transitions (Perga-
+      “Ion)
+ 144. Stanley, H. E., 1972, Introduction to Phase Transitions and Critical Phenomena (Oxford University,
+      London)
+ 145. Widom, B., 1975 in Fundamental Problems in Statistical Mechanics. edited by E. C. G. Cohen
+      (North-Holland) Vol. III, p. 1.
+ 146. Fisher, 51. E., 1964, J. Math. Phys. 5, 944.
+ 147. Levy, M., J. C. Le Guillou, and J. Zinn-,Justin, editors, 1980, Phase Transitions (Plenum, New
+      York).
+
+
+Books Related to the Renormalization Group
+Domb, C. and Green, M. S. Eds., Phase Transitions and Critica/ Phenomena (Academic Press, London)
+    esp. Vol. 6 (1976);
+ Pfeuty, P. and Toulouse, G. Introduction to the Renormalization Group and to Critical Phenomena (Wiley,
+   Sew York, 1977):
+132                                       Physics 1982
+
+
+Ma, S.-K. Modern Theory of Critical Phenomena (Benjamin/Cummings, Reading, Mass., 1976);
+Amit, D. J. Field Theory, the Renormalization Group, and Critical Phenomena (McGraw-Hill, New York,
+   1978).
+
+
+Popular Articles (sort of]
+Wilson, K. G. Sci. Am. 241, 158 (August, 1979);
+Wilson, K. G. Adv. Math 16, 176 (1975).
+
+
+Review Articles
+Greer, S. C. and Moldover, M. R. Ann. Rev. Phys. Chem. 32, 233 (1981): Critical Behavior of
+  Fluids and many references to prior reviews.
+Bander, M. ref. 116: Quark Confinement
+Zion-Justin, J. (Ref. 67): Precise Computation of critical Exponents from the ε expansion;
+Baret, J. F. Prog. Surf. Membrane Sci. 14, 292 (1981);
+Cadenhead, D. A. and Danielli, J. F. Eds., (Academic, New York, 1981): A practical area involving
+   phase transitions.
+Wallace, D. J. and Zia, R. K. Repts. Progr. Phys. 41, 1 (1978).
+

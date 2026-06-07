@@ -1,0 +1,210 @@
+    Algorithms and Uncertainty, Winter 2017/18                                Lecture 5 (4 pages)
+                                         Yao’s Principle
+    Instructor: Thomas Kesselheim
+    In the last weeks, we have often seen that randomized algorithms admit better competitive
+ratios than any deterministic one. We could lower-bound the performance of a deterministic
+algorithm by using the perspective of an adversary that tried to make our algorithm look as
+badly as possible. Today, we will turn our attention to lower bounds and randomized (online)
+algorithms.
+
+
+1    Yao’s Principle
+Yao’s principle is a very simple, yet powerful tool to prove impossibility results regarding worst-
+case performance of randomized algorithms, which are not necessarily online. We state it for
+algorithms that always do something correct but the profit or cost may vary. Such algorithms
+are called Las Vegas algorithms. We first state it for minimization problems because this is the
+usual way.
+    We assume that we have a class of deterministic algorithms A and a class of instances X . In
+order to avoid technicalities, assume that both classes are finite. Algorithm a ∈ A on instance
+x ∈ X incurs cost c(a, x) ∈ R. A randomized algorithm is simply a probability distribution over
+the set of deterministic algorithms A. So, let A be a randomized algorithm (which is now a
+random variable), then A’s worst-case cost is maxx∈X E [c(A, x)].
+Theorem 5.1 (Yao’s Principle). Let A be a random variable with values in A and let X be a
+random variable with values in X . Then,
+                                  max E [c(A, x)] ≥ min E [c(a, X)] .
+                                  x∈X                 a∈A
+
+    Before proving the theorem, let us interpret what it means. The left-hand side of the in-
+equality is what will will try to lower-bound: It is the worst-case performance of randomized
+algorithm A. The right-hand side will be easier to talk about, because algorithms are deter-
+ministic. This is a sort of average-case performance of the best deterministic algorithm in our
+class. The distribution over instances is arbitrary.
+Proof. Let us first write the expectations as sums over all possible outcomes of X and A.
+                     X                                             X
+       E [c(A, x)] =      Pr [A = a] c(a, x) and E [c(a, X)] =         Pr [X = x] c(a, x)
+                     a∈A                                                x∈X
+
+Now we use that the weighted average of a sequencePis always upper-bounded by its maximum
+value. In our case, the weights are Pr [X = x]. As x∈X Pr [X = x] = 1, we have
+                            X                        X            X
+    max E [c(A, x)] = max       Pr [A = a] c(a, x) ≥   Pr [X = x]   Pr [A = a] c(a, x) .
+     x∈X                  x∈X
+                                a∈A                         x∈X          a∈A
+
+We can now reorder the sums and get
+       X              X                       X            X
+          Pr [X = x]     Pr [A = a] c(a, x) =   Pr [A = a]   Pr [X = x] c(a, x) .
+          x∈X             a∈A                         a∈A          x∈X
+                           P
+Finally, we can use that a∈A Pr [A = a] = 1 the same way as above to obtain
+    X               X                           X
+         Pr [A = a]    Pr [X = x] c(a, x) ≥ min   Pr [X = x] c(a, x) = min E [c(a, X)] .
+                                                a∈A                             a∈A
+    a∈A             x∈X                               x∈X
+Algorithms and Uncertainty, Winter 2017/18                                Lecture 5 (page 2 of 4)
+
+
+
+
+Figure 1: The binary tree used in the construction of the lower bound. The black nodes
+correspond to a potential sequence.
+
+
+    The analogous statement holds maximization problems, where we have a profit p(a, x) that
+algorithm a achieves on instance x. By setting c(a, x) = −p(a, x), we get the following corollary.
+
+Corollary 5.2. . Let A be a random variable with values in A and let X be a random variable
+with values in X . Then,
+                            min E [p(A, x)] ≤ max E [p(a, X)] .
+                              x∈X                a∈A
+
+
+2    Randomized Lower Bound for Online Set Cover
+We will now use Yao’s principle to show that indeed for online Set Cover even randomized
+algorithms cannot be strictly o(log n)-competitive.
+
+Theorem 5.3. No algorithm for Online Set Cover is strictly α-competitive for α < 1 + 21 log2 n.
+
+Proof. We consider n that are powers of two. Define the set system as follows. Take a complete
+binary tree of 2n − 1 vertices. This tree has height h = log2 n + 1 and n leaves.
+    Potential elements e to be covered correspond to nodes in the tree. Sets S ∈ S correspond
+to leaves, where S contains all ancestors in the tree. We set cS = 1 for all S ∈ S.
+    Our sequence σ will be the elements on one root-leaf path, starting from the root and going
+downward. Note that any such σ can be covered by a single set S ∈ S, namely the one that
+corresponds to the leaf where the path ends. That is, cost(OPT(σ)) = 1.
+    We now claim that for any randomized online algorithm E [cost(ALG(σ))] ≥ 1 + 21 log2 n for
+some sequence σ of this form. In the notation of Yao’s principle, this means that maxx∈X E [c(A, x)] ≥
+1 + 12 log2 n, where now A is an arbitrary randomized algorithm and X is the set of sequences
+we are considering.
+    Yao’s principle tells us that maxx∈X E [c(A, x)] ≥ mina∈A E [c(a, X)] for any choice of the
+random variable X, so it is sufficient to show how to choose X such that mina∈A E [c(a, X)] ≥
+1 + 21 log2 n.
+    In our case, we will drawn one leaf uniformly at random and take the path ending at this
+leaf. Equivalently, we can determine this leaf as follows: Start at the root and flip a coin whether
+to go left or right. At every inner node continue this procedure. Note that this is exactly the
+way the online algorithm gets to the path. It always only gets to know whether the following
+elements are in the left or the right subtree. The elements to further distinguish the leafs have
+not yet arrived.
+Algorithms and Uncertainty, Winter 2017/18                                      Lecture 5 (page 3 of 4)
+
+
+    Without loss of generality, consider a lazy (deterministic) algorithm. This means that the
+algorithm only buys an S ∈ S if the current element is not yet covered. If so, it buys only a
+single one. In principle, an algorithm may buy multiple sets at a time but it is easy to see that
+this cannot be cheaper.
+    Let Ct be the cost of the algorithm in the tth step. Clearly C1 = 1. Now consider any later
+step t > 1. We will show that E [Ct ] = 21 . To this end, observe that the algorithm has chosen
+exactly one set that covers the element appearing in step t − 1. This can either belong to the
+left or to the right subtree. If the element in step t comes from this subtree, the algorithm
+does not choose another set and does not incur any cost. If the element comes from a different
+subtree, then the algorithm chooses a new set and incurs cost of 1. Both events happen with
+probability 12 , so E [Ct ] = 12 .
+    Overall, we get for any a ∈ A
+                                      h
+                                      X                          1     1
+                      E [c(a, X)] =         E [Ct ] = 1 + (h − 1) = 1 + log2 n .
+                                                                 2     2
+                                      t=1
+
+
+3    Randomized Lower Bound for Ski Rental
+We now consider the Ski Rental Problem. We will show that no randomized algorithm can be
+             e
+better than e−1 -competitive.
+                                                                                           B −1
+Theorem 5.4. For a fixed B, no algorithm for Ski Rental is α-competitive for α < 1 − 1 − B1        .
+                               B −1
+    Note that limB→∞ 1 − 1 − B1           e
+                                       = e−1 .
+
+Proof. The instances have a very simple structure, they are simple non-negative integers repre-
+senting the number of skiing days. For the offline optimum OPT, we now have
+                                              (
+                                                x    if x < B
+                                c(OPT, x) =
+                                                B otherwise
+
+For any random variable X, this implies
+                                  B−1
+                                  X                                     B
+                                                                        X
+             E [c(OPT, X)] =             tPr [X = t] + BPr [X ≥ B] =          Pr [X ≥ t] .
+                                   t=1                                  t=1
+
+   Deterministic algorithms are also easy to describe. They only differ in how long they wait
+until buying the skis. So a is again a non-negative integer, which means that the algorithm
+rents skis for a days before buying them on day a + 1 (if this day exists). The cost of a is
+                                           (
+                                            x       if x ≤ a
+                                 c(a, x) =
+                                            a + B otherwise
+
+So, the expected cost for a random X is
+                     a
+                     X                                         a
+                                                               X
+     E [c(a, X)] =         tPr [X = t] + (a + B)Pr [X > a] =         Pr [X ≥ t] + BPr [X > a] .
+                     t=1                                       t=1
+Algorithms and Uncertainty, Winter 2017/18                                           Lecture 5 (page 4 of 4)
+
+
+    Now, we have to find a distribution such that all deterministic algorithms a perform badly.
+The idea is to make all algorithms incur the same cost in expectation. This means that algo-
+rithms a and a − 1 have the same cost
+
+                                     E [c(a − 1, X)] = E [c(a, X)] ,
+
+which means that
+      a−1
+      X                                         a−1
+                                                X
+            Pr [X ≥ t] + BPr [X > a − 1] =            Pr [X ≥ t] + Pr [X ≥ a] + BPr [X > a] .
+      t=1                                       t=1
+
+So we need
+                                                                                   
+                                                                                  1
+BPr [X ≥ a] = Pr [X ≥ a]+BPr [X ≥ a + 1]               ⇔     Pr [X ≥ a + 1] = 1 −     Pr [X ≥ a] .
+                                                                                  B
+
+This is fulfilled if we set
+
+                                                 1 t−1
+                                                  
+                              Pr [X ≥ t] =    1−                  for all t ≥ 1 .
+                                                 B
+
+   For this choice of X, we have
+                                       B             t−1                         B !
+                                       X         1                       1
+                    E [c(OPT, X)] =           1−             =B    1− 1−                   ,
+                                                 B                       B
+                                       t=1
+
+whereas for all a
+                                     a 
+                                           1 t−1       1 a
+                                     X                 
+                       E [c(a, X)] =    1−       +B 1−     =B .
+                                           B           B
+                                       t=1
+                                                                        B −1
+Now suppose a randomized algorithm A is α-competitive for α < 1 − 1 − B1        . Then this
+means that
+                             E [c(A, X)] ≤ αE [c(OPT, X)] .
+                                                                                        B 
+As we know E [c(A, X)] = a∈A Pr [A = a] E [c(a, X)] = B and E [c(OPT, X)] = 1 − 1 − B1
+                         P
+                                                                                              .
+This is a contradiction.
+

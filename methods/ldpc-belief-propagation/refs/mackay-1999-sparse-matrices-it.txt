@@ -1,0 +1,1995 @@
+IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999                                                                        399
+
+
+
+
+                              Good Error-Correcting Codes
+                             Based on Very Sparse Matrices
+                                                            David J. C. MacKay
+
+
+
+   Abstract— We study two families of error-correcting codes                can be produced [1]; and an explicit algebraic construction
+defined in terms of very sparse matrices. “MN” (MacKay–Neal)                of very good codes for certain channels was given in 1982
+codes are recently invented, and “Gallager codes” were first                [19]. But no practical decoding algorithm is known for any of
+investigated in 1962, but appear to have been largely forgotten,
+in spite of their excellent properties. The decoding of both codes          these codes, and it is known that the general linear decoding
+can be tackled with a practical sum-product algorithm.                      problem (find the maximum-likelihood source vector in the
+   We prove that these codes are “very good,” in that sequences of          equation                        , where is a generator matrix,
+codes exist which, when optimally decoded, achieve information                 is a noise vector, and        is the received vector) is NP-
+rates up to the Shannon limit. This result holds not only for
+                                                                            complete [10]. Convolutional codes (which can be viewed
+the binary-symmetric channel but also for any channel with
+symmetric stationary ergodic noise.                                         as block codes with memory) can approach the Shannon
+   We give experimental results for binary-symmetric channels               limit as their constraint length increases but the complexity
+and Gaussian channels demonstrating that practical performance              of their best known decoding algorithms grows exponentially
+substantially better than that of standard convolutional and                with the constraint length. For a long time a generally held
+concatenated codes can be achieved; indeed, the performance of
+Gallager codes is almost as close to the Shannon limit as that of
+                                                                            view was that for practical purposes a channel’s effective
+turbo codes.                                                                capacity was a rate “ ” which is smaller than the Shannon
+                                                                            capacity, if convolutional codes were used; and many believed
+   Index Terms— Error-correction codes, iterative probabilistic
+decoding, low-complexity decoding, nonlinear codes, Shannon
+                                                                            this conjecture applied to all codes, speculating that practical
+limit.                                                                      communication beyond           was impossible. Forney proved
+                                                                            that there do exist very good “concatenated” codes that are
+                                                                            practical [23]; but the proof was also nonconstructive [45].
+                         I. INTRODUCTION                                       When it comes to practical, constructive codes, construc-
+                                                                            tions have been demonstrated of codes based on concatenation
+A. Background                                                               that are good, though not very good, but most known prac-
+                                                                            tical codes are asymptotically bad [45]. Goppa’s algebraic-
+I  N 1948, Shannon [58] proved that for any channel there
+   exist families of block codes that achieve arbitrarily small
+probability of error at any communication rate up to the
+                                                                            geometry codes, reviewed in [66], appear to be both practical
+                                                                            and good (with practical decoding proven possible up to the
+capacity of the channel. We will refer to such code families as             Gilbert bound), but we believe that the literature has not
+“very good” codes. By “good” codes we mean code families                    established whether they are very good. The best practical
+that achieve arbitrarily small probability of error at nonzero              decoding algorithm that is known for these codes [22] appears
+communication rates up to some maximum rate that may be                     to be prohibitively costly          to implement, and algebraic-
+less than the capacity of the given channel. By “bad” codes                 geometry codes do not appear to be destined for practical
+we mean code families that can only achieve arbitrarily small               use.
+probability of error by decreasing the information rate to zero.               Thus the conventional view is that there are few known
+(Bad codes are not necessarily useless for practical purposes.)             constructive codes that are good, fewer still that are practical,
+By “practical” codes we mean code families which can be                     and none at all that are both practical and very good. It seems
+encoded and decoded in time and space polynomial in the                     to be widely believed that while almost any random linear
+blocklength.                                                                code is good, codes with structure that allows practical coding
+   Shannon’s proof was nonconstructive and employed random                  are likely to be bad [45], [15]. Battail expresses an alternative
+codes for which there is no practical encoding or decoding                  view, however, that “we can think of good codes, and we can
+algorithm. Since 1948, it has been proved that there exist                  decode them” [6]. This statement is supported by the results
+very good cyclic codes (nonconstructively) [45], and that very              of the present paper.
+good codes with a short description in terms of permutations                   In this paper we study the theoretical and practical properties
+                                                                            of two code families. Gallager’s low-density parity-check
+  Manuscript received June 29, 1997; revised July 27, 1998. This work was
+supported by the Royal Society Smithson research fellowship and by the      codes are defined in terms of a very sparse random parity-
+Gatsby charitable foundation.                                               check matrix [26], [27], [41]. “MN codes” are also defined
+  The author is with Cavendish Laboratory, Cambridge, CB3 0HE, U.K. (e-     in terms of very sparse random matrices, and were first
+mail: mackay@mrao.cam.ac.uk).
+  Communicated by A. Vardy, Associate Editor for Coding Theory.             presented in [40]. (MN stands for MacKay–Neal; MacKay and
+  Publisher Item Identifier S 0018-9448(99)01395-4.                         Neal generalized MN codes to Gallager codes, then realized
+                                                         0018–9448/99$10.00  1999 IEEE
+400                                                              IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+that they had rediscovered Gallager’s work.) MN codes are            This is the rate beyond which the expected computational
+unconventional in that redundancy can be incorporated in the         cost of decoding a convolutional code with vanishing error
+transmitted codewords not only by using a                generator   probability using sequential decoding becomes infinite.
+matrix with transmitted blocklength greater than the source            The Gilbert bound            is
+blocklength      , but also by using a source that is itself
+redundant.                                                                                                                        (6)
+   These code families both have two important properties.
+First, because the codes are constructed from sparse matrices,
+they have simple and practical decoding algorithms which             This is the maximum rate at which one can communicate
+work, empirically, at good communication rates. Second, we           with a code which satisfies the Gilbert–Varshamov minimum-
+prove that in spite of their simple construction these codes         distance bound, assuming bounded distance decoding [43].
+are very good—that is, sequences of codes exist which, when             Definition 5: A model that defines a probability distribution
+optimally decoded, achieve information rates up to the Shan-         over strings of any length                   has mean entropy
+non limit of the binary-symmetric channel. We further prove              if for any       and         there exists an      such that
+that the same codes are in fact good for any ergodic symmetric       for all
+channel. Our proof may be viewed as a semiconstructive proof
+of Shannon’s noisy channel coding theorem (semiconstructive
+in the sense that, while the proof still relies on an average over                                                                (7)
+a set of codes, the set of codes in question is unusually small).
+It is indeed easy to think of good codes.                            For example, a memoryless binary-symmetric channel’s noise
+                                                                     has mean entropy                 , where is the density of the
+B. Definitions                                                       noise; the proof of this statement, by the law of large numbers,
+  For a glossary of symbols used in this paper, please see           is well known [16]. We will prove that the codes presented in
+Table III.                                                           this paper are good codes not only for the binary-symmetric
+  A binary variable will be termed a bit. The unit of infor-         channel but also for a wide class of channels with memory.
+mation content of a random bit with                     will            Definition 6: A binary channel with symmetric stationary
+be termed the shannon. The input and output alphabets of             ergodic noise is a binary-input, binary-output channel whose
+the binary-symmetric channel (BSC) will be denoted         .         output in response to a transmitted binary vector is given by
+We will denote the error probability of the binary-symmetric                           , where , the noise vector, has a probability
+channel by , where             .                                     distribution that is a) independent of and b) stationary and
+  Definition 1: The binary entropy functions                  and    ergodic.
+       are                                                              For example, burst noise might be modeled by a stationary
+                                                                     and ergodic Markov process. Such a process has a mean
+                                                              (1)    entropy, though the evaluation of this quantity may be chal-
+                                                              (2)    lenging. The standard Gaussian channel with binary inputs is
+                                                                     also equivalent to a binary channel with stationary ergodic
+We will write natural logarithms as                       .          noise.
+  Definition 2: The weight of a binary vector or matrix is the          We will concentrate on the case of a binary channel with
+number of ’s in it. The overlap between two vectors is the           symmetric noise (see Definition 6) in the body of this paper.
+number of ’s in common between them. The density of a                Channels like the Gaussian channel whose inputs are binary
+source of random bits is the expected fraction of bits. A            and whose outputs are in some more general alphabet are
+source is sparse if its density is less than    . A vector is        addressed in Appendix A.
+very sparse if its density vanishes as its length increases, for        1) Linear Codes: A linear error-correcting code can be
+example, if a constant number of its bits are ’s.                    represented by an      by    binary matrix       (the generator
+                                                                     matrix), such that a -bit binary message is encoded as the
+   Definition 3: A code with blocklength   and rate   sat-             -bit vector                 . (Note that we have chosen to use
+isfies the Gilbert–Varshamov minimum-distance bound if the           column vectors so the generator matrices act to the right rather
+minimum distance between its codewords satisfies                     than the left.) The generator matrix is in systematic form if it
+                                                              (3)    can be written as
+
+  Definition 4: The capacity           of a binary-symmetric                                                                      (8)
+channel with noise density   is, in shannons per channel use,
+                                                              (4)    where       is the        identity matrix, and   is a binary
+                                                                     matrix. The channel adds noise      to the vector with the
+  The computational cutoff rate             is                       resulting received signal being given by
+
+                                                              (5)                                                                 (9)
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                     401
+
+
+
+The decoder’s task is to infer given the received message ,               The matrix       is a square         matrix that is very sparse
+and the assumed noise properties of the channel. The optimal           and invertible. The inverse          of this matrix in modulo
+decoder returns the message that maximizes the posterior               arithmetic has been computed during the Gaussian elimination
+probability                                                            which produced the matrix                     . (The expression
+                                                                                      is the product (modulo ) of the two matrices
+                                                               (10)          and    .) The inversion takes order             time and is
+                                                                       performed once only.
+It is often not practical to implement the optimal decoder;               The matrix        is a rectangular         matrix that is very
+indeed, the general decoding problem is known to be NP-                sparse.
+complete [10].                                                         Encoding. We define the generator matrix of the Gallager code
+   If the prior probability of     is assumed uniform, and             to be
+the probability of      is assumed to be independent of
+(c.f. Definition 6), then it is convenient to introduce the                                                                         (13)
+                parity-check matrix , which in systematic
+form is            . The parity-check matrix has the property
+                 , so that, applying    to (9)                         where       is the          identity matrix.
+                                                                          2) Variations:
+                                                               (11)
+                                                                          a) When generating the matrix , one can constrain all
+Any other                   matrix whose rows span the same                   pairs of columns in the matrix to have an overlap
+space as     is a valid parity-check matrix.                                     . This is expected to improve the properties of the
+  The decoding problem thus reduces, given the above as-                      ensemble of codes, for reasons that will become apparent
+sumptions, to the task of finding the most probable noise vector              in Section II-C.
+  such that                                                               b) One can further constrain the matrix           so that the
+                                                                              topology of the corresponding bipartite graph does not
+                                                               (12)           contain short cycles. This is discussed further in Sec-
+where the syndrome vector                      .                              tion IV-C.
+                                                                          3) The Decoding Problem for Gallager Codes: A source
+C. Description of the Two Code Families                                vector of length        is encoded into a transmitted vector
+                                                                          defined by                      . If a systematic generator
+   We define two code families. We explain the more conven-
+                                                                       matrix has been computed explicitly (which takes
+tional Gallager codes first.
+                                                                       time) then the transmitted vector can be computed by explicit
+   1) Construction of Gallager Codes: A Gallager code is a             multiplication in         time. However, encoding might be
+code which has a very sparse random parity-check matrix.               possible in less time using sparse matrix methods.
+(Very sparse, but not systematic.) The parity-check matrix
+                                                                          The received vector is                    , where the noise is
+can be constructed as follows. We will describe variations on
+                                                                         . In the case of a binary-symmetric channel, is assumed
+this construction later.                                               to be a sparse random vector with independent and identically
+   A transmitted blocklength         and a source blocklength
+                                                                       distributed bits of density . We will discuss more general
+are selected. We define                  to be the number of parity
+                                                                       channels later.
+checks. We select a column weight , which will initially be
+                                                                          By construction, is a parity-check matrix for —that is,
+an integer greater than or equal to . We create a rectangular
+                                                                                         —so the decoding problem is to recover by
+          matrix ( rows and           columns) at random with
+                                                                       finding the most probable that satisfies the equation
+exactly weight per column and a weight per row as uniform
+as possible. If           is chosen to be an appropriate ratio
+of integers then the number per row can be constrained to                                                                           (14)
+be exactly         ; in this case, we call the resulting code a
+regular Gallager code because the bipartite graph defined by           where is the syndrome vector                      , computation
+the parity-check matrix is regular.                                    of which takes time of order       , if the sparseness of      is
+   We then use Gaussian elimination and reordering of columns          exploited.
+to derive an equivalent parity-check matrix in systematic form            The optimal decoder, in the case of a binary-symmetric
+              . There is a possibility that the rows of the original   channel, is an algorithm that finds the sparsest vector that
+matrix are not independent (though for odd , this has small            satisfies              . From we obtain our guess for the
+probability); in this case,       is a parity-check matrix for a       transmitted signal                   , the first   bits of which
+code with the same and with smaller , that is, a code with             are the optimal guess for the original message.
+greater rate than assumed in the following sections. Redefining           Both the matrix and the unknown vector are sparse. One
+   to be the original matrix with its columns reordered as in          might therefore hope that it is practical to solve this decoding
+the Gaussian elimination, we have the following situation.             problem (though perhaps not right up to the theoretical limits
+   The matrix                   is composed of two very sparse         of the optimal decoder). We will demonstrate a practical
+matrices       and      as follows.                                    decoder later.
+402                                                            IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+   4) Construction of MN Codes: Having created the matri-             Previous work on low-density parity-check codes has al-
+ces        and    , we can define the generator matrix        of   ready established some good properties of Gallager codes.
+an MN code by the nonsystematic matrix                         .   Gallager [26], [27] proved that his codes have good distance
+The novel idea behind MN codes is that we can constrain            properties. Zyablov and Pinsker [73] proved that Gallager
+the source vectors to be sparse and exploit this unconventional    codes are good and gave a practical decoder, but only for
+form of redundancy in the decoder [40]. We will discuss prop-      communication rates substantially below the Gilbert bound.
+erties and possible applications of MN codes in Section VI. As     Our approach in terms of an ideal decoder allows us to prove
+explained in that section, the decoding of these codes involves    that the codes are good not only for the binary-symmetric
+a problem similar to the Gallager codes’ decoding problem          channel but also for arbitrary ergodic symmetric channel
+(14).                                                              models; we also prove that Gallager codes are very good, a
+   5) Overview: The theoretical effectiveness of Gallager and      result not explicitly proven in [26], [27], and [73].
+MN codes as error-correcting codes depends on the properties
+of very sparse matrices in relation to the solvability of the
+                                                                   A. Ensembles of Very Sparse Matrices
+decoding problem (14). We address the question, “how well
+would these codes work if we had the best possible algorithm          The properties that we prove depend on the ensemble of
+for solving the decoding problem?”                                 matrices     that is averaged over. We find it easiest to prove
+   The practical effectiveness of Gallager and MN codes            the desired properties by weakening the ensemble of matrices
+depends on our finding a practical algorithm for solving (14)      from that described in Section I-C. We introduce the following
+that is close enough to the optimal decoder that the desirable     ensembles which we believe are ordered such that the later
+theoretical properties are not lost.                               ensembles define Gallager and MN codes that have smaller
+   We show theoretically in Section II that there exist Gallager   average probability of error, though we do not have a proof
+and MN codes for which the optimal decoder would achieve           of this statement.
+information rates arbitrarily close to the Shannon limit for a        1) Matrix generated by starting from an all-zero matrix
+wide variety of channels. In Section III we present a “sum-               and randomly flipping not necessarily distinct bits in
+product” decoding algorithm for Gallager codes and MN                     each column.
+codes, first used by Gallager [26]. We give an analysis of the        2) Matrix       generated by randomly creating weight
+decoding algorithm in Section III-C. These results lead us to             columns.
+conjecture that there exist Gallager and MN codes which are           3) Matrix      generated with weight per column and (as
+not only good but which also achieve error rates approaching              near as possible) uniform weight per row.
+zero at a nonzero information rate when decoded using a prac-         4) Matrix       generated with weight       per column and
+tical algorithm. In Section IV we describe empirical results              uniform weight per row, and no two columns having
+of computer experiments using the sum-product algorithm to                overlap greater than 1.
+decode Gallager codes. Our experiments show that practical            5) Matrix      further constrained so that its bipartite graph
+performance significantly superior to that of textbook codes              has large girth.
+can be achieved by these codes on both binary-symmetric               6) Matrix                     further constrained or slightly
+channels and Gaussian channels. In Section V we give a                    modified so that      is an invertible matrix.
+pictorial demonstration of the iterative decoding algorithm for    Our proofs use the first ensemble. Our demonstrations use
+a couple of Gallager codes. In Section VI we present MN            matrices from ensembles 4), 5), and 6).
+codes and give theoretical and experimental results for them.         The properties of the decoding problem                     also
+                                                                   depend on the assumed noise model. We will give theoretical
+                                                                   results for three cases. First, we give a general theorem
+             II. LIMITS OF OPTIMAL DECODING                        for a broad class of symmetric noise models with memory
+   We prove properties of Gallager and MN codes by studying        (Definition 6). Second, we discuss a popular special case, the
+properties of the decoding problem                    where the    memoryless binary-symmetric channel, corresponding, in the
+unknown vector is sparse and          is very sparse. We make      case of Gallager codes, to a vector of uniform density .
+use of two standard tools: we prove properties of the optimal      Third, the generalization to channels with continuous outputs
+decoder by proving properties of a slightly suboptimal “typical    is discussed in Appendix A.
+set decoder” which is easier to analyze; and we average the
+performance of this decoder over an ensemble of very sparse
+matrices . A “good” average performance proves that there          B. Decodability for Arbitrary
+exist “good” matrices —indeed, that any random matrix                 To avoid confusion between Gallager and MN codes when
+from the ensemble is likely to be “good.” As in all proofs         discussing their common decoding problem                , we
+of goodness of coding systems, we employ a blocklength that        refer to the number of columns in as and the number of
+can be increased to a sufficiently large value that an error       rows as . (For a glossary of all symbols used in this paper,
+probability smaller than a desired is achieved. To prove that      see Table III.) In the case of Gallager codes, is a sample
+Gallager and MN codes are very good we will also increase          from the noise model,         . In the case of MN codes, is
+the weight per column, , of the matrix , but only in such a        the concatenation of the vectors and , and the probability
+way as to keep the matrix very sparse, i.e.,            .          of is separable into                        .
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                  403
+
+
+
+   Let the ratio of the length of         to the length of      be   In Section II-D we evaluate a tighter numerical lower bound
+            . The decoding problem is equivalent to playing          for             . These are worst case results, true for any
+a game in which a vector           is drawn from a probability       source of mean entropy     . In Section II-E we give numerical
+distribution       , and the vector                   is revealed;   results for the case of the binary-symmetric channel, where
+the player’s task is then to identify the original vector , given    considerably more optimistic bounds can be derived.
+the “encoding” , the matrix , and the known distribution .              We also prove the following minimum distance theorem for
+The optimal decoder is an algorithm that identifies the vector       Gallager codes which uses the function           of Theorem 1.
+that maximizes          subject to the constraint                .
+                                                                       Theorem 3—Good Distance Properties: Given an integer
+   There is a Shannon limit for this game beyond which we
+                                                                           , a fraction       , and a such that                  ,
+cannot hope to recover         from     reliably. The maximum
+                                                                     there exist integers    and             and a matrix  having
+information content of is clearly          shannons. We assume
+                                                                         rows and       columns with weight or less per column,
+that the probability distribution of the noise is stationary
+                                                                     such that the Gallager code with parity-check matrix     has
+and ergodic so that a mean entropy            can be defined for
+                                                                     minimum distance at least         .
+the distribution        . Then the Shannon limit says reliable
+                                                                        We can also prove that the Gilbert minimum-distance bound
+recovery of from is only possible if                    , i.e.,
+                                                                     can be attained as          , still with very sparse.
+                                                             (15)
+                                                                       Theorem 4—Gilbert Minimum Distance Bound Attainable:
+If there are matrices    for which we can play the decoding          Given a fraction         , and a such that                ,
+game well at a value of         close to this limit, then there      there exists a and an         such that for any
+exist Gallager codes which can communicate correspondingly           there is a matrix   having     rows and            columns
+close to the Shannon limit of a noisy channel whose noise            with weight or less per column, such that the Gallager code
+distribution is given by      .                                      with parity-check matrix has minimum distance at least .
+   For brevity we introduce the following definition.                   Implication of Theorem 3 contrasted with Theorem 1. If
+   Definition 7: A satisfactory           matrix for the             one only aims to decode noise patterns of weight up to half
+distribution      is a matrix having      rows and                   of the minimum distance              (as is conventional in much
+columns with weight or less per column, with the following           of coding theory), then one can only handle noise levels up
+property: if is generated from        , the optimal decoder          to          . But in fact the optimal decoder can decode (with
+from                 back to achieves a probability of block         vanishing probability of error) at noise levels up to           .
+error less than .                                                    Thus Gallager codes can serve as good codes at noise levels
+   The following theorems will be proved.                            twice as great as the maximum noise level that is attainable
+                                                                     if one restricts attention to bounded distance decoding. The
+   Theorem 1—Good Codes: Given an integer                   and a    intuition for this result is that in a very-high-dimensional
+ratio        , there exists an entropy                  such that,   binary space, while two spheres of radius whose centres are
+for any         of mean entropy                    , and a desired   a distance apart have a nonzero volume of intersection for
+block error probability        , there exists an integer    and a    any greater than         , the fractional volume of intersection
+satisfactory              matrix for the distribution          .     is vanishingly small as long as is less than .
+   Theorem 2—Very Good Codes: Given a distribution                      Gallager codes, as Gallager showed [26] and we will show
+of mean entropy                and a desired               , there   later, can in practice be decoded beyond their minimum
+exists an integer                 such that for any desired block    distance.
+error probability         , there is an integer         such that
+for any              , there is a satisfactory                       C. Proof of Theorem 1
+matrix     for the distribution        .                               Consider the problem, given and , of inferring , where
+   Implications of Theorems 1 and 2 for Gallager codes. The                         , and has probability distribution          with
+first theorem effectively states that Gallager codes with any        mean entropy       . We consider the probability of error of
+value of         are good, i.e., for any channel with appropriate    a typical set decoder [16], averaging it over all very sparse
+entropy, there are Gallager codes which can achieve virtually        random matrices . We establish the existence of a function
+error-free transmission at rates up to some nonzero rate                           such that the probability of error can be bounded
+     , if the blocklength is made sufficiently large.                by a sum of terms which decrease as inverse powers of , if
+   The second theorem effectively states that Gallager codes                          .
+are very good—if we are allowed to choose , then we can get             Typical set decoder. We consider the typical set
+arbitrarily close to capacity, still using very sparse matrices
+with         arbitrarily small.
+   In Section II-C we prove these theorems, that is, we derive                                                                   (16)
+expressions for a function                  satisfying Theorem 1,
+and a function              satisfying Theorem 2. We also give       where    is a small constant to be fixed later. Since
+numerical results relating to these theorems. Let the largest
+function for which the first theorem is true be                 .
+404                                                               IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+the number of elements in this typical set,      , satisfies                                      for                    where
+                                                                                                  for
+                                                               (17)                                                                    (22)
+
+   We now consider decoding                 by the following                                                                           (23)
+procedure:
+   if there is a unique        such that               then           These bounds are tightest for           and         , respec-
+   produce as the decoding of ;                                       tively. Both these bounds are decreasing functions of .
+   else report decoding failure.                                         We now have
+   There are two failure modes for this decoder, with proba-
+bilities   and          such that                                                                                                      (24)
+                 Block error                                   (18)
+                                                                      We pause to dissect the product
+   I. Original vector not typical. This failure occurs with pro-
+       bability                   . Because is assumed to have
+       a mean entropy       , this probability vanishes as
+       (see Definition 5, Section I-B).
+   II.    is typical but at least one other typical vector    has     The first factor is typically a rapidly increasing function of
+        the same encoding We now concentrate on the proba-               up to some peak (which in the case of a binary-symmetric
+        bility of a decoding error arising this way, and denote       channel of density         is located at                       ). The
+        the average of            over drawn from ensemble 1)         second factor           is largest for          and falls initially as
+        (Section II-A) by       .                                     a power law                (see (22)) decreasing to an equilibrium
+                                                                      value of              (see (23)), corresponding to an equilibrium
+   We define the indicator function            to have the value
+                                                                      distribution uniform over (half of) the states of the hypercube.
+if the proposition      is true and otherwise. We can bound
+                                                                      We want the product of these two factors to be vanishingly
+          by
+                                                                      small (in increasing ) for all .
+                                                               (19)      Intuitively, if the product were large at small , then type
+                                                                      II errors would arise because there would be a small subset
+                                                                      of columns in        that sum to zero such that it is possible to
+In (19) the second sum is the number of typical vectors that          confuse vectors and             that differ in only a few bits (and
+have the same encoding as . We now average over codes .               which could therefore both be typical). If the product is large
+                                                                      at large , then type II errors would arise because there are
+                                                               (20)   two completely different vectors              which have the same
+                                                                      encoding. Gallager codes and MN codes are good because we
+                                                                      can indeed make the product vanishingly small for all .
+The term in brackets only depends on the weight        of the            1) Worst Case Analysis: Up to this point we have not men-
+difference         . The probability that               is the        tioned any form for              , which determines the function
+probability that columns of the very sparse matrix sum to                       in (24). We now proceed with a worst case assumption
+zero. Because is constructed by flipping bits per column              for the function              .
+at random with replacement, this is the probability that                 We know that
+steps of the random walk on the -dimensional hypercube,
+starting from the origin, bring us back to origin. We denote
+this probability      and define          to be the number of
+typical vectors   such that the difference         has weight
+  , for the given . Then we have                                      Also            is bounded above by the maximum number of
+                                                                      distinct vectors of weight      . Finally,    is a decreasing
+                                                               (21)   function of . So we can replace the function          in (24)
+                                                                      by the worst case function          which has the maximum
+In Appendix E we give an expression for the function           ;      value at small
+this function is zero for all odd , and is a decreasing function
+of even . It will be convenient to introduce an upper bound on                                                                         (25)
+     which is equal to it for even and which is a decreasing
+function. We define this function,       , in (87). In Appendix       where       is chosen to satisfy                              . If we
+E we also derive various upper bounds on           and     from
+which we will use the following two:                                  write
+
+                                                                                                                                       (26)
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                      405
+
+
+
+where      is a small quantity satisfying             and                 ,
+then
+
+
+
+                                                                      (27)
+as long as is sufficiently small and     is sufficiently large
+that                         . (Here we have used (73) from
+Appendix D.) Notice that the only dependence that the function
+       has on the source distribution      is the cutoff value
+   , which is controlled by     . Thus
+
+                                                                      (28)
+
+
+                                                                      (29)
+
+We now seek conditions under which          can be made arbit-
+rarily small by increasing     . Here first is a sketch of our
+proof. Consider the logarithm of the term inside the summation
+in (29) as a function of . Using (73) again
+
+                                                                      (30)
+                                                                                                                                    (wt)
+We want to show that for all               less than some              that
+                                                                              Fig. 1. Plot of a numerical upper bound
+                                                                                       wt                                   M1 log qe on the function
+                                                                               M q for large M and for various values of t; and the function
+                                                                              1     ( )
+
+                                                                              H2e (w=L), as a function of w=L, for  = 2. For convenience, the
+                                                                                log 00 ,
+grows linearly with ,                        , the above term becomes
+increasingly large and negative as               increases. We need all       function 0H2e (w=L) is also shown. The intersection point of the two curves
+the terms in the sum in (29) to go to zero, and we need almost                0H2e(w=L) and M1 log qe(wt) defines a value of w3 which gives a lower
+                                                                              bound on the achievable information rate for Gallager and MN codes. This
+all of them to do so faster than                , so that the sum itself      graph gives an informal proof of Theorems 1 and 2 for the case  = 2.
+goes to zero. To aid the intuition, the two terms                      and    The content of Theorem 1 is that for any t the solid line 0H2e (w=L) lies
+                                                                                                            (wt)
+                 (a tight numerical upper bound on                    ) are   above the dotted line M
+                                                                                                    1
+                                                                                                      log qe      for all w=L up to some nonzero value.
+                                                                              The content of Theorem 2 is that as t ! 1, the first point of intersection of
+                                                                              the two curves approaches the point at which H2e (w=L) = log 2.
+plotted in Fig. 1 as a function of             for a variety of values of
+ , for         . The function                  is an increasing function
+of     (if              ) reaching a maximum value of                    at
+            ; the function                  is a decreasing function of       where                    satisfies          if        , and
+    reaching a minimum value of                     asymptotically. For
+                , the right-hand side of (30) is certainly positive
+since            . For small         , on the other hand (starting at
+        ), the sum is negative, if           , as we now prove. There         Now as a function of ,               is a decreasing function
+therefore exists a             such that, for all             , the sum is    for       , as is easily confirmed by differentiation, so if we
+negative. This defines the critical value of            which, via (26),      constrain     by           , we can bound the last
+proves the existence of the function                     that we seek.        terms by     times the third term
+   We continue from (29), using (22) and inequality (85) and
+assuming                     .
+
+                                                                      (31)
+                                                                                                                                                     (35)
+
+                                                                              Thus the average probability of error for this ensemble of
+                                                                      (32)    codes vanishes with increasing     as         if         and
+                                                                              faster if      . There therefore exists a    given by
+                                                                                                such that if          , or equivalently, if
+                                                                                                   , then
+                                                                      (33)
+
+                                                                      (34)                                                     as                    (36)
+406                                                             IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+This establishes the existence of the function            , since   where      is given by
+if we define
+                                                                                                                                 (39)
+                                                            (37)
+                                                                    and                              . From (30),
+then, for any                    , we can set , , and such
+that                            and                      .
+                                                                                                                                 (40)
+  This completes the proof of Theorem 1. We note that the
+value of           given above is not the largest such function
+            that satisfies the theorem. By using tighter bounds     If we can set and such that the term in parentheses is neg-
+on         we can prove the theorem for larger values of            ative for all         then      goes to zero as   increases. For
+         . We use a numerical bound to obtain graphs of lower       large it is evident (c.f. Fig. 1) that
+bounds on                 in Section II-D.                          attains its largest value at            . So, substituting upper
+   Comment. It is instructive to study the terms which dom-         bound (23) for           , our condition for vanishing     is
+inate the sum over . The terms with small            decrease as
+                                                                                                                                 (41)
+inverse powers of          as long as                     for all
+        , i.e., as long as       . The         term, the largest,   Substituting in (39), we require
+decreases as            . We can get a stronger decrease of
+with       if we assume that each column has exactly ones
+in it. Then we can omit the            term, which corresponds                                                                   (42)
+to the probability of there being a zero column in . By the         so that if we set    such that                   and    such that
+further step of ensuring that no two columns of the matrix
+are identical, we can rule out the          term from the sum.
+By adding further constraints when generating the code, that
+the girth of the corresponding bipartite graph must be large,       then      vanishes with increasing    , so an          can be
+we can make the probability of this sort of “small ” error          found such that the average error probability of the ensemble
+even smaller. This is the motivation for the code Constructions     of matrices is below any desired error probability .
+1B and 2B that we introduce later on.
+                                                                       4) Proof of Theorem 4: This theorem follows from The-
+   2) Proof of Theorem 3: A code with parity-check matrix           orem 2 as Theorem 3 followed from Theorem 1. Briefly,
+    has minimum distance         if and only if any                 since we can find a such that                     vanishes with
+columns of       are linearly independent, and there exist          increasing for any             satisfying                  , this
+linearly dependent columns. We can prove the existence of a         implies that, for sufficiently large , we can find a matrix with
+matrix with        linearly independent columns easily starting     at least    linearly independent columns for any satisfying
+from (36). Here        is the desired minimum distance. We                          .
+set            and note that the assumption of the theorem,
+                     implies that the quantity                      D. Numerical Bounds on                  : Worst Case
+vanishes with increasing .
+                                                                       Theorem 1 proved the existence, for a given ratio , of an
+   The quantity                    is the expected number of
+                                                                    entropy           such that there exist good Gallager and MN
+linear dependences of up to           columns in a randomly
+                                                                    codes with rates defined by for any channel with symmetric
+generated matrix . Since this expected number is less than
+                                                                    stationary ergodic noise (Definition 6) with mean entropy up to
+(indeed, it goes to zero), there must be at least one    in the
+                                                                             . We define               to be the largest function for
+ensemble such that the number of linear dependences is zero
+                                                                    which the theorem holds. In Fig. 2(a) we show a numerically
+(indeed, nearly all in the ensemble must satisfy this).
+                                                                    obtained bound on this function. The graph shows a lower
+   3) Proof of Theorem 2: We now show that if we are free           bound on                 as a function of ; the Shannon limit
+to choose then Gallager and MN codes can get arbitrarily            provides the upper bound                       . This graph was
+close to the Shannon limit. We prove that for a desired             obtained as follows. Using the expansion of           in (86), the
+and any source with mean entropy        such that            ,      condition for      to vanish is that for all            and all
+and any          , there exists a and an            such that       the quantity
+for any               , the corresponding decoding problem
+                can be solved with probability of failure less
+than , averaged over the first ensemble of matrices .                                                                            (43)
+   We start from (29), which bounds the type II probability of
+error thus                                                          should be negative. We use the inequality
+                                                                    and maximize as a function of                 and            . We
+                                                            (38)    repeat this procedure iteratively to locate the critical value of
+                                                                           such that   is zero. This gives the bound.
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                  407
+
+
+
+
+                                   (a)
+                                                                             Fig. 3. Lower bounds on achievable information rate (in shannons) versus
+                                                                             binary-symmetric channel’s noise level f for Gallager codes (ensemble 1)
+                                                                             with t from 3 to 6. The solid line shows the channel capacity.
+
+
+
+
+                                   (b)
+Fig. 2. Lower bounds on H max (; t) (a) for arbitrary source P (x ) and
+                              x
+(b) assuming P (x) corresponding to binary-symmetric channel, for matrices
+A with t from 3 to 6. As the weight per column t increases, the achievable
+rates rise towards the Shannon limit Hx = 1.                                                                   (a)
+
+E. Numerical Upper and Lower Bounds: Uniform Noise Model
+   We now assume that the channel under discussion is the
+binary-symmetric channel and obtain numerical upper and
+lower bounds on the achievable rate of Gallager codes, assum-
+ing the optimal decoder. The method here is as in the previous
+section, with the worst case function                  replaced
+by the       appropriate to the uniform noise case, as detailed
+in Appendix F. The resulting lower bounds on                are
+shown in Fig. 2(b).
+  1) Achievable Rate for Gallager Codes over Binary-Sym-
+metric Channel: From the lower bound on the noise entropy
+plotted in Fig. 2(b) we can compute a lower bound on the
+achievable communication rate using Gallager codes (given
+an optimal decoder), as a function of the noise level of the                                                    (b)
+binary-symmetric channel. This rate is shown in shannons in                  Fig. 4. Upper bound on the achievable information rate in shannons versus
+Fig. 3 for               and compared with the capacity. As                  binary-symmetric channel’s noise level, for Gallager codes, compared with
+the weight per column increases the bounds rise towards the                  the channel capacity. (a) This bound was obtained assuming that matrices A
+                                                                             were drawn from the ensemble having uniform weight per row as well as per
+capacity.                                                                    column (Ensemble 3). (b) This bound was obtained assuming that matrices
+  2) Upper Bounds on the Communication Rate over a Binary-                   A were drawn from the ensemble having uniform weight per column only
+Symmetric Channel Fig. 4(a) and (b) addresses the question                   (Ensemble 2). The graphs differ significantly at high noise levels.
+“what information rate is definitely not achievable for a given
+  and noise level ?” This is a relatively easy question to                   into why Gallager codes with fixed are only good codes and
+answer, and it gives insight into what is lost in the above                  not very good codes.
+proof by switching from the constrained ensemble of random                      Consider the decoding problem              , where has
+matrices with weight per column and                 per row to               density and length         , and has length . It is clearly
+the unconstrained ensemble of matrices. It also gives insight                impossible to solve the problem of deducing reliably from
+408                                                                        IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+
+Fig. 5. The vectors x and z viewed as nodes in a belief network. White circles denote bits xl . Black dots denote checks zm . We illustrate the case t = 4;
+tr = 8. (a) This figure emphasizes with bold lines the four connections from one bit and the eight connections to one check. Every bit xl is the parent of
+four checks zm , and each check zm is the child of eight bits. (b)–(e) Certain topological structures are undesirable in the network defined by the matrix A:
+in (b) there is a cycle of length 4 in the network; we can forbid this topology by saying that the overlap between two columns of A must not exceed 1; in
+(c), (d), and (e) more complex topologies are illustrated. Many of our experiments have used matrices A in which these topologies are also forbidden—we
+eliminate bits that are involved in structures like the “doublet” (e), of which (c) and (d) are special cases. This means that every bit’s “coparents” (other
+bits that are parents of its children) consist of t nonoverlapping sets of bits as shown in (f). (g) A fragment of an infinite belief network with t = 4 and
+tr = 8 and no cycles. In Section III-C2 we analyze the flow of information up this network.
+
+
+
+
+if the information content of ,              shannons, is more                  produces a net decrease in the information content of . To
+than the information content of . We get the Shannon bound                      work out a bound for the unconstrained ensemble, we sum
+by noting that       , in shannons, is less than or equal to its                over all possible weights of a row , evaluate            , and
+length . But we can get upper bounds lower than this by                         weight by the probability of , which is a Poisson distribution
+tightening the bound on          .                                              with mean . The resulting upper bound is shown in Fig. 4(b).
+   Probability distribution of the random variable         . We                 We see that the bound is lower than that for the constrained
+refer to the elements       corresponding to each row                           matrices, and looks similar to the lower bound in Fig. 3. It
+          of as checks and to the elements of as bits. Let                      thus seems plausible that, were we to change from Ensemble
+     be the sum of bits of density . We define            to be                 2 to Ensemble 3 in the main proof of the paper, we would be
+the probability that         . Starting from          , we can                  able to prove the achievability of somewhat larger rates for
+use the recurrence relation                                                     any given .
+                                                                                   This concludes our discussion of what would be achievable
+                                                                       (44)
+                                                                                given an optimal decoder. We now move on to practical
+to obtain [26]                                                                  decoding algorithms.
+                                                                       (45)                        III. PRACTICAL DECODING BY
+We use this result to obtain tighter bounds on the achievable                                     THE SUM-PRODUCT ALGORITHM
+communication rate.                                                                We have developed a “sum-product decoder,” also known
+  Bound for constrained matrices . Consider the ensemble                        as a “belief propagation decoder” [51], [33] for the decoding
+of random matrices with weight per column and as near                           problem                  . In this work, we have rediscovered a
+as possible    per row (Ensemble 3 in Section II-A). In the                     method of Gallager [27]. See [68], [24], and [46] for further
+general case where           is not an integer, the information                 discussion of the sum-product algorithm.
+content per check of is bounded above by the average of                            We refer to the elements          corresponding to each row
+the marginal information content of one check, averaged over                                   of as checks. We think of the set of bits and
+the ensemble, that is,                                                          checks as making up a “belief network,” also known as a
+                                                                                “Bayesian network,” “causal network,” or “influence diagram”
+                                                                                [51], in which every bit       is the parent of checks      , and
+                                                                       (46)
+                                                                                each check       is the child of bits (Fig. 5). The network of
+This gives the bound shown in Fig. 4(a), which was created                      checks and bits form a bipartite graph: bits only connect to
+as follows. For a selected value of and , a search was made                     checks, and vice versa.
+over for a value such that the upper bound on the information                      We aim, given the observed checks, to compute the marginal
+content per check of is just above             , using (46). The                posterior probabilities                    for each . Algorithms
+graph is then a plot of             versus .                                    for the computation of such marginal probabilities in belief
+   Bound for unconstrained matrices . Now what if we                            networks are found in [51]. These computations are expected
+remove the constraint      per row, reverting to Ensemble 2 of                  to be intractable for the belief network corresponding to our
+Section II-A? Intuitively we can see that          will decrease.               problem                     because its topology contains many
+Some checks will be sums of more than              bits of , and                cycles. However, it is interesting to implement the decoding
+some will be sums of fewer than        . The former checks will                 algorithm that would be appropriate if there were no cycles, on
+have a value of slightly closer to       , whereas the latter will              the assumption that the errors introduced might be relatively
+have values of     further from     . Some checks may be the                    small. This approach of ignoring cycles has been used in
+sum of no bits at all (with probability           ), so that they               the artificial intelligence literature [4] but is now frowned
+convey no information. The convexity of the relevant functions                  upon because it produces inaccurate probabilities (D. Spiegel-
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                    409
+
+
+
+halter, personal communication). However, for our problem               and second,     , the probability of the observed value of
+the end product is a decoding; the marginal probabilities are           arising when          , defined by
+not required if the decoding is correct. Also, the posterior
+probability, in the case of a good code communicating at an
+achievable rate, is expected typically to be hugely concentrated
+on the most probable decoding. And as the size             of the
+                                                                                                                                   (48)
+code’s matrix is increased, it becomes increasingly easy to
+produce matrices in which there are no cycles of any given
+length, so we expect that, asymptotically, this algorithm will be       The conditional probabilities in these summations are either
+a good algorithm. We have obtained excellent results with               zero or one, depending on whether the observed         matches
+equal to        and         . The algorithm often gives useful          the hypothesized values for      and the      .
+results after a number of iterations much greater than the                 These probabilities can be computed in various obvious
+number at which it could be affected by the presence of cycles.         ways based on (47) and (48). The computations may be done
+                                                                        most efficiently (if          is large) by regarding
+A. The Algorithm                                                        as the final state of a Markov chain with states        and ,
+   We have implemented the following algorithm (for back-               this chain being started in state , and undergoing transitions
+ground reading see [51]). The algorithm is appropriate for              corresponding to additions of the various     , with transition
+a binary channel model in which the noise bits are in-                  probabilities given by the corresponding        and      . The
+dependent—for example, the memoryless binary-symmetric                  probabilities for      having its observed value given either
+channel, or the Gaussian channel with binary inputs and real                    or         can then be found efficiently by use of the
+outputs (the connection to real-output channels is explained in         forward–backward algorithm [7], [65], [5].
+Appendix A).                                                               A particularly convenient implementation of this method
+   We denote the set of bits that participate in check                  uses forward and backward passes in which products of the
+by                               . Similarly, we define the set of      differences                         are computed. We obtain
+checks in which bit participates,                                   .                        from the identity
+We denote a set            with bit excluded by                . The
+algorithm has two alternating parts, in which quantities                                                                           (49)
+and       associated with each nonzero element in the matrix
+are iteratively updated. The quantity           is meant to be the
+probability that bit of has the value , given the information           This identity is derived by iterating the following observation:
+obtained via checks other than check . The quantity                is   if                     , and    and     have probabilities
+meant to be the probability of check         being satisfied if bit     and         of being and , then
+of is considered fixed at and the other bits have a separable           and                              . Thus
+distribution given by the probabilities                             .
+The algorithm would produce the exact posterior probabilities
+of all the bits after a fixed number of iterations if the bipartite
+graph defined by the matrix contained no cycles [51].                   Finally, note that              , and hence
+   Initialization. Let                       (the prior probability     and                        .
+that bit is ), and let                                 . In the case       Vertical step. The vertical step takes the computed values
+of a Gallager code and a binary-symmetric channel,               will   of     and       and updates the values of the probabilities
+equal . In the case of an MN code, will be either or ,                  and      . For each we compute
+depending on whether bit is part of the message or the noise.
+If the noise level varies in a known way (for example, if the                                                                      (50)
+channel is a binary input Gaussian channel with a real output)
+then     is initialized to the appropriate normalized likelihood.
+                                                                                                                                   (51)
+For every           such that            the variables      and
+are initialized to the values       and , respectively.
+   Horizontal step. In the horizontal step of the algorithm, we         where        is chosen such that            . These products
+run through the checks          and compute for each                    can be efficiently computed in a downward pass and an upward
+two probabilities: first,       , the probability of the observed       pass.
+value of        arising when           , given that the other bits        We can also compute the “pseudoposterior probabilities”
+                    have a separable distribution given by the          and     at this iteration, given by
+probabilities                , defined by:
+                                                                                                                                   (52)
+
+                                                                (47)                                                               (53)
+410                                                              IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+These quantities are used to create a tentative decoding , the       and MN codes with rates close to capacity, that can achieve
+consistency of which is used to decide whether the decoding          negligible probability of error, for sufficiently large .
+algorithm can halt.
+                                                                        1) Analysis of Correction Effect in a Simple Decoder: We
+   At this point, the algorithm repeats from the horizontal step.
+                                                                     introduce a simple decoder to iteratively solve for such that
+   Decoding. If the belief network really were a tree without
+                                                                                        .
+cycles, the values of the pseudoposterior probabilities        and
+                                                                        Simple decoder:
+   at each iteration would correspond exactly to the posterior
+                                                                        Set          .
+probabilities of bit given the states of all the checks in a
+                                                                           : Evaluate                         . This is the check pattern
+truncated belief network centred on bit and extending out to
+                                                                        that remains to be explained.
+a radius equal to twice the number of iterations. Our decoding
+                                                                        if          , end.
+procedure is to set       to if              and see if the checks
+                                                                        Evaluate the “vote” vector           (not         ), which counts,
+                   are all satisfied, halting when they are, and
+                                                                        for each bit , the number of unsatisfied checks to which
+declaring a failure if some maximum number of iterations
+                                                                        it belongs. The bits of that get the most votes are viewed
+(e.g., 200 or 1000) occurs without successful decoding. When
+                                                                        as the most likely candidates for being wrong. The biggest
+there is a failure, the partial decoding may serve as a useful
+                                                                        possible vote that a bit can receive is , since each bit
+starting point for another decoding algorithm [47].
+                                                                        participates in checks.
+   We note in passing the difference between this decoding              Flip all bits of that have the largest vote.
+procedure and the widespread practice in the turbo code                 go to         .
+community, where the decoding algorithm is run for a fixed
+                                                                     This decoding algorithm is not guaranteed to reach a stable
+number of iterations (irrespective of whether the decoder
+                                                                     state, but it is easy to analyze whether the first iteration of
+finds a consistent state at some earlier time). This practice
+                                                                     the decoder produces a “correction effect” or not. We say that
+is wasteful of computer time. In our procedure, “undetected”
+                                                                     there is a correction effect if the Hamming distance between
+errors would only occur if the decoder found an satisfying
+                                                                        and the true vector decreases. We expect this decoding
+                 which was not equal to the true . “Detected”
+                                                                     algorithm to have similar properties to those of the sum-
+errors occur if the algorithm runs for the maximum number
+                                                                     product algorithm—at least for the first iteration—because, in
+of iterations without finding a valid decoding. The alternative
+                                                                     the case of a binary-symmetric channel, the vote for a bit is
+practice mentioned above blurs this distinction between unde-
+                                                                     directly related to its pseudoposterior probability.
+tected and detected errors. Undetected errors are of scientific         Expected change in Hamming distance. We will assume
+interest because they reveal distance properties of a code and in    that the weight of each row of            is an integer , i.e., that
+engineering practice, it would seem preferable for the detected          bits participate in each check. We consider the flipping
+errors to be labeled as erasures if practically possible.            of a single bit whose vote is (the largest possible vote),
+B. Relationship to Other Algorithms                                  and evaluate the probability that this reduces the Hamming
+                                                                     distance. If the expected change in Hamming distance is
+   Meier and Staffelbach [47] implemented an algorithm sim-
+                                                                     negative, then we might hope that decoding algorithms of this
+ilar to this sum-product decoder, also studied by Mihaljević        type would work.
+and Golić [49], [50]. The main difference in their algorithm is        Consider a bit       that has value , and a check         in which
+that they did not distinguish between the probabilities     and      it participates (i.e., an     such that            ). The probability
+      for different values of ; rather, they computed       and      that          , given that       is , is               , as defined in
+   , as given above, and then proceeded with the horizontal          Section II-E2. So the probability that a bit receives vote
+step with all       set to   and all     set to .                    is the binomial probability
+   Another related algorithm is the variational free-energy
+minimization decoder [37]. We describe the application of                                                                             (54)
+this decoder to Gallager and MN codes in Appendix C. Its
+performance is not as good as the sum-product decoder’s.                 Similarly, the probability that        , given that is , is
+                                                                                     . So the probability that a bit receives vote is
+C. Analysis of Decoding Algorithms
+                                                                                                                                      (55)
+   We analyze a simple decoding algorithm, following Gallager
+[27] and Meier and Staffelbach [47]. (The same algorithm has             Now, given that a bit has vote , the probabilities that it is
+been used by Spielman [60].) We also study the sum-product           a    or a bit are, by Bayes’ theorem
+decoder in the limit of large     using Monte Carlo methods.
+Although an explicit positive statement of the sum-product
+                                                                                                                                      (56)
+decoder’s capabilities remains elusive, the important message
+of our analysis that follows is that the algorithms have “cor-
+rection effects” which are independent of the blocklength            Thus the expected change in Hamming distance when a bit
+for large . These results lead us to the following conjecture.       with vote is flipped is
+
+  Conjecture 1: Given a binary-symmetric channel with                                                                                 (57)
+noise density , there exist practical decoders for Gallager
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                           411
+
+
+
+
+                                                                              (a)
+
+
+
+
+                                                                              (b)
+Fig. 6. Analysis of practical decoding algorithms. (a) Time course of the decoding process in an infinite belief network with t = 4, tr = 8. Graph shows
+average entropy of a bit as a function of number of iterations, as estimated by a Monte Carlo algorithm using 10 000 samples per iteration. Density f increases
+by steps of 0:005 from bottom graph (f = 0:010) to top graph (f = 0:100). There is evidently a transition atabout f = 0:075, above which the algorithm
+cannot determine x . (b) Rates achievable by Gallager codes according to two analyses, for t = 3; 4; 5; 6 as a function of noise level. Dotted lines show
+estimates of decodability based on the first iteration of the simple decoder. Below the dotted line there is a correction effect; above the line, this decoder
+gives no correction effect. Points show theoretical success of decoding in infinite belief networks with various values of t = 3; 4; 5; 6, computed by Monte
+Carlo simulations of up to 29 iterations, as in part (a). Point styles diamond, square, triangle, and plus represent values of (f; R) at which complete decoding
+occurred after a number of iterations less than 29. Point style   2     denotes no decoding after 29 iterations.
+
+
+If this is negative then there is a correction effect. We assume,                   of for a variety of values of and , compared with the
+rather simplisticly, that if there is no correction effect on the                   capacity. It is interesting that (at least for          ) as
+first iteration then reliable communication is not achievable                       increases, the bound on the achievable rate given by this
+using the code; that is, we assume that this analysis predicts                      simple analysis decreases. Thus in contrast to the results for
+a bound on the achievable communication rate.                                       the optimal decoder, where large is best, we find that codes
+   For any given       and       (and hence ), we can locate                        with small             are best for practical decoding.
+numerically the above which there is no correction effect.                            2) Analysis of Decoding of Infinite Networks by Monte Carlo
+The lower dotted curves in Fig. 6(b) show the corresponding                         Methods: The sum-product decoder’s performance can be
+information rate               of a Gallager code as a function                     analyzed in terms of the decoding properties of an infinite
+412                                                                     IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+
+                                                          (a)                                  (b)
+
+
+
+
+                                                    (c)                                       (d)
+Fig. 7. Schematic illustration of (a) Construction 1A for a Gallager code with t = 3, tr = 6, and R = 1=2, (b) Construction 2A for a Gallager
+code with rate 1=3, (c), (d) two constructions similar to Construction 1A. Notation: an integer represents a number of permutation matrices superposed
+on the surrounding square. A diagonal line represents an identity matrix. A rotating ellipse imposed on a block within the matrix represents random
+permutation of all the columns in that block.
+
+network without cycles (of which Fig. 5(g) shows a fragment).               decrease to a stable entropy level corresponding to a failure
+The larger the matrix , the closer its decoding properties                  to decode.
+should approach those that we now derive.                                      The results of many such runs with various values of and
+   We consider an infinite belief network with no loops, in                    are summarised by the points in Fig. 6(b), where the time to
+which every bit        connects to checks and every check                   reach virtually zero entropy is indicated by the point style on a
+     connects to      bits. We consider the iterative flow of               graph of rate versus noise level of the corresponding Gallager
+information in this network, and examine the average en-                    code, with       denoting “no decoding after 29 iterations.”
+tropy of one bit as a function of number of iterations. At                  Regions in the graph where there are points corresponding
+each iteration, a bit has accumulated information from its                  to 1–29 iterations define values of the crossover probability
+local network out to a radius equal to the number of iter-                     and rate such that successful communication is possible
+ations. Successful decoding will only occur if the average                  with Gallager codes, according to the Monte Carlo analysis.
+entropy of a bit decreases to zero as the number of iterations                 The two analyses, using the simple decoder and using Monte
+increases.                                                                  Carlo methods, appear to give similar predictions as to the
+   We have simulated the iteration of an infinite belief network            maximum achievable rate         as a function of .
+by Monte Carlo methods—a technique first used by Gallager                      We note that when the entropy drops to zero the decoding
+[27]. Imagine a network of radius           (the total number of            error probability falls to zero with a terminal convergence that
+iterations) centred on one bit. Our aim is to compute the                   is faster than exponential. The vertical step involves the multi-
+conditional entropy of the central bit given the state of                   plication of      probabilities, so we believe the probability of
+all checks out to radius . To evaluate the probability that                 decoding error falls asymptotically as                     where
+the central bit is given a particular observation involves                     is the number of decoding iterations and is a constant.
+an -step propagation from the outside of the network into the
+center. At the th iteration probabilities at radius                are                     IV. EXPERIMENTAL RESULTS USING
+transformed into ’s and then into ’s at radius             in a way                           THE SUM-PRODUCT DECODER
+that depends on the states of the unknown bits at radius              .        Choice of ensemble. In early experiments using matrices
+In the Monte Carlo method, rather than simulating this network              from ensemble 4) of Section II-A, we examined some of the
+exactly, which would take a time that grows exponentially                   decoding errors made by the free-energy minimization decoder
+with , we create for each iteration a representative sample                 to be described in Appendix C and found that they tended
+(of size      , say) of the values of           . In the case of a          to occur when the vector       was such that another slightly
+regular network with parameters           each new pair             in      different typical vector     had a similar (but not identical)
+the list at the th iteration is created by drawing the new                  encoding . In terms of the random walk on the hypercube
+from its distribution and drawing at random with replacement                (Section II-C), these errors correspond to walks that after a
+                pairs       from the list at the        th iteration;       small number of steps return close to the starting corner.
+these are assembled into a tree fragment and the sum-product                They were possible because of rare topologies in the bipartite
+algorithm is run to find the new value associated with the                  graph corresponding to the       matrix such as the topology
+new node.                                                                   illustrated in Fig. 5(c). We can eliminate the possibility of
+   As an example, the results of runs with            ,         , and       these errors by modifying the ensemble of matrices so that
+noise densities between          and       , using 10 000 samples           the corresponding graph does not have short cycles in it. We
+at each iteration, are shown in Fig. 6(a). It can be seen that              made new matrices by taking matrices from Ensemble 4 and
+runs with low enough noise level collapse to zero entropy after             deleting columns until there were no short loops of the type
+a small number of iterations, and those with high noise level               shown in Fig. 5(e). These matrices, having fewer columns,
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                            413
+
+
+                                                               TABLE I
+                 RESULTS OF SUM-PRODUCT DECODING EXPERIMENTS FOR TWO GALLAGER CODES ON BINARY-SYMMETRIC CHANNELS.
+                  “trials” = NUMBER OF BLOCKS DECODED; “ers” = NUMBER OF BLOCK ERRORS. pML = MAXIMUM-LIKELIHOOD
+                 ESTIMATE OF BLOCK ERROR PROBABILITY. p+ IS UPPER ERROR BAR FOR BLOCK ERROR PROBABILITY (APPENDIX B)
+
+
+
+
+correspond to codes with slightly lower rates. They also have
+nonuniform weight per row.
+   We report results for codes with a variety of rates whose
+low density parity-check matrices are created in the following
+ways.
+   Construction 1A. An           by       matrix (     rows,
+columns) is created at random with weight per column
+(e.g.,      ), and weight per row as uniform as possible, and
+overlap between any two columns no greater than . Fig. 7(a)
+shows the construction schematically for a rate       code with
+       .
+   Construction 2A. Up to         of the columns are designated
+weight columns, and these are constructed such that there
+is zero overlap between any pair of columns. The remaining
+columns are made at random with weight , with the weight                                                 (a)
+per row as uniform as possible, and overlap between any
+two columns of the entire matrix no greater than . Fig. 7(b)
+shows the construction schematically for a rate           code.
+(This irregular construction using weight         columns was
+introduced because we guessed that it might give better
+practical performance; we used           such columns because
+this was the maximum number of weight columns for which
+it was easy to make “good” matrices; if more than
+columns of weight       are introduced at random then there
+is a risk that the corresponding code will have low weight
+codewords.)
+   Construction 1B and 2B. A small number of columns are
+deleted from a matrix produced by Constructions 1A and 2A,
+respectively, so that the bipartite graph corresponding to the
+matrix has no short cycles of length less than some length ,                                             (b)
+here        .                                                       Fig. 8. Performance of Gallager codes applied to binary-symmetric channel
+   Another way of constructing regular Gallager codes is to         and decoded by sum-product decoder. Comparison of empirical decoding
+build the matrix      from nonoverlapping random permuta-           results with calculated performance of Reed–Muller codes (diamonds) and
+                                                                    BCH codes (squares), and the Shannon limit. BSC’s with (a) fn = 0:076
+tion matrices as shown in Fig. 7(c), (d). Fig. 7(c) shows the       (b) fn = 0:16 are assumed. Arrows show the values of R0 (fn ) and
+construction used by Gallager [26]. For practical purposes,         GV (fn ) for the channels. (a) Horizontal axis: information rate R. Vertical
+
+codes constructed in these ways appear to have very similar         axis: block error probability. Curve: Shannon limit on achievable (rate, bit
+                                                                    error probability) values. Results shown are for a code of Construction 1B
+properties to codes made with Construction 1A, as long as           whose parity matrix has M = 10 000 rows and N = 19 839. The weight
+cycles of length are forbidden.                                     per column is t = 3. (b) A BSC with fn = 0:160 is assumed. Horizontal
+                                                                    axis: information rate R. Vertical axis: bit-error probability. Results shown
+                                                                    are for a code of Construction 1A whose parity matrix has M = 10 000
+                                                                    rows and 13 336 columns, and for three codes derived from this code by
+A. Rate of Codes Defined by These Matrices                          shortening, i.e., deleting columns from the parity matrix. These codes have
+                                                                    N = 13 298; 13 119; 12 955. The weight per column is t = 3.
+
+   The above constructions do not ensure that all the rows of
+the matrix are linearly independent, so the              matrix
+created is the parity-check matrix of a linear code with rate at    the assumption that the rate is . The generator matrix of the
+least             , where                . We report results on     code can be created by Gaussian elimination.
+414                                                                         IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+
+                                                                              (a)
+
+
+
+
+                                                                              (b)
+Fig. 9. Gallager codes’ performance over Gaussian channel (solid curves) compared with that of standard textbook codes and state-of-the-art codes (dotted
+curves). Vertical axis shows empirical bit error probability. It should be emphasised that all the block errors in the experiments with Gallager codes were
+detected errors: the decoding algorithm reported the fact that it had failed. Panel (a) shows codes with rates between about 1=2 and 2=3; panel (b) shows codes
+with rates between 1=4 and 1=3. Textbook codes: The curve labeled (7; 1=2) shows the performance of a rate 1=2 convolutional code with constraint length
+7, known as the de facto standard for satellite communications [29]. The curve (7,1/2)C shows the performance of the concatenated code composed of the same
+convolutional code and a Reed–Solomon code. State of the art: The curve (15,1/4)C shows the performance of an extremely expensive and computer intensive
+concatenated code developed at JPL based on a constraint length 15, rate 1=4 convolutional code (data courtesy of R. J. McEliece.) The curves labeled Turbo
+show the performance of the rate 1=2 Turbo code described in [12], [11] and the rate 1=4 code reported in [21]. Gallager codes: From left to right the
+codes had the following parameters (N; K; R). Panel (a): (65389; 32621; 0:499) (1B); (19839; 9839; 0:496) (1B); (29331; 19331; 0:659) (1B). Panel (b):
+(40000; 10000; 0:25) (Construction 2A); (29507; 9507; 0:322) (2B); (14971; 4971; 0:332) (2B); (15000; 5000; 0:333) (2A); (13298; 3296; 0:248) (1B).
+
+
+
+B. Empirical Results for Gallager Codes:                                              Fig. 8 compares two Gallager codes with BCH and RM
+Binary-Symmetric Channel                                                            codes on two binary-symmetric channels. To compute the
+   In the following experiments we performed up to 1000 iter-                       probability of error for BCH codes we evaluated the prob-
+ations of the algorithm when decoding each , halting earlier                        ability of more than errors in       bits. Similarly, for RM
+if a consistent decoding was found. Most of the successful                          codes of minimum distance , performance was computed
+decodings took 20 iterations or fewer to be completed, which,                       assuming that more than          errors cannot be corrected.
+for a code with blocklength           , corresponds to a few                        (See Appendix B for discussion of how the presented results
+seconds on a Sparc I workstation. We found that the results                         were computed.)
+were best for         and became steadily worse as increased.                         The mean number of iterations of the algorithm to obtain
+   We compare Gallager codes with                  with Bose–                       a successful decoding is displayed for a selection of codes
+Chaudhuri–Hocquenghem (BCH) codes, which are described                              and different densities   in Table I. In rare cases as many
+                                                                                    as 800 iterations took place before a successful decoding
+in [52] as “the best known constructive codes” for memoryless
+                                                                                    emerged.
+noisy channels, and with Reed–Muller (RM) codes. These
+are multiple random error-correcting codes that can be
+characterized by three parameters          . The blocklength is                     C. Gallager Codes for the Gaussian Channel
+  , of which bits are data bits and the remainder are parity                          We originally conceived MN codes as codes for the mem-
+bits. Up to errors can be corrected in one block.                                   oryless binary-symmetric channel. It turns out, however, that
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                              415
+
+
+
+
+                                                                                 Fig. 11. Short-blocklength Gallager codes’ performance over Gaussian chan-
+                                                                                 nel (solid curves) compared with that of standard textbook codes (dotted
+                                                                                 curves). Vertical axis shows empirical bit error probability. It should be
+                                                                                 emphasised that all the block errors in the experiments with Gallager codes
+                                                                                 were detected errors: the decoding algorithm reported the fact that it had failed.
+Fig. 10. (a) Median number of iterations of sum-product algorithm taken to       Textbook codes: as in Fig. 9. Gallager codes: From left to right the codes
+obtain a successful decoding. Bars show 5th, 25th, 75th, and 95th percentiles.   had the following parameters (N; K; R): (1008; 504; 0:5) (Construction 1A);
+(b) Corresponding bit error probability.                                         (504; 252; 0:5) (1A).
+
+
+
+Gallager and MN codes have a much broader applicability. As                      results for Construction 1A appear much the same as those in
+we proved in Section II, Gallager codes are very good for any                    his book [27, fig. 6.7].
+symmetric stationary ergodic noise model (including arbitrary
+correlations and memory—Definition 6) as long as a mean                              V. PICTORIAL DEMONSTRATION OF GALLAGER CODES
+entropy can be defined for it. Here we report investigations                       Figs. 12–15 illustrate visually the conditions under which
+of nonuniform noise corresponding to communication over a                        Gallager’s low-density parity-check codes can give reliable
+Gaussian channel with binary inputs.                                             communication over binary-symmetric channels and Gaussian
+   Fig. 9 compares the performance of Gallager codes with                        channels. These demonstrations may be viewed as animations
+rates between         and      with textbook codes and with                      on the world wide web [39].
+state-of-the-art codes. As before, the best results are obtained
+by making the weight per column as small as possible                             A. Encoding
+(Constructions 2A and 2B). Unsurprisingly, codes with large
+blocklength are better.                                                             Fig. 12 illustrates the encoding operation for the case of a
+   In some cases we modified the matrices so as to eliminate                     Gallager code whose parity-check matrix is a
+short cycles. The original matrices, by construction, had no                     matrix with three ’s per column. The high density of the
+cycles of length , a constraint which was found to be                            generator matrix is illustrated in (b) and (c) by showing the
+beneficial. We deleted columns so as to remove cycles of                         change in the transmitted vector when one of the 10 000
+length             expecting that this would further improve                     source bits is altered. Of course, the source images shown
+performance. However, we found that these modifications                          here are highly redundant, and such images should really be
+made little difference.                                                          compressed before encoding. Redundant images are chosen in
+   For the codes with blocklengths and               and                         these demonstrations to make it easier to see the correction
+in Fig. 9 the median number of iterations taken to complete                      process during the iterative decoding. The decoding algorithm
+a successful decoding is shown in Fig. 10(a) as a function                       does not take advantage of the redundancy of the source vector,
+of         . The line shows the median number of iterations                      and it would work in exactly the same way irrespective of the
+and the bars show the 5th, 25th, 75th, and 95th percentiles.                     choice of source vector.
+Fig. 10(b) shows the corresponding bit error probabilities,
+reproduced from Fig. 9.                                                          B. Iterative Decoding
+                                                                                    After the transmission is sent over a channel with noise level
+D. Results for Small Blocklengths                                                        %, the received vector is as shown in the upper left of
+  To double-check our results against Gallager’s we replicated                   Fig. 13. The subsequent pictures in Fig. 13 show the iterative
+experiments with codes of blocklength          and      . Our                    probabilistic decoding process. The sequence of figures shows
+random code constructions are not identical to Gallager’s, and                   the best guess, bit by bit, given by the iterative decoder, after
+we ran the decoder for more iterations (up to 500), but the                      0, 1, 2, 3, 10, 11, 12, and 13 iterations. The decoder halts
+416                                                                        IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+
+                                                                                                                         2
+Fig. 12. Demonstration of encoding with a rate 1=2 Gallager code. The encoder is derived from a very sparse 10000 20000 parity-check matrix with
+three 1’s per column. (a) The code creates transmitted vectors consisting of 10 000 source bits and 10 000 parity-check bits. (b) Here, the source sequence
+has been altered by changing the first bit. Notice that many of the parity-check bits are changed. Each parity bit depends on about half of the source
+bits. (c) The transmission for the case s = (1; 0; 0; 1 1 1 ; 0). This vector is the difference (modulo 2) between transmissions (a) and (b). (Dilbert image
+Copyright1997 United Feature Syndicate, Inc., used with permission.)
+
+
+
+after the 13th iteration when the best guess violates no parity                standard arithmetic coder based on a model corresponding to
+checks. This final decoding is error free.                                     the sparse messages (see Appendix G). Now given that the
+                                                                               source is already redundant, we are no longer constrained to
+                                                                               have              . In MN codes,         may be less than , equal
+C. Gaussian Channel
+                                                                               to , or greater than . We distinguish between the “symbol
+   In Fig. 14 the first picture shows the transmitted vector and               rate” of the code,                , and the “information rate” of the
+the second shows the received vector after transmission over                   code,                         . Error-free communication may be
+a Gaussian channel with                   . The greyscale repre-               possible if the information rate is less than the capacity of the
+sents the value of the normalized likelihood,                  .               channel. For example, consider a binary-symmetric channel
+This signal-to-noise ratio                   is a noise level at               having                 , and assume that we have a source with
+which this rate       Gallager code communicates reliably (the                 density              . Then we might construct a code with
+probability of error is          ). To show how close we are to                   , i.e., a square linear code with symbol rate [Fig. 16(b)].
+the Shannon limit, the third panel shows the received vector                   The information rate,           , is less than the channel capacity,
+when the signal-to-noise ratio is reduced to             , which                     , so it is plausible that we might construct a sequence of
+corresponds to the Shannon limit for codes of rate         .                   codes of this form achieving vanishing probability of error.
+  Fig. 15 shows the analogous vectors in the case of a code                       The key idea behind MN codes is that we construct the
+with rate about        .                                                       generator matrix in terms of an invertible matrix, in such
+                                                                               a way that the sparse source and the sparse noise can be
+                           VI. MN CODES                                        treated symmetrically in the decoding problem—in contrast to
+                                                                               conventional syndrome decoding where only the noise vector
+A. The Ideas Behind MN Codes                                                   appears in the problem.
+                                                                                  1) Code Construction: MN codes make use of the same
+    It is conventional to define a linear error-correcting code to             matrices          and      that were constructed in Section I-C1.
+have transmitted blocklength             , and to use signals of               These matrices will now be denoted by                    (the square
+density            . Conventionally, the code is systematic, so                invertible matrix) and                . We redefine    and
+the first transmitted bits are the source bits. The                            such that        is an          matrix and      is an         matrix.
+extra bits are parity-check bits, which produce redundancy in                     2) Encoding: A source vector of length                 is encoded
+the transmitted vector . This redundancy is exploited by the                   into a transmitted vector defined by (Fig. 17(a))
+decoding algorithm to infer the noise vector .
+    MN codes [40] are based on a different approach. We                                                                                               (58)
+first assume that the source may itself be redundant, having
+   , the expected density of , less than            . Consecutive              This encoding operation takes time of order
+source symbols are independent and identically distributed.                               . The mapping from source bits to transmitted bits
+Redundant sources of this type can be produced from other                      is a linear mapping, however, MN codes are nonlinear codes
+sources by using a variation on arithmetic coding [70], [57];                  in the sense that the codewords that have high probability do
+one simply reverses the role of encoder and decoder in a                       not form a complete linear subspace of          .
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                        417
+
+
+
+
+Fig. 13. Iterative probabilistic decoding of a Gallager code. The sequence of figures shows the best guess, bit by bit, given by the iterative decoder, after
+0, 1, 2, 3, 10, 11, 12, and 13 iterations. The decoder halts after the 13th iteration when the best guess violates no parity checks. This final decoding is
+error free. (Dilbert image Copyright1997 United Feature Syndicate, Inc., used with permission.)
+
+
+   3) The Decoding Problem: The received vector is                              where is the       by           matrix        . This decoding
+                                                                       (59)     problem is shown schematically in Figs. 17(b) and 18 for MN
+                                                                                codes with symbol rates          and     .
+where the noise is assumed to be a sparse random vector                           We emphasize two properties of (61).
+with independent and identically distributed bits, density .                      1) There is a pleasing symmetry between the sparse source
+(See Appendix A for discussion of other channels.)                                    vector and the sparse noise vector , especially if
+  The first step of the decoding is to compute                                                 .
+                                                                       (60)       2) Both the matrix and the unknown vector are sparse
+                                                                                      (the bits of have density        or ), so the decoding
+which takes time of order             .
+                                                                                      problem is identical to the syndrome decoding problem
+  Because                                                                             for Gallager codes.
+                                                                                B. Theoretical Results for MN Codes
+the decoding task is then to solve for                    the equation            The theoretical properties of optimal decoding derived in
+                                                                       (61)     Section II imply that good MN codes exist. Fig. 19 shows
+418                                                                      IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+
+Fig. 14. Demonstration of a Gallager code for a Gaussian channel. (a) A data transmission consisting of 10 000 source bits and 10 000 parity-check bits.
+(b1) The received vector after transmission over a Gaussian channel with x= = 1:185. (Eb =N0 = 1.47 dB.) The greyscale represents the value of the
+normalized likelihood. This transmission can be perfectly decoded by the sum-product decoder, that is, the decoder’s output is identical to the original
+data shown in (a). The empirical probability of decoding failure is about 1005 . (b2) The probability distribution of the output y of the channel with
+x= = 1:185 for each of the two possible inputs. (c1) The received transmission over a Gaussian channel with x= = 1:0, which corresponds to the
+Shannon limit. (c2) The probability distribution of the output y of the channel with x= = 1:0 for each of the two possible inputs. (Dilbert image
+Copyright1997 United Feature Syndicate, Inc., used with permission.)
+
+
+
+the communication rates proved achievable with MN codes                      encoding a sparse source with                            gave a
+communicating over a binary-symmetric channel with     .                     similar error probability at           2.31 dB. MN codes seem
+This figure was produced by the same method as Fig. 3.                       to be inferior to Gallager codes in terms of       , but it may
+                                                                             be that their novel properties offer compensating benefits.
+C. Experimental Results: One MN Code Can be Used for
+Channels with a Range of Noise Levels                                                                   VII. DISCUSSION
+   1) Binary-Symmetric Channel: We initially made experi-                       This paper has given a semiconstructive proof of the noisy
+ments in which a sparse source communicated over a binary-                   channel coding theorem using low-density parity-check codes.
+symmetric channel, with           . Results for two codes with               Gallager and MN codes are good not only for the binary-
+symbol rates about and about         are shown in Table II and               symmetric channel but also for any channel models for which
+Fig. 20(a).                                                                  the optimizing input distribution is symmetrical and the law of
+   We then explored cases with                , using the same               large numbers holds. It is a surprise to us that a single code can
+encoder with             and               . Fig. 20 shows that              be good for any channel. We had anticipated that to achieve
+a single encoder can be used to transmit quite near to capacity              very good performance on a new channel (such as a bursty
+over two channels with substantially different noise levels                  noise channel), a new custom-designed code would be needed.
+(15.3% and 11.4%), simply by changing the density of the                     This expectation is shared by Golomb, Peile, and Scholtz,
+source stream. Contrary to our expectations, the performance                 who state that “the optimal code for a given set of channel
+appeared to get better when the symmetry between the source                  conditions may not resemble the optimal code for another”
+and the noise in the decoding was broken; in the case with                   [29, p. 369]. But theoretically, the same encoder family can
+          and            , the performance is beyond      .                  be used for any channel—all that needs to be changed is the
+   2) MN Codes for the Gaussian Channel: We have simu-                       decoding algorithm.
+lated MN codes with dense sources and sparse sources. The                       The practical performance of Gallager’s 1962 codes, us-
+rate      code with a dense source gave a probability of bit                 ing Gallager’s 1962 decoding algorithm, would have broken
+error less than       at             1.81 dB. The same code,                 practical coding records up until 1993. The decoder works
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                           419
+
+
+
+
+Fig. 15. Demonstration of a rate 1=4 Gallager code for a Gaussian channel. (a) A data transmission consisting of 3296 source bits and 10 002 parity check
+bits. (b1) The received vector after transmission over a Gaussian channel with x= = 0:84. (Eb =N0 = 1.5 dB.) This transmission can be perfectly decoded
+by the sum-product decoder, that is, the decoder’s output is identical to the original data shown in (a). The empirical probability of decoding failure is about
+1005 . (b2) The probability distribution of the output y of the channel with x= = 0:84 for each of the two possible inputs. (c1) The received transmission
+over a Gaussian channel with x= = 0:64, which corresponds to the Shannon limit. (b2) The probability distribution of the output y of the channel with
+x= = 0:64 for each of the two possible inputs. The crocodile image is the insignia of the Cavendish Laboratory.
+
+
+
+
+                    (a)                                (b)                                                             (a)
+Fig. 16. (a) A conventional code. The source vector s , of length K , is dense.
+The transmitted vector t is of length N > K . Here N = 2K , so the symbol
+rate and information rate are both K=N = 0:5 shannons. (b) Square code for
+a sparse source, having N = K . The symbol rate  is 1, but if the density
+                                                              '
+of the source fs is 0:1 then the information rate is H2 (0:1) 0:5 shannons,
+the same as that of the conventional code.
+
+
+beyond the minimum distance of the code, beyond the Gilbert
+bound, and beyond the rate that was widely believed to be the
+“effective capacity”    .
+  As far as we know, the only traditional code that can match
+the performance of Gallager codes is the code for Galileo
+                                                                                                                       (b)
+developed at JPL, which employs a rate      , constraint length
+   convolutional code surrounded by a Reed–Solomon code,                          Fig. 17. Pictorial representation of MN Code with symbol rate  = 1. (a)
+                                                                                  Encoding, transmission and reception. The vectors s and n are sparse. The
+giving an effective blocklength of about 8000 bits (R. J.                         matrices C s and C n are very sparse. (b) Decoding. The vector z is given by
+McEliece, personal communication). This system can only be                        z = C n r mod 2. We attempt to solve for s and n.
+decoded using expensive special-purpose hardware, and the
+details of the code are unpublished outside JPL [61].
+
+
+A. Comparison with Turbo Codes
+   We heard about turbo codes [12], [11], which outperform
+Gallager’s codes in terms of           , towards the end of
+this work. There are some similarities between the codes.
+The turbo decoding algorithm may be viewed as a sum-
+product algorithm ([69], [68], [46]). Turbo codes also have
+a construction in terms of sparse random trellises. Indeed, as                    Fig. 18. The decoding situation for an MN code with symbol rate  = 1=3.
+420                                                                         IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+                                                                TABLE II
+              RESULTS OF SUM-PRODUCT DECODING EXPERIMENTS FOR TWO MN CODES ON BINARY-SYMMETRIC CHANNELS. “trials” = NUMBER
+                 OF BLOCKS DECODED; “ers” = NUMBER OF BLOCK ERRORS. pML = MAXIMUM-LIKELIHOOD ESTIMATE OF BLOCK ERROR
+             PROBABILITY. p+ IS UPPER ERROR BAR FOR BLOCK ERROR PROBABILITY (APPENDIX B). HERE, fs = fn = f . SEE ALSO FIG. 20(a)
+
+
+
+
+Fig. 19. Lower bounds on achievable information rate in shannons versus                                              (a)
+noise level f for MN codes with t from 3 to 6. The solid line shows the
+channel capacity. The lines are lower bounds on rates achievable by MN codes.
+This achievable region was obtained using the first ensemble of matrices A.
+As the weight per column t increases the achievable region rises towards the
+fundamental limit, the capacity.
+
+
+shown schematically in Fig. 21, turbo codes are low-density
+parity-check codes. However, few “goodness” properties have
+been proved for turbo codes.
+   At error probabilities of about      , Gallager and MN codes
+are not able to get quite so close to the Shannon limit as turbo
+codes (Fig. 9). However, turbo codes as originally presented
+are known to have an error “floor” at about          due to low-
+weight codewords (B. J. Frey, personal communication); the
+error probability of these turbo codes no longer decreases
+rapidly with increasing             below this floor. We have                                                        (b)
+seen no evidence of such a floor in Gallager codes; and                         Fig. 20. One MN code with fixed generator matrix can communicate at good
+theoretically we do not expect Gallager codes to have the low-                  rates over two binary-symmetric channels with substantially different noise
+                                                                                levels by changing the source density. In (a) fn = 0:153 and the source is
+weight codewords that could give rise to this behavior. So it is                sparse with density fs = 0:153; in (b) fn = 0:114, and a dense source is
+possible that at very low-bit error probabilities, Gallager codes               used (fs = 0:5). The empirical decoding results are compared with calculated
+outperform turbo codes. It should also be emphasised that all                   performance of Reed–Muller codes (diamonds) and BCH codes (squares), and
+                                                                                the Shannon limit (solid curve). Horizontal axis: information rate R. Vertical
+the errors made by Gallager codes that we have observed                         axis: block error probability . Arrows show the values of R0 and GV (fn ).
+are detected errors, whereas the turbo codes’s errors that                      The MN code has N = 10000; K = 3296; and t = 3 (Construction 1B).
+are caused by low-weight codewords are undetected errors.
+Gallager codes may also have an advantage over turbo codes                      scales as     , but encoding involves only binary arithmetic, so
+in terms of their decoding complexity.                                          for the blocklengths studied here it takes considerably less
+                                                                                time than the simulation of the Gaussian channel. We are
+                                                                                currently investigating the performance of low-density parity-
+B. Computational Complexity                                                     check codes which can be encoded in linear time [42].
+  In a brute-force approach, the time to create a Gallager code                    Decoding involves approximately          floating-point mul-
+scales as    , where     is the block size. The encoding time                   tiplies per iteration (assuming a model of computation where
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                             421
+
+
+
+                                                                                not found any useful improvement in performance. However,
+                                                                                turbo code researchers have found similar tweaks to the sum-
+                                                                                product algorithm are helpful [21].)
+                                                                                   The encoding and decoding software and the parity check
+                                                                                matrices used in this paper are available from http://wol.ra.phy.
+                                                                                cam.ac.uk/mackay/codes/.
+                                     (a)
+
+                                                                                C. Descriptive Complexity
+                                                                                   The descriptive complexity of these codes is much smaller
+                                                                                than the descriptive complexity of arbitrary linear codes, which
+                                                                                is         bits. A Gallager            code has a descriptive
+                                                                                complexity of about                    bits, since for every one
+                                                                                of    columns we have to select bits from               .
+
+                                                                                D. Distance Properties
+                                                                                   We have proved minimum distance properties of Gallager
+                                                                                codes in Section II-C2 (the Gilbert bound can be attained),
+                                     (b)                                        but we do not view this as a primary result. We view distance
+Fig. 21. Convolutional codes and turbo codes are low-density parity-check       properties as a secondary attribute compared with the block
+codes. Schematic pictures of the parity-check matrices of (a) a system-         error probability. The minimum distance of a code may be
+atic recursive convolutional code with (binary) generator polynomials
+(10001=11111) and (b) a rate 1=3 turbo code formed by combining two
+                                                                                viewed as a convenient measure of how “good” it is, but in
+such convolutional codes. Notation: A band of diagonal lines represent a band   fact it is not possible to distinguish between good and very
+of diagonal 1’s. Horizontal and vertical lines indicate the boundaries of the   good codes by their minimum distance, and bounded distance
+blocks within the matrix. In (a) the left-hand band is 10001, corresponding
+to the numerator polynomial, and the right-hand band, 11111, corresponds to
+                                                                                decoders are well known to be unable to achieve the Shannon
+the denominator. In (b) the first K bits are the systematic bits, the next K    limit [43]. We have proved that Gallager and MN codes can
+are the parity bits from the first convolutional code, and the last K are the   (when optimally decoded) achieve capacity. Moreover, we
+parity bits from the second convolutional code, which receives the systematic
+bits in a permuted order. The weight per row of the turbo code’s parity-check
+                                                                                have demonstrated error correcting abilities at rates well above
+matrix is 7 for almost all rows, and the weight per column is 4 or 5.           the Gilbert rate.
+
+                                                                                E. Discussion Specific to MN Codes
+the cost of elementary operations does not grow with ),
+so the total number of operations per decoded bit (assuming                        In a conventional linear          code, the codewords form
+20 iterations) is about           , independent of blocklength.                 a complete linear subspace of           , and it is conventional
+For the codes presented here, this is about 800 operations.                     to assume that its generator matrix       might as well be put
+This is not at all excessive when compared with textbook                        in systematic form. In designing MN codes we made the
+codes—the constraint length         convolutional code used by                  assumption instead that the source is sparse, so the codewords
+Voyager requires 256 operations per decoded bit. The turbo                      that have high probability are only a small subset of a complete
+codes of [12] require about 3800 operations per decoded bit                     linear subspace. In this sense, MN codes are nonlinear codes,
+(B. J. Frey, personal communication).                                           even though the transmitted vector is a linear function of
+   Strictly, a constant number of iterations (taken above to be                 a source vector . The generator matrix may not be put in
+20) is not sufficient to achieve negligible probability of error                systematic form. The systematic form for a code with symbol
+for any blocklength [26]. Assuming the truth of the conjecture                  rate          would simply be an identity matrix, giving no
+of Section III-C2 that the bit error probability decreases as                   error protection at all. We think the MN code’s sparse source
+                   where is the number of decoding iterations                   is an interesting idea which could have a variety of spinoffs.
+and is a constant, in order for this probability to decrease                    For example, MN codes offer the potentially useful property
+as        with increasing , we need the number of decoding                      that the rate of the code can be changed without changing the
+iterations to grow as                   .                                       generator matrix.
+   The decoding algorithm involves no adjustable parameters,
+except those associated with the handling of overflows. After                   F. Application of MN Codes to Multiple-User Channels
+each vertical step we prevented all the probabilities from going                   Consider a multiple-user linear binary channel whose out-
+greater than            or less than       . (One could view the                put, each cycle, is                                           ,
+“update schedule,” i.e., the order in which the quantities and                  where       is the bit transmitted by user , and is noise. The
+  are updated, as an adjustable aspect of the algorithm [24]; we                information-theoretic bound on the total information that the
+have not explored this option. We have briefly examined two                        users can communicate is the capacity                      .
+modifications of the algorithm, making the prior probabilities                     We can create multiple-user codes for this channel di-
+more extreme if a decoding has not emerged, and making the                      rectly from MN codes that encode             sparse source bits
+propagated probabilities more (or less) extreme, but we have                    into     transmitted bits. The       columns of the matrix
+422                                                              IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+are divided up between the users, with user           receiving         Constructions. By introducing Constructions 2A and 2B,
+     columns, forming a matrix          . All users know the         we pushed the performance of Gallager codes a little closer
+sparse matrix     , and the decoder knows the entire matrix          to capacity. Are there further useful changes we could make
+                                . In each block cycle, user          to the code construction? We are currently investigating the
+encodes a vector      of     bits with density    into a vector      possibility of systematic construction of matrices            whose
+of length     bits,                       , and transmits this       corresponding graphs have large girth [44], [8], [35].
+vector.                                                                 In this paper we have mainly considered regular low-density
+   The properties proved for MN codes immediately carry              matrices, that is, matrices in which the weight per column is
+over to these multiple-user codes. In particular, the Shannon        constant and the weight per row is constant, or nearly constant.
+limit for the multiple-user linear channel can be achieved,          It is obviously a disappointment that, whereas the way to ob-
+given an optimal decoder. Such a system, if appropriately            tain very good codes is to increase the density, the sum-product
+controlled, would allow the users dynamically to change their        algorithm performs worse for denser matrices. There is a way
+rate of communication by changing their densities       without      out of this dilemma however: we obtained better performance
+changing their encoder.                                              by using slightly irregular matrices with weight two and weight
+                                                                     three columns (see Fig. 9); Luby, Mitzenmacher, Shokrollahi,
+G. Conundrum: Why Were Gallager Codes Forgotten?                     and Spielman [36] have recently extended this idea, investigat-
+                                                                     ing highly irregular Gallager codes. Their results indicate that
+   Why was Gallager’s work mostly forgotten by the informa-
+                                                                     significant enhancements in performance can be obtained. We
+tion theory community?
+                                                                     have applied this idea to Gallager codes over GF           and have
+   There are very few citations of Gallager’s [26], [27] work
+                                                                     discovered an irregular Gallager code with blocklength 24 000
+on low-density parity-check codes. A search on BIDS returns
+                                                                     bits whose performance equals that of the best turbo codes
+the following citations: [14], [25], [28], [63], [44], [49], [48],
+                                                                     [18]. The choice of construction of Gallager code remains a
+[54], [53], [55], [59], [64], [71], [72]. Of these, it seems that
+                                                                     productive area for further research.
+the only author who pursued the practical implementation of
+                                                                        Bursty channels and fading channels. Since Gallager
+Gallager codes (and variations on them) was Tanner [63]. An
+                                                                     codes are, given an optimal decoder, good codes for any
+independent rediscovery of Gallager’s work has been made
+                                                                     channel in a wide class, we are optimistic that they will
+by Wiberg [69], [68]. We regret that we initially misunder-
+                                                                     be excellent codes for channels with bursts and fades. We
+stood Gallager’s work: in [40], we incorrectly asserted that
+                                                                     anticipate that the sum-product algorithm can be generalized
+Gallager’s codes were “bad” owing to a confusion with their
+                                                                     to handle simultaneous equalization and decoding. Only if we
+duals, low-density generator matrix codes, which are bad; we
+                                                                     model and infer the channel variations will we be able to get
+also confused the decoding algorithms of Gallager and Meier
+                                                                     close to the Shannon limit of such time-varying channels. In
+and Staffelbach.
+                                                                     contrast, many codes handle bursts by interleaving, that is,
+   In 1963, the      cost in memory for explicit storage of the
+                                                                     reordering the bits so that the bursts look like uniform noise.
+generator matrix would have been unattainable, so computa-
+                                                                        Our results on MN codes serve as initial results describing
+tional resources were (temporarily) a problem. R. G. Gallager
+                                                                     the performance of Gallager codes for decoding in the presence
+(personal communication) has suggested that Gallager codes
+                                                                     of bursts. Consider a two-state channel which flips between a
+were generally forgotten because it was assumed that concate-
+                                                                     high noise state with                and a low noise state with
+nated codes [23] were superior for practical purposes.
+                                                                                  . The rate      code of blocklength 13 298 bits can
+                                                                     communicate reliably over this channel if the burst periods
+H. Future Work                                                       are identified, as long as the fraction of time spent in the high
+   Generalization to -ary alphabets. Gallager and MN codes           noise state is less than 25%.
+can also be defined over -ary alphabets consisting of the               In contrast, if we used a traditional interleaving method
+elements of GF . The generator matrix of a Gallager code             to cope with the bursts, the effective noise level would be
+over GF        takes the form             , where the matrix                                                   , for which the capacity
+              is a very sparse matrix with its nonzero elements      is            . It seems unlikely that there is a practical rate
+drawn from the nonzero elements of GF . The inversion                interleaved code that can communicate reliably under these
+and multiplication operations are carried out in the algebra         conditions.
+of GF . The decoding can be performed with a belief                     Cryptanalysis. This work grew out of an interest in a
+propagation algorithm, as with the binary Gallager codes.            problem in cryptanalysis [3], the inference of the state of a
+We are investigating the application of these codes (with            linear feedback shift register given its noisy output sequence,
+             ) to the -ary symmetric channel—and to the              which is also equivalent to the decoding of a cyclic code.
+binary-symmetric channel and binary Gaussian channel, since          The free energy minimization algorithm was found to be an
+there is no obvious reason to believe that the         Gallager      improvement over Meier and Staffelbach’s algorithm in [38].
+codes are the best Gallager codes for binary channels. Our           We anticipate that the sum-product decoder might perform
+results show that Gallager codes over GF            and GF           even better on these cryptanalysis problems. We are at present
+perform better than comparable Gallager codes over GF                investigating this possibility.
+in the case of the binary-symmetric channel and the Gaussian            Statistical Physics. Consider a set of          spins
+channel [17].                                                        among which there are         couplings of order           such that
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                         423
+
+
+
+the Hamiltonian is                                                 where      is zero-mean Gaussian noise of variance . The
+                                                                   effective probability for a in bit of the noise vector
+                                                                   (based on         ) is then
+
+                                                                                                                                         (63)
+
+                                                                   (Note that this probability can be greater than       , in keeping
+                                                           (62)    with the arbitrary nature of the choice of        .) In any given
+We have assumed that spins are coupled together in groups          realization of the noise we can thus deduce an effective binary
+of eight in order to obtain a relationship to a matrix      with   noise distribution        for an equivalent time-varying binary-
+weight per row. If we identify                        and set up   symmetric channel. Whether the decoding problem is solvable
+the functions          to correspond to the ’s in the matrix ,     depends on the entropy of this distribution. We thus need to
+then the decoding problem maps onto the task of finding the        add to our list of error types (Section II-C) a third possibility:
+ground state of this energy function in the limit of small .        III. The distribution      has entropy greater (by some )
+   We have found that the sum-product decoder is a better                than the mean entropy. Let the probability of this event
+algorithm than the free energy minimization algorithm (Ap-               be     .
+pendix C) for solving this problem. A difference between the
+algorithms is that the free energy minimization algorithm (also    This failure mode occurs with a probability determined by the
+known as “mean field theory”) shows spontaneous symmetry           distribution of large deviations of the channel. This probability
+breaking, whereas the sum-product algorithm only breaks            obviously must vanish with increasing blocklength for our
+symmetry if the energy function itself breaks symmetry. Prior      codes to be good.
+work related to this concept is found in [65].
+   It is possible that further benefits may be obtained by         A. Extension of Proofs to Channels with Nonbinary
+applying sum-product concepts in statistical physics or to other   Outputs and Temporal Correlations
+optimization problems where mean field methods have been              Gallager and MN codes are good for channels that are
+found useful [30], [2].                                            stationary and ergodic, that have vanishing and that satisfy
+   Decoding algorithms. We conjecture that as we get closer        this symmetry property:
+to the Shannon limit, the decoding problem gets harder. But we
+do not understand what aspects of the problem determine the           Definition 8: A temporal binary-input channel is symmet-
+practical limits of our present decoding algorithms. It would be   ric1 if the optimizing distribution      of the channel is a
+interesting to obtain a convergence proof for the sum-product      uniform distribution                .
+algorithm and to develop ways of reducing the inaccuracies            If this symmetry property is satisfied then it is evident
+introduced by the approach of ignoring the cycles present in       that the decoding problem is equivalent to the decoding of
+the belief network.                                                a symmetric stationary ergodic binary channel (Definition 6).
+
+                       APPENDIX A
+                                                                   B. Gaussian Channel Definitions
+                  REAL-OUTPUT CHANNELS
+                                                                      We simulated the following Gaussian channel. The binary
+   In the main body of the paper our theorems and discus-
+                                                                   inputs are             and the real output has a conditional
+sions have focussed on binary-input, binary-output channels
+                                                                   distribution that is Gaussian with mean    and variance
+of two types: the memoryless binary-symmetric channel and
+the more general symmetric stationary ergodic binary channel
+                                                                                                                                         (64)
+(Definition 6). We proved that MN codes and Gallager codes
+are good for such channels. The same codes are also good for
+                                                                   For convenience we set               and varied      to change
+channels with other output alphabets as long as they satisfy
+                                                                   the signal-to-noise ratio. The capacity of the channel can be
+simple symmetry and law-of-large-numbers properties. We
+                                                                   defined in a couple of ways. If we were allowed to use arbitrary
+have in mind binary-input channels with real outputs such as
+                                                                   input values with the same mean power as the binary inputs
+the additive white Gaussian noise channel and fading channels.
+                                                                              , the capacity would be
+   We start by discussing the simple case of a channel with
+inputs of             and real-valued outputs. Here, an implicit
+noise vector can be envisioned on the basis of an arbitrarily                                                                            (65)
+selected received vector , with           being perhaps the most
+convenient choice, since it simplifies the computation of the        1 Our definition of a “symmetric” channel differs from that of Cover and
+syndrome                         and (63) below. For independent   Thomas [16]. For them, a channel is “symmetric” if the rows of p(y j x) are
+noise, the bits of are probabilistically independent, with the     permutations of each other and the columns are permutations of each other;
+probability of a bit being being determined by the likelihood      a channel is “weakly symmetric” if the rows of p(y j x) are permutations of
+                                                                   each other and the column sums are equal. This definition of a symmetric
+ratio for the received signal. For a Gaussian channel with         channel is too restrictive, as it cannot even encompass a Gaussian channel.
+inputs of            , the received signal is                  ,   The definition given here may conversely be viewed as too broad.
+424                                              IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+                                            TABLE III
+                                            GLOSSARY
+               The symbol “ ” between two matrices denotes concatenation, for example
+                 a systematic parity check matrix might be written                .
+
+
+      Symbol    Meaning                                                           Type
+
+                Transmitted blocklength of a code                                 Integer
+                Source blocklength of a code                                      Integer
+                Generator matrix of a code                                        Binary matrix
+                Parity-check matrix of a code                                     Binary matrix
+                Parity block within a systematic generator matrix or parity       Binary matrix
+                check matrix, e.g.,
+                Source string, length                                             Binary vector
+                Transmitted string, length .                                      Binary vector
+                Noise vector                                                      Binary vector
+                Received string                                                   Binary vector
+                Syndrome vector                                                   Binary vector
+                Very sparse matrix of dimension         .                         Binary matrix
+
+                Very sparse matrix of dimension                                   Binary matrix
+                Very sparse square matrix of dimension                            Binary matrix
+                Number of columns in . In Gallager codes                 . In MN Integer
+                codes
+                Number of rows in . In Gallager codes                       . In  Integer
+                MN codes
+                Number of 1’s per column in (Gallager’s )                         Integer or real
+                Number of 1’s per row in (Gallager’s )                            Integer or real
+                Ratio                . Symbol rate of MN code.                    Real
+                Ratio       .             .                                       Real
+                possibly sparse vector of length                                  Binary vector
+                vector of length       such that                                  Binary vector
+                weight of vector            ; equivalently, the number of columns Integer
+                of that might be linearly dependent
+                Probability that random walk on -dimensional hypercube            Real
+                returns to starting corner on step
+                Upper bound for                                                   Real
+                indices running from to                                           Integer
+                index running from to              in the eigenvalue expansion of Integer
+
+                                                                                  Real
+                                                                                  Real
+                Density of                                                        Real
+                Noise density                                                     Real
+                Source density                                                    Real
+                Number of steps in random walk on -dimensional hyper-             Integer
+                cube.         .           .
+                Probabilities in sum-product algorithm                            Real
+
+                Traditional labels for blocklength, source blocklength, and       Integers
+                maximum number of errors that can be corrected. N.B.,
+                above is different.
+                Minimum distance of a code.                                        Integer
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                  425
+
+
+
+If we accept the constraint that only the defined binary inputs                            APPENDIX C
+are allowed, then the capacity is reduced to                                  DECODING BY FREE ENERGY MINIMIZATION
+                                                                         MacKay [38], [37] derived a continuous optimization algo-
+                                                               (66)   rithm for solving the discrete decoding problem
+                                                                                                                                 (70)
+
+                                                               (67)   where is a given binary              matrix and is a received
+                                                                      vector of length . The vectors and are assumed to have
+                                                                      a prior distribution that is separable thus
+where
+
+                                                               (68)
+
+which may be evaluated numerically. If one communicates               The algorithm is only practically useful for matrices       that
+over the Gaussian channel using a code of rate        then it is      are sparse. Problems of the form
+conventional to describe the signal-to-noise ratio by
+                                                                                                                                 (71)
+
+                                                               (69)   can also be solved using the free energy minimization algo-
+                                                                      rithm by solving a sequence of problems of the general form
+                                                                      (70) with the fictitious noise level of the vector decreasing
+and to report this number in decibels as                   .          to zero.
+                                                                         The algorithm works by approximating the complicated
+                                                                      posterior probability of      given    by a simpler separable
+                      APPENDIX B                                      distribution
+             REPORTING OF EMPIRICAL RESULTS
+
+
+A. Error Bars
+                                                                      This distribution’s parameters              (one parameter for
+  The experiments result in a certain number of block de-
+                                                                      each bit of ) are then adjusted so as to minimize a measure
+coding failures out of a number of trials . We report the
+                                                                      of the divergence between the approximating distribution
+maximum-likelihood estimate of the block error probability,
+                                                                      and the true distribution          , the variational free energy
+        , and a confidence interval      , defined thus: if
+       then
+                                                                                                                                 (72)
+
+                              where                                   The evaluation of this objective function and its gradient is
+                                                                      possible in time linear in the weight of . There is also
+                                                                      an update algorithm for each component         such that     is
+else if                                    and           . When
+                                                                      guaranteed to decrease. This iterative procedure is obviously
+reporting the bit error probability we use the error bars
+                                                                      not the optimal decoding algorithm, but it is practical. We
+derived from the block error probability; we do not bother
+                                                                      originally developed MN codes with this decoding algorithm
+including the additional uncertainty in the bit error rate within
+                                                                      in mind, so we report some experimental results. However,
+erroneous blocks, which is expected to be much smaller than
+                                                                      this decoder has been superseded by the sum-product algo-
+the uncertainty in the block error probability.
+                                                                      rithm of Section III. Sum-product decoding is less complicated
+                                                                      because there is no need to have an annealing schedule for a
+B. Comparison with Other Codes                                        temperature parameter.
+   Performances of RM and BCH codes were computed as-
+suming for an RM code of minimum distance that more                   A. Empirical Results: Free Energy Minimization, Ensemble 4
+than          errors cannot be corrected. For BCH codes it              A value of             was selected for experiments with
+was assumed that more than errors cannot be corrected, as             Gallager codes having rate               and         , using
+specified in the         description of the code. In principle,       Construction 1A.
+it may be possible in some cases to make a BCH decoder that             We found that as the block size         was increased the
+corrects more than errors, but according to Berlekamp [9],            performance improved. The block error probabilities for rate
+“little is known about how to go about finding the solutions”             codes with block lengths of 2000, 4000, 8000, and 20 000
+and “if there are more than       errors then the situation gets      were                      and          . We also found that
+very complicated very quickly.” All relevant BCH codes listed         with larger and smaller values of than        , the code did
+in [56] are included (block sizes up to       ).                      not work as well when decoded by free energy minimization.
+426                                                            IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+B. Insights into the Source of Errors                                Proofs of Inequalities (73) and (74): Proof of right-hand
+   We examined some of the errors made by the free energy          inequality: consider the multinomial distribution
+minimization decoder and found that they tended to occur
+when the vector      was such that another slightly different                                                                 (75)
+typical vector had a similar (but not identical) encoding .
+In terms of the random walk on the hypercube (Section II-C),       Set             . Then evaluate the probability, which we know
+these errors correspond to walks that after a small number of      is less than
+steps return close to the starting corner. They were possible
+because of rare topologies in the network corresponding to                                                                    (76)
+the matrix such as the topology illustrated in Fig. 5(c). We
+can eliminate the possibility of these errors by modifying the
+ensemble of matrices       so that the corresponding network
+does not have short cycles in it.                                                                                             (77)
+
+C. Empirical Results: Free Energy Minimization,                      The left-hand inequality in (73) is proved by considering
+Construction 1B                                                    again the quantity
+
+   We made new matrices by taking matrices from Ensemble                                                                      (78)
+4 with            and deleting columns until there were no
+short loops of the type shown in Fig. 5(e). These matrices,
+having fewer columns, correspond to codes with slightly lower      If             then       is greater than or equal to        for
+rates. They also have nonuniform weight per row, which may         all   . So
+make them slightly suboptimal. We found that the topological                                                                  (79)
+modifications gave codes which were able to communicate
+at slightly higher rates over slightly noisier channels with a
+smaller probability of error. A summary of our results is that
+in terms of block error probability for a given communication
+rate, Gallager and MN codes, when decoded by free energy
+minimization, can be superior to Reed–Muller codes, and                                                                       (80)
+Gallager codes can outperform BCH codes by a small margin.
+   Significantly better results were obtained using the sum-         Similarly, we may prove that, for
+product decoder described in the main body of this paper.
+
+                                                                                                                              (81)
+D. Contrast with Sum-Product Algorithm
+   We believe the reason the sum-product algorithm performs
+much better than the variational free energy minimization                Proof: Consider the sum of binomial terms
+(mean field) algorithm is that the mean field algorithm exhibits
+spontaneous symmetry breaking. It is possible for a cluster of                                                                (82)
+bits, whose state has not been determined by the influence
+of the data, to collapse into a locally consistent state. The
+sum-product algorithm (at least in the ideal case of a graph       Setting              , we examine the factor
+without cycles) does not show any such spontaneous symmetry                     . Because           , this factor is greater than .
+breaking.                                                          So, dividing each term in the sum by              an appropriate
+                                                                   number of times
+
+                        APPENDIX D                                                                                            (83)
+                        INEQUALITIES
+  We prove the following inequalities:
+
+                                                           (73)
+                                                                                                                              (84)
+                                                                     We also note the following inequalities:
+In general, if                          and
+                 then                                                                or equivalently
+                                                                                                                              (85)
+                                                           (74)
+                                                                   The proof is straightforward by integration of       .
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                    427
+
+
+
+                   APPENDIX E                                         B. Bound that is Tight for
+    BOUNDS ON RANDOM WALK’S RETURN PROBABILITY                           We consider the logarithm of one term in the sum over in
+   We derive several upper bounds on the probability        that      (87). We obtain a bound on the maximum value over that
+the random walk on the -dimensional hypercube returns to              this quantity can assume. We define           and          .
+its starting corner on the th step. We use the result from [31]
+that                                                                                                                               (96)
+
+                                                              (86)
+
+                                                                                                                                   (97)
+See [13], [20], [32], [34], and [62] for further information
+about this random walk, which is also known as the Ehrenfest          At (96) we use inequality (73) and at (97) we use the inequality
+Urn model. Equation (86) is an eigenvalue expansion, where                                            We differentiate and find that
+the eigenvalues of the Markov process are labeled by                  the maximum of this function is at             , so that we can
+          and have value           . For every positive eigenvalue    bound every term as follows for any :
+there is an opposite negative eigenvalue. We note that for odd
+        is zero, and that for even         is a decreasing function                                                                (98)
+of . For convenience we can obtain a monotonic upper bound
+on       by restricting the sum over to the positive eigenvalues
+and including a leading factor of .                                   We thus conclude that for any
+
+
+                                                              (87)                                                                 (99)
+
+
+We now derive various bounds valid for all            ; some                                                                      (100)
+bounds are tight for        and some for            . We also
+evaluate a numerical bound that is useful for all .                                                                               (101)
+
+A. Bound that is Tight for                                            This bound illustrates the important power law decrease of
+                                                                          for small . The logarithm of this bound is
+
+                                                                                                                                  (102)
+                                                              (88)
+                                                                                                                                  (103)
+
+                                                              (89)    The leading factor of    in (101) is the undesirable side-effect
+                                                                      of two of the inequalities.
+                                                              (90)
+                                                                      C. Bound That Is a Factor of        Tighter for
+                                                                         The above bound is tight enough to prove the main theorems
+At (89) we have used the inequality                          . We     of the paper for        but not for       , because of the leading
+note that                                                             factor of , so we now improve on it.
+                                                                         We count the number of walks of length (where is even)
+                                                              (91)    that return to the origin. A walk that returns to the origin
+                                                                      can be created as follows. First we select (with replacement)
+                                                                            directions from the        axes of the hypercube as the
+and obtain                                                            directions that will be traversed twice. The number of different
+                                                                      selections is equal to the number of ways of putting
+                                                              (92)    indistinguishable objects in       bins, which is the number of
+                                                                      distinct ways of ordering             indistinguishable partitions
+                                                              (93)    and       indistinguishable objects, which is               . Then
+                                                              (94)    having decided which are the directions we will traverse, the
+                                                                      number of distinct walks that can be created is less than or
+The logarithm of this bound is                                        equal to the number of distinct orderings of              pairs of
+                                                                      indistinguishable objects,      , with equality in the case where
+                                                              (95)    all directions are traversed twice or zero times. Thus the total
+428                                                             IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+number of walks of length      that return to the origin,       ,   where     is the solution of
+is bounded by
+                                                                                                                             (115)
+                                                            (104)
+                                                                    or, equivalently,
+and so, since the total number of walks of length      is
+                                                                                                                             (116)
+                                                            (105)
+                                                                    We can solve this equation numerically by iteration, starting
+We loosen this bound into a slightly more convenient form,          (for example) from          , and setting   equal to , the
+introducing a largest value of ,         , for which we plan        value of the right-hand side, repeating until convergence
+to use this bound. We will set at our convenience to a value        is established. Convergence, which can be slow, may be
+independent of     .                                                accelerated by setting equal to             .
+                                                                       For large    and       , the        term is of small order
+                                              for                   and we neglect it in our numerical computations, using
+
+                                                            (106)
+                                                                                                                             (117)
+                                              for
+                                                            (107)   E. Another Good Bound for Large
+For our proof we set          so that                                 Using the same method as in Appendix E-D, we can obtain
+                                                                    an explicit bound
+                                        for                 (108)
+
+This bound decreases monotonically in up to                ,                                                                 (118)
+where         (found by differentiation), so, since we know
+    is bounded by a decreasing function, we obtain                  Now       is a convex function, so it is upper-bounded by its
+                                                                    tangent. For any choice of , and for all
+                                               where
+                                                                                                                             (119)
+                                                            (109)
+                                                                    So
+The logarithm of       is
+
+                                    for                     (110)
+
+D. Numerical Bound Useful for All                                                                                            (120)
+  We continue from (96) and derive a numerical bound                We differentiate with respect to    to find the maximum value
+                                                                    of this quantity, which is at
+
+                                                            (111)                                                            (121)
+
+We differentiate with respect to to find the maximum value of
+this quantity; then we can bound the sum      by the number of      then we can bound the sum      by the number of terms in the
+terms in the sum times the maximum value of the summand.            sum times the maximum value of the summand, choosing
+Thus                                                                to have any convenient value. Based on what we have learned
+                                                                    from the previous bound, we choose
+                                                            (112)
+                                                                                                                             (122)
+
+                                                                    and obtain (after straightforward algebra)
+                                                            (113)
+or, equivalently,
+                                                                                                                             (123)
+                                                                       The five bounds                        and      are plotted
+                                                            (114)   in the large    limit in Fig. 22.
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                429
+
+
+
+                                                                                 by setting      to its largest value (assuming that the density
+                                                                                                  ). Thus
+
+
+
+
+                                                                                                                                              (127)
+
+                                                                                 where                    .
+                                                                                   The function               is an increasing function of       for
+                                                                                                          , where it has a sharp maximum. It is well
+                                                                                 approximated by                            , where           and
+
+                                                  1      (r )
+Fig. 22. Plot of five bounds on the function M      log p00 , for large M , as                                                                (128)
+a function of r=M .
+                           = (e02r=M0
+           1        (r )
+Bound b: M     log qb                    log 2).                                 The step to (128) made use of inequality (74). We find
+Bound c: M 1        (r)
+              log qc = 1    02
+                               (   r=M + r=M  log(r=M )).                        achievable rates by finding values of and such that the
+           (r )
+Bound d: qd = ( 34 M               
+                         r )r=2 for r   r0 = 0 M , where 0 = 34e .               maximum value over and of                             is
+Bound f: qf = M exp[ M log 2 + MH2e (3 (r ))
+                            0                             0   2r3 (r )] where
+            (r )
+                                                                                 just less than zero (see Appendix E-D).
+3 (r) = 1+exp(  1
+                       )
+                         .
+                    1         (r )
+Numerical bound M       log qe computed as described in Appendix E-D. .                              APPENDIX G
+                                                                                   ARITHMETIC CODING FOR CREATION OF SPARSE SOURCES
+                     APPENDIX F                                                     A redundant source having density less than      , with con-
+EVALUATION OF UPPER AND LOWER BOUNDS ON ACHIEVABLE                               secutive source symbols that are independent and identically
+INFORMATION RATE IN CASE OF NOISE OF UNIFORM DENSITY                             distributed, can be produced from a dense source by using a
+  We start from (21). In the case of uniform density,                            variation on arithmetic coding [70], [57]; one simply reverses
+depends only on the weight of , which we will denote                       .     the role of encoder and decoder in a standard arithmetic coder
+                                                                                 based on a model corresponding to the sparse messages. The
+                                                                                 following pseudocode gives an algorithm for this task, but
+                                                                       (124)
+                                                                                 ignores issues of initialization and termination.
+                                                                                 Loop to read a dense stream and output a sparse stream with
+We obtain a numerical lower bound on the achievable rate of                      density .
+Gallager codes by computing as a function of a bound on                          loop
+                        , the number of pairs     that give                          At this point,                and             .
+rise to an           of weight .                                                     while
+   First consider the number of pairs such that has weight
+  , has weight , and             has weight . This quantity                                          next input bit
+            can be written in terms of                  and                         end while
+                  as
+                                                                                    if            then
+                                                                                         output “ ” bit
+
+                                                                       (125)        else
+where it is understood that      whenever any of the terms                            output “ ” bit
+   in the denominator has      . We arrive at this expression
+by considering the number of ways of subdividing bits into
+four blocks: the bits found in but not ; the bits found                             end if
+in but not ; the bits common to and ; and the bits                               end loop
+common to and .                                                                  Loop to reconstruct the original dense stream from its
+  The number of pairs                             is bounded                     encoding as a sparse stream.
+by the number of terms in the sum times the maximum value                        loop
+                                                                                    At this point,               and                   .
+                                                                       (126)        while
+                                                                                      if                    then
+We can bound the maximum by minimizing the products
+                   and                    in the denominator.
+The first product is minimized by setting         ; the second                           else
+430                                                                           IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. 45, NO. 2, MARCH 1999
+
+
+
+             if             then                                                  [12] C. Berrou, A. Glavieux, and P. Thitimajshima, “Near Shannon limit
+                                                                                       error-correcting coding and decoding: Turbo-codes,” in Proc. 1993
+                                                                                       IEEE Int. Conf. on Communications (Geneva, Switzerland, 1993), pp.
+                output a “ ” bit followed by           “ ” bits                        1064–1070.
+             else                                                                 [13] N. H. Bingham, “Fluctuation theory for the Ehrenfest urn,” Adv. Appl.
+                output a “ ” bit followed by           “ ” bits                        Probab., vol. 23, pp. 598–611, 1991.
+                                                                                  [14] V. Chepyzhov and B. Smeets, “On a fast correlation attack on certain
+             endif                                                                     stream ciphers,” in Lecture Notes in Computer Science, vol. 547. New
+                                                                                       York: Springer-Verlag, 1991, pp. 176–185.
+                                                                                  [15] J. T. Coffey and R. M. Goodman, “Any code of which we cannot think
+        end if                                                                         is good,” IEEE Trans. Inform. Theory, vol. 36, pp. 1453–1461, Nov.
+                                                                                       1990.
+                                                                                  [16] T. M. Cover and J. A. Thomas, Elements of Information Theory. New
+                                                                                       York: Wiley, 1991.
+      end while                                                                   [17] M. C. Davey and D. J. C. MacKay, “Low density parity check codes
+                                                                                       over GF(q),” IEEE Commun. Lett., June 1998.
+      if next input bit        then                                               [18]        , “Low density parity check codes over GF(q),” in Proc. 1998
+                                                                                       IEEE Information Theory Workshop, June 1998.
+                                                                                  [19] P. Delsarte and P. Piret, “Algebraic constructions of Shannon codes for
+      else                                                                             regular channels,” IEEE Trans. Inform. Theory, vol. IT-28, pp. 593–599,
+                                                                                       July 1982.
+                                                                                  [20] P. Diaconis, R. L. Graham, and J. A. Morrison, “Asymptotic analysis of
+                                                                                       a random walk on a hypercube with many dimensions,” Random Struct.
+   end if                                                                              Algor., vol. 1, pp. 51–72, 1990.
+                                                                                  [21] D. Divsilar and F. Pollara, “On the design of turbo codes,” Tech. Rep.
+end loop                                                                               TDA 42–123, Jet Propulsion Lab., Pasadena, CA, Nov. 1995.
+                                                                                  [22] G.-L. Feng and T. R. N. Rao, “Decoding algebraic-geometric codes up
+                                                                                       to the designed minimum distance,” IEEE Trans. Inform. Theory, vol.
+                          ACKNOWLEDGMENT                                               39, pp. 37–45, Jan. 1993.
+                                                                                  [23] G. D. Forney Jr., Concatenated Codes. Cambridge, MA: MIT Press,
+   Radford Neal made immense contributions to this work, in-                           1966.
+cluding writing Appendix G and giving detailed input through-                     [24] B. J. Frey, Graphical Models for Machine Learning and Digital Com-
+                                                                                       munication. Cambridge MA: MIT Press, 1998.
+out; collaborating with him is a privilege.                                       [25] P. Gacs, “Reliable computation with cellular automata,” J. Comp. Syst.
+   I thank Roger Sewell, Robert McEliece, Dave Forney, and                             Sci., vol. 32, no. 1, pp. 15–78, 1986.
+                                                                                  [26] R. G. Gallager, “Low density parity check codes,” IRE Trans. Inform.
+David Aldous for helpful discussions and M. D. MacLeod and                             Theory, vol. IT-8, pp. 21–28, Jan. 1962.
+the Computer Laboratory, Cambridge University for kind loans                      [27]        , Low Density Parity Check Codes, no. 21 in Research Monograph
+of books. I thank Geoff Hinton for generously supporting my                            Series. Cambridge, MA: MIT Press, 1963.
+                                                                                  [28]        , “Finding parity in a simple broadcast network,” IEEE Trans.
+visits to the University of Toronto.                                                   Inform. Theory, vol. 34, pp. 176–180, Mar. 1988.
+                                                                                  [29] S. W. Golomb, R. E. Peile, and R. A. Scholtz, Basic Concepts in
+                                                                                       Information Theory and Coding: The Adventures of Secret Agent 00111.
+                               REFERENCES                                              New York: Plenum 1994.
+                                                                                  [30] J. J. Hopfield and D. W. Tank, “Neural computation of decisions in
+ [1] R. Ahlswede and G. Dueck, “Good codes can be produced by a few                    optimization problems,” Biol. Cybern., vol. 52, pp. 1–25, 1985.
+     permutations,” IEEE Trans. Inform. Theory, vol. IT-28, pp. 430–443,          [31] M. Kac, “Random walk and the theory of Brownian motion,” Amer.
+     May 1982.                                                                         Math. Monthly, vol. 54, pp. 369–391, 1947.
+ [2] S. V. B. Aiyer, M. Niranjan, and F. Fallside, “A theoretical investigation   [32] S. Karlin, B. Lindqvist, and Y.-C. Yao, “Markov chains on hypercubes:
+     into the performance of the Hopfield model,” IEEE Trans. Neural                   Spectral representations and several majorization relations,” Random
+     Networks, vol. 1, no. 2, pp. 204–215, 1990.                                       Structures and Algorithms, vol. 4, pp. 1–36, 1993.
+ [3] R. J. Anderson, “Searching for the optimum correlation attack,” in Fast      [33] S. L. Lauritzen and D. J. Spiegelhalter, “Local computations with
+     Software Encryption—Proceedings of 1994 K.U. Leuven Workshop on                   probabilities on graphical structures and their application to expert
+
+                                                                                                                                       m
+     Cryptographic Algorithms, B. Preneel, Ed., Lecture Notes in Computer              systems,” J. Roy. Statist. Soc. B, vol. 50, pp. 157–224, 1988.
+     Science. Springer-Verlag, 1995, pp. 179–195.                                 [34] G. Letac and L. Takacs, “Random walk on the -dimensional cube,”
+ [4] S. Andreassen, M. Woldbye, B. Falck, and S. Andersen, “MUNIN—A                    J. Reine Angew. Math., vol. 310, pp. 187–195, 1979.
+     causal probabilistic network for the interpretation of electromyographic     [35] A. Lubotsky, “Ramanujan graphs,” Combinatorica, vol. 8, 1988.
+     findings,” in Proc. 10th Nat. Conf. on AI (AAAI: Menlo Park CA.,             [36] M. G. Luby, M. Mitzenmacher, M. A. Shokrollahi, and D. A. Spielman,
+     1987), pp. 121–123.                                                               “Improved low-density parity-check codes using irregular graphs and
+ [5] L. R. Bahl, J. Cocke, F. Jelinek, and J. Raviv, “Optimal decoding of              belief propagation,” presented at the 1998 International Symposium on
+     linear codes for minimizing symbol error rate,” IEEE Trans. Inform.               Information Theory, ISIT98, Cambridge, MA, Aug. 16–21, 1998. Also
+     Theory, vol. IT-20, pp. 284–287, 1974.                                            in Proc. Int. Symp. Information Theory, 1998, p. 117.
+ [6] G. Battail, “We can think of good codes, and even decode them,” in           [37] D. J. C. MacKay, “Free energy minimization algorithm for decoding
+     Eurocode’92 26–30 October, P. Camion, P. Charpin, and S. Harari, Eds.             and cryptanalysis,” Electron. Lett., vol. 31, no. 6, pp. 446–447, 1995.
+     (Udine, Italy), in CISM Courses and Lectures, no 339. Wien, Austria:         [38] D. J. C. MacKay, “A free energy minimization framework for inference
+     Springer, 1993, pp. 353–368.                                                      problems in modulo 2 arithmetic,” in Fast Software Encryption—
+ [7] L. E. Baum and T. Petrie, “Statistical inference for probabilistic func-          Proc. 1994 K.U. Leuven Workshop on Cryptographic Algorithms, B.
+     tions of finite-state Markov chains,” Ann. Math. Stat., vol. 37, pp.              Preneel, Ed., Lecture Notes in Computer Science, no. 1008. New York:
+     1559–1563, 1966.                                                                  Springer-Verlag, 1995, pp. 179–195.
+ [8] F. Bein, “Construction of telephone networks,” Notices Amer. Math.           [39]        , “Iterative probabilistic decoding of low density parity check
+     Soc., vol. 36, Jan. 1989.                                                         codes,” Animations. [Online]. Available WWW: http://wol.ra.phy.cam.
+ [9] E. R. Berlekamp, Algebraic Coding Theory. New York: McGraw-Hill,                  ac.uk/mackay/codes/gifs/, 1997..
+     1968.                                                                        [40] D. J. C. MacKay and R. M. Neal, “Good codes based on very
+[10] E. R. Berlekamp, R. J. McEliece, and H. C. A. van Tilborg, “On the                sparse matrices,” in Cryptography and Coding 5th IMA Conf., C. Boyd,
+     intractability of certain coding problems,” IEEE Trans. Inform. Theory,           Ed., Lecture Notes in Computer Science, no. 1025. Berlin, Germany:
+     vol. IT-24, pp. 384–386, May 1978.                                                Springer, 1995, pp. 100–111.
+[11] C. Berrou and A. Glavieux, “Near optimum error correcting coding and         [41]        , “Near Shannon limit performance of low density parity check
+     decoding: Turbo-codes,” IEEE Trans. Commun., vol. 44, pp. 1261–1271,              codes,” Electron. Lett., vol. 32, no. 18, pp. 1645–1646, Aug. 1996.
+     Oct. 1996.                                                                        Reprinted Electron. Lett., vol. 33, no. 6, pp. 457–458, Mar. 1997.
+MACKAY: GOOD ERROR-CORRECTING CODES BASED ON VERY SPARSE MATRICES                                                                                        431
+
+
+
+[42] D. J. C. MacKay, S. T. Wilson, and M. C. Davey, “Comparison of             [57] J. Rissanen and G. G. Langdon, “Arithmetic coding,” IBM J. Res. Devel.,
+     constructions of irregular Gallager codes,” in Proc. 36th Allerton Conf.        vol. 23, pp. 149–162, 1979.
+     Commun. Contr., and Comput., Sept. 1998.                                   [58] C. E. Shannon, “A mathematical theory of communication,” Bell Syst.
+[43] F. J. MacWilliams and N. J. A. Sloane, The Theory of Error-Correcting           Tech. J., vol. 27, pp. 379–423, 623–656, 1948.
+     Codes. Amsterdam, The Netherlands: North-Holland, 1977.                    [59] A. M. Slinko, “Design of experiments to detect nonnegligible variables
+[44] G. A. Margulis, “Explicit constructions of graphs without short cycles          in a linear model,” Cybernetics, vol. 27, no. 3, pp. 433–442, 1991.
+     and low-density codes,” Combinatorica, vol. 2, no. 1, pp. 71–78, 1982.     [60] D. A. Spielman, “Linear-time encodable and decodable error-correcting
+[45] R. J. McEliece, The Theory of Information and Coding: A Mathemat-               codes,” IEEE Trans. Inform. Theory, vol. 42, pp. 1723–1731, Nov. 1996.
+     ical Framework for Communication. Reading, MA: Addison-Wesley,             [61] L. Swanson, “A new code for Galileo,” in Proc. 1988 IEEE Int. Symp.
+     1977.                                                                           Information Theory, 1988, pp. 94–95.
+[46] R. J. McEliece, D. J. C. MacKay, and J.-F. Cheng, “Turbo decoding as       [62] L. Takacs, “On an urn problem of Paul and Tatiana Ehrenfest,” Math.
+     an instance of Pearl’s ‘belief propagation’ algorithm,” IEEE J. Select.         Proc. Camb. Phil. Soc., vol. 86, pp. 127–130, 1979.
+                                                                                [63] R. M. Tanner, “A recursive approach to low complexity codes,” IEEE
+     Areas Commun., vol. 16, no. 2, pp. 140–152, 1998.
+[47] W. Meier and O. Staffelbach, “Fast correlation attacks on certain stream        Trans. Inform. Theory, vol. IT-27, pp. 533–547, Sept. 1981.
+                                                                                [64] C. Thommesen, “Error-correcting capabilities of concatenated codes
+     ciphers,” J. Cryptol., vol. 1, pp. 159–176, 1989.
+                                                                                     with MDS outer codes on memoryless channels with maximum-
+[48] M. J. Mihaljević and J. D. Golić, “A comparison of cryptanalytic
+                                                                                     likelihood decoding,” IEEE Trans. Inform. Theory, vol. IT-33, pp.
+     principles based on iterative error-correction,” in Lecture Notes in
+                                                                                     632–640, Sept. 1987.
+     Computer Science, vol. 547. New York: Springer-Verlag, 1991, pp.           [65] D. J. Thouless, P. W. Anderson, and R. G. Palmer, “Solutions of
+     527–531.                                                                        ‘solvable models of a spin glass’,” Philosophical Mag., vol. 35, no.
+[49]        , “A fast iterative algorithm for a shift register initial state         3, pp. 593–601, 1977.
+     reconstruction given the noisy output sequence,” in Advances in Cryp-      [66] M. A. Tsfasman, “Algebraic-geometric codes and asymptotic problems,”
+     tology—AUSCRYPT’90, vol. 453. New York: Springer-Verlag, 1992,                  Discr. Appl. Math., vol. 33, nos. 1–3, pp. 241–256, 1991.
+     pp. 165–175.                                                               [67] A. J. Viterbi, “Error bounds for convolutional codes and an asymptot-
+[50]        , “Convergence of a Bayesian iterative error-correction proce-           ically optimum decoding algorithm,” IEEE Trans. Inform. Theory, vol.
+     dure on a noisy shift register sequence,” in Advances in Cryptol-               IT-13, pp. 260–269, 1967.
+     ogy—EUROCRYPT’92, vol. 658.. New York: Springer-Verlag, 1993,              [68] N. Wiberg, “Codes and decoding on general graphs,” Ph.D. dissertation,
+     pp. 124–137.                                                                    Dept. Elec. Eng., Linköping Univ., Linköping, Sweden (Linköping
+[51] J. Pearl, Probabilistic Reasoning in Intelligent Systems: Networks of           Studies in Science and Technology, Dissertation 440), 1996.
+     Plausible Inference. San Mateo, CA: Morgan Kaufmann, 1988.                 [69] N. Wiberg, H.-A. Loeliger, and R. Kötter, “Codes and iterative decoding
+[52] W. W. Peterson and E. J. Weldon Jr.,” Error-Correcting Codes, 2nd ed.           on general graphs,” Euro. Trans. Telecommun., vol. 6, pp. 513–525,
+     Cambridge, MA: MIT Press, 1972.                                                 1995.
+[53] N. Pippenger, “The expected capacity of concentrators,” SIAM J. Discr.     [70] I. H. Witten, R. M. Neal, and J. G. Cleary, “Arithmetic coding for
+     Math., vol. 4, no. 1, pp. 121–129, 1991.                                        data compression,” Commun. Assoc. Comp. Mach., vol. 30, no. 6, pp.
+[54] N. Pippenger, G. D. Stamoulis, and J. N. Tsitsiklis, “On a lower bound          520–540, 1987.
+     for the redundancy of reliable networks with noisy gates,” IEEE Trans.     [71] G. Zemor and G. D. Cohen, “The threshold probability of a code,” IEEE
+     Inform. Theory, vol. 37, pp. 639–643, May 1991.                                 Trans. Inform. Theory, vol. 41, pp. 469–477, Mar. 1995.
+[55] B. Radosavljevic, E. Arikan, and B. Hajek, “Sequential-decoding of         [72] M. Zivkovic, “On two probabilistic decoding algorithms for binary linear
+     low-density parity-check codes by adaptive reordering of parity checks,”        codes,” IEEE Trans. Inform. Theory, vol. 37, pp. 1707–1716, Nov. 1991.
+     IEEE Trans. Inform. Theory, vol. 38, pp. 1833–1839, Sept. 1992.            [73] V. V. Zyablov and M. S. Pinsker, “Estimation of the error-correction
+[56] T. R. N. Rao and E. Fujiwara, Error-Control Coding for Computer                 complexity for Gallager low-density codes,” Probl. Pered. Inform., vol.
+     Systems. Englewood Cliffs, NJ: Prentice-Hall, 1989.                             11, no. 1, pp. 23–36, 1975.
+

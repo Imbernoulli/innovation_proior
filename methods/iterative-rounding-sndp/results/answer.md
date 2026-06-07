@@ -4,9 +4,9 @@
 
 Undirected graph `G = (V, E)`, nonnegative edge costs `c_e`, and for each vertex pair an integer
 requirement `r(uv)`. Find a minimum-cost subgraph `H` containing at least `r(uv)` edge-disjoint paths
-between `u` and `v` for every pair. The problem is NP-hard and APX-hard; iterative rounding returns,
-in polynomial time, a feasible subgraph of cost at most `2 * OPT`, with the factor independent of the
-maximum requirement.
+between `u` and `v` for every pair. The problem is NP-hard and APX-hard; on feasible instances,
+iterative rounding returns, in polynomial time, a feasible subgraph of cost at most `2 * OPT`, with the
+factor independent of the maximum requirement.
 
 ## Key idea
 
@@ -21,8 +21,8 @@ supermodular** (`f(empty)=f(V)=0`, and for all `A,B` either `f(A)+f(B) <= f(A∪
 
 Two facts make a clean factor-2 rounding possible.
 
-1. **Structural theorem.** In every basic feasible (vertex) solution `x` of this LP there is an edge
-   with `x_e >= 1/2`.
+1. **Structural theorem.** In every basic feasible (vertex) solution `x` of a nonzero residual LP
+   there is an edge with `x_e >= 1/2`.
 2. **Closure of the class.** For any fixed edge set `F`, the residual requirement
    `g(S) = f(S) - |delta_F(S)|` is again weakly supermodular (the cut function `|delta_F|` is
    symmetric submodular, hence posimodular; subtracting it preserves one of the two weak-super
@@ -34,39 +34,54 @@ which lower-bounds `OPT`.
 
 ## Why the structural theorem holds
 
-**Uncrossing → laminar basis.** Restrict to the support, `0 < x_e < 1`. Tight sets satisfy
-`x(delta(S)) = f(S)`. The cut function is submodular and posimodular:
+**Uncrossing → laminar basis.** Work on the positive support. Edges with `x_e = 0` are deleted, and an
+edge with `x_e >= 1/2` already proves the theorem, so the hard case has no active variable bounds.
+Tight sets satisfy `x(delta(S)) = f(S)`. The cut function is submodular and posimodular:
 `x(delta(S)) + x(delta(T)) >= x(delta(S∪T)) + x(delta(S∩T))` and
 `>= x(delta(S\T)) + x(delta(T\S))`. If two tight sets cross, chaining the matching weak-super
 inequality of `f` through the cut inequality and LP feasibility forces equality throughout, so the
-uncrossed sets are also tight and (since all `x_e > 0`, the cross-edge set is empty) their constraint
-vectors span the same space. Uncrossing repeatedly yields a laminar family `L` with `x` the unique
-solution of `{x(delta(S)) = f(S): S in L}`, the vectors `chi(delta(S))` independent, and `|L| = |E|`.
+uncrossed sets are also tight and the extra cross-edge term in the matching cut identity has zero
+`x`-mass; since all support values are positive, that edge set is empty and the crossing row is spanned
+by the uncrossed rows plus the row it crossed. Take a maximal laminar family of tight sets. If it did
+not span all tight rows, choose an outside tight set crossing the fewest family members; uncrossing it
+with one crossed member gives an outside tight row crossing fewer members, a contradiction. Thus, in
+the hard support case, some laminar family `L` has `x` as the unique solution of
+`{x(delta(S)) = f(S): S in L}`, the vectors `chi(delta(S))` independent, and `|L| = |E|`.
 
-**Token counting.** Suppose `0 < x_e < 1/2` for all `e`. Give each edge one token; edge `e = (u,v)`
-sends `x_e` to the smallest set of `L` containing `u`, `x_e` to the smallest containing `v`, and
-`1 - 2 x_e` to the smallest set containing both (all three positive, summing to 1). For `S in L` with
-children `R_1, ..., R_k`, subtracting tight equalities gives that the tokens `S` collects equal
-`|B| + |C| + (f(S) - sum_i f(R_i))` — a positive integer (positive since the surviving edge set
-`A ∪ B ∪ C` is nonempty by independence), hence `>= 1`. Every maximal set leaves its boundary edges'
-`1 - 2 x_e` tokens unclaimed, so strictly fewer than `|E|` tokens are collected while all `|L|` sets
-get one: `|L| < |E|`, contradicting `|L| = |E|`. Therefore some `x_e >= 1/2`. (If every `f(S)` is even,
-rescaling the rules pushes the threshold to `x_e = 1`.)
+**Token counting.** Suppose `0 < x_e < 1/2` for all `e`. Give each edge one token. Edge `e=(u,v)`
+sends `x_e` to the smallest set containing `u`, `x_e` to the smallest set containing `v`, and
+`1 - 2x_e` to the smallest set containing both endpoints, whenever those sets exist; unassigned pieces
+remain leftover. For `S in L` with children `R_1, ..., R_k`, subtracting tight equations gives
+`x(delta(S)) - sum_i x(delta(R_i)) = f(S) - sum_i f(R_i)`. With
+`O = S \ (R_1 ∪ ... ∪ R_k)`, the surviving edge classes are: `A`, edges from `O` to `V \ S`; `B`, edges
+from `O` to one child; and `C`, endpoints in two different children. Thus
+`x(A) - x(B) - 2x(C) = f(S) - sum_i f(R_i)`, and the tokens collected by `S` equal
+`sum_A x_e + sum_B(1-x_e) + sum_C(1-2x_e) + |D| = |B| + |C| + |D| + f(S) - sum_i f(R_i)`,
+where `D` is the class of edges with both endpoints in `O`, which cancel from the subtraction but send
+their whole token to `S`. This is a positive integer: if no positive piece reached `S`, then
+`chi(delta(S))` would be dependent on the child vectors, and integrality comes from `f`. Hence every
+set gets at least one token. A maximal set has a support edge crossing it, and that edge's
+`1 - 2x_e` both-endpoints token is unclaimed, so strictly fewer than `|E|` tokens are collected while
+all `|L|` sets get one: `|L| < |E|`, contradicting `|L| = |E|`. Therefore some `x_e >= 1/2`.
 
 ## Algorithm
 
 1. `F <- empty`.
 2. Repeat: form the residual cut requirement `g(S) = f(S) - |delta_F(S)|`. If `g <= 0` everywhere,
    return `F`.
-3. Solve the covering LP for `g` to a basic optimal (vertex) solution `x*` via a cutting-plane loop
-   whose separation oracle is a min-cut / max-flow per demand pair (all pairs by a Gomory-Hu tree).
+3. Solve the covering LP for `g` to a basic optimal (vertex) solution `x*`. The runnable code below
+   adds violated cut rows with Gomory-Hu / max-flow separation until the solution satisfies every cut,
+   and raises if the returned active-LP optimum does not contain the half-paid edge the theorem
+   guarantees for a basic solution.
 4. Add every edge with `x*_e >= 1/2` to `F` (the theorem guarantees at least one). Go to 2.
 
 ## Analysis (ratio 2)
 
 Per round with rounded set `R = {e : x*_e >= 1/2}`:
-`cost(R) = sum_{e in R} c_e <= 2 sum_{e in R} c_e x*_e`. Restricting `x*` to the
-remaining edges is feasible for the next residual LP (the class is closed), so
+`cost(R) = sum_{e in R} c_e <= 2 sum_{e in R} c_e x*_e`. For every cut `S`, deleting the rounded
+coordinates leaves
+`x*(delta(S)) - x*_R(delta(S)) >= g_current(S) - x*_R(delta(S)) >= g_current(S) - |delta_R(S)|`,
+which is exactly `g_next(S)`. Thus
 `LP(next) <= LP(current) - sum_{e in R} c_e x*_e`. Telescoping over rounds,
 `cost(F) <= 2 sum_rounds (LP(current) - LP(next)) <= 2 * LP(initial) <= 2 * OPT`. The factor is `2`
 regardless of `r_max`.
@@ -74,11 +89,13 @@ regardless of `r_max`.
 ## Code
 
 ```python
+from itertools import combinations
+
 import networkx as nx
 import pulp
 
 def requirement_on_cut(S, r):
-    # f(S) = max over pairs split by S of r(uv): cut form of the demands
+    # Menger turns pair requirements into one cut requirement.
     best = 0
     for (u, v), req in r.items():
         if (u in S) ^ (v in S):
@@ -98,9 +115,13 @@ def add_capacity(H, e, cap):
 def edge_cost(costs, e):
     if e in costs:
         return costs[e]
-    return costs[(e[1], e[0])]
+    rev = (e[1], e[0])
+    if rev in costs:
+        return costs[rev]
+    raise KeyError(f"missing cost for edge {e}")
 
 def separation_oracle(x, free_edges, fixed_edges, V, r, tol=1e-7):
+    # The fixed edges count integrally; the remaining edges carry their LP values.
     H = nx.Graph()
     H.add_nodes_from(V)
     for e in free_edges:
@@ -112,6 +133,8 @@ def separation_oracle(x, free_edges, fixed_edges, V, r, tol=1e-7):
     for (u, v), req in r.items():
         if req <= 0 or u == v:
             continue
+        if u not in H or v not in H:
+            return frozenset({u})
         path = nx.shortest_path(tree, u, v)
         cut_edge = min(zip(path, path[1:]), key=lambda ab: tree[ab[0]][ab[1]]["weight"])
         cut_value = tree[cut_edge[0]][cut_edge[1]]["weight"]
@@ -122,22 +145,27 @@ def separation_oracle(x, free_edges, fixed_edges, V, r, tol=1e-7):
     return None
 
 def solve_covering_lp_to_vertex(edges, V, r, fixed_edges, costs):
+    fixed_edges = set(fixed_edges)
     free = [e for e in edges if e not in fixed_edges]
-    prob = pulp.LpProblem("cut_cover", pulp.LpMinimize)
-    xv = {e: pulp.LpVariable(f"x_{e}", lowBound=0, upBound=1) for e in free}
+    prob = pulp.LpProblem("sndp_cut_cover", pulp.LpMinimize)
+    xv = {e: pulp.LpVariable(f"x_{i}", lowBound=0, upBound=1) for i, e in enumerate(free)}
     prob += pulp.lpSum(edge_cost(costs, e) * xv[e] for e in free)
     solver = pulp.PULP_CBC_CMD(msg=False)
+
     while True:
-        status = prob.solve(solver)                # CBC/CLP returns a basic optimum for the active LP
+        status = prob.solve(solver)
         if pulp.LpStatus[status] != "Optimal":
             raise RuntimeError(f"residual LP is {pulp.LpStatus[status]}")
+
         x = {e: (xv[e].value() or 0.0) for e in free}
         S = separation_oracle(x, free, fixed_edges, V, r)
         if S is None:
             return x
-        cross = [e for e in free if (e[0] in S) ^ (e[1] in S)]
-        fixed = len(delta(S, fixed_edges))
-        rhs = requirement_on_cut(S, r) - fixed
+
+        cross = delta(S, free)
+        rhs = requirement_on_cut(S, r) - len(delta(S, fixed_edges))
+        if rhs > 1e-7 and not cross:
+            raise RuntimeError("residual instance is infeasible with the remaining edges")
         prob += pulp.lpSum(xv[e] for e in cross) >= rhs
 
 def all_satisfied(V, fixed_edges, r):
@@ -146,12 +174,57 @@ def all_satisfied(V, fixed_edges, r):
 def cover_cut_requirements(V, edges, costs, r):
     edges = [tuple(e) for e in edges]
     F = set()
-    while True:
-        if all_satisfied(V, F, r):
-            return F
+
+    while not all_satisfied(V, F, r):
         x = solve_covering_lp_to_vertex(edges, V, r, F, costs)
         R = [e for e, val in x.items() if val >= 0.5 - 1e-9]
         if not R:
-            raise RuntimeError("expected an edge with value at least 1/2 in the basic residual solution")
+            raise RuntimeError("expected an edge with value at least 1/2 in the basic solution")
         F.update(R)
+
+    return F
+
+def solution_cost(F, costs):
+    return sum(edge_cost(costs, e) for e in F)
+
+def is_feasible(V, F, r):
+    H = nx.Graph()
+    H.add_nodes_from(V)
+    H.add_edges_from(F)
+    for (u, v), req in r.items():
+        if req <= 0:
+            continue
+        if nx.edge_connectivity(H, u, v) < req:
+            return False
+    return True
+
+def brute_force_optimum(V, E, costs, r):
+    best_cost = float("inf")
+    best_set = None
+    for size in range(len(E) + 1):
+        for chosen in combinations(E, size):
+            F = set(chosen)
+            cost = solution_cost(F, costs)
+            if cost >= best_cost:
+                continue
+            if is_feasible(V, F, r):
+                best_cost = cost
+                best_set = F
+    return best_cost, best_set
+
+if __name__ == "__main__":
+    V = [0, 1, 2, 3]
+    E = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]
+    costs = {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 0): 1, (0, 2): 5}
+    r = {(0, 2): 2}
+
+    F = cover_cut_requirements(V, E, costs, r)
+    alg_cost = solution_cost(F, costs)
+    opt_cost, opt_set = brute_force_optimum(V, E, costs, r)
+
+    print("chosen edges:", sorted(F))
+    print("algorithm cost:", alg_cost)
+    print("exact optimum:", opt_cost, sorted(opt_set))
+    print("feasible:", is_feasible(V, F, r))
+    print("within 2x:", alg_cost <= 2 * opt_cost)
 ```

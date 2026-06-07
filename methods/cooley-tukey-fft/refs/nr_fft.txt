@@ -1,0 +1,622 @@
+504
+
+Chapter 12.
+
+Fast Fourier Transform
+
+The discrete form of Parseval’s theorem is
+N−1
+X
+
+1 X
+|Hn |2
+N n=0
+N−1
+
+|hk |2 =
+
+k=0
+
+(12.1.10)
+
+CITED REFERENCES AND FURTHER READING:
+Brigham, E.O. 1974, The Fast Fourier Transform (Englewood Cliffs, NJ: Prentice-Hall).
+Elliott, D.F., and Rao, K.R. 1982, Fast Transforms: Algorithms, Analyses, Applications (New
+York: Academic Press).
+
+12.2 Fast Fourier Transform (FFT)
+How much computation is involved in computing the discrete Fourier transform
+(12.1.7) of N points? For many years, until the mid-1960s, the standard answer
+was this: Define W as the complex number
+W ≡ e2πi/N
+
+(12.2.1)
+
+Then (12.1.7) can be written as
+Hn =
+
+N−1
+X
+
+W nk hk
+
+(12.2.2)
+
+k=0
+
+In other words, the vector of hk ’s is multiplied by a matrix whose (n, k)th element
+is the constant W to the power n × k. The matrix multiplication produces a vector
+result whose components are the Hn ’s. This matrix multiplication evidently requires
+N 2 complex multiplications, plus a smaller number of operations to generate the
+required powers of W . So, the discrete Fourier transform appears to be an O(N 2 )
+process. These appearances are deceiving! The discrete Fourier transform can,
+in fact, be computed in O(N log2 N ) operations with an algorithm called the fast
+Fourier transform, or FFT. The difference between N log2 N and N 2 is immense.
+With N = 106 , for example, it is the difference between, roughly, 30 seconds of CPU
+time and 2 weeks of CPU time on a microsecond cycle time computer. The existence
+of an FFT algorithm became generally known only in the mid-1960s, from the work
+of J.W. Cooley and J.W. Tukey. Retrospectively, we now know (see [1]) that efficient
+methods for computing the DFT had been independently discovered, and in some
+cases implemented, by as many as a dozen individuals, starting with Gauss in 1805!
+One “rediscovery” of the FFT, that of Danielson and Lanczos in 1942, provides
+one of the clearest derivations of the algorithm. Danielson and Lanczos showed
+that a discrete Fourier transform of length N can be rewritten as the sum of two
+discrete Fourier transforms, each of length N/2. One of the two is formed from the
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+There are also discrete analogs to the convolution and correlation theorems (equations
+12.0.9 and 12.0.11), but we shall defer them to §13.1 and §13.2, respectively.
+
+12.2 Fast Fourier Transform (FFT)
+
+505
+
+even-numbered points of the original N , the other from the odd-numbered points.
+The proof is simply this:
+Fk =
+
+N−1
+X
+
+e2πijk/N fj
+
+j=0
+
+=
+
+j=0
+
+X
+
+X
+
+N/2−1
+
+e2πik(2j)/N f2j +
+
+(12.2.3)
+
+j=0
+
+N/2−1
+
+=
+
+e2πik(2j+1)/N f2j+1
+X
+
+N/2−1
+
+e2πikj/(N/2)f2j + W k
+
+j=0
+
+e2πikj/(N/2)f2j+1
+
+j=0
+
+= Fke + W k Fko
+In the last line, W is the same complex constant as in (12.2.1), Fke denotes the kth
+component of the Fourier transform of length N/2 formed from the even components
+of the original fj ’s, while Fko is the corresponding transform of length N/2 formed
+from the odd components. Notice also that k in the last line of (12.2.3) varies from
+0 to N , not just to N/2. Nevertheless, the transforms Fke and Fko are periodic in k
+with length N/2. So each is repeated through two cycles to obtain Fk .
+The wonderful thing about the Danielson-Lanczos Lemma is that it can be used
+recursively. Having reduced the problem of computing Fk to that of computing
+Fke and Fko , we can do the same reduction of Fke to the problem of computing
+the transform of its N/4 even-numbered input data and N/4 odd-numbered data.
+In other words, we can define Fkee and Fkeo to be the discrete Fourier transforms
+of the points which are respectively even-even and even-odd on the successive
+subdivisions of the data.
+Although there are ways of treating other cases, by far the easiest case is the
+one in which the original N is an integer power of 2. In fact, we categorically
+recommend that you only use FFTs with N a power of two. If the length of your data
+set is not a power of two, pad it with zeros up to the next power of two. (We will give
+more sophisticated suggestions in subsequent sections below.) With this restriction
+on N , it is evident that we can continue applying the Danielson-Lanczos Lemma
+until we have subdivided the data all the way down to transforms of length 1. What
+is the Fourier transform of length one? It is just the identity operation that copies its
+one input number into its one output slot! In other words, for every pattern of log2 N
+e’s and o’s, there is a one-point transform that is just one of the input numbers fn
+Fkeoeeoeo···oee = fn
+
+for some n
+
+(12.2.4)
+
+(Of course this one-point transform actually does not depend on k, since it is periodic
+in k with period 1.)
+The next trick is to figure out which value of n corresponds to which pattern of
+e’s and o’s in equation (12.2.4). The answer is: Reverse the pattern of e’s and o’s,
+then let e = 0 and o = 1, and you will have, in binary the value of n. Do you see
+why it works? It is because the successive subdivisions of the data into even and odd
+are tests of successive low-order (least significant) bits of n. This idea of bit reversal
+can be exploited in a very clever way which, along with the Danielson-Lanczos
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+X
+
+N/2−1
+
+506
+
+Chapter 12.
+
+Fast Fourier Transform
+
+000
+
+000
+
+001
+
+001
+
+001
+
+010
+
+010
+
+010
+
+011
+
+011
+
+011
+
+100
+
+100
+
+100
+
+101
+
+101
+
+101
+
+110
+
+110
+
+110
+
+111
+
+111
+
+111
+
+(a)
+
+(b)
+
+Figure 12.2.1. Reordering an array (here of length 8) by bit reversal, (a) between two arrays, versus (b)
+in place. Bit reversal reordering is a necessary part of the fast Fourier transform (FFT) algorithm.
+
+Lemma, makes FFTs practical: Suppose we take the original vector of data fj
+and rearrange it into bit-reversed order (see Figure 12.2.1), so that the individual
+numbers are in the order not of j, but of the number obtained by bit-reversing j.
+Then the bookkeeping on the recursive application of the Danielson-Lanczos Lemma
+becomes extraordinarily simple. The points as given are the one-point transforms.
+We combine adjacent pairs to get two-point transforms, then combine adjacent pairs
+of pairs to get 4-point transforms, and so on, until the first and second halves of
+the whole data set are combined into the final transform. Each combination takes
+of order N operations, and there are evidently log2 N combinations, so the whole
+algorithm is of order N log2 N (assuming, as is the case, that the process of sorting
+into bit-reversed order is no greater in order than N log2 N ).
+This, then, is the structure of an FFT algorithm: It has two sections. The first
+section sorts the data into bit-reversed order. Luckily this takes no additional storage,
+since it involves only swapping pairs of elements. (If k1 is the bit reverse of k2 , then
+k2 is the bit reverse of k1 .) The second section has an outer loop that is executed
+log2 N times and calculates, in turn, transforms of length 2, 4, 8, . . ., N . For each
+stage of this process, two nested inner loops range over the subtransforms already
+computed and the elements of each transform, implementing the Danielson-Lanczos
+Lemma. The operation is made more efficient by restricting external calls for
+trigonometric sines and cosines to the outer loop, where they are made only log2 N
+times. Computation of the sines and cosines of multiple angles is through simple
+recurrence relations in the inner loops (cf. 5.5.6).
+The FFT routine given below is based on one originally written by N. M.
+Brenner. The input quantities are the number of complex data points (nn), the data
+array (data[1..2*nn]), and isign, which should be set to either ±1 and is the sign
+of i in the exponential of equation (12.1.7). When isign is set to −1, the routine
+thus calculates the inverse transform (12.1.9) — except that it does not multiply by
+the normalizing factor 1/N that appears in that equation. You can do that yourself.
+Notice that the argument nn is the number of complex data points. The actual
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+000
+
+12.2 Fast Fourier Transform (FFT)
+
+507
+
+#include <math.h>
+#define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
+void four1(float data[], unsigned long nn, int isign)
+Replaces data[1..2*nn] by its discrete Fourier transform, if isign is input as 1; or replaces
+data[1..2*nn] by nn times its inverse discrete Fourier transform, if isign is input as −1.
+data is a complex array of length nn or, equivalently, a real array of length 2*nn. nn MUST
+be an integer power of 2 (this is not checked for!).
+{
+unsigned long n,mmax,m,j,istep,i;
+double wtemp,wr,wpr,wpi,wi,theta;
+Double precision for the trigonometfloat tempr,tempi;
+ric recurrences.
+n=nn << 1;
+j=1;
+for (i=1;i<n;i+=2) {
+This is the bit-reversal section of the
+if (j > i) {
+routine.
+SWAP(data[j],data[i]);
+Exchange the two complex numbers.
+SWAP(data[j+1],data[i+1]);
+}
+m=n >> 1;
+while (m >= 2 && j > m) {
+j -= m;
+m >>= 1;
+}
+j += m;
+}
+Here begins the Danielson-Lanczos section of the routine.
+mmax=2;
+while (n > mmax) {
+Outer loop executed log2 nn times.
+istep=mmax << 1;
+theta=isign*(6.28318530717959/mmax);
+Initialize the trigonometric recurrence.
+wtemp=sin(0.5*theta);
+wpr = -2.0*wtemp*wtemp;
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+length of the real array (data[1..2*nn]) is 2 times nn, with each complex value
+occupying two consecutive locations. In other words, data[1] is the real part of
+f0 , data[2] is the imaginary part of f0 , and so on up to data[2*nn-1], which
+is the real part of fN−1 , and data[2*nn], which is the imaginary part of fN−1 .
+The FFT routine gives back the Fn ’s packed in exactly the same fashion, as nn
+complex numbers.
+The real and imaginary parts of the zero frequency component F0 are in data[1]
+and data[2]; the smallest nonzero positive frequency has real and imaginary parts in
+data[3] and data[4]; the smallest (in magnitude) nonzero negative frequency has
+real and imaginary parts in data[2*nn-1] and data[2*nn]. Positive frequencies
+increasing in magnitude are stored in the real-imaginary pairs data[5], data[6]
+up to data[nn-1], data[nn]. Negative frequencies of increasing magnitude are
+stored in data[2*nn-3], data[2*nn-2] down to data[nn+3], data[nn+4].
+Finally, the pair data[nn+1], data[nn+2] contain the real and imaginary parts of
+the one aliased point that contains the most positive and the most negative frequency.
+You should try to develop a familiarity with this storage arrangement of complex
+spectra, also shown in Figure 12.2.2, since it is the practical standard.
+This is a good place to remind you that you can also use a routine like four1
+without modification even if your input data array is zero-offset, that is has the range
+data[0..2*nn-1]. In this case, simply decrement the pointer to data by one when
+four1 is invoked, e.g., four1(data-1,1024,1);. The real part of f0 will now be
+returned in data[0], the imaginary part in data[1], and so on. See §1.2.
+
+508
+
+Chapter 12.
+
+2
+
+imag
+
+3
+
+real
+
+4
+
+imag
+
+t=0
+t=∆
+
+(a)
+
+2N − 3
+
+real
+
+2N − 2
+
+imag
+
+2N − 1
+
+real
+
+2N
+
+imag
+
+1
+
+real
+
+2
+
+imag
+
+3
+
+real
+
+4
+
+imag
+
+N−1
+
+real
+
+N
+
+imag
+
+N+1
+
+real
+
+N+2
+
+imag
+
+N+3
+
+real
+
+N+4
+
+imag
+
+2N − 1
+
+real
+
+2N
+
+imag
+
+f=0
+f=
+
+1
+N∆
+
+f=
+
+N/2 − 1
+N∆
+
+f=±
+
+1
+(combination)
+2∆
+
+f= −
+
+N/2 − 1
+N∆
+
+f=−
+
+1
+N∆
+
+t = (N − 2)∆
+t = (N − 1)∆
+
+(b)
+
+Figure 12.2.2.
+Input and output arrays for FFT. (a) The input array contains N (a power of 2)
+complex time samples in a real array of length 2N , with real and imaginary parts alternating. (b) The
+output array contains the complex Fourier spectrum at N values of frequency. Real and imaginary parts
+again alternate. The array starts with zero frequency, works up to the most positive frequency (which
+is ambiguous with the most negative frequency). Negative frequencies follow, from the second-most
+negative up to the frequency just below zero.
+wpi=sin(theta);
+wr=1.0;
+wi=0.0;
+for (m=1;m<mmax;m+=2) {
+for (i=m;i<=n;i+=istep) {
+j=i+mmax;
+tempr=wr*data[j]-wi*data[j+1];
+tempi=wr*data[j+1]+wi*data[j];
+data[j]=data[i]-tempr;
+data[j+1]=data[i+1]-tempi;
+data[i] += tempr;
+data[i+1] += tempi;
+}
+wr=(wtemp=wr)*wpr-wi*wpi+wr;
+wi=wi*wpr+wtemp*wpi+wi;
+}
+mmax=istep;
+
+Here are the two nested inner loops.
+This is the Danielson-Lanczos formula:
+
+Trigonometric recurrence.
+
+}
+}
+
+(A double precision version of four1, named dfour1, is used by the routine mpmul
+in §20.6. You can easily make the conversion, or else get the converted routine
+from the Numerical Recipes diskette.)
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+real array of length 2 N
+
+real
+
+real array of length 2 N
+
+1
+
+Fast Fourier Transform
+
+12.2 Fast Fourier Transform (FFT)
+
+509
+
+Other FFT Algorithms
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+We should mention that there are a number of variants on the basic FFT algorithm
+given above. As we have seen, that algorithm first rearranges the input elements
+into bit-reverse order, then builds up the output transform in log2 N iterations. In
+the literature, this sequence is called a decimation-in-time or Cooley-Tukey FFT
+algorithm. It is also possible to derive FFT algorithms that first go through a set of
+log2 N iterations on the input data, and rearrange the output values into bit-reverse
+order. These are called decimation-in-frequency or Sande-Tukey FFT algorithms. For
+some applications, such as convolution (§13.1), one takes a data set into the Fourier
+domain and then, after some manipulation, back out again. In these cases it is possible
+to avoid all bit reversing. You use a decimation-in-frequency algorithm (without its
+bit reversing) to get into the “scrambled” Fourier domain, do your operations there,
+and then use an inverse algorithm (without its bit reversing) to get back to the time
+domain. While elegant in principle, this procedure does not in practice save much
+computation time, since the bit reversals represent only a small fraction of an FFT’s
+operations count, and since most useful operations in the frequency domain require
+a knowledge of which points correspond to which frequencies.
+Another class of FFTs subdivides the initial data set of length N not all the
+way down to the trivial transform of length 1, but rather only down to some other
+small power of 2, for example N = 4, base-4 FFTs, or N = 8, base-8 FFTs. These
+small transforms are then done by small sections of highly optimized coding which
+take advantage of special symmetries of that particular small N . For example, for
+N = 4, the trigonometric sines and cosines that enter are all ±1 or 0, so many
+multiplications are eliminated, leaving largely additions and subtractions. These
+can be faster than simpler FFTs by some significant, but not overwhelming, factor,
+e.g., 20 or 30 percent.
+There are also FFT algorithms for data sets of length N not a power of
+two. They work by using relations analogous to the Danielson-Lanczos Lemma to
+subdivide the initial problem into successively smaller problems, not by factors of
+2, but by whatever small prime factors happen to divide N . The larger that the
+largest prime factor of N is, the worse this method works. If N is prime, then no
+subdivision is possible, and the user (whether he knows it or not) is taking a slow
+Fourier transform, of order N 2 instead of order N log2 N . Our advice is to stay clear
+of such FFT implementations, with perhaps one class of exceptions, the Winograd
+Fourier transform algorithms. Winograd algorithms are in some ways analogous to
+the base-4 and base-8 FFTs. Winograd has derived highly optimized codings for
+taking small-N discrete Fourier transforms, e.g., for N = 2, 3, 4, 5, 7, 8, 11, 13, 16.
+The algorithms also use a new and clever way of combining the subfactors. The
+method involves a reordering of the data both before the hierarchical processing and
+after it, but it allows a significant reduction in the number of multiplications in the
+algorithm. For some especially favorable values of N , the Winograd algorithms can
+be significantly (e.g., up to a factor of 2) faster than the simpler FFT algorithms
+of the nearest integer power of 2. This advantage in speed, however, must be
+weighed against the considerably more complicated data indexing involved in these
+transforms, and the fact that the Winograd transform cannot be done “in place.”
+Finally, an interesting class of transforms for doing convolutions quickly are
+number theoretic transforms. These schemes replace floating-point arithmetic with
+
+510
+
+Chapter 12.
+
+Fast Fourier Transform
+
+CITED REFERENCES AND FURTHER READING:
+Nussbaumer, H.J. 1982, Fast Fourier Transform and Convolution Algorithms (New York: SpringerVerlag).
+Elliott, D.F., and Rao, K.R. 1982, Fast Transforms: Algorithms, Analyses, Applications (New
+York: Academic Press).
+Brigham, E.O. 1974, The Fast Fourier Transform (Englewood Cliffs, NJ: Prentice-Hall). [1]
+Bloomfield, P. 1976, Fourier Analysis of Time Series – An Introduction (New York: Wiley).
+Van Loan, C. 1992, Computational Frameworks for the Fast Fourier Transform (Philadelphia:
+S.I.A.M.).
+Beauchamp, K.G. 1984, Applications of Walsh Functions and Related Functions (New York:
+Academic Press) [non-Fourier transforms].
+Heideman, M.T., Johnson, D.H., and Burris, C.S. 1984, IEEE ASSP Magazine, pp. 14–21 (October).
+
+12.3 FFT of Real Functions, Sine and Cosine
+Transforms
+It happens frequently that the data whose FFT is desired consist of real-valued
+samples fj , j = 0 . . . N − 1. To use four1, we put these into a complex array
+with all imaginary parts set to zero. The resulting transform Fn , n = 0 . . . N − 1
+satisfies FN−n * = Fn . Since this complex-valued array has real values for F0
+and FN/2 , and (N/2) − 1 other independent values F1 . . . FN/2−1 , it has the same
+2(N/2 − 1) + 2 = N “degrees of freedom” as the original, real data set. However,
+the use of the full complex FFT algorithm for real data is inefficient, both in execution
+time and in storage required. You would think that there is a better way.
+There are two better ways. The first is “mass production”: Pack two separate
+real functions into the input array in such a way that their individual transforms can
+be separated from the result. This is implemented in the program twofft below.
+This may remind you of a one-cent sale, at which you are coerced to purchase two
+of an item when you only need one. However, remember that for correlations and
+convolutions the Fourier transforms of two functions are involved, and this is a
+handy way to do them both at once. The second method is to pack the real input
+array cleverly, without extra zeros, into a complex array of half its length. One then
+performs a complex FFT on this shorter length; the trick is then to get the required
+answer out of the result. This is done in the program realft below.
+
+World Wide Web sample page from NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING (ISBN 0-521-43108-5)
+Copyright (C) 1988-1992 by Cambridge University Press.Programs Copyright (C) 1988-1992 by Numerical Recipes Software. Permission
+is granted for users of the World Wide Web to make one paper copy for their own personal use. Further reproduction, or any copying of
+machine-readable files (including this one) to anyserver computer, is strictly prohibited. To order Numerical Recipesbooks and diskettes,
+go to http://world.std.com/~nr or call 1-800-872-7423 (North America only),or send email to trade@cup.cam.ac.uk (outside North America).
+
+integer arithmetic modulo some large prime N +1, and the N th root of 1 by the
+modulo arithmetic equivalent. Strictly speaking, these are not Fourier transforms
+at all, but the properties are quite similar and computational speed can be far
+superior. On the other hand, their use is somewhat restricted to quantities like
+correlations and convolutions since the transform itself is not easily interpretable
+as a “frequency” spectrum.
+
+

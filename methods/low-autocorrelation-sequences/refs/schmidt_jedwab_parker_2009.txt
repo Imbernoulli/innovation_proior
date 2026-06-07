@@ -1,0 +1,2452 @@
+Web site: http://www.aimSciences.org
+
+Advances in Mathematics of Communications
+Volume X, No. 0X, 200X, X–XX
+
+TWO BINARY SEQUENCE FAMILIES WITH
+LARGE MERIT FACTOR
+
+Kai-Uwe Schmidt
+Department of Mathematics
+Simon Fraser University
+8888 University Drive
+Burnaby, BC, Canada V5A 1S6
+
+Jonathan Jedwab
+Department of Mathematics
+Simon Fraser University
+8888 University Drive
+Burnaby, BC, Canada V5A 1S6
+
+Matthew G. Parker
+Department of Informatics
+High Technology Center in Bergen
+University of Bergen
+Bergen 5020, Norway
+
+(Communicated by Aim Sciences)
+Abstract. We calculate the asymptotic merit factor, under all rotations of
+sequence elements, of two families of binary sequences derived from Legendre
+sequences. The rotation is negaperiodic for the first family, and periodic for
+the second family. In both cases the maximum asymptotic merit factor is 6.
+As a consequence, we obtain the first two families of skew-symmetric sequences
+with known asymptotic merit factor, which is also 6 in both cases.
+
+1. Introduction
+We consider a sequence A of length n to be an n-tuple (a0 , a1 , . . . , an−1 ) of real
+numbers. The aperiodic autocorrelation of A at shift u is
+
+n−u−1
+
+ P a a
+for 0 ≤ u < n
+j j+u
+CA (u) :=
+j=0
+
+C (−u)
+for −n < u < 0,
+A
+P
+and its energy E(A) is CA (0). Provided that 0<|u|<n [CA (u)]2 > 0, the merit
+factor of A is defined to be
+F (A) :=
+
+[E(A)]2
+P
+.
+[CA (u)]2
+0<|u|<n
+
+2000 Mathematics Subject Classification: Primary: 94A55, 68P30; Secondary: 05B10.
+Key words and phrases: binary sequence, merit factor, asymptotic, Legendre sequence, rotation, construction, periodic, negaperiodic, skew-symmetric.
+K.-U. Schmidt is supported by Deutsche Forschungsgemeinschaft (German Research Foundation).
+J. Jedwab is supported by NSERC of Canada.
+1
+
+c 200X AIMS-SDU
+
+2
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+The sequence A = (a0 , a1 , . . . , an−1 ) of length n is called binary if each aj takes
+the value +1 or −1, in which case E(A) = n. Let Fn be the maximum value of the
+merit factor over the set of all 2n binary sequences of length n. The Merit Factor
+Problem, which is to determine the value of lim supn→∞ Fn , is important not only in
+digital communications engineering but also in complex analysis, theoretical physics,
+and theoretical chemistry (see [5] for a survey, and [6] for background on related
+problems). The current state of knowledge on this problem can be summarised
+as 6 ≤ lim supn→∞ Fn ≤ ∞, where the lower bound arises from an analysis due to
+Høholdt and Jensen [4] of a periodically rotated Legendre sequence (see Theorem 2).
+There is also considerable numerical evidence, though currently no proof, that an
+asymptotic merit factor greater than 6.34 can be achieved for a family of binary
+sequences related to Legendre sequences [2].
+In this paper we determine the asymptotic merit factor, at all rotations of sequence elements, of two families of binary sequences constructed from a Legendre
+sequence of length n. The first family is derived from a “negaperiodic” construction described by Parker [8], and its sequences have length 2n; the second family
+is derived from a “periodic” construction described by Yu and Gong [12], and its
+sequences have length 4n. For both families, the maximum asymptotic merit factor over all rotations is 6, equal to the best proven result for lim supn→∞ Fn . For
+the negaperiodic construction, the maximum value of 6 was previously proved by
+Xiong and Hall [11] for two specific negaperiodic rotations, following numerical work
+in [8], but no asymptotic merit factor values at other negaperiodic rotations were
+previously known. For the periodic construction, the general form of the merit factor over all periodic rotations was determined numerically for large n by Yu and
+Gong [12], but no asymptotic values were previously known.
+A skew-symmetric sequence is a binary sequence (a0 , a1 , . . . , a2m ) of odd length
+2m + 1 for which
+(1)
+
+am+j = (−1)j am−j
+
+for 0 < j ≤ m.
+
+By slight modification of the negaperiodic and periodic constructions we obtain
+two families of skew-symmetric sequences, each with asymptotic merit factor 6 (see
+Corollaries 6 and 9). To our knowledge, these are the first constructions of families
+of skew-symmetric sequences for which the asymptotic merit factor has been calculated. Historically, skew-symmetric sequences were considered to be good candidates for a large merit factor, in part because half of their aperiodic autocorrelation
+coefficients are guaranteed to be zero (see [5, Section 3.1] for background). While
+skew-symmetric sequences of length n that attain the optimal merit factor value Fn
+are known for
+n ∈ {3, 5, 7, 9, 11, 13, 15, 17, 21, 27, 29, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57, 59},
+they are not known for any larger values of n, because the value of Fn itself is not
+known for n > 60 [5]. Golay [3] argued heuristically that the supremum limit of
+the merit factor of the set of skew-symmetric sequences is equal to lim supn→∞ Fn ,
+which would imply that nothing is lost by restricting attention to the subset of
+binary sequences that are skew-symmetric (see [5, Section 4.7] for a discussion).
+In view of this, it is particularly interesting that the asymptotic merit factor of
+the skew-symmetric sequence families constructed here is equal to the best proven
+result for lim supn→∞ Fn , namely 6.
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+3
+
+2. Definitions and Notation
+In this section we introduce further definitions and notation for the paper.
+Let A = (a0 , a1 , . . . , an−1 ) and B = (b0 , b1 , . . . , bn−1 ) be sequences of equal
+length n. The aperiodic crosscorrelation between A and B at shift u is
+
+n−u−1
+
+ P a b
+for 0 ≤ u < n
+j j+u
+CA,B (u) :=
+j=0
+
+C
+for −n < u < 0,
+B,A (−u)
+and the periodic crosscorrelation between A and B at shift u is
+RA,B (u) :=
+
+n−1
+X
+
+aj b(j+u) mod n
+
+for 0 ≤ u < n.
+
+j=0
+
+By adopting the convention that CA,B (−n) = 0, we can write
+(2)
+
+RA,B (u) = CA,B (u) + CA,B (u − n)
+
+for 0 ≤ u < n.
+
+The aperiodic autocorrelation CA (u) defined in Section 1 equals CA,A (u) for
+|u| < n. From the definition of CA (u) and F (A) we have the relation
+X
+1
+1
+= −1 +
+[CA (u)]2
+(3)
+2
+F (A)
+[E(A)]
+|u|<n
+
+for the reciprocal merit factor 1/F (A). The periodic autocorrelation of A at shift u
+is
+RA (u) := RA,A (u) for 0 ≤ u < n.
+Given a sequence A = (a0 , a1 , . . . , an−1 ) of length n, we write [A]j to denote
+the sequence element aj . Let A = (a0 , a1 , . . . , an−1 ) and B = (b0 , b1 , . . . , bm−1 ) be
+sequences of length n and m, respectively. The concatenation A; B of A and B is
+the length n + m sequence given by
+(
+aj
+for 0 ≤ j < n
+[A; B]j :=
+bj−n for n ≤ j < n + m.
+Provided gcd(m, n) = 1, the product sequence A ⊗ B of length mn is defined by
+[A ⊗ B]j := aj mod n bj mod m
+
+for 0 ≤ j < mn,
+
+and the m-decimation of A is the length n sequence C defined by
+[C]j := amj mod n
+
+for 0 ≤ j < n.
+
+The periodic rotation Ar of A by a fraction r of its length (for any real r) is the
+length n sequence given by
+(4)
+
+[Ar ]j := a(j+bnrc) mod n
+
+for 0 ≤ j < n,
+
+and the negaperiodic rotation Are of A by the fraction r is the length n sequence
+given by
+(
+a(j+bnrc) mod n for 0 ≤ j < n − bnrc
+(5)
+[Are]j :=
+−a(j+bnrc) mod n for n − bnrc ≤ j < n.
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+4
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+The sequence Are can be viewed as the first n elements of the length 2n sequence
+(A; −A) r2 . For example, take r = 27 and A = (+, +, +, −, +, −, −), where + and −
+represent sequence elements +1 and −1, respectively. Then we have
+Ar = (+, −, +, −, −, +, +),
+Are = (+, −, +, −, −, −, −).
+(A; −A) r2 = (+, −, +, −, −, −, −, −, +, −, +, +, +, +).
+3. Legendre Sequences
+This section describes Legendre sequences and their asymptotic merit factor
+properties. (See [10], for example, for background on number-theoretic properties
+of Legendre sequences.)
+Given a prime n and an integer j, the Legendre symbol (j | n) is defined as
+
+
+for j ≡ 0 (mod n)
+0
+(j | n) := −1 for j not a square modulo n
+
+
++1 otherwise.
+The Legendre symbol is multiplicative, so that
+(a | n) (b | n) = (ab | n),
+
+(6)
+and
+(7)
+
+a≡b
+
+(mod n)
+
+implies
+
+(a | n) = (b | n).
+
+A Legendre sequence X = (x0 , x1 , . . . , xn−1 ) of prime length n is defined by
+(
+1
+for j = 0
+xj :=
+(j | n) for 0 < j < n.
+In our analysis it will often be convenient to change the initial element in a Legendre
+sequence to be zero, so that
+xj = (j | n)
+
+for 0 ≤ j < n.
+
+Then we will call X a modified Legendre sequence. The periodic autocorrelation
+function of a modified Legendre sequence X is given [10, p. 294] by
+(8)
+
+RX (u) = −1
+
+for 0 < u < n.
+
+√
+We shall make repeated use of the following result, under which up to o( n)
+elements of a sequence of length n can be changed by a bounded amount without
+altering the asymptotic reciprocal merit factor:
+Proposition 1. Let {A(n)} and {B(n)} be sets of sequences, where each of A(n)
+and B(n) has length n. Suppose that, for each n, all elements of A(n) and B(n)
+are bounded in magnitude by a constant independent of n.√Suppose further that, as
+n −→ ∞, the number of nonzero elements of B(n) is o( n) and that F (A(n)) =
+O(1) and E(A(n)) = Ω(n).1 Then, as n −→ ∞, the elementwise sequence sums
+1 We use the notation o, O, and Ω to compare the growth rates of functions f (n) and g(n) from
+N to R+ in the following standard way: f (n) = o(g(n)) means that f (n)/g(n) → 0 as n → ∞;
+f (n) = O(g(n)) means that there is a constant c, independent of n, for which f (n) ≤ cg(n) for all
+sufficiently large n; and f (n) = Ω(g(n)) means that g(n) = O(f (n)).
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+5
+
+{A(n) + B(n)} satisfy
+1
+1
+=
+(1 + o(1)).
+F (A(n) + B(n))
+F (A(n))
+Proof. For each n, by the definition of aperiodic autocorrelation and crosscorrelation
+we have
+CA(n)+B(n) (u) = CA(n) (u) + CB(n) (u) + CA(n),B(n) (u) + CB(n),A(n) (u) for |u| < n.
+Since, by assumption, all elements of A(n) and B(n) are bounded in magnitude√by
+a constant independent of n, and the number of nonzero elements of B(n) is o( n)
+as n −→ ∞, it follows that
+√
+(9)
+CA(n)+B(n) (u) = CA(n) (u) + o( n) as n −→ ∞.
+This implies by the definition of F (A(n) + B(n)) that, as n −→ ∞,
+X
+√
+1
+1
+=
+[CA(n) (u) + o( n)]2
+2
+F (A(n) + B(n))
+[E(A(n) + B(n))]
+0<|u|<n
+
+1
+[E(A(n) + B(n))]2
+
+=
+
+X
+
+[CA(n) (u)]2
+
+0<|u|<n
+
+!
+s X
++ o(n)
+[CA(n) (u)]2 + o(n2 )
+
+(10)
+
+0<|u|<n
+
+since, by the Cauchy–Schwarz inequality,
+v
+ X
+
+u
+X
+X
+√
+u
+2
+o( n)CA(n) (u) ≤ t
+o(n)
+[CA(n) (u)] .
+0<|u|<n
+
+0<|u|<n
+
+0<|u|<n
+
+Now by setting u = 0 in (9) and dividing by E(A(n)) we obtain, as n −→ ∞,
+√
+E(A(n) + B(n))
+o( n)
+=1+
+E(A(n))
+E(A(n))
+= 1 + o(1),
+since E(A(n)) = Ω(n) by assumption. The square of the reciprocal of this relation
+is
+[E(A(n))]2
+= 1 + o(1)
+[E(A(n) + B(n))]2
+
+as n −→ ∞.
+
+Substitute in (10) and use the definition of F (A(n)) to show that, as n −→ ∞,
+!
+p
+F (A(n))
+1
+1
+F (A(n))
+2
+=
+(1 + o(1)) 1 + o(n)
++ o(n )
+F (A(n) + B(n))
+F (A(n))
+E(A(n))
+[E(A(n))]2
+=
+
+1
+(1 + o(1)),
+F (A(n))
+
+since F (A(n)) = O(1) and E(A(n)) = Ω(n) by assumption.
+A result similar to Proposition 1 was stated in Corollary 6.3 of [2], but with conditions on the asymptotic growth of the sequence elements A(n) and their merit
+factor F (A(n)) mistakenly omitted.
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+6
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+The asymptotic merit factor of a Legendre sequence has been calculated at all
+periodic rotations:
+Theorem 2 (Høholdt and Jensen [4]). Let X be a Legendre sequence of prime
+length n > 2, and let r be a real number satisfying |r| ≤ 12 . Then
+2
+1
+= 16 + 8 |r| − 14 .
+lim F (Xr )
+
+n−→∞
+1
+2
+
+The constraint |r| ≤ in Theorem 2 is for notational convenience only, since by
+definition Xr is the same as Xr+1 for any real r. By Proposition 1, Theorem 2 also
+holds for the modified Legendre sequence X 0 of length n, since X 0 r differs from Xr
+in exactly one element for each n. The exact, rather than the asymptotic, value of
+F (Xr ) in Theorem 2 has been calculated [1] by refining the analysis of [4], but the
+exact value is not required here.
+The following generalisation of Theorem 2 is a key tool of this paper:
+Theorem 3. Let X be a modified Legendre sequence of prime length n > 2, and let
+1
+1
+1
+r, s, and t be real numbers satisfying |r + s+t
+2 | ≤ 2 , |s| ≤ 2 , and |t| ≤ 2 . Let {r(n)},
+{s(n)}, and {t(n)} be sets of real numbers such that ns(n) and nt(n) are integer
+for each n, and such that, as n −→ ∞, r(n) = r + O(n−1 ), s(n) = s + O(n−1 ), and
+t(n) = t + O(n−1 ). Then, as n −→ ∞,
+1 X
+CXr(n) , Xr(n)+s(n) (u) CXr(n)+t(n) , Xr(n)+s(n)+t(n) (u)
+n2
+|u|<n
+
+−1
+1 2
+1 2
+1 2
+(log n)2 ).
+= 16 + 8(|r + s+t
+2 | − 4 ) + 2(|s| − 2 ) + 2(|t| − 2 ) + O(n
+
+Proof. See Appendix.
+We can recover Theorem 2 from Theorem 3 by setting r(n) = r and s(n) = t(n) = 0
+for each n, applying (3), using Proposition 1 to alter the initial element and thereby
+change a modified Legendre sequence into a Legendre sequence, and then taking the
+limit as n −→ ∞. There is no loss of generality in Theorem 3 from the restrictions
+1
+1
+1
+|r + s+t
+2 | ≤ 2 , |s| ≤ 2 , and |t| ≤ 2 , since Xr+1 = Xr for all r. Nonetheless, we will
+find it useful to define, for real r, s, t, c,
+(
+(|r| − c)2
+for |r| ≤ 21
+(11)
+φ(r, c) :=
+φ(r + 1, c) for all r, c
+and
+(12)
+
+1
+1
+1
+ψ(r, s, t) := 16 + 8φ(r + s+t
+2 , 4 ) + 2φ(s, 2 ) + 2φ(t, 2 ),
+
+so that the conclusion of Theorem 3 can be rephrased to hold for unrestricted r, s,
+t as n −→ ∞:
+1 X
+CXr(n) , Xr(n)+s(n) (u) CXr(n)+t(n) , Xr(n)+s(n)+t(n) (u)
+n2
+|u|<n
+
+= ψ(r, s, t) + O(n−1 (log n)2 ).
+
+(13)
+
+It is easily verified that φ(r + 12 , 14 ) = φ(r, 14 ) for all r, which implies that
+(14)
+
+φ(r, 14 ) = φ(r0 , 41 )
+
+provided r0 = r + a2 for some integer a.
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+7
+
+4. The Negaperiodic Construction
+In this section we present the first of our two constructions, involving a negaperiodic rotation Yre (as defined in (5)) of a sequence Y of length 2n that is in turn
+derived from a sequence X of odd length n. Lemma 4 analyses this construction
+for the case r = ρ, where ρ is subject to the constraint that nρ is integer (which
+forces the number b2nrc of rotated elements in the negaperiodic rotation Yre to be
+even). We then show in Theorem 5 that, in the specific case that X is a Legendre
+sequence, Lemma 4 can be used to determine the asymptotic merit factor of Yre for
+all real r, regardless of whether b2nrc is even or odd.
+Lemma 4. Let X be a sequence of odd length n, each of whose elements is bounded
+in magnitude by a constant independent of n, and let Z be the 2-decimation of X.
+Let r be a real number, and write ρ := bnrc/n and δ := n+1
+2n . Define Y to be the
+first 2n elements of the sequence X ⊗ (+, +, −, −). Then, as n −→ ∞,
+X
+
+[CYρe (u)]2
+
+|u|<2n
+
+=
+
+X
+
+
+[CZr (u) + CZr+δ (u)]2 + [CZr ,Zr+δ (u) − CZr+δ ,Zr+2δ (u) + O(1)]2 .
+
+|u|<n
+
+Proof. We firstly determine an explicit expression for [Yρe]j , and deduce an expression for CYρe (u). By analysis of the cases u even and u odd, we then express |CYρe (u)|
+in terms of crosscorrelations of periodically rotated versions of the sequence Zr , for
+both positive and negative values of u. Squaring and summing over u then gives
+the required result.
+Write X = (x0 , x1 , . . . , xn−1 ), Y = (y0 , y1 , . . . , y2n−1 ), and Z = (z0 , z1 , . . . , zn−1 ).
+2
+Now element j mod 4 of the sequence (+, +, −, −) can be written as (−1)(j −j)/2 ,
+for any integer j. By the definition of Y we therefore have
+(15)
+
+yj = (−1)
+
+j 2 −j
+2
+
+xj mod n
+
+for 0 ≤ j < 2n.
+
+Write k := b j+2nρ
+e gives, for
+2n c. Since nρ = bnrc is integer, the definition (5) of Yρ
+0 ≤ j < 2n,
+(
+[Yρe]j =
+
+y(j+2nρ) mod 2n
+−y(j+2nρ) mod 2n
+
+for 0 ≤ j < 2n − 2nρ
+for 2n − 2nρ ≤ j < 2n
+
+= (−1)k y(j+2nρ) mod 2n
+= (−1)k y(j+2nρ−2nk) mod 2n
+= (−1)k+
+
+(j+2nρ−2nk)2 −(j+2nρ−2nk)
+2
+
+x(j+2nρ) mod n
+
+from (15). Since n is odd, this implies that
+[Yρe]j = (−1)
+
+j 2 −j
+2 −nρ
+
+x(j+2nρ) mod n
+
+Advances in Mathematics of Communications
+
+for 0 ≤ j < 2n.
+Volume X, No. X (200X), X–XX
+
+8
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+Therefore, for 0 ≤ u < 2n,
+CYρe (u) = (−1)
+
+u2 −u
+2
+
+2n−u−1
+X
+
+(−1)ju x(j+2nρ) mod n x(j+u+2nρ) mod n
+
+j=0
+
+= (−1)
+
+u2 −u
+2
+
+2n−u−1
+X
+
+(−1)ju [X; X](j+2nρ) mod 2n [X; X](j+u+2nρ) mod 2n
+
+j=0
+
+= (−1)
+
+u2 −u
+2
+
+2n−u−1
+X
+
+(−1)ju wj wj+u ,
+
+j=0
+
+where W = (w0 , w1 , . . . , w2n−1 ) := (X; X)ρ . Take the absolute value, and separate
+both the summation index j and the argument u into even and odd values, giving
+(16)
+
+CYρe (2u) =
+
+n−u−1
+X
+
+w2j w2(j+u) +
+
+n−u−1
+X
+
+j=0
+
+w2j+1 w2(j+u)+1
+
+for 0 ≤ u < n,
+
+j=0
+
+(17)
+CYρe (2u + 1) =
+
+n−u−1
+X
+
+w2j w2(j+u)+1 −
+
+n−u−2
+X
+
+j=0
+
+w2j+1 w2(j+u)+2
+
+for 0 ≤ u < n.
+
+j=0
+
+We next express (16) and (17) in terms of crosscorrelations of periodically rotated
+versions of the sequence Zr . Now, for all integer i, j satisfying 0 ≤ 2j + i < 2n we
+have
+w2j+i = [X; X](2j+i+2nρ) mod 2n
+= x(2j+i+2nρ) mod n
+= x(2j+(n+1)i+2nρ) mod n
+= x2(j+niδ+bnrc) mod n ,
+by definition of δ and ρ. Since nδ = n+1
+2 is integer because n is odd, we therefore
+have, for all integer i, j satisfying 0 ≤ 2j + i < 2n,
+w2j+i = z(j+niδ+bnrc) mod n
+= [Zr+iδ ]j .
+Substitution in (16) and (17) then shows that
+(18)
+
+CYρe (2u) = CZr (u) + CZr+δ (u)
+
+for 0 ≤ u < n,
+
+and
+CYρe (2u + 1) = CZr ,Zr+δ (u) − CZr+δ ,Zr+2δ (u) − [Zr+δ ]n−u−1 [Zr+2δ ]n−1
+(19)
+
+= CZr ,Zr+δ (u) − CZr+δ ,Zr+2δ (u) + O(1)
+
+
+
+for 0 ≤ u < n,
+
+since, by assumption, the elements of X are bounded in magnitude by a constant
+independent of n and so the term [Zr+δ ]n−u−1 [Zr+2δ ]n−1 is O(1) as n −→ ∞.
+We lastly find expressions corresponding to (18) and (19) for negative values of
+the argument. For any sequence A, by definition
+(20)
+
+CA (u) = CA (−u)
+
+Advances in Mathematics of Communications
+
+for 0 < u < n,
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+9
+
+and so (18) implies that
+CYρe (−2u) = CZr (−u) + CZr+δ (−u)
+
+for 0 < u < n.
+
+By combining this with (18), we obtain
+X 
+X 
+2
+2
+(21)
+CYρe (2u) =
+CZr (u) + CZr+δ (u) .
+|u|<n
+
+|u|<n
+
+Furthermore, by applying (20) to (19) we also have, for 0 ≤ u < n,
+CYρe (−2u − 1) = CZr ,Zr+δ (u) − CZr+δ ,Zr+2δ (u) + O(1)
+
+= RZr ,Zr+δ (u) − CZr ,Zr+δ (u − n)
+
+− RZr+δ ,Zr+2δ (u) − CZr+δ ,Zr+2δ (u − n) + O(1)
+by (2), using the convention that CA,B (−n) = 0 for sequences A and B of length n.
+elements (to
+But rotation of each of the sequences Zr and Zr+δ by nδ = n+1
+2
+produce sequences Zr+δ and Zr+2δ ) does not change their periodic crosscorrelation
+function, so RZr ,Zr+δ (u) − RZr+δ ,Zr+2δ (u) is identically zero. Therefore
+CYρe (−2u − 1) = CZr ,Zr+δ (u − n) − CZr+δ ,Zr+2δ (u − n) + O(1)
+
+for 0 ≤ u < n.
+
+By combining this with (19), we obtain
+n−1
+X
+
+X 
+
+2
+2
+CYρe (2u + 1) =
+CZr ,Zr+δ (u) − CZr+δ ,Zr+2δ (u) + O(1) ,
+
+u=−n
+
+|u|<n
+
+which, after addition of (21), gives the required result.
+We now take the sequence X of Lemma 4 to be a Legendre sequence and, using
+Theorem 3, derive the asymptotic merit factor of the resulting sequence Y at all
+negaperiodic rotations.
+Theorem 5. Let X be a Legendre sequence of prime length n > 2, and let r be a
+real number satisfying |r| ≤ 21 . Define Y to be the first 2n elements of the sequence
+X ⊗ (+, +, −, −). Then
+(
+1
++ 8r2
+for |r| ≤ 41
+1
+= 61
+1 2
+lim F (Yre)
+for 14 ≤ |r| ≤ 12 .
+6 + 8(|r| − 2 )
+n−→∞
+
+Proof. Write X = (x0 , x1 , . . . , xn−1 ) and let X 0 be the modified Legendre sequence
+(0, x1 , . . . , xn−1 ). The sequence Y 0 , obtained using X 0 instead of X in the definition
+of Y , differs from Y in exactly two elements. By Proposition 1, it is therefore
+sufficient to show that 1/F (Y 0 re) has the asymptotic behaviour claimed for 1/F (Yre).
+To simplify notation, we continue to work with X and Y but set x0 := 0.
+Write ρ := bnrc/n so that, by the definition (5),
+(
+y(j+b2nrc) mod 2n for 0 ≤ j < 2n − b2nrc
+[Yre]j =
+−y(j+b2nrc) mod 2n for 2n − b2nrc ≤ j < 2n,
+(
+y(j+2bnrc) mod 2n for 0 ≤ j < 2n − 2bnrc
+[Yρe]j =
+−y(j+2bnrc) mod 2n for 2n − 2bnrc ≤ j < 2n.
+For each n, either b2nrc = 2bnrc, in which case the length 2n sequences Yre and Yρe
+are identical, or else b2nrc = 2bnrc + 1, in which case Yre and Yρe share a common
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+10
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+subsequence of length 2n − 1. By Proposition 1, it is therefore sufficient to show
+that 1/F (Yρe) has the asymptotic behaviour claimed for 1/F (Yre).
+Let Z be the 2-decimation of X. For 0 ≤ j < n, this gives
+[Z]j = x2j mod n
+= (2j | n)
+by (7). Then by (6) and the definition of a modified Legendre sequence,
+[Z]j = (2 | n) [X]j
+
+for 0 ≤ j < n,
+
+so that Z = (2 | n) X. Therefore
+CZs ,Zt (u) = CXs ,Xt (u)
+
+for all integer u satisfying |u| < n and all real s, t.
+
+Application of Lemma 4 to the modified Legendre sequence X then gives
+2
+2
+1 X 
+1 X 
+C
+(u)
+=
+CXr (u) + CXr+δ (u)
+Y
+ρ
+e
+n2
+n2
+|u|<2n
+
+|u|<n
+
+
+2 
++ CXr ,Xr+δ (u) − CXr+δ ,Xr+2δ (u) + O(1)
+,
+
+(22)
+where
+(23)
+
+δ = δ(n) :=
+
+n+1
+.
+2n
+
+We complete the proof by using Theorem
+P 3 to evaluate the expansion of the right
+hand side of (22) as n −→ ∞. When n12 |u|<n [CXr ,Xr+δ (u) − CXr+δ ,Xr+2δ (u)]2 is
+expanded into three sums, by Theorem 3 each of the sums is O(1) as n −→ ∞.
+Therefore, by the Cauchy-Schwarz inequality, the additional contribution arising
+from the inclusion of the term O(1) in the second square bracket of (22) is O(n−1/2 ),
+which can be neglected. By applying Theorem 3 and (13) to the six resulting sums in
+the expansion of the right hand side of (22) (noting from (23) that δ(n) = 12 +O(n−1 )
+as n −→ ∞), and then taking the limit, we obtain
+2
+1 X 
+CYρe (u)
+2
+n−→∞ n
+lim
+
+|u|<2n
+
+= ψ(r, 0, 0) + ψ(r + 21 , 0, 0)
++ 2ψ(r, 0, 12 ) + ψ(r, 12 , 0) + ψ(r + 12 , 12 , 0) − 2ψ(r, 12 , 12 )
+(24)
+
+= 23 + 32φ(r + 14 , 14 ) + 16φ(0, 12 )
+
+by the definition (12) of ψ and by (14). By the definition (11) of φ, in the given
+range |r| ≤ 12 we have
+
+(25)
+
+φ(0, 12 ) = 14 ,
+(
+r2
+1 1
+2
+φ(r + 4 , 4 ) =
+|r| − 12
+
+Advances in Mathematics of Communications
+
+for |r| ≤ 14
+for 14 ≤ |r| ≤ 12 .
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+11
+
+Now, since x0 = 0, the definition of Y gives [E(Yρe)]2 = (2n − 2)2 . Substitution of
+(25) into (24), together with the relation (3), then yields
+1
+=
+lim F (Yρe)
+
+n−→∞
+
+(
+
+for |r| ≤ 41
+for 14 ≤ |r| ≤ 21 ,
+
+1
+2
+6 + 8r
+
+1
+1 2
+6 + 8 |r| − 2
+
+as required.
+The maximum asymptotic merit factor obtained under the construction of Theorem 5 is 6, which occurs at r = 0 and at r = 21 . The special cases r = 0 and r = 12
+of Theorem 5 were proved by Xiong and Hall [11] in response to numerical evidence
+presented by Parker [8, Figs. 1,2].
+Corollary 6. Let X = (x0 , x1 , . . . , xn−1 ) be a Legendre sequence of prime length
+n ≡ 1 (mod 4), and define Y to be the first 2n elements of the sequence X ⊗
+(+, +, −, −). Then the sequence Y ; (−) is skew-symmetric of length 2n + 1 and has
+asymptotic merit factor 6.
+Proof. Take r = 0 in Theorem 5, and apply Proposition 1 to show that
+lim F (Y ; (−)) = lim F (Y ) = 6.
+
+n−→∞
+
+n−→∞
+
+It remains to show that Y ; (−) is skew-symmetric. Since n ≡ 1 (mod 4), we know
+that (−1 | n) = 1 (see [10, p. 184], for example), and it follows from (6) and (7) that
+(26)
+
+xn−j = xj
+
+for 0 < j < n.
+
+Now by writing Y ; (−) = (y0 , y1 , . . . , y2n ), from (15) we find that, for 0 < j < n,
+yn+j = (−1)
+
+(n+j)2 −(n+j)
+2
+
+xj
+
+(n−j)2 −(n−j)
+j+
+2
+
+= (−1)
+
+xn−j
+
+by (26). Then using (15) again we obtain
+yn+j = (−1)j yn−j
+
+for 0 < j < n,
+
+and by construction the same equation also holds for j = n since y0 = x0 = 1.
+Therefore the sequence Y ; (−) is skew-symmetric, by the definition (1).
+To our knowledge, Corollary 6, together with Corollary 9 to be proved in Section 5,
+are the first known asymptotic results on the merit factor of a family of skewsymmetric sequences.
+In the case n ≡ 3 (mod 4), the sequence constructed in Corollary 6 does not
+satisfy the skew-symmetry condition (1). However, in that case we can instead form
+the length 2n + 1 sequence Y ; (+) and then set the central element of this sequence
+to be 0. The resulting ternary sequence (a0 , a1 , . . . , a2n ) also has asymptotic merit
+factor 6, and satisfies the following modification of the skew-symmetry condition:
+an+j = (−1)j+1 an−j
+Advances in Mathematics of Communications
+
+for 0 < j ≤ n.
+Volume X, No. X (200X), X–XX
+
+12
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+5. The Periodic Construction
+In this section we present the second of our two constructions, involving a periodic
+rotation Yr of a sequence Y of length 4n derived from a sequence X of odd length n.
+Lemma 7 analyses this construction for the case r = ρ, where nρ is integer (which
+forces the number b4nrc of rotated elements in Yr to be a multiple of 4). We then
+show in Theorem 8 that, in the case that X is a Legendre sequence, Lemma 7 can
+be used to determine the asymptotic merit factor of Yr for all real r.
+Lemma 7. Let X be a sequence of odd length n, each of whose elements is bounded
+in magnitude by a constant independent of n, and let Z be the 4-decimation of X.
+Let r be a real number, and write ρ := bnrc/n and
+( 3n+1
+for n ≡ 1 (mod 4)
+4n
+δ :=
+n+1
+for n ≡ 3 (mod 4).
+4n
+Let Y be the length 4n sequence X ⊗ (+, +, +, −). Then, as n −→ ∞,
+3
+X 
+X
+2 X
+CYρ (u) =
+|u|<4n
+
+k=0 |u|<n
+
+3
+X
+
+(−1)
+
+ik(i+k+2)
+2
+
+!2
+CZr+iδ ,Zr+(i+k)δ (u) + O(1)
+
+.
+
+i=0
+
+Proof. This proof is closely modelled on that of Lemma 4, and so is presented in
+less detail.
+Write X = (x0 , x1 , . . . , xn−1 ) and Y = (y0 , y1 , . . . , y4n−1 ). By definition of Y we
+can write
+(27)
+
+yj = (−1)
+
+j 3 −j 2
+2
+
+xj mod n
+
+for 0 ≤ j < 4n.
+
+Since nρ = bnrc, the definition (4) of Yρ then gives
+[Yρ ]j = (−1)
+
+j 3 −j 2
+2
+
+x(j+4nρ) mod n
+
+for 0 ≤ j < 4n.
+
+Therefore, for 0 ≤ u < 4n,
+CYρ (u) = (−1)
+
+u3 −u2
+2
+
+4n−u−1
+X
+
+(−1)
+
+ju(j+u+2)
+2
+
+x(j+4nρ) mod n x(j+u+4nρ) mod n
+
+j=0
+
+= (−1)
+
+u3 −u2
+2
+
+4n−u−1
+X
+
+(−1)
+
+ju(j+u+2)
+2
+
+wj wj+u ,
+
+j=0
+
+where W = (w0 , w1 , . . . , w4n−1 ) := (X; X; X; X)ρ . Take the absolute value, and
+separate the summation index j according to its value mod 4 to obtain
+|CYρ (u)| =
+
+3
+X
+
+(−1)
+
+iu(i+u+2)
+2
+
+b 4n−u−i−1
+c
+4
+
+i=0
+
+X
+
+w4j+i w4j+i+u
+
+for 0 ≤ u < 4n.
+
+j=0
+
+Since nδ is integer by definition of δ, a similar argument to that used in the proof
+of Lemma 4 shows that
+w4j+i = [Zr+iδ ]j
+
+for all integer i, j satisfying 0 ≤ 4j + i < 4n.
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+13
+
+Therefore, for 0 ≤ u < n and 0 ≤ k ≤ 3,
+|CYρ (4u + k)| =
+
+3
+X
+
+(−1)
+
+ik(i+k+2)
+2
+
+b 4n−4u−k−i−1
+c
+4
+
+X
+
+i=0
+
+(28)
+
+=
+
+3
+X
+
+[Zr+iδ ]j [Zr+(i+k)δ ]j+u
+
+j=0
+
+(−1)
+
+ik(i+k+2)
+2
+
+CZr+iδ ,Zr+(i+k)δ (u) + O(1) .
+
+i=0
+
+We deal with negative values of the argument of the left hand side of (28) as in
+the proof of Lemma 4, using (20). For 0 < u < n and k = 0 this gives
+|CYρ (−4u)| =
+
+(29)
+
+3
+X
+
+CZr+iδ (−u) + O(1) ,
+
+i=0
+
+while for 0 ≤ u < n and k ∈ {1, 2, 3} we have
+|CYρ (−4u − k)|
+=
+
+3
+X
+
+(−1)
+
+ik(i+k+2)
+2
+
+
+RZr+iδ ,Zr+(i+k)δ (u) − CZr+iδ ,Zr+(i+k)δ (u − n) + O(1)
+
+i=0
+
+(30)
+
+=
+
+3
+X
+
+(−1)
+
+ik(i+k+2)
+2
+
+CZr+iδ ,Zr+(i+k)δ (u − n) + O(1) ,
+
+i=0
+
+where the terms involving the periodic crosscorrelation R cancel since, for each
+ik(i+k+2)
+2
+takes the value +1 twice and the value −1 twice as i
+k ∈ {1, 2, 3}, (−1)
+ranges over 0 ≤ i ≤ 3. By combining (29) and (30) with (28) we obtain the required
+result.
+We now take the sequence X of Lemma 7 to be a Legendre sequence and, using
+Theorem 3, derive the asymptotic merit factor of the resulting sequence Y at all
+periodic rotations.
+Theorem 8. Let X be a Legendre sequence of prime length n > 2, and let r be a
+real number satisfying |r| ≤ 21 . Let Y be the length 4n sequence X ⊗ (+, +, +, −).
+Then
+(
+1
++ 8r2
+for |r| ≤ 41
+1
+= 61
+1 2
+lim F (Yr )
+for 14 ≤ |r| ≤ 12 .
+6 + 8(|r| − 2 )
+n−→∞
+
+Proof. Write X = (x0 , x1 , . . . , xn−1 ) and ρ := bnrc/n. By Proposition 1, we can
+take x0 = 0. Furthermore, the length 4n sequences Yr and Yρ share a common
+subsequence of length at least 4n − 3, and so by Proposition 1 it is sufficient to
+show that 1/F (Yρ ) has the asymptotic behaviour claimed for 1/F (Yr ). Following
+the method of proof of Theorem 5, the 4-decimation Z of X is given by Z = (4 | n) X,
+so by (6) we have Z = (2 | n)2 X = X. Application of Lemma 7 then gives
+!2
+3
+3
+2
+ik(i+k+2)
+1 X 
+1 X X X
+2
+CYρ (u) = 2
+(−1)
+CXr+iδ ,Xr+(i+k)δ (u) + O(1) ,
+n2
+n
+i=0
+|u|<4n
+
+k=0 |u|<n
+
+where
+( 3n+1
+(31)
+
+δ = δ(n) :=
+
+4n
+
+for n ≡ 1
+
+(mod 4)
+
+n+1
+4n
+
+for n ≡ 3
+
+(mod 4).
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+14
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+As n −→ ∞ we can neglect the O(1) term, as in the proof of Theorem 5, so that
+2
+1 X 
+lim 2
+CYρ (u)
+n−→∞ n
+|u|<4n
+
+3 X
+3 X
+3
+X
+
+= lim
+
+n−→∞
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+k=0 i=0 j=0
+
+·
+
+1 X
+CXr+iδ ,Xr+(i+k)δ (u)CXr+jδ ,Xr+(j+k)δ (u)
+n2
+|u|<n
+
+X
+
+=
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+ψ(r + i∆, k∆, (j − i)∆)
+
+0≤i,j,k≤3
+
+by Theorem 3 and (13), where from (31) we have δ(n) = ∆ + O(n−1 ) as n −→ ∞
+and
+(3
+for n ≡ 1 (mod 4)
+4
+(32)
+∆ :=
+1
+for n ≡ 3 (mod 4).
+4
+By the definition (12) of ψ we then obtain
+2
+1 X 
+CYρ (u)
+lim 2
+n−→∞ n
+|u|<4n
+
+X
+
+=
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+
+
+1
+6 + 8φ
+
+
+
++ 2φ
+
+k∆, 12
+
+r + i+j+k
+∆, 14
+2
+
+
+
+0≤i,j,k≤3
+
+=
+
+3
+X
+`=0
+
+(33)
+
++2
+
+X
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+
+
++ 2φ
+
+1
+6 + 8φ
+
+(j − i)∆, 21
+
+r + 8` , 14
+
+
+
+
+
+
+
+0≤i,j,k≤3
+i+j+k≡` (mod 4)
+
+X
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+
+
+φ k∆, 12 + φ (j − i)∆, 12
+
+0≤i,j,k≤3
+
+by (14), for both possible values of ∆ given in (32). By direct calculation we find
+that
+(
+X
+ik(i+k+2)+jk(j+k+2)
+16 for ` = 2
+2
+(−1)
+=
+0
+for ` ∈ {0, 1, 3},
+0≤i,j,k≤3
+i+j+k≡`
+
+and that
+X
+
+(−1)
+
+(mod 4)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+φ k∆, 21
+
+
+
+0≤i,j,k≤3
+
+=
+
+X
+
+(−1)
+
+ik(i+k+2)+jk(j+k+2)
+2
+
+
+φ (j − i)∆, 21 = 4
+
+0≤i,j,k≤3
+
+for both possible values of ∆. Substitution in (33) then gives
+2
+
+1 X 
+lim 2
+CYρ (u) = 16 67 + 8φ r + 14 , 14 ,
+n−→∞ n
+|u|<4n
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+15
+
+and then, since [E(Yρ )]2 = (4n − 4)2 , by (3) and (25) we conclude that
+1
+=
+lim F (Yρ )
+
+n−→∞
+
+(
+
+1
+2
+6 + 8r
+
+1 2
+1
+6 + 8 |r| − 2
+
+for |r| ≤ 41
+for 14 ≤ |r| ≤ 12 ,
+
+as required.
+The maximum asymptotic merit factor obtained under the construction of Theorem 8 is 6, which occurs at r = 0 and at r = 21 . Theorem 8 explains the
+numerical results obtained by Yu and Gong [12, Fig. 1], based on the sequence
+Y = X ⊗ (+, +, +, −), for all values of r. It can readily be modified to explain also
+their numerical results based on the related sequence X ⊗ (−, +, +, +).
+Corollary 9. Let X = (x0 , x1 , . . . , xn−1 ) be a Legendre sequence of prime length
+n ≡ 1 (mod 4), and let Y be the length 4n sequence X ⊗ (+, +, +, −). Then the
+sequence Y ; (+) is skew-symmetric of length 4n + 1 and has asymptotic merit factor 6.
+Proof. The proof is similar to that of Corollary 6. Take r = 0 in Theorem 8, and
+apply Proposition 1 to show that
+lim F (Y ; (+)) = 6.
+
+n−→∞
+
+To show that Y ; (+) is skew-symmetric, write Y ; (+) = (y0 , y1 , . . . , y4n ) and note
+that (26) holds since n ≡ 1 (mod 4). Then from (27) we have, for 0 < j < 2n,
+y2n+j = (−1)
+
+(2n+j)3 −(2n+j)2
+2
+
+xj mod n
+
+(2n−j)3 −(2n−j)2
+j+
+2
+
+= (−1)
+
+x(2n−j) mod n
+
+j
+
+= (−1) y2n−j ,
+and by construction the same equation also holds for j = 2n since y0 = x0 = 1.
+6. Conclusion
+Theorems 5 and 8 establish the asymptotic merit factor of a negaperiodic construction described in [8] and a periodic construction described in [12], based in
+both cases on Legendre sequences. Corollaries 6 and 9 provide families of skewsymmetric sequences having asymptotic merit factor 6, equal to the current best
+proven result for lim supn→∞ Fn .
+However there is considerable numerical evidence, though currently no proof, that
+an asymptotic merit factor greater than 6.34 can be achieved for a family of binary
+sequences constructed via periodic appending of a Legendre sequence [2]. Numerical
+results displayed by Yu and Gong [12, Fig. 3] for the periodic construction, and
+reported by Parker [9, p. 12] for the negaperiodic construction, indicate that both
+constructions also attain a merit factor greater than 6.34 under suitable appending.
+A possible direction for future research is to attempt to prove that the asymptotic
+merit factor of these appended sequences is equal to the (as yet undetermined)
+asymptotic merit factor of the periodically appended Legendre sequences described
+in [2].
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+16
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+Appendix: Proof of Theorem 3
+This appendix contains a proof of Theorem 3. Our starting point is the method of
+Høholdt and Jensen [4], which calculates the reciprocal merit factor of an arbitrary
+sequence of odd length n as the sum of expressions involving complex nth roots
+of unity. We generalise this method in Lemma 10 in order to calculate the sum
+of products of crosscorrelations of periodic rotations of an arbitrary odd-length
+sequence. We then prove Theorem 3 by applying Lemma 10 to the specific case of
+a modified Legendre sequence.
+Write
+√
+j := e2πij/n for integer j, where i := −1.
+Given a sequence A = (a0 , a1 , . . . , an−1 ) of length n, we define the z-transform of A
+to be the function QA : C → C given by
+QA (z) :=
+
+n−1
+X
+
+ak z k ,
+
+k=0
+
+and define
+(34)
+
+ΛA (j, k, `) :=
+
+n−1
+X
+
+QA (a )QA (a+j )QA (a+k )QA (a+` )
+
+for integer j, k, `.
+
+a=0
+
+Lemma 10. Let X be a sequence of odd length n. Let S and T be integers, and
+write s := S/n and t := T /n. Then
+2n2 + 1
+1 X
+C
+(u)
+C
+(u)
+=
+ΛX (0, 0, 0) + B + C + D,
+X,X
+X
+,X
+s
+t
+s+t
+n2
+3n5
+
+(35)
+
+|u|<n
+
+where
+B=
+
+n−1
+i 1+
+
+
+1 Xh T
+k
+−(S+T −1)
+S
+
++
+
+Λ
+(0,
+0,
+k)
++
+
++
+
+Λ
+(0,
+0,
+k)
+·
+,
+X
+k
+X
+k
+k
+k
+n5
+(1 − k )2
+k=1
+
+C=−
+
+
+
+2 X h −(S+T )
+k
++ 1 T` + S` ΛX (0, k, `)
+n5 1≤k,`<n
+k6=`
+
+D=
+
+−(S+T )
+
++ S−1
+T` ΛX (k, 0, `) +k
+k
+
+i
+` ΛX (k, 0, `) ·
+
+k
+,
+(1 − k )(1 − ` )
+
+n−1
+
+
+4 X S
+1
+−1
+k + Tk ΛX (0, k, k) + S+T
+ΛX (k, 0, k) ·
+.
+k
+5
+n
+|1 − k |2
+k=1
+
+Proof. Let U , V , W , Y , Z be any sequences of length n. Straightforward manipulation shows that
+X
+QU (z)QV (z −1 ) =
+CU,V (u)z −u for all z 6= 0.
+|u|<n
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+17
+
+Since QU (−1
+j ) = QU (j ), we then have
+n−1
+n−1
+1 X
+1 X
+(
+)
+Q
+(
+)Q
+(
+)
++
+Q
+(
+)Q
+QU (−j )QV (−j ) QW (−j )QZ (−j )
+V j
+W j
+Z j
+U j
+2n3 j=0
+2n3 j=0
+n−1
+
+1 X X X 
+−(u+v)
+−(u+v)
+CU,V (u)CW,Z (v)j
+1
++
+(−1)
+2n3 j=0
+|u|<n |v|<n
+
+
+X
+X
+1
+= 2
+1 + (−1)−(u+v) CU,V (u)CW,Z (v)
+2n
+
+=
+
+|u|<n u+v∈{0,n,−n}
+
+1 X
+= 2
+CU,V (u)CZ,W (u),
+n
+
+(36)
+
+|u|<n
+
+because n is odd and by definition CW,Z (−u) = CZ,W (u).
+Let j be an integer and let r be real. By definition of Yr ,
+−bnrc
+
+(37)
+
+QYr (j ) = j
+
+QY (j )
+
+and then, by the interpolation formula
+n−1
+
+QY (−j ) =
+
+2X
+k
+QY (k )
+n
+k + j
+k=0
+
+(see [4, p. 162], for example), we have
+n−1
+
+(38)
+
+QYr (−j ) =
+
+k
+2 X −bnrc
+k
+QY (k )
+,
+n
+k + j
+k=0
+
+and therefore
+n−1
+
+(39)
+
+QYr (−j ) =
+
+2 X bnrc
+j
+k QY (k )
+.
+n
+k + j
+k=0
+
+Take U = X, V = Xs , W = Xs+t , and Z = Xt in (36) and substitute from (37),
+(38) and (39) to obtain
+1 X
+CX,Xs (u)CXt ,Xs+t (u)
+n2
+|u|<n
+
+=
+
+=
+
+(40)
+
+ 4 n−1
+n−1
+X
+1 X
+1
+2
+4
+|Q
+(
+)|
++
+X j
+3
+3
+2n j=0
+2n n
+j=0
+
+X
+
+) T
+Sb −(S+T
+d
+c
+
+0≤a, b, c, d<n
+
+· QX (a )QX (b )QX (c )QX (d ) ·
+
+a
+j
+c
+j
+a + j b + j c + j d + j
+
+1
+8
+ΛX (0, 0, 0) + 7
+2n3
+n
+
+) T
+Sb −(S+T
+d a c
+c
+
+X
+0≤a, b, c, d<n
+
+· QX (a )QX (b )QX (c )QX (d ) ·
+
+Advances in Mathematics of Communications
+
+n−1
+X
+
+2j
+,
+(a + j )(b + j )(c + j )(d + j )
+j=0
+Volume X, No. X (200X), X–XX
+
+18
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+by definition (34) of ΛX . Høholdt and Jensen [4] calculated the value of the sum
+over j in (40) according to which of a, b, c, d (in the range 0 ≤ a, b, c, d < n) are
+equal and which are distinct, distinguishing five cases:
+n−1
+X
+
+2j
+(a + j )(b + j )(c + j )(d + j )
+j=0
+
+
+0
+
+
+
+
+
+n2 (n2 + 2) 1
+
+
+
+· 2
+
+
+48
+a
+
+
+
+2
+
+n
+a + d
+·
+2
+=
+8
+
+(
+a a − d )
+
+
+
+
+n2
+1
+
+
+−
+·
+
+
+4
+(
+−
+
+)(
+
+a
+c
+a − d )
+
+
+
+2
+
+1
+n
+
+
+·
+−
+2 (a − c )2
+
+for a, b, c, d distinct
+for a = b = c = d
+for a = b = c 6= d
+for a = b, and a, c, d distinct
+for a = b 6= c = d.
+
+We therefore partition the sum over a, b, c, d in (40) into sums of the same four
+types as those giving a non-zero result above, written in the same order, noting that
+each type requires multiple contributions because of the asymmetry with respect to
+a, b, c, d of the  terms. This gives
+1 X
+1
+(41)
+CX,Xs (u)CXt ,Xs+t (u) = 3 ΛX (0, 0, 0) + A + B + C + D,
+n2
+2n
+|u|<n
+
+where, after abbreviating QX to Q, the sums A, B, C, D are given by
+n−1
+
+A=
+
+B=
+
+n2 + 2 X
+|Q(a )|4 ,
+6n5 a=0
+
+2
+1 X h T
+b−a + Sb−a Q(a ) Q(a ) Q(b )
+5
+n 0≤a,b<n
+i  ( +  )
+
+2
+a a
+b
+−(S+T −1)
+a6=b
++ b−a
++ b−a Q(a ) Q(a )Q(b ) ·
+,
+(a − b )2
+
+C=−
+
+D=−
+
+X h −(S+T )
+
+2
+−(S+T ) S
+b−a
+Tc−a + b−a
+c−a + Tc−a + Sc−a |Q(a )|2 Q(b )Q(c )
+5
+n 0≤a,b,c<n
+2
+a,b,c distinct
+T
++ S−1
+Q(b ) Q(c )
+b−a c−a Q(a )
+i
+2
+a b
+−(S+T )
++ b−a
+c−a Q(a ) Q(b )Q(c ) ·
+,
+(a − b )(a − c )
+
+4 X h S
+b−a + Tb−a |Q(a )|2 |Q(b )|2
+n5 0≤a,b<n
+2
+2 i
+−1
+a6=b
++ S+T
+Q(a ) Q(b )
+·
+b−a
+
+a b
+.
+(a − b )2
+
+By the definition (34),
+n2 + 2
+ΛX (0, 0, 0),
+6n5
+and substitution in (41) gives the required term in ΛX (0, 0, 0). We complete the
+proof by showing that the remaining sums B, C, D in (41) have the required form.
+A=
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+19
+
+For the sum B, replace the sum over b (where 0 ≤ b < n and b 6= a) by a sum over
+k := (b − a) mod n (where 1 ≤ k < n) to give
+n−1 n−1 
+
+2
+1 XX
+B= 5
+Tk + Sk Q(a ) Q(a ) Q(a+k )
+n a=0
+
+
+
+k=1
+2
+(1 + k )
+−(S+T −1)
+,
++ k
++ k Q(a ) Q(a ) Q(a+k ) ·
+(1 − k )2
+and then use (34). For the sum D, use the same procedure together with the identity
+(a − b )2 = −a b |1 − b−a |2 .
+For the sum C, replace the sum over b and c by a sum over k := (b − a) mod n and
+` := (c − a) mod n to give
+C=−
+
+n−1
+
+
+2 X X h −(S+T )
+
++
+1
+T` + S` |Q(a )|2 Q(a+k )Q(a+` )
+k
+5
+n a=0 1≤k,`<n
+2
+k6=`
++ S−1
+T` Q(a ) Q(a+k ) Q(a+` )
+k
+
+2
+k
+−(S+T )
++k
+` Q(a ) Q(a+k ) Q(a+` ) ·
+,
+(1 − k )(1 − ` )
+
+and then use (34).
+The method of Høholdt and Jensen [4] deals with the special case S = T = 0 of
+Lemma 10.
+Proof of Theorem 3. We apply Lemma 10 to the sequence Xr(n) , setting S := ns(n)
+and T := nt(n). Since S and T are integer for each n by assumption, the sequences Xs , Xt and Xs+t appearing in (35) map to Xr(n)+s(n) , Xr(n)+t(n) , and
+Xr(n)+s(n)+t(n) , respectively, so that the left hand side of (35) becomes
+1 X
+CXr(n) , Xr(n)+s(n) (u) CXr(n)+t(n) , Xr(n)+s(n)+t(n) (u).
+n2
+|u|<n
+
+We will prove the desired result by finding the asymptotic form of the right hand
+side of (35) as n −→ ∞, evaluating the sum D and the term involving ΛXr(n) (0, 0, 0),
+and bounding the sums B and C.
+Write R := bnr(n)c and X = (x0 , x1 , . . . , xn−1 ). Since the modified Legendre
+sequence X satisfies
+( √
+xj n for n ≡ 1 (mod 4)
+QX (j ) =
+√
+ixj n for n ≡ 3 (mod 4)
+√
+(see [10, p. 182], for example), where i := −1, the definition (34) together with
+(37) gives
+(42)
+
+2
+ΛXr(n) (j, k, `) = R
+j−k+` · n
+
+n−1
+X
+
+xa xa+j xa+k xa+` .
+
+a=0
+
+The term involving ΛXr(n) (0, 0, 0). Since X is a modified Legendre sequence,
+we have
+(
+0 for j = 0
+2
+(43)
+xj =
+1 for 0 < j < n.
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+20
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+Therefore (42) gives
+2n2 + 1
+2n2 + 1 2
+ΛXr(n) (0, 0, 0) =
+n (n − 1)
+5
+3n
+3n5
+2
+(44)
+= + O(n−1 ) as n −→ ∞.
+3
+The sums B and C. We have
+|B| ≤
+
+n−1
+1 X 8 |ΛXr(n) (0, 0, k)|
+n5
+|1 − k |2
+k=1
+
+=
+
+8
+n5
+
+n−1
+X
+k=1
+
+n2 |RX (k)|
+|1 − k |2
+
+by (42), (43) and the definition of RX in Section 2. Then by (8),
+n−1
+
+|B| ≤
+
+(45)
+
+8 X
+1
+.
+n3
+|1 − k |2
+k=1
+
+Since |ΛXr(n) (0, k, `)| = |ΛXr(n) (k, 0, `)| by (42), we also have
+|C| ≤
+
+2 X 6 |ΛXr(n) (0, k, `)|
+n5 1≤k,`<n |1 − k | · |1 − ` |
+k6=`
+
+=
+
+12
+n2 |RX ((k − `) mod n) − xk x` |
+5
+n 1≤k,`<n
+|1 − k | · |1 − ` |
+X
+k6=`
+
+by (42) and (43). Then using (8) and the inequality |xk x` | ≤ 1,
+|C| ≤
+
+24 X
+1
+n3 1≤k,`<n |1 − k | · |1 − ` |
+k6=`
+
+Combining with (45), we obtain
+24
+3|B| + |C| ≤ 3
+n
+(46)
+
+= O(n
+
+n−1
+X
+k=1
+−1
+
+1
+|1 − k |
+
+(log n)2 )
+
+!2
+
+as n −→ ∞,
+
+Pn−1
+
+1
+since k=1 |1−
+≤ n log n (see [4, p. 162], for example).
+k|
+The sum D. By (42), for 1 ≤ k < n we have ΛXr(n) (0, k, k) = n2 (n − 2) and
+2
+ΛXr(n) (k, 0, k) = 2R
+k · n (n − 2), so that
+n−1
+
+D=
+
+−1
+4(n − 2) X Sk + Tk + 2R+S+T
+k
+.
+n3
+|1 − k |2
+k=1
+
+We wish to apply the identity
+
+2
+n−1
+X
+jk
+n2 |j| 1
+n2 + 2
+(47)
+=
+−
+−
+|1 − k |2
+2
+n
+2
+24
+
+for integer j satisfying |j| ≤ n
+
+k=1
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+Binary sequences with large merit factor
+
+21
+
+(see, [7, p. 621], for example). By the definition of R, S, and T and the
+assumptions r(n) = r + O(n−1 ), s(n) = s + O(n−1 ), and t(n) = t + O(n−1 ),
+as n −→ ∞ we have
+(48)
+
+R = nr + O(1), S = ns + O(1), and T = nt + O(1).
+
+Then, since |s| ≤ 12 and |t| ≤ 12 by assumption, we know that |S| ≤ n and
+|T | ≤ n for all sufficiently large n.
+Case 1: |2R + S + T − 1| ≤ n for all but finitely many n. In this case, we
+apply (47) to show that, for all sufficiently large n,
+"
+2 
+2
+|T | 1
+4(n − 2) n2
+|S| 1
++
+(49)
+D=
+−
+−
+n3
+2
+n
+2
+n
+2
+!
+
+2 #
+|2R + S + T − 1| 1
+n2 + 2
++
+−
+−
+.
+n
+2
+8
+
+(50)
+
+By (48), as n −→ ∞ we find that
+2
+2
+
+1 2
+D = 2 |s| − 12 + 2 |t| − 12 + 8 |r + s+t
+− 12 + O(n−1 ).
+2 |− 4
+Case 2: |2R + S + T − 1| > n for infinitely many n. In this case (48),
+1
+together with the assumption |r + s+t
+2 | ≤ 2 , implies that
+
+(51)
+
+|2r + s + t| = 1.
+
+For each sufficiently large n, either |2R+S +T −1| ≤ n, so that (49) holds;
+or else n < |2R + S + T − 1| ≤ 2n, in which case (by applying (47) with
+j = 2R+S +T ±n−1, choosing the appropriate sign for ± so that |j| ≤ n)
+2
+equation (49) again holds but with the term n1 |2R + S + T − 1| − 21
+
+2
+replaced by n1 |2R + S + T − 1| − 32 . By (48) and (51), the contribution of this term as n −→ ∞ is (1− 32 )2 = (1− 21 )2 , so the same conclusion
+(50) applies as in Case 1.
+The result now follows by substituting the asymptotic forms (44), (46) and (50)
+in (35).
+
+References
+[1] P. Borwein and K.-K.S. Choi, Explicit merit factor formulae for Fekete and Turyn polynomials, Trans. Amer. Math. Soc., 354 (2002), 219–234.
+[2] P. Borwein, K.-K.S. Choi, and J. Jedwab, Binary sequences with merit factor greater than
+6.34, IEEE Trans. Inform. Theory, 50 (2004), 3234–3249.
+[3] M.J.E. Golay, The merit factor of long low autocorrelation binary sequences, IEEE Trans.
+Inform. Theory, IT-28 (1982), 543–549.
+[4] T. Høholdt and H.E. Jensen, Determination of the merit factor of Legendre sequences, IEEE
+Trans. Inform. Theory, 34 (1988), 161–164.
+[5] J. Jedwab, A survey of the merit factor problem for binary sequences, in “Sequences and
+Their Applications — Proceedings of SETA 2004” (eds. T. Helleseth et al.), Springer-Verlag,
+Berlin Heidelberg, Lecture Notes in Computer Science, 3486 (2005), 30–55.
+[6] J. Jedwab, What can be used instead of a Barker sequence?, Contemporary Math., 461
+(2008), 153–178.
+[7] J.M. Jensen, H.E. Jensen, and T. Høholdt, The merit factor of binary sequences related to
+difference sets, IEEE Trans. Inform. Theory, 37 (1991), 617–626.
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+22
+
+Kai-Uwe Schmidt, Jonathan Jedwab and Matthew G. Parker
+
+[8] M.G. Parker, Even length binary sequence families with low negaperiodic autocorrelation,
+in “Applied Algebra, Algebraic Algorithms and Error-Correcting Codes, AAECC-14 Proceedings” (eds. S. Boztaş and I.E. Shparlinski), Springer-Verlag, Lecture Notes in Computer
+Science, 2227 (2001), 200–210.
+[9] M.G. Parker, Univariate and multivariate merit factors, in “Sequences and Their Applications
+— Proceedings of SETA 2004” (eds. T. Helleseth et al.), Springer-Verlag, Berlin Heidelberg,
+Lecture Notes in Computer Science, 3486 (2005), 72–100.
+[10] M.R. Schroeder, “Number Theory in Science and Communication: with Applications in Cryptography, Physics, Digital Information, Computing, and Self-Similarity,” Springer, Berlin, 3rd
+edition, 1997.
+[11] T. Xiong and J.I. Hall, Construction of even length binary sequences with asymptotic merit
+factor 6, IEEE Trans. Inform. Theory, 54 (2008), 931–935.
+[12] N.Y. Yu and G. Gong, The perfect binary sequence of period 4 for low periodic and aperiodic
+autocorrelations, in “Sequences, Subsequences, and Consequences” (eds. S.W. Golomb et al.),
+Springer-Verlag, Berlin, Lecture Notes in Computer Science, 4893 (2007), 37–49.
+
+Received November 2008; revised March 2009.
+E-mail address: kuschmidt@sfu.ca
+E-mail address: jed@sfu.ca
+E-mail address: matthew.parker@ii.uib.no
+
+Advances in Mathematics of Communications
+
+Volume X, No. X (200X), X–XX
+
+

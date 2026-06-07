@@ -1,0 +1,53 @@
+%!TEX root = main.tex
+
+Motivated by an old problem in additive combinatorics about estimating the size of Sidon sets \cite{CRV}, many authors have studied the problem of finding the best constant $c_{\max}$ such that for any function $f\in L^{1}(\R)$ supported in $[-1/4,1/4]$ the following inequality holds
+$$
+\text{max}_{-1/2 \le t \le 1/2} \int_{\R} f(t-x)f(x) \, dx \ge c_{\max} \left(\int_{-1/4}^{1/4} f(x) \, dx\right)^2.
+$$
+The best known result so far was obtained by Cloninger and Steinerberger in \cite{CS}, they proved that $c \ge 1,28.$ Many other lower bounds were previously obtained in \cite{CRT,G,MOB1,Y,MOB2,MV}.
+Inspired by this question, two other related problems were proposed and studied by Barnard and Steinerberger in \cite{BarnardSteinerberger}. One of their results was the following: The inequality
+\begin{equation}\label{eq:l1l2}
+\int_{-1/2}^{1/2}\int_{\R}f(x)f(x+t) dx dt\leq 0.91\|f\|_1\|f\|_2,
+\end{equation}
+holds for any function $f \in L^1(\R) \cap L^2(\R)$. It was also established in \cite{BarnardSteinerberger} via an example, that the best constant such that \eqref{eq:l1l2} holds is at least 0.8.
+The upper bound was recently improved by the second author
+and Ramos in \cite{MR}, where they proved that this inequality still hold true when we write 0.865 instead of 0.91. A natural question is, what happen when we consider a different probability space, in particular, what happen when we consider Gaussian means. This question was also addressed in \cite{MR}:
+\begin{proposition}[\cite{MR}, Theorem 1.2]\label{Thm JJ}
+Let $a$ be a positive real number. For any $f\in L^{1}(\R)\cap L^{2}(\R)$. The following inequality holds
+\begin{align}\label{MR thm 1}
+\left(\frac{a}{\pi}\right)^{1/2}\int_{\R}\int_{\R}f(x)f(x+t)e^{-a t^{2}}dxdt\leq \left(\frac{8a}{27\pi}\right)^{1/4}\|f\|_1\|f\|_2,
+\end{align}
+and $\left(\frac{8a}{27\pi}\right)^{1/4}$ can not be replaced by $\left(\frac{a}{4\pi}\right)^{1/4}$. 
+\end{proposition}
+%In particular, if $a=2\pi$ the upper bound is 0.8773 and the lower bound 0.8408.$.
+
+	%{\it{Structure of the paper:}} 
+	In this paper, using Euler-Lagrange equations, in Section 2 we establish the existence of extremizers for \eqref{eq:l1l2}, \eqref{MR thm 1} and a more general class of weights (nonnegative functions $w:\mathbb{R}\to[0,+\infty)$). In Section 3, via a discretization argument, we find an almost optimal numerical approximation for the best constants allowed in these inequalities, see Table 1. Finally, in Section 4, we discuss a related problem about autoconvolution.\\ %Finally, in the appendix, we explain how some extra regularity assumptions on the weight (for instance when dealing with Gaussian functions) allow us to obtain even better approximations (as expected).\\
+	
+	Related results about autoconvolution inequalities were recently obtained in \cite{CJLL}. We hope variations of the methods outlined in this paper can be applied to such, and other, related problems. As another example,  a classical problem proposed by Erdos, the Minimum overlaping problem, can be reformulated in terms of autorrelations as observed by Haugland in \cite{Ha}, we believe that there is a strong relation between this problem and the one analyzed in this manuscript.
+
+\newcommand{\gr}[1]{{\color{red}#1}}
+\begin{table}
+\renewcommand{\arraystretch}{1.5}
+	\begin{tabular}{ccccc}
+		\textbf{Weight} & \multicolumn{3}{c}{\textbf{Spectral Method}} & \textbf{Fixed Point}  \\
+			 					& {\small Lower bound} & {\small Upper bound}  & {\small Difference} 	 	& {\small Lower bound} 
+
+		\\
+		\hline
+
+		$\chi_{[-1/2,1/2]}$ & $0.80558\gr{09}$ & $0.80558\gr{96}$ & $<9\cdot 10^{-6}$ & $0.80558\gr{09}$\\
+		$\exp(-\pi x^2)$    & $0.7152\gr{474}$ & $0.7152\gr{576}$ & $<1.2\cdot 10^{-5}$ & $0.7152\gr{475}$
+	\end{tabular}
+
+	\caption{Upper and Lower bounds for the average problem. These bounds have been found with the algorithm described in Section 3.3, with a value of $\delta \approx 1.45\cdot 10^{-3}$ and $\Delta \lambda \approx 0.001$. The implementation can be found at \cite{Github}.}
+	\label{table}
+\end{table}
+	
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{extremizers.png}
+    \caption{Numerical extremizers for the discretized problem. Extremizers are normalized so that $\|f^*\|_1\|f^*\|_2 = 1$. }
+    \label{fig:my_label}
+\end{figure}

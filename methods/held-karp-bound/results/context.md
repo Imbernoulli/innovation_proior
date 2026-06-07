@@ -1,128 +1,128 @@
-# Context: lower bounds for branch-and-bound on the symmetric TSP (circa 1970)
+# Context
 
 ## Research question
 
-We want to solve the symmetric travelling-salesman problem to proven optimality: given `n`
-cities and a symmetric cost matrix `c(i,j)`, find a minimum-cost Hamiltonian cycle (a "tour")
-that visits every city exactly once and returns to the start. The only exact tool that scales
-past tiny instances is branch-and-bound: recursively split the set of tours (by forcing an
-edge in or out), and at each node of the search tree compute a **lower bound** on the cost of
-the best tour consistent with the decisions made so far. If that lower bound already exceeds
-the cost of some tour we have in hand, the whole subtree is pruned without ever being
-explored.
-
-The entire efficiency of such a search rests on one quantity: how tight the lower bound is. A
-bound that sits far below the true optimum prunes almost nothing, the tree explodes, and the
-method is useless beyond a handful of cities. A bound that hugs the optimum prunes
-aggressively and keeps the tree small. So the precise problem is: **find a lower bound on the
-optimal tour cost that is (a) cheap enough to recompute at every node of a large search tree,
-and (b) tight enough — close to the true optimum — that branch-and-bound actually terminates
-on instances of interesting size.** The cheap, obvious bounds available at the time are far too
-loose; closing that gap is the goal.
+Given a complete undirected graph on `n` cities with a symmetric cost matrix `(c_ij)`, the
+symmetric traveling-salesman problem asks for a minimum-weight tour — a cycle visiting every
+vertex exactly once. Exact solution proceeds by branch-and-bound: recursively split the set of
+tours (by forcing some edges in and others out) and discard any branch whose cheapest possible
+tour already exceeds the best tour found so far. The whole method lives or dies on the **lower
+bound** computed at each node of the search tree. A weak bound prunes almost nothing and the
+tree explodes; a bound that is both **tight** (close to the true optimum cost of the subproblem)
+and **cheap** (computable in roughly the time of a spanning-tree calculation, since it is
+recomputed at thousands of nodes) is what would make exact solution of 40-, 50-, 60-city
+instances feasible. The precise problem is therefore: find a function `LB ≤ C*` (the optimum
+tour cost) that is as large as possible while remaining far cheaper to evaluate than the tour
+problem itself, and that adapts — can be driven upward — as the search wants a sharper estimate.
 
 ## Background
 
-A tour is a very constrained object. Three facts about it are load-bearing here.
+The cost of an optimum tour `C*` is what branch-and-bound must under-estimate. Several relaxations
+of "tour" were known to give lower bounds, each leaving a gap:
 
-First, a tour is a connected spanning subgraph on all `n` nodes with exactly `n` edges in
-which **every node has degree exactly 2**. Connectivity plus "n nodes, n edges" forces exactly
-one cycle, and degree-2-everywhere forces that cycle to be a single Hamiltonian cycle rather
-than a union of smaller cycles.
+A tour is a connected spanning subgraph in which every vertex has degree exactly 2. Relaxing the
+degree-2 requirement to *connectivity* alone gives a spanning structure; relaxing connectivity
+to a *perfect 2-matching* gives the assignment relaxation. Each removes a constraint and so each
+optimal relaxed object costs no more than the optimal tour.
 
-Second, relaxations of "tour" that drop some of these constraints are computable in polynomial
-time, whereas the tour itself is not. The minimum spanning tree (MST) — the cheapest connected
-spanning subgraph — has `n-1` edges and is computed in near-linear time by classical greedy
-algorithms (Prim's method grows a tree one cheapest-crossing-edge at a time; Kruskal's adds
-globally cheapest edges that don't form a cycle). An MST drops the cycle and the degree
-constraint entirely. Its cost is a lower bound on the tour cost (a tour minus one edge is a
-spanning tree whose cost is no larger than the tour in the usual nonnegative distance setting,
-so OPT-tour >= MST), but a weak one: it has no cycle and its degrees are wildly uneven, so it
-looks nothing like a tour and its cost sits well below the optimum.
+Three pieces of mathematics sit underneath everything that follows.
 
-Third, the degree-2 requirement is an **equality constraint per node**, and equality
-constraints are exactly the kind of thing Lagrangian relaxation was built to handle: move the
-constraint into the objective with a multiplier (a price) per node, solve the now-unconstrained
-(easier) problem, and adjust the prices to push the relaxed solution back toward feasibility.
-The general theory says that for any fixed prices the relaxed optimum is a lower bound on the
-constrained optimum, and that the best (largest) such bound is obtained by maximizing over the
-prices — the **Lagrangian dual**. Maximizing a Lagrangian dual is maximizing a function that is
-a pointwise minimum of linear pieces, hence concave but not smooth; the tool for maximizing a
-nonsmooth concave function using only the easy-to-compute relaxed solutions is the
-**subgradient method** of Shor and others: step in the direction of a subgradient with a
-diminishing step size.
+**Minimum spanning trees are easy.** Kruskal (1956) and Prim/Dijkstra (1957–1959) compute a
+minimum spanning tree of a weighted graph in low-order polynomial time by a greedy edge or
+vertex scan. A spanning tree on `k` vertices has `k−1` edges; degrees are unconstrained. Gale
+(1968) and Kruskal (1956) connect the greedy/matroid view of MST to exactly such selection
+problems, and the greedy MST routine produces, as a by-product, the sensitivity of the tree
+cost to forcing or forbidding individual edges.
 
-The pain point that motivates everything below: MST and the trivially-cheap per-node bounds
-(half the sum of each city's two cheapest edges) are all far too loose to drive
-branch-and-bound, yet the tour itself is intractable. We need a relaxation that lives *between*
-"spanning tree" and "tour" — close enough to a tour that its cost is a sharp bound, but still
-polynomial to compute.
+**Lagrangian relaxation of integer programs.** When a hard combinatorial problem
+`min cᵀx s.t. Ax = b, x ∈ X` has a set of "complicating" equality constraints `Ax = b` whose
+removal leaves an *easy* problem over `X`, one can dualize them: for a multiplier vector `π`,
+`L(π) = min_{x∈X} [cᵀx + πᵀ(b − Ax)]` is a lower bound on the optimum for every `π`, because at
+the true optimum the bracketed term added is zero and the minimization over the larger set `X`
+can only lower the value. The best such bound is `max_π L(π)`. As a minimum of finitely many
+affine functions of `π`, `L(π)` is concave and piecewise linear — hence non-differentiable at
+the breakpoints where the inner minimizer switches. The systematic exploitation of this
+structure for integer programming was being worked out at the time (Geoffrion); the degree
+constraints of the TSP are a textbook instance of "complicating" equalities over an otherwise
+tractable set.
+
+**The relaxation method for linear inequalities.** Agmon (1954) and Motzkin & Schoenberg (1954),
+following an idea of Motzkin, studied solving a consistent system of linear inequalities
+`a_iᵀx ≥ b_i` by iterated projection: pick a violated inequality, and step from the current point
+toward (and across) its bounding hyperplane along the normal. Agmon's basic lemma (2.1): if `x`
+is on the wrong side of an oriented hyperplane `π` and the solution `y` on the right side, and
+`x_r` is the orthogonal projection of `x` onto `π`, then for `0 < λ < 2`,
+`|x + λ(x_r − x) − y| < |x − y|` — the relaxed projection strictly decreases the Euclidean
+distance to every solution point, and Agmon proves a linear convergence rate. The relaxation
+parameter `λ ∈ (0, 2)` and the "decrease distance to the solution set without necessarily
+decreasing the residual" behavior are the load-bearing facts.
+
+**Empirical state of TSP solving.** The diagnostic fact motivating the work is that the bounds
+in use produced search trees too large to exhaust for instances past roughly 20–30 cities; the
+assignment relaxation and the bare minimum-spanning-structure bound left visible gaps to `C*`,
+and that gap, multiplied across the branch-and-bound tree, was the bottleneck. The structural
+symptom is visible in the relaxed spanning objects themselves: they are cheap because they ignore
+the tour's degree-2 condition, and the resulting degree surplus and deficit are exactly where the
+bound loses contact with a Hamiltonian cycle.
 
 ## Baselines
 
-**Minimum spanning tree bound.** Take the cheapest connected spanning subgraph; in the usual
-nonnegative distance setting its cost lower-bounds the tour cost because deleting any one edge
-of a tour leaves a spanning tree no more expensive than the tour. Computable in near-linear
-time (Prim/Kruskal). Gap/limitation: it has `n-1` edges, no cycle, and degrees that range from
-1 (leaves) to large hubs, so it is structurally far from a tour and the bound is loose.
+**Bare spanning relaxation.** Drop both degree-2 and exact-connectivity-into-a-cycle; keep a
+spanning connected structure. Its minimum weight is computed by a greedy MST routine and lower-
+bounds `C*` because a tour contains a spanning tree. Gap: the structure is free to pile many
+edges onto a few hub vertices, so the bound is loose, and there is no knob to tighten it.
 
-**Sum-of-two-cheapest-edges bound.** Every node in a tour has exactly two incident edges, so
-the tour cost is at least half the sum over nodes of that node's two cheapest incident edges.
-Trivial to compute. Limitation: it ignores connectivity and global structure entirely and is
-typically even looser than the MST bound; it cannot reflect any interaction between edges.
+**Assignment relaxation.** Relax a tour to a minimum-cost perfect 2-matching / assignment.
+Solvable by the Hungarian / assignment algorithm; its dual gives values `u_i, v_j` with
+`u_i + v_j ≤ c_ij`. It bounds `C*` from below but typically returns subtours (2-cycles and short
+cycles) and so leaves a gap. Its dual variables also show that pricing constraints can be useful
+when the primal relaxed object is easy but structurally wrong.
 
-**Assignment-problem / 2-matching relaxation.** Drop connectivity, keep "degree 2": ask for the
-cheapest set of edges giving every node degree 2 (a 2-factor), solvable as a matching/assignment
-problem. Limitation: the solution decomposes into several disjoint subtours, so the bound is
-loose and the relaxed solution can be far from a single Hamiltonian cycle; there is no built-in
-mechanism to discourage the subtours.
-
-**Linear-programming relaxation with subtour-elimination.** Write tour membership as a 0/1
-program: one variable per edge, degree-2 equality at every node, and one inequality per vertex
-subset forbidding subtours; relax integrality and solve the LP. This gives a strong bound, but
-there are exponentially many subtour constraints, so it must be solved with cutting planes or a
-separation oracle — heavy machinery to invoke at every node of a branch-and-bound tree, and not
-obviously cheap.
+**Column-generation linear program / steepest ascent over node prices.** Treat the best
+achievable per-vertex-price bound as an optimization: maximize, over price vectors, the
+spanning-relaxation cost computed under price-perturbed edge weights. One can attack this as a
+large linear program with one constraint per candidate structure, generating columns as needed,
+or by a steepest-ascent procedure that increases the objective at each step. Gap: with the
+number of candidate structures astronomically large, the LP/simplex route and the
+function-increasing ascent route were both found to be slow, and the ascent's iteration count
+grew rapidly with `n`. This leaves the need for a lighter ascent rule.
 
 ## Evaluation settings
 
-The natural yardstick is a set of symmetric TSP instances with a full symmetric cost matrix:
-random Euclidean instances (cities drawn uniformly in the unit square, costs = pairwise
-distances) at sizes from a handful up to a few dozen cities where the true optimum can still be
-found, plus structured geographic instances (inter-city road or great-circle distances). The
-quantities of interest are the bound's gap to the known optimum (how much of OPT it recovers),
-the size of the branch-and-bound tree the bound induces, and the time to compute the bound
-itself — including how that cost scales as `n` grows and how it behaves when recomputed
-thousands of times inside a search. Small instances where the optimum is computable by
-exhaustive permutation serve to confirm that a lower-bound routine never exceeds the true
-optimum.
+The natural yardsticks are symmetric TSP instances from the literature and constructed test
+families: published instances (e.g. the Dantzig 42-city problem, Croes 20-city, Karg–Thompson
+57-city), `random(M)` instances with `c_ij` drawn i.i.d. from a discrete uniform distribution on
+`{0,…,M}`, `random Euclidean(M)` instances with `n` points dropped uniformly in an `M × M`
+square and `c_ij` the Euclidean distance, and `p × q` knight's-tour problems (cities are board
+squares, cost 0 between knight-move-adjacent squares and ∞ otherwise) used to test for the
+existence of a Hamiltonian circuit. Instance sizes of interest range from 20 up to 64 cities.
+The metrics are: the value of the lower bound relative to the optimum tour cost `C*` (how tight),
+the number of branch-and-bound nodes generated (how much pruning), and wall-clock time on the
+machines of the day (an IBM 360/91). Each run is parameterized by a step-size control, a control
+on when to stop ascending and branch, and an upper bound on `C*` used to discard subproblems.
 
 ## Code framework
 
-The primitives that already exist: a symmetric cost matrix, a minimum-spanning-tree routine,
-a way to keep only cheap candidate edges when dense graphs are too slow, an upper-bound tour
-heuristic, and basic vector arithmetic. The open slot is the lower-bound routine itself: it
-must choose an easy relaxation, evaluate it under whatever auxiliary costs it introduces, and
-return a certified value for the original complete graph.
+Pre-existing primitives: a dense symmetric cost matrix, a greedy minimum-spanning-tree routine,
+and a branch-and-bound shell that maintains a list of subproblems, each pinning some edges in and
+some out, with associated lower bounds. The open slot is the subproblem bound routine.
 
 ```python
 import numpy as np
 
-def minimum_spanning_tree_edges(weight_matrix, allowed_edges=None):
-    """Existing primitive: minimum spanning tree on a dense symmetric matrix,
-    optionally restricted to an already-connected candidate-edge graph."""
-    ...  # standard library routine
+def min_spanning_tree(weight):
+    """Greedy MST on a dense symmetric weight matrix. Returns (edges, degrees, cost).
+    Prim/Kruskal primitive."""
+    ...
 
-def cheap_candidate_edges(cost, width):
-    """Existing primitive: keep a small symmetric set of low-cost candidate
-    edges, then add enough spanning-tree edges to keep the graph connected."""
-    ...  # nearest-neighbour filtering plus a connectivity repair
+def lower_bound(cost, forced_edges, forbidden_edges, upper_bound=None):
+    """Lower bound on tours satisfying the edge decisions in a branch-and-bound node."""
+    # TODO: replace the plain spanning-tree bound with a stronger MST-cheap relaxation.
+    pass
 
-def tour_upper_bound(cost):
-    """Existing primitive: return the cost of any complete tour, used only as
-    a target value by iterative lower-bound tightening."""
-    ...  # heuristic tour construction
-
-def tsp_lower_bound(cost, parameters=None):
-    """Return a certified lower bound on the optimal symmetric-TSP tour cost."""
-    pass  # TODO: fill in the relaxation, auxiliary costs, updates, and final certification
+def branch_and_bound(cost, upper_bound):
+    """Maintain a list of subproblems (X_in, X_out, bound); repeatedly take the least
+    bound, tighten it via `lower_bound`, discard if it exceeds `upper_bound`, else
+    split on an edge."""
+    ...
 ```

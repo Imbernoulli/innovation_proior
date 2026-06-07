@@ -14,7 +14,7 @@ What a satisfying solution would need: a single, dimension-independent *machine*
 
 ## Background
 
-The contact configurations that matter are the short vectors of remarkable lattices. In `n = 8`, the root lattice `E_8` (all integer vectors with coordinates all even or all odd and coordinate-sum divisible by `4`) has `240` shortest nonzero vectors, all of the same length, with minimum distance equal to that length — rescaled to the unit sphere they kiss, giving `tau_8 >= 240`. Concretely the `240` are the `112` vectors of type `(0^6, +-2^2)` and the `128` of type `(+-1^8)` with an even number of minus signs. In `n = 24`, the Leech lattice has `196560` shortest vectors (types `(0^16, +-2^8)` even sign count: `97152`; `(0^22, +-4^2)`: `1104`; `(+-1^23, -+3)`: `98304`), all of equal length, giving `tau_24 >= 196560`. In `n = 3` the icosahedron's `12` vertices give `tau_3 >= 12`; in `n = 4` the `24`-cell (the `D_4` minimal vectors) gives `tau_4 >= 24`.
+The contact configurations that matter are the short vectors of remarkable lattices. In `n = 8`, the root lattice `E_8` (all integer vectors with coordinates all even or all odd and coordinate-sum divisible by `4`) has `240` shortest nonzero vectors, all of the same length, with minimum distance equal to that length — rescaled to the unit sphere they kiss, giving `tau_8 >= 240`. Concretely the `240` are the `112` vectors with two nonzero coordinates `+-2` and the `128` vectors `(+-1, ..., +-1)` with an even number of minus signs. In `n = 24`, the Leech lattice has `196560` shortest vectors in three standard coordinate types: `97152` vectors with sixteen zeros and eight `+-2` entries, `1104` vectors with twenty-two zeros and two `+-4` entries, and `98304` vectors with one `+-3` entry and twenty-three `+-1` entries satisfying the Leech congruence condition. All have the same length and the same minimum separation, giving `tau_24 >= 196560`. In `n = 3` the icosahedron's `12` vertices give `tau_3 >= 12`; in `n = 4` the `24`-cell (the `D_4` minimal vectors) gives `tau_4 >= 24`.
 
 The deep structural fact that makes upper bounds tractable lives on the sphere, not in the lattice. Functions on `S^{n-1}` decompose into spherical harmonics by degree, and the **Gegenbauer (ultraspherical) polynomials** `P_k^{(n)}` are the one-variable shadow of that decomposition. For fixed `n` they are defined by `P_0^{(n)} = 1`, `P_1^{(n)} = t`, and the three-term recurrence
 
@@ -44,7 +44,7 @@ The gap these baselines leave: there is no uniform, computable upper-bound machi
 
 ## Evaluation settings
 
-The yardstick is the table of kissing numbers for `n` up to about `32`, comparing the best known *lower* bound (a construction) against the best known *upper* bound (a certificate) in each dimension. The dimensions that decide whether a method is principled: `n = 3` and `n = 4` (small, optimum non-unique, the classical hard cases); `n = 8` and `n = 24` (the `E_8` and Leech configurations, the candidates for exactness); and intermediate dimensions such as `n = 5, ..., 23` where lower and upper bounds disagree and `n = 11` in particular, where the best certificate is far above the best construction. Inner products are normalized so the kissing constraint is `<x_i, x_j> <= 1/2`. A method is judged by (a) how tight an upper bound it yields per dimension and (b) whether, in `n = 8` and `n = 24`, it meets the construction exactly.
+The yardstick is the table of kissing numbers for `n` up to about `32`, comparing the best known *lower* bound (a construction) against the best known *upper* bound (a certificate) in each dimension. The dimensions to track are `n = 3` and `n = 4` (small, classical hard cases); `n = 8` and `n = 24` (the `E_8` and Leech configurations); and intermediate dimensions such as `n = 5, ..., 23`, with `n = 11` as a representative entry in the standard tables. Inner products are normalized so the kissing constraint is `<x_i, x_j> <= 1/2`. A method is judged by (a) how tight an upper bound it yields per dimension and (b) whether, in `n = 8` and `n = 24`, it meets the construction exactly.
 
 ## Code framework
 
@@ -53,6 +53,7 @@ Pre-existing numerical primitives: a way to generate orthogonal polynomials by t
 ```python
 import numpy as np
 from numpy.polynomial import polynomial as P
+from scipy.optimize import linprog
 
 def gegenbauer_n(n, kmax):
     """Degree-0..kmax orthogonal polynomials attached to integration over S^{n-1},
@@ -68,10 +69,15 @@ def polynomial_from_roots(roots_with_mult):
     """Build a one-variable polynomial from prescribed real roots."""
     pass
 
+def sampled_lp_candidate(n, degree, s=0.5, grid=801):
+    """Set up the grid-relaxed coefficient LP used to search for a candidate f."""
+    # TODO: choose variables c_k, impose c_0=1, c_k>=0, and sample f(t)<=0.
+    pass
+
 def certificate_bound(fpoly, n, s=0.5):
     """Return the upper-bound value produced by a candidate polynomial."""
     # TODO: identify the coefficient and sign checks that make f(1)/c_0 valid.
     pass
 ```
 
-The empty `certificate_bound` check is the whole problem: what algebraic conditions make `f(1)/c_0` a valid certificate, and how should `f` be chosen so that this number is small?
+The empty slots separate the two tasks: how to search for a small candidate by a coefficient LP, and what algebraic checks make `f(1)/c_0` a valid certificate.

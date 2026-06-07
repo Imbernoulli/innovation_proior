@@ -1,0 +1,225 @@
+601.435/635 Approximation Algorithms                                               Lecturer: Michael Dinitz
+Topic: Primal-Dual: Steiner Forest                                                           Date: 4/9/24
+Scribe: Michael Dinitz
+
+
+
+
+21.1     Introduction
+Today we’re going to go back to the world of network design (which we haven’t looked at since
+Group Steiner Tree) and study a problem known as Steiner Forest, or what the book calls
+Generalized Steiner Tree. The relationship between Steiner Forest and Steiner Tree is
+in some sense like the relationship between Multicut and Multiway Cut, as we will see. More
+importantly, Steiner Forest is one of the most famous and classical examples of a primal-dual
+algorithm, which is what we’re going to see today.
+
+21.2     Definitions
+Steiner Forest is defined as follows:
+
+   • Input:
+
+        – Graph G = (V, E)
+        – Cost function c : E → R+
+        – Pairs (s1 , t1 ), · · · , (sk , tk ) of nodes
+
+   • Feasible solution: F ⊆ E such that (V, F ) contains an si -ti path for all i ∈ [k].
+
+   • Objective: min e∈F c(e)
+                     P
+
+
+The problem gets its name because it is easy to see that the optimal solution is a forest. This can
+be thought of as the “opposite” of Multicut: we’re given a bunch of pairs, and instead of cutting
+them, we need to connect them.
+Definition 21.2.1 Let Si = {S ⊆ V : |S ∩ {si , ti }| = 1}. And let S = ∪ki=1 Si .
+This gives the following obvious LP relaxation.
+                                              X
+                                 minimize:      c(e)xe
+                                                           e∈E
+                                                           X
+                                      subject to:                  xe ≥ 1 ∀S ∈ S
+                                                          e∈δ(S)
+
+                                                                   xe ≥ 0 ∀e ∈ E
+
+
+
+
+                                                              1
+When we take the dual of this LP, we get the following.
+                                                  X
+                           maximize:                 yS
+                                                     S∈S
+                                             X
+                            subject to:                yS ≤ c(e)   ∀e ∈ E
+                                          S∈S:e∈δ(S)
+
+                                                       yS ≥ 0      ∀S ∈ S
+
+
+21.3     Algorithm
+Let’s use this LP and its dual to design a primal-dual approximation algorithm. The first question,
+as always for a primal dual algorithm, is which dual variable(s) should we raise? Taking inspiration
+from what we developed last time for s − t shortest path, we’re going to raise the variables of
+connected components. But for the first time, we’re going to raise multiple dual variables at the
+same time. With those ideas in mind, the following algorithm should be pretty natural. It is
+basically due to Agrawal, Klein, and Ravi [AKR95], although they phrased it without duality. The
+analysis through duality is due to Goemans and Williamson [GW95].
+
+Algorithm 1
+  F1 = ∅, ⃗y = ⃗0, j = 1.
+  while Fj not feasible do
+    Let Cj = {S ∈ S : S component of (V, Fj )} be the components of (V, Fj ) that are also sets in
+    S.
+        P all yS : S ∈ Cj uniformly until ∃ej ∈ δ(S), S ∈ Cj such that constraint for ej is tight,
+    Increase
+    i.e. S∈S:ej ∈δ(S) yS = c(ej ).
+    Let ∆j be the amount we raised each yS (for S ∈ Cj )
+    Fj+1 = Fj ∪ {ej }.
+    j = j + 1.
+  end while
+  F = Fj
+  for k = j − 1 to 1 do
+    if F \ {ek } is feasible then
+       Remove ek from F
+    end if
+  end for
+  return F .
+
+
+21.4     Analysis
+21.4.1    Initial Observations
+Lemma 21.4.1 ⃗y is always dual feasible.
+
+
+                                                 2
+Proof: ⃗y = ⃗0 is feasible at the beginning. At each iteration, we will increase yS until some
+constraint is tight for e ∈ E. And such e will be inside the component in the following iterations
+so its dual constraint will remain tight (not violated).
+Lemma 21.4.2 This algorithm is polytime.
+Proof: There are at most |E| iterations and at most n active components in each iteration. So
+there are at most n|E| nonzero dual variables, so we can just keep track of them (even though the
+total number of dual variables is exponential). And each iteration can be computed in polynomial
+time by directly computing the amount we can raise the active dual variables until a constraint
+becomes tight (rather than the more continuous way the algorithm was presented)
+Observation 21.4.3 Final pruning is necessary.
+Proof: Consider the star graph where s1 is in the center connected to v1 , · · · , vn−2 with costs all
+1 and connected to t1 with cost 3. Then without the final pruning, the algorithm would buy the
+entire star rather than just the {s1 , t1 } edge.
+
+21.4.2    Main Analysis
+For the rest of the lecture, we’re going to focus on proving the following theorem:
+Theorem 21.4.4 The Primal-Dual algorithm is a 2-approximation.
+In order to prove this, the main technical tool that we’re going to use is the following lemma:
+                 P
+Lemma 21.4.5        S∈Cj |F ∩ δ(S)| ≤ 2|Cj | for all iterations j (note that F is the final F , not any
+Fj ).
+Before we prove this lemma, let’s see how it implies the theorem. First, note that
+                         X           X     X            X
+                             c(e) =               yS =      |δ(S) ∩ F |yS
+                           e∈F        e∈F S∈S:e∈δ(S)       S∈S
+
+
+To analyze this, let’s prove another claim.
+Claim 21.4.6                         X                         X
+                                           |δ(S) ∩ F |yS ≤ 2         yS                       (21.4.1)
+                                     S∈S                       S∈S
+
+Proof: Let’s do induction on the iterations of the algorithm. Initially, since y = ⃗0 both sides of
+(21.4.1) are equal to 0. Now consider some iteration j, and suppose that (21.4.1) is true at the
+beginning of the iteration. Let ∆j denote the amount that we increased the active dual variables
+(the moats) at this iteration. Then the left hand side of (21.4.1) increases by
+                                   X
+                                       |δ(S) ∩ F |∆j ≤ 2|Cj |∆j ,
+                                    S∈Cj
+
+where the inequality is from Lemma 21.4.5.
+On the other hand, the right hand side of (21.4.1) increase by exactly 2|Cj |∆j . Thus by induction,
+(21.4.1) continues to hold.
+
+                                                    3
+Thus we have that                               X                X
+                                                      c(e) ≤ 2         yS ≤ 2 · OPT,
+                                                e∈F              S∈S
+where the final inequality is from weak duality.
+
+21.4.2.1      Proof of Lemma 21.4.5
+
+A simple induction implies that Fj is a forest for all j. Now fix some time j, and consider the graph
+Gj = (Vj , Ej ) defined as follows:
+
+   • Vj has a vertex for each connected component of (V, Fj ), and
+   • Ej = {{S, T } : ∃u ∈ S, v ∈ T s.t. {u, v} ∈ F }.
+
+Note that every edge in Ej corresponds to exactly one edge in F (the existential is satisfied by
+exactly one edge), since otherwise there would be a cycle in F . Recall that Cj ⊆ Vj are the set of
+active components at time j, i.e., the connected components that are also in S. So another way of
+stating Lemma 21.4.5 is that the average degree of nodes in Cj in Gj is at most 2.
+So let’s think about Cj and Gj . First, clearly Gj is a forest, since it can be constructed by starting
+with a forest (F before the pruning) and then contracting all edges in Fj and deleting all edges
+that were removed by the pruning.
+Lemma 21.4.7 Let S ∈ Vj have degree 1 in Gj . Then S ∈ Cj .
+Proof: Suppose that S ̸∈ Cj , and let e be the unique edge incident on S in Gj . Since S ̸∈ Cj but
+is in Vj , by definition S ̸∈ S. Thus S does not separate any si from ti , so in the final pruning we
+would have removed e from F . This is a contradiction, since e ∈ F . Thus S ∈ Cj .
+So consider the forest Gj . For every tree in Gj , all the leaves are in Cj . It turns out to be a fact
+about trees that if you include all of the leaves, the average degree is small.
+                                                                                  P
+Lemma 21.4.8 Let T be a tree. If S ⊆ V (T ) contains all leaves in T , then v∈S d(v) ≤ 2|S|.
+Proof:
+    X                 X                  X                                   X
+            d(v) =              d(v) −          d(v) = 2(|V (T )| − 1) −            d(v)       (number of edges in a tree)
+      v∈S            v∈V (T )            v̸∈S                                v̸∈S
+
+                ≤ 2(|V (T )| − 1) − 2(|V (T )| − |S|)                                      (all non-S nodes are non-leaves)
+                = 2|S| − 2 ≤ 2|S|
+as claimed.
+Lemmas 21.4.7 and 21.4.8 imply that the average degree of nodes in Cj is at most 2 in Gj , which
+implies Lemma 21.4.5. Slightly more formally, we have
+                              X                X
+                                 |F ∩ δ(S)| =      dGj (S) ≤ 2|Cj |,
+                                         S∈Cj                     S∈Cj
+
+where dGj (S) denotes the degree in Gj of S (which is a single node in Gj ). This completes the
+proof of Lemma 21.4.5, and thus the proof of Theorem 21.4.4
+
+                                                                  4
+21.5      Extensions and Open Questions
+The approximability of Steiner Forest is still open, and is one of the most fundamental network
+design problems for which there are still gaps. In particular, this 2-approximation is still the best
+known approximation ratio, while the only hardness result we have is that it is APX-hard (and
+thus there is some constant c > 1 such that it cannot be approximated to ratio better than c).
+But whether it is possible to do better than 2 is still an important open question. Note that for
+Steiner Tree there is a very easy 2-approximation (compute an MST on the metric closure),
+but with more work it is possible to do better. Is Steiner Forest actually harder than Steiner
+Tree? We still don’t know.
+There are numerous extensions of Steiner Forest which make the problem far more difficult.
+For example, in the Steiner k-Forest problem we are also given a parameter k, and are asked to
+                                                                                                  √
+connect at least k pairs rather than all of them. The best-known algorithm for this is an O( n)-
+approximation [GHNR10]. For the special case where c(e) √
+                                                             = 1 for all e ∈ E, we can do slightly bet-
+                                                  1
+                                                    (7−4  2)
+ter: Guy Kortsarz, Zeev Nutov, and I gave an O(n 3           ) ≈ O(n0.44772 )-approximation [DKN17].
+
+References
+[AKR95]     A. Agrawal, P. Klein, and R. Ravi. When trees collide: An approximation algorithm for
+            the generalized steiner problem on networks. SIAM Journal on Computing, 24(3):440–
+            456, 1995.
+
+[DKN17]     Michael Dinitz, Guy Kortsarz, and Zeev Nutov. Improved approximation algorithm for
+            steiner k -forest with nearly uniform weights. ACM Trans. Algorithms, 13(3):40:1–40:16,
+            2017.
+
+[GHNR10] Anupam Gupta, Mohammad Taghi Hajiaghayi, Viswanath Nagarajan, and R. Ravi.
+         Dial a ride from k -forest. ACM Trans. Algorithms, 6(2):41:1–41:21, 2010.
+
+[GW95]      M. Goemans and D. Williamson. A general approximation technique for constrained
+            forest problems. SIAM Journal on Computing, 24(2):296–317, 1995.
+
+
+
+
+                                                  5
+

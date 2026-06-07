@@ -1,0 +1,197 @@
+     It ,;hould also be noted that overpacking is allowed
+in the above described optimal histogram matching prob-
+lem. If overpacking is not allowed and the monotone
+propelty is dropped, then the problem becomes the
+classical bin-packing problem [4] which is known 'to be
+                                                                   Programming                       S.L. Graham, R.L. Rivest
+NP-complete.                                                       Techniques                        Editors
+     Subsequent to this paper, Chow and Kou found a
+dynamic programming algorithm for optimal histogram
+matching which also has time complexity O(kl x k2)
+                                                                   Counting Large
+[1].
+                                                                   Numbers of Events in
+    Acknowledgments. The authors are indebted to G.
+Manacher for his many helpful suggestions and com-
+                                                                   Small Registers
+ments, and to the referee who pointed out an error in an           Robert Morris
+earlier version of this paper.                                     Bell Laboratories, Murray Hill, N.J.
+Received June 1977; revised April 1978
+
+References                                                             It is possible to use a small counter to keep
+1. Chow, W.M., and Kou, L.T. Matching two digital pictures. IBM    approximate counts of large numbers. The resulting
+Res. Rep. RC6870, IBM T.J. Watson Res. Ctr., Yorktown Heights,
+N.Y., Nov. 1977.                                                   expected error can be rather precisely controlled. An
+2. Karp, R.M. Reducibility among combinatorial problems. In        example is given in which 8-bit counters (bytes) are
+Complexity of Computer Computations, R.E. Miller and J.W.          used to keep track of as many as 130,000 events with a
+Thatcher, Eds., Plenum Press, New York, 1972, pp. 85-103.
+3. Rosenfeld, A., and Kak, A.C. Digital Picture Processing.        relative error which is substantially independent of the
+Academic Press, New York, 1976, pp. 173-175.                       number n of events. This relative error can be expected
+4. Yao, A. Concrete computational complexity. Ph.D. Diss., U. of   to be 24 percent or less 95 percent of the time (i.e. o =
+Illinois at Urbana-Champaign, 1975.
+                                                                   n/8). The techniques could be used to advantage in
+                                                                   multichannel counting hardware or software used for
+                                                                   the monitoring of experiments or processes.
+                                                                       Key Words and Phrases: counting
+                                                                       CR Categories: 5.11
+
+
+
+
+                                                                   A Counting Problem
+
+                                                                       An n-bit register can ordinarily only be used to count
+                                                                   up to 2n - I. I ran into a programming situation that
+                                                                   required using a large number of counters to keep track
+                                                                   of the number of occurrences o f many different events.
+                                                                   The counters were 8-bit bytes and because of the limited
+                                                                   amount of storage available on the machine being used,
+                                                                   it was not possible to use 16-bit counters. Using an
+                                                                   intermediate size counter on a byte-oriented machine
+                                                                   would have considerably increased both the complexity
+                                                                   and running time of the program.
+                                                                       The resulting limitation of the maximum count to
+                                                                   255 led to inaccuracies in the results, since the most
+                                                                   common events were recorded as having occurred 255
+                                                                   times when in fact some of them were much more
+                                                                       Permission to copy without fee all or part of this material is
+                                                                   granted provided that the copies are not made or distributed for direct
+                                                                   commercial advantage, the ACM copyright notice and the title of the
+                                                                   publication and its date appear, and notice is given that copying is by
+                                                                   permission of the Association for Computing Machinery. To copy
+                                                                   otherwise, or to republish, requires a fee and/or specific permission.
+                                                                       Author's address: Bell Laboratories, Murray Hill, NJ 07974.
+                                                                   © 1978 ACM 0001-0782/78/1000-0840 $00.75
+
+84O                                                                Communications                     October 1978
+                                                                   of                                 Volume 21
+                                                                   the ACM                            Number 10
+frequent. I looked in m a n y directions for a solution to      where n is the n u m b e r o f events that have occurred. Zero
+the problem with the following constraints in mind.             value corresponds to zero events.
+Running time was important because the program was                  Suppose that in the midst of counting, we have the
+already painfully slow. There was no significant addi-          value v stored in the register. Whenever we get another
+tional space available in the machine. On the other hand,       event, we attempt to modify the contents of the register
+precise counts of the events were not necessary since the       in the most appropriate way. All we have is the value v.
+processing was statistical in nature and a reasonable           As far as we know, the best estimate of the n u m b e r of
+margin of error was tolerable.                                  events so far is
+
+                                                                n~ = e ~ -- 1
+
+A Simple Solution                                               so that the number of events including the current one
+                                                                is d. The value that we would like to return to the
+    The most obvious way to count more than 255 events          register is
+in an 8-bit register is to count only every other event.
+This can be done with a modest amount of error by               v' = log(l + e ~)
+simply flipping a coin at e v e r y event to decide whether     but this is not in general an integer and we cannot just
+or not to make the count. Not only is the expected error        truncate or round the quantity for fear of accumulating
+small, but it can be precisely described. In particular, if     serious error. Instead we let v' = k + f where k is an
+the n u m b e r of events that have occurred is n, then the     integer and 0 ~<f < l, and return either the value k or
+expected value for the value v in the counter is n / 2 and      the value k + 1 to the register as the new value of v with
+the standard deviation is                                       appropriately chosen probabilities so that the expected
+                                                                value of v is correct.
+                                                                    The correct thing to do is to compute
+so that by the time 400 events have occurred, v = 200           I/A = n~-i -- n~.
+and o = 10. One can expect that 95 percent of the time,
+the n u m b e r of events estimated from 2v is within 40 of     In every case of interest, A will be between 0 and 1 and
+the actual count, an error of 10 percent.                       so we can ignore the possibility of an integer part. We
+    This approach can be extended in the obvious way            then obtain a random n u m b e r r from a r a n d o m number
+to count yet larger numbers of events with correspond-          generator uniformly distributed in the interval 0 ~< r <
+ingly increased expectations of error by simply using an        1 and
+appropriately weighted coin. This appealing approach            ifA>r,      setv=v+      1
+did not solve my problem because even though the                ifA~<r,     setv=v.
+absolute error was relatively small, the relative error was
+intolerably high for small counts. In fact if one event had     It is easy to prove that we have not by this procedure
+occurred, I was guaranteed a 100 percent error.                 disturbed the expected value of the contents of the
+    A mixed approach is possible and overcomes this             register. To prove this, observe that the random proce-
+problem by keeping actual counts up to some preset              dure substitutes for the correct value v' either
+number and using the coin-flipping approach above that
+                                                                v     with probability 1 - A ,        or
+point. It is a generalization of this approach that led to
+                                                                v + 1 with probability A.
+the successful solution to my problem.
+                                                                Then the expected value of n represented by the contents
+                                                                of v is equal to
+A Generalization                                                An~-m + (l -- A)n~ = A(n~+l - n~) + n,
+
+    Suppose that instead of trying to keep track of the                                e ~+1- l - e " +    1
+                                                                                    =                          + n~
+number n of events or of some constant multiple of n,                                      e ~ ( e - l)
+that we keep in the register the logarithm of the n u m b e r                       = n o + 1.
+of events and devise some sort of approach as was set               After one event has occurred, the register contains
+out above. Then if the value (which is a logarithm)             the value 1 with probability .59, or 0 with probability
+suffers from a given absolute error, then the n u m b e r of    .41. When we come to interpret this value we would
+events which this logarithm reflects is affected only by a      conclude that the number of events was
+relative error. This is what is generally desired.
+    The simplest approach that uses this idea is to pro-         1.7   59 percent of the time,     and
+ceed as follows: The value v stored in the register is             0   41 percent of the time.
+imagined to represent
+                                                                The expected value in the register is correct, but the
+v(n) = log(l + n)                                               actual value is way off.
+
+841                                                             Communications                   October 1978
+                                                                of                               Volume 21
+                                                                the ACM                          Number 10
+    We can jiggle the parameters of the method so that
+a count of one results in a register value of one and then
+the random rounding procedure has no effect on the first
+count. The function
+v = log(n + 1)/log(2)                                          Programming                       S.L. G r a h a m , R.L. Rivest
+                                                               Techniques                        Editors
+has just the property we want. This formula is of course
+independent of the base of the logarithms.                     An Analysis of
+A General Solution
+                                                               Algorithms for the
+    The class of functions that I have used and analyzed
+                                                               Dutch National Flag
+are the functions                                              Problem
+u(n) = log O + n/a)/log(1 + l / a )
+                                                               Colin L. McMaster
+where the parameter a controls both the m a x i m u m count    University of California
+that can be held in the register and the expected error.
+The constant log O + 1/a) in the denominator serves
+only to force n = l to correspond to u = 1 so that the             Solutions to the Dutch National Flag Problem have
+random procedures have no effect on the first count and        been given by Dijkstra [1] and Meyer [3]. Dijkstra
+counts of 0 and 1 are represented exactly. It is in this       starts with a simple program and arrives at an improved
+way that good relative accuracy is preserved for small         program by refinement. Both of the algorithms given by
+counts. The m a x i m u m value n that can be represented      Dijkstra are shown to have an expected number of
+using the parameter a can be calculated from the inverted      swaps which is 2N + 0(1) and that these values differ at
+formula                                                        most by 1 of a swap and asymptotically by ¼of a swap.
+                                                               The algorithm of Meyer is shown to have expected
+n, = a((1 + 1 / a f - 1).                                      swap complexity ~N.
+                                                                   Key Words and Phrases: algorithmic analysis,
+The expected error in the estimated value of n after n         Dutch National Flag Problem, refinement, structured
+counts can be calculated from the formula                      programming
+oz =   n(n   -   1)/2a.                                            CR Categories: 4.0, 5.24, 5.25, 5.3
+
+This formula can be proved by induction on n.
+    Let us inspect the performance of this method using
+the parameter a = 30. The largest value that can be
+represented in an 8-bit counter is about 130,000. The
+standard deviation o is approximately equal to n / 8 which
+implies that the relative error is nearly independent of n
+and that 95 percent of the time the relative error will be
+less than 24 percent. Larger values of a will lead to          Introduction
+smaller m a x i m u m counts and, of course, to smaller
+relative error.                                                    Dijkstra [1] has defined a problem which he calls the
+    There is no need to compute any of the logarithms or       Problem of the Dutch National Flag. It m a y be stated as
+powers during the counting process. A table containing         follows. There is a row of N buckets n u m b e r e d from 1
+the 255 values of A can be precomputed by the formula          to N. The buckets are arranged in numerical order with
+Ay = ( a / ( a + 1)) j and accessed when a new count is        bucket 1 on the left and bucket N on the right. Each
+made. The r a n d o m n u m b e r generator can be of the      bucket contains exactly one pebble and each pebble is
+simplest sort and no great demands are made on its                 Permission to copy without fee all or part of this material is
+properties.                                                    granted provided that the copies are not made or distributed for direct
+    The distribution of errors is somewhat asymmetric          commercial advantage, the ACM copyright notice and the title of the
+                                                               publication and its date appear, and notice is given that copying is by
+for small counts, but as n becomes larger, the distribution    permission of the Association for Computing Machinery. To copy
+closely approximates the normal distribution. In the           otherwise, or to republish, requires a fee and/or specific permission.
+example above where a -- 30, the normal error curve                Research sponsored by Joint Services Electronics Program Grant
+                                                               F 44620-76-C-0100 and National Science Foundation Grant MCS 76-
+gives a useful estimate of the error distribution for counts   15036.
+greater than about 20.                                             Author's address: Department of Electrical Engineering and Com-
+                                                               puter Sciences, University of California, Berkeley, CA 94720.
+Received June 1975; revised December 1977                      © 1978 ACM 0001-0782/78/0000-0842 $00.75
+
+842                                                            Communications                     October 1978
+                                                               of                                 Volume 21
+                                                               the ACM                            Number 10
+

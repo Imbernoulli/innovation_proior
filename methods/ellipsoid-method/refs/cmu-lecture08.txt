@@ -1,0 +1,551 @@
+Lecture 8
+The Ellipsoid Algorithm∗
+Recall from Lecture 6 that the duality theorem places the linear programming feasibility
+and solvability problems in NP ∩ co-NP. In this class, we will see the ellipsoid algorithm,
+which was the first polynomial time algorithm for the LP feasibility problem; this places
+the LP solvability problem in P. The “Ellipsoid algorithm” was introduced by N. Shor in
+early 1970’s as an iterative method for general convex optimization, and later applied by
+Khachiyan (1979) for linear programs.
+
+8.1
+
+Ellipsoids
+
+In this section, we define an ellipsoid and note some of its useful properties for future use.
+Definition 8.1. A (closed) ball B(c, r) (in Rn ) centered at c ∈ Rn with radius r is the set
+B(c, r) := {x ∈ Rn : xT x ≤ r2 }.
+The set B(0, 1) is called the unit ball.
+An ellipsoid is just an affine transformation of a ball.
+Definition 8.2. An ellipsoid E centered at the origin is the image L(B(0, 1)) of the unit ball
+under an invertible linear transformation L : Rn → Rn . An ellipsoid centered at a general
+point c ∈ Rn is just the translate c + E of some ellipsoid E centered at 0.
+We can write the above definition in a more explicit way as follows:
+L(B(0, 1)) = {Lx : x ∈ B(0, 1)}
+= {y : L−1 y ∈ B(0, 1)}
+= {y : (L−1 y)T L−1 y ≤ 1}
+= {y : y T (LLT )−1 y ≤ 1}
+= {y : y T Q−1 y ≤ 1}
+*
+
+Lecturer: Ryan O’Donnell. Scribe: Srivatsan Narayanan.
+
+1
+
+where Q = LLT .
+What can we say about the matrix Q = LLT ? From basic linear algebra, we recall from
+basic linear algebra that it is positive definite. We record this as fact below.
+Fact 8.3. For a symmetric matrix Q ∈ Rn×n , the following conditions are equivalent:
+1. Q = LLT for some L ∈ Rn×n .
+2. All the n eigenvalues of Q are nonnegative.1
+We say that Q is positive semi-definite if any of the above conditions hold.
+We will add many more equivalent characterizations to this list later in the course. We
+will not prove the whole claim in this class; instead we verify just one of the directions to
+give a flavor.
+Proof. (Of 1. =⇒ 2.) We are given that Q = LLT for some L ∈ Rn×n . Suppose λ is an
+eigenvalue of Q with eigenvector x 6= 0; that is, Qx = λx. Then
+λkxk2 = λxT x = xT (λx) = xT (Qx) = xT LLT x = (LT x)T (LT x) = kLT xk2 ≥ 0,
+which shows that λ is real and nonnegative.
+Fact 8.4. For a symmetric matrix Q ∈ Rn×n , the following conditions are equivalent:
+1. Q = LLT for some nonsingular2 matrix L.
+2. All the n eigenvalues of Q are strictly positive.
+We say that Q is positive definite if any of the above conditions hold.
+From the above claims, it is clear that an ellipsoid can equivalently be represented in
+terms of a positive definite matrix Q.
+Definition 8.5. If Q ∈ Rn×n is a positive definite matrix, then the ellipsoid associated with
+Q and centered at c ∈ Rn is
+E(c, Q) := {c + y : y T Q−1 y ≤ 1} = {y : (y − c)T Q−1 (y − c) ≤ 1}.
+Remark 8.6. The standard ball B(0, r) is the ellipsoid E(0,
+r2 I).More generally,an
+ “axial
+r12
+ 
+
+ 
+
+r22
+
+ .
+ellipsoid” with semiaxes r1 , . . . rn is given by the ellipsoid E 
+0,
+ 
+
+2
+r
+ 
+
+3
+...
+
+0
+
+1
+2
+
+Recall that all eigenvalues of a real symmetric matrix are real.
+Nonsingular matrices are also known as invertible.
+
+2
+
+0
+
+The final ingredient is the following fact about the volume of an ellipsoid. Denote by
+vol(A) the volume of a set A ⊆ Rn .
+Fact 8.7. If A ⊆ Rn and L is a linear transformation, then
+vol(L(A)) = | det L| · vol(A).
+In particular, the volume of an ellipsoid E(c, Q) is given by
+p
+vol(E(c, Q)) = | det L| · vol(B(0, 1)) = det Q · vol(B(0, 1)).
+Thus we have related the volume of any ellipsoid to the volume of the unit ball in n
+dimension. Fortunately, the exact value of the constant of the proportionality, the volume
+of the unit n-ball, is irrelevant to us.3
+
+8.2
+
+The Ellipsoid Algorithm
+
+The ellipsoid algorithm takes as input a convex set, and returns a point from the set provided
+it is nonempty. (If the set is empty, then we return “empty”.) It is clear that this algorithm
+is useful for testing LP feasibility. Further, since the LP solvability problem reduces to the
+LP feasibility problem in polynomial time, this algorithm can also be used to solve linear
+programs as well.
+Formally, the ellipsoid algorithm tests if a given convex set K ⊆ Rn is empty.
+
+8.2.1
+
+Requirements
+
+Apart from the input set K, we assume that we are provided two additional parameters:
+1. A number R ∈ Q (R > 0) such that K ⊆ B(0, R).
+2. A rational r > 0 such that either K = ∅ or K ⊇ B(c, r) for some point c. (Think of this
+requirement as basically stating that the feasible solution is not completely contained
+in some affine hyperplane.)
+Now, how do we satisfy these two requirements while using the ellipsoid algorithm for
+solving LPs?
+1. The first condition is easily handled. Given a linear program
+K = {Ax = b : x ≥ 0},
+we can add in constraints of the form −2L ≤ x ≤ 2L for each i ∈ [n] for some
+L = poly(hAi, hbi, n) (without affecting the √feasibility of the LP). Since this region
+is fully contained inside the ball of radius n2L , we can provide R = n2L as the
+parameter.
+n/2
+
+For the curious: the volume of the unit n-ball has the exact expression Γ(πn +1) , where Γ(·) is the “Gamma
+2
+n 
+function”. Asymptotically, this volume is Θ̃ nCn/2 for some absolute constant C > 0 (hiding poly(n) factors).
+3
+
+3
+
+2. The second requirement is slightly tricky since the feasible region of the given LP is
+contained in the hyperplane Ax = b, and hence, as such, there does not exist r > 0
+satisfying the requirements. In this case, suppose the convex set K is empty. Then
+the hyperplane Ax = b is separated from the positive “orthant” (i.e., the region x ≥ 0)
+by a finite width r > 0 (that is expressible in polynomially many bits). Then the idea
+is to draw a small tube around Ax = b, so that the system of equations becomes full
+dimensional.
+Slightly more precisely, there exists some  > 0 such that the new convex set K 0 =
+{− ≤ Ax − b ≤  : x ≥ 0} is empty provided K is empty. (See Figure 8.1 for an
+illustration.) On the other hand, if K is nonempty and c ∈ K, then the set K 0 contains
+a ball B(c, r) for some finite r > 0. (See Figures 8.2.) Finally, we can show that the
+numbers  and r are expressible in polynomially many bits. Thus we may provide r as
+the parameter.
+
+x >= 0
+
+Ax = b
+Figure 8.1: Handling the second requirement in the infeasible case. Note that there is a finite
+width  > 0 such that the region − ≤ Ax − b ≤  does not intersect the positive orthant
+x ≥ 0.
+
+x >= 0
+
+Ax = b
+Figure 8.2: Handling the second requirement in the feasible case. Relaxing the LP to − ≤
+Ax − b ≤  makes the feasible set (the shaded region) full dimensional.
+
+4
+
+8.2.2
+
+The algorithm
+
+We now describe the ellipsoid algorithm. From now on, it is convenient to assume that the
+input LP has the form Ax ≤ b with x ≥ 0.
+If n = 1, then solve the LP directly and terminate; so without loss of generality, assume n > 1. The algorithm maintains an ellipsoid E that completely contains K (if K is
+nonempty). We initialize the algorithm with the ellipsoid E(0, R2 I) that was promised to
+satisfy this requirement.
+1. Check if the center c is feasible (i.e., if c ∈ K). If so, then we are done.
+2. Else, get a “separating hyperplane” through c; i.e., a hyperplane aT x = aT c through
+c such that the set K is completely contained in the half-ellipsoid formed by the
+intersection of aT x ≥ aT c with the current ellipsoid. (To implement this step given an
+LP, we take a violated constraint aT x ≤ γ; then aT x = aT c is a separating hyperplane
+through c.)
+3. Take a smallest volume ellipsoid containing the half-ellipsoid which may contain K.
+Goto 1.
+4. After N = poly(n, hRi, hri) iterations, stop and say K = ∅.
+
+8.2.3
+
+Analysis of the algorithm
+
+Clearly, Step 1 of the algorithm is correct. Further, at every stage of the algorithm, we
+maintain the invariant that the convex set K is completely contained inside the current
+ellipsoid. Thus it only remains to show that if we terminate the algorithm after N steps and
+find no feasible point, then the set K is indeed empty.
+Denote the ellipsoid at the end of iteration k by Ek = E(ck , Qk ) (the starting ellipsoid
+is E0 = E(0, R2 I)). We use the volume of ellipsoids Ek to track the number of iterations of
+the algorithm. The main claim is the following:
+Theorem 8.8 (Volume reduction). For k ≥ 0, we have4 :
+1
+Vol(E(ck+1 , Qk+1 ))
+≤ e− 2(n+1) .
+Vol(E(ck , Qk ))
+
+We prove this theorem in the next subsection.
+Corollary 8.9.
+
+1. After 2(n + 1) steps, the volume goes down by a factor of 1e .
+
+2. Suppose N > 2n(n + 1) ln( Rr ). Then after N iterations, the volume becomes smaller
+than Vol(B(0, r)).
+1
+
+In class, we claimed the slightly stronger upper bound of e− 2n with no proof. This only causes a constant
+factor increase in the number of iterations.
+4
+
+5
+
+Proof. The first part is obvious. To see the second part, the volume of the ellipsoid at the
+end of N iterations is
+
+
+ 
+
+R
+N
+< vol(B(0, R)) exp −n ln
+vol(EN ) = vol(E0 ) exp −
+2(n + 1)
+r
+Rearranging,
+vol(EN ) < Rn vol(B(0, 1)) ×
+
+rn
+= rn vol(B(0, 1)) = vol(B(0, r)) = vol(B(c, r)).
+Rn
+
+since all balls of the same radius have the same volume. It follows that K ⊆ EN has a
+volume strictly less than vol(B(c, r)). But this contradicts the second requirement of the
+algorithm, unless K = ∅.
+Thus if we did not find a feasible solution after N iterations, then we can safely terminate. Since N is polynomial in the length of the input, we have shown that this algorithm
+terminates in polynomial time.
+But we are not done yet! Of course, we still need to prove Theorem 8.8. Also, to complete the description of the algorithm, we need to write down the smallest volume ellipsoid
+containing the half-ellipsoid that may have K. We do both of these in the next subsection.
+
+8.2.4
+
+The description of the half-ellipsoid: a simple case
+
+We first deal with the simple case, where E0 = B(0, 1) and the separating hyperplane is
+a0 = (−1, 0, 0, . . . , 0). Our goal is to find an ellipsoid E1 that contains the region E0 ∩ {x :
+x1 ≥ 0}.
+1
+, 0, 0, . . . , 0), and
+Lemma 8.10. Define c1 = ( n+1
+
+
+
+
+
+n
+
+Q1 = 2
+n −1
+
+
+2
+
+2
+1 − n+1
+
+
+
+0
+
+1
+
+0
+
+1
+..
+
+
+
+
+
+
+.
+1
+
+Then E1 = E(c1 , Q1 ) is the minimum volume ellipsoid containing the half-ball. Moreover,
+1
+vol(E1 )
+≤ e− 2(n+1) .
+vol(E0 )
+
+Proof. In this notes, we only prove that the ellipsoid E1 contains the desired half-ball and
+prove the bound on its volume. Although it is true that E1 is the ellipsoid of minimum
+volume, we do not show that here. Note that this does not affect our algorithm or our
+analysis in any way.
+6
+
+E1
+E0
+K
+c
+
+aT (x-c) = 0
+Figure 8.3: Ellipsoid E1 covering the half-ellipsoid bounded by E0 and the separating hyperplane aT (x − c) = 0.
+
+Take any x in the half-ball; i.e., kxk ≤ 1 and x1 ≥ 0. Suppose x = (x1 , x̃) where
+x̃ = (x2 , x3 , . . . , xn ). It is easy to verify that
+ n+1
+
+
+
+n−1
+
+n2 − 1 
+
+Q−1
+1 =
+
+2
+
+
+n
+
+
+
+1
+
+0
+
+7
+
+1
+
+0  .
+..
+
+
+
+
+.
+
+Consider
+ n+1
+
+
+
+n−1
+
+n2 − 1
+x Q x=
+n2
+T
+
+−1
+
+
+
+1
+x1 −
+, x̃
+n+1
+
+T 
+
+
+
+
+
+1
+
+0
+
+1
+
+0  x − 1 , x̃
+1
+
+...
+
+
+
+
+n+1
+
+
+2
+n2 − 1 n + 1
+1
+(n2 − 1)
+=
+x
+−
++
+kx̃k2
+1
+n2 n − 1
+n+1
+n2
+1
+(n2 − 1)
+= 2 ((n + 1)x1 − 1)2 +
+kx̃k2
+n
+n2
+(a) 1
+(n2 − 1)
+≤ 2 ((n + 1)x1 − 1)2 +
+(1 − x21 )
+n
+n2
+n+1
+(n + 1)2 2
+1
+n2 − 1 n2 − 1 2
+−
+2
+x
+x
++
++
+−
+x1
+=
+1
+1
+n2
+n2
+n2
+n2
+n2
+2(n + 1) 2
+=
+(x1 − x1 ) + 1
+n2
+(b)
+
+≤ 1,
+where (a) follows from the fact that x21 +kx̃k2 = kxk2 ≤ 1, and (b) follows from the inequality
+0 ≤ x1 ≤ 1. Therefore, the point x is inside the ellipsoid E1 .
+The ratio of the volumes of the ellipsoids E1 and E0 is given by
+s
+n 
+ s
+n−1 
+2
+2
+p
+vol(E1 )
+n
+n−1
+n2
+n
+= det Q1 =
+=
+,
+vol(E0 )
+n2 − 1
+n+1
+n2 − 1
+n+1
+after some rearrangement. Using the inequality 1 + z ≤ ez valid for all real z, we get
+
+
+
+
+n−1
+1
+1
+vol(E1 )
+1
+≤ exp
+· 2
+−
+= exp −
+.
+vol(E0 )
+2
+n −1 n+1
+2(n + 1)
+
+8.2.5
+
+The description of the ellipsoid: the general case
+
+Suppose we have an ellipsoid Ek = E(ck , Qk ), and we have a separating hyperplane aTk x =
+aTk ck through the center ck . Our goal is to compute the minimum volume ellipsoid Ek+1 that
+contains the half-ellipsoid bounded by Ek and aTk x ≥ aTk ck .
+By the definition of an ellipsoid, there exists some invertible affine transformation L−1
+that takes Ek to B(0, 1) and ak to a = (−1, 0, 0, . . . , 0). Thus we are back to the simple case
+in Subsection 8.2.4. Let E 0 be the ellipsoid just analyzed and take Ek+1 = LE 0 . This clearly
+contains the half-ellipsoid. Further,
+1
+vol(L(E 0 ))
+| det L| · vol(E 0 )
+vol(E 0 )
+vol(Ek+1 )
+=
+=
+=
+≤ e− 2(n+1) ,
+vol(Ek )
+vol(L(B(0, 1)))
+| det L| · vol(B(0, 1))
+vol(B(0, 1))
+
+8
+
+by the previous analysis.
+For implementation purposes, it is more desirable to describe the ellipsoid Ek+1 more
+explicitly by computing the invertible transformation L. We will just state the final result
+without proof.
+1
+h and
+Claim 8.11. The ellipsoid Ek+1 = (ck+1 , Qk+1 ) is given by: ck+1 = ck − n+1
+
+n2
+Qk+1 = 2
+n −1
+where h =
+
+p
+
+
+Qk −
+
+2
+hhT
+n+1
+
+
+.
+
+aTk Qk ak .
+
+Proof. Omitted.
+One final remark is in order about the correctness of our algorithm and its analysis. Note
+that the description of the half-ellipsoid relies on computing square roots. This makes the
+preceding analysis valid only for an idealized implementation assuming exact arithmetic. It
+is possible to handle this precision issues by keeping a good enough approximation of the
+real quantities using rational numbers. However, the full proof then becomes substantially
+more complicated. We will deal with this issue (partly) in the next lecture.
+
+9
+
+

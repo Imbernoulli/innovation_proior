@@ -1,0 +1,1200 @@
+Approximating Bin Packing within
+O(logOP T · log logOP T ) bins
+
+arXiv:1301.4010v3 [cs.DS] 10 Mar 2014
+
+Thomas Rothvoß∗
+Massachusetts Institute of Technology
+
+Abstract
+For bin packing, the input consists of n items with sizes s1 , . . . , sn ∈ [0, 1] which have
+to be assigned to a minimum number of bins of size 1. The seminal Karmarkar-Karp
+algorithm from ’82 produces a solution with at most OP T + O(log2 OP T ) bins.
+We provide the first improvement in now 3 decades and show that one can find a
+solution of cost OP T +O(logOP T · log logOP T ) in polynomial time. This is achieved by
+rounding a fractional solution to the Gilmore-Gomory LP relaxation using the Entropy
+Method from discrepancy theory. The result is constructive via algorithms of Bansal and
+Lovett-Meka.
+
+1 Introduction
+Bin Packing is one of the very classical combinatorial optimization problems studied in computer science and operations research. It’s study dates back at least to the 1950’s [Eis57] and
+it appeared as one of the prototypical NP-hard problems in the book of Garey and Johnson [GJ79]. For a detailed account, we refer to the survey of [CGJ84]. Bin Packing is also
+a good case study to demonstrate the development of techniques in approximation algorithms. The earliest ones are simple greedy algorithms such as the First Fit algorithm, analyzed by Johnson [Joh73] which requires at most 1.7 · OP T + 1 bins and First Fit DecreasOP T + 4 bins (see [Dós07] for a tight
+ing [JDU+ 74], which yields a solution with at most 11
+9
+6
+bound of 11
+OP
+T
++
+).
+Later,
+Fernandez
+de
+la
+Vega
+and
+Luecker [FdlVL81] developed an
+9
+9
+asymptotic PTAS by introducing an item grouping technique that reduces the number of different item types and has been reused in numerous papers for related problems. De la Vega
+and Luecker were able to find a solution of cost at most (1 + ε)OP T + O( ε12 ) for Bin Packing
+and the running time is either of the form O(n f (ε) ) if one uses dynamic programming or of
+the form O(n · f (ε)) if one applies linear programming techniques.
+A big leap forward in approximating bin packing was done by Karmarkar and Karp in
+1982 [KK82], who provided an iterative rounding approach for the mentioned linear programming formulation which produces a solution with at most OP T + O(log2 OP T ) bins in
+polynomial time, corresponding to an asymptotic FPTAS.
+∗ Email: rothvoss@math.mit.edu. Supported by the Alexander von Humboldt Foundation within the Feodor
+
+Lynen program, by ONR grant N00014-11-1-0053 and by NSF contract 1115849.
+
+1
+
+Both papers [FdlVL81, KK82] used the Gilmore-Gomory LP relaxation (see e.g. [Eis57,
+GG61])
+©
+ª
+min 1T x | Ax = 1, x ≥ 0
+(1)
+
+where A is the pattern matrix that consists of all column vectors {p ∈ Zn≥0 | p T s ≤ 1}. Each
+such column p is called a (valid) pattern and corresponds to a feasible multiset of items that
+can be assigned to a single bin. Note that it would be perfectly possible to consider a stronger
+variant in which only patterns p ∈ {0, 1}n are admitted. In this case, the LP (1) could also be
+interpreted as the standard (U NWEIGHTED ) S ET C OVER relaxation
+n X
+o
+X
+min
+xS |
+x S ≥ 1 ∀i ∈ [n]; x S ≥ 0 ∀S ∈ S
+(2)
+S∈S
+
+S∈S :i ∈S
+
+P
+
+for the set system S := {S ⊆ [n] | i ∈S s i ≤ 1}. However, the additive gap between both versions is at most O(log n) anyway, thus we stick to the matrix-based formulation as this is
+more suitable for our technique1 .
+Let OP T and OP T f be the value of the best integer and fractional solution for (1) respectively. Although (1) has an exponential number of variables, one can compute a basic
+solution x with 1T x ≤ OP T f +δ in time polynomial in n and 1/δ [KK82] using the GrötschelLovász-Schrijver variant of the Ellipsoid method [GLS81]. Alternatively, one can also use the
+Plotkin-Shmoys-Tardos framework [PST95] or the multiplicative weight update method (see
+e.g. the survey of [AHK12]) to achieve the same guarantee.
+The Karmarkar-Karp algorithm operates in log n iterations in which one first groups the
+P
+items such that only 21 i ∈[n] s i many different item sizes remain; then one computes a basic solution x and buys ⌊x p ⌋ times pattern p and continues with the residual instance. The
+analysis provides a O(log2 OP T ) upper bound on the additive integrality gap of (1). In fact, it
+is even conjectured in [ST97] that (1) has the Modified Integer Roundup Property, i.e. OP T ≤
+⌈OP T f ⌉ + 1 (and up to date, there is no known counterexample; the conjecture is known
+to be true for instances that contain at most 7 different item sizes [SS09]). Recently, [EPR11]
+found a connection between coloring permutations and bin packing which shows that Beck’s
+Three Permutations Conjecture (any 3 permutations can be bi-colored with constant discrepancy) would imply a constant integrality gap at least for instances with all item sizes bigger
+than 14 . Note that the gap bound of the Karmarkar-Karp algorithm is actually of the form
+O(logOP T f · log(maxi , j { ssi })), which is O(log n) for such instances. But very recently Newj
+man and Nikolov [NNN12] found a counterexample to Beck’s conjecture.
+Considering the gap that still remains between upper and lower bound on the additive
+integrality gap, one might be tempted to try to modify the Karmarkar-Karp algorithm in order
+to improve the approximation guarantee. From an abstract point of view, [KK82] buy only
+patterns that already appear in the initial basic solution x and then map every item to the slot
+of a single larger item. Unfortunately, combining the insights from [NNN12] and [EPR11],
+one can show that no algorithm with this abstract property can yield a o(log2 n) gap, which
+establishes a barrier for a fairly large class of algorithms [EPR13].
+A simple operation that does not fall into this class is the following:
+1 For example, if the input consists of a single item of size 1 , then the optimum value of (2) is 1, while the
+k
+optimum value of (1) is k1 . But the additive gap can be upper bounded as follows: Take a solution x to (1) and
+
+apply a single grouping via Lemma 5 with parameter β = 1. This costs O(logn) and results in a solution to (2) for
+some general right hand side vector b ∈ Zn
+≥0 . With the usual cloning argument, this can be easily converted into
+the form with right hand side 1.
+
+2
+
+Gluing: Whenever we have a pattern p with x p > 0 that has many copies of the
+same item, glue these items together and consider them as a single item.
+In fact, iterating between gluing and grouping, results in a mapping of several small input
+items into the slot of a single large item – the barrier of [EPR13] does not hold for such a
+rounding procedure.
+But the huge problem is: there is no reason why in the worst case, a fractional bin packing
+solution x should contain patterns with many items of the same type. Also the KarmarkarKarp rounding procedure does not seem to benefit from that case either. However, there is
+an alternative algorithm of the author [Rot12] to achieve a O(log2 OP T ) upper bound, which
+is based on Beck’s entropy method [Bec81, Bec88, Spe85] (or partial coloring lemma) from
+discrepancy theory. This is a subfield of combinatorics which deals with the following type of
+questions: given a set system S 1 , . . . , S n ⊆ [m], find a coloring of the elements 1, . . . , m with red
+and blue, such that for each set S i the difference between the red and blue elements (called
+the discrepancy) is as small as possible.
+
+2 Outline of the technique
+The partial coloring method is a very flexible technique to color at least half of the elements
+in a set system with a small discrepancy, but the technique is based on the pigeonhole principle — with exponentially many pigeons and pigeonholes — and is hence non-constructive
+in nature2 . But recently Bansal [Ban10] and later Lovett and Meka [LM12] provided polynomial time algorithms to find those colorings. In fact, it turns out that our proofs are even
+simpler using the Lovett-Meka algorithm than using the classical non-constructive version,
+thus we directly use the constructive method.
+
+The constructive partial coloring lemma
+The Lovett-Meka algorithm provides the following guarantee3:
+Lemma 1 (Constructive partial coloring lemma [LM12]). Let x ∈ [0, 1]m be a starting point,
+δ > 0 an arbitrary error parameter, v 1 , . . . , v n ∈ Qm vectors and λ1 , . . . , λn ≥ 0 parameters with
+n
+X
+
+i =1
+
+2
+
+e −λi /16 ≤
+
+m
+.
+16
+
+(3)
+3
+
+log( nm
+Then there is a randomized algorithm with expected running time O( (m+n)
+δ )) to comδ2
+m
+pute a vector y ∈ [0, 1] with
+2 The claim of the Partial coloring lemma is as follows: Given any vectors v ,... , v ∈ Rm with a parameters
+n
+1
+
+λ1 ,... ,λn > 0 satisfying
+
+n
+X
+
+¡ ¢ m
+G λi ≤ ,
+5
+i=1
+
+for G(λ) :=
+
+(
+
+2
+
+9e −λ /5
+
+if λ ≥ 2
+
+) if λ < 2
+log2 (32 + 64
+λ
+
+Then there is a partial coloring χ : [m] → {0,±1} with |supp(χ)| ≥ m
+2 and |v i χ| ≤ λi kv i k2 for all vectors i = 1,... ,n.
+3 The original statement has x, y ∈ [−1,1]m and |y | ≥ 1−δ for half of the entries. However, one can obtain our
+j
+version as follows: Start with x ∈ [0,1]m . Then apply [LM12] to x ′ := 2x − 1 ∈ [−1,1]m to obtain y ′ ∈ [−1,1]m with
+|v i (y ′ − x ′ )| ≤ λi kv i k2 for all i ∈ [n] and half of the entries satisfying |y ′j | ≥ 1 − δ . Then y := 21 (y ′ + 1) has half of
+the entries y j ∈ [0, δ2 ] ∪ [1 − δ2 ,1]. Furthermore, |v i (y − x)| = 21 |v i (y ′ − x ′ )| ≤ 2i kv i k2 .
+λ
+
+3
+
+• y j ∈ [0, δ] ∪ [1 − δ, 1] for at least half of the indices j ∈ {1, . . . , m}
+• |v i y − v i x| ≤ λi · kv i k2 for each i ∈ {1, . . . , n}.
+If we end up with an almost integral Bin Packing solution y, we can remove all entries
+with y j ≤ n1 and roundup those with y j ∈ [1 − n1 , 1] paying only an additional constant term.
+Thus we feel free to ignore the δ term and assume that half of the entries are y j ∈ {0, 1}.
+The algorithm in [LM12] is based on a simulated Brownian motion in the hypercube
+[0, 1]m starting at x. Whenever the Brownian motion hits either the boundary planes y j = 0
+or y j = 1 or one of the hyperplanes v i (x − y) = ±λi kv i k2 , the Brownian motion continues the
+walk in that subspace. By standard concentration bounds, the probability that the walk ever
+2
+hits the i th hyperplane is upperbounded by e −Ω(λi ) . In other words, condition (3) says that
+m
+,
+the expected number of hyperplanes v i (x − y) = ±λi kv i k2 that ever get hit is bounded by 16
+from which one can argue that a linear number of boundary constraints must get tight.
+Readers that are more familiar with approximation algorithm techniques than with discrepancy theory, should observe the following: In the special case that λi = 0 for all i , one
+can easily prove Lemma 1 by choosing y as any basic solution of {y | v i y = v i x ∀i ∈ [n]; 0 ≤
+y ≤ 1}. In other words, Lemma 1 is somewhat an extension of the concept of basic solutions.
+Considering that a significant fraction of approximation algorithms is based on the sparse
+support of basic solutions, one should expect many more applications of [LM12].
+
+The rounding procedure
+Let x be a fractional solution for the Gilmore-Gomory LP (1), say with |supp(x)| = m ≤ n and
+let A be the constraint matrix reduced to patterns in the support of x.
+Assume for the sake of simplicity that all items have size between k1 and k2 for some k. We
+now want to discuss how Lemma 1 can be applied in order to replace x with another vector y
+that has half of the entries integral and is still almost feasible. Then repeating this procedure
+for log(m) iterations will lead to a completely integral solution. For the sake of comparison:
+the Karmarkar-Karp algorithm is able to find another fractional y that has at most half the
+support of x and is at most an additive O(1) term more costly. So let us argue how to do
+better.
+Let us sort the items according to their sizes (i.e. k2 ≥ s 1 ≥ . . . ≥ s n ≥ k1 ) and partition the
+items into groups I 1 , . . . , I t such that the number of incidences in A is of order 100k for each
+P
+group. In other words, if we abbreviate v I j := i ∈I j A i as the sum of the row vectors in I j ,
+then kv I j k1 ≈ 100k. Since each column of A sums up to at most k and each group consums
+m
+many groups. Now, we can obtain a suitable y with at
+100k incidences, we have only t ≤ 100
+most half the fractional entries by either computing a basic solution to the system
+
+1T y = 1T x, 0 ≤ y ≤ 1
+
+v I j (x − y) = 0 ∀ j ∈ [t ],
+
+or by applying the Constructive Partial Coloring Lemma to v I 1 , . . . , v I t and v obj := (1, . . . , 1)
+2
+
+m
+m
++ 1 ≤ 16
+, condition (3)
+with a uniform parameter of λ := 0. In fact, since (t + 1) · e −0 /16 ≤ 100
+is even satisfied with a generous slack. The meaning of the constraint v I (x − y) = 0 is that
+y still contains the right number of slots for items in group I . But the constraint does not
+distinguish between different items within I ; so maybe y covers the smaller items in I more
+often than needed and leaves the larger ones uncovered. However, it is not hard to argue that
+
+4
+
+after discarding 100k items, y can be turned into a feasible solution, so the increase in the
+objective function is again O(1) as for Karmarkar-Karp.
+Now we are going to refine our arguments and use the power of the entropy method.
+The intuition is that we want to impose stronger conditions on the coverage of items within
+groups. Consider a group I := I j and create growing subgroups G 1 ⊆ G 2 ⊆ . . . ⊆ G 1/ε = I
+such that the number of incidences grows by ε · 100k from subgroup to subgroup, for some
+ε > 0 (later ε := 12 will turn out to be a good choice; see Figure 1.(a)). In other words,
+log n
+
+kv G j +1 \G j k1 ≈ ε·100k. We augment the input for Lemma 1 by the vectors v G for all subgroups
+q
+equipped with parameter λG := 4 ln( ε1 ). Observe that condition (3) is still satisfied as each
+2
+
+of the εt many subgroups G contributes only e −λG /16 ≤ ε. So, we can get a better vector y
+q
+that also satisfies |v G (x − y)| ≤ 4 ln( 1ε ) · kv G k2 for any subgroup. In order to improve over
+our previous approach we need to argue that kv G k2 ≪ k. But we remember that by definip
+p
+tion kv G k1 ≤ 100k, thus we obtain kv G k2 ≤ kv G k1 · kv G k∞ ≤ 100k · kv G k∞ /kv G k1 . In other
+words, the only situation in which we do not immediately improve over Karmarkar-Karp is
+if kv G k∞ ≥ Ω(kv G k1 ), i.e. if there is some pattern such that a large fraction of it is filled with
+items of the same subgroup G.
+m columns
+
+groups subgroups
+pattern p
+x p = qr
+
+I1
+n rows
+
+A
+
+I=
+Ij
+
+G1 . . .
+
+pattern p ′
+x p′ ′ = qr
+
+G1
+ε
+
+w · q items
+
+It
+
+si
+(a) rounding
+
+⇒
+
+q items
+w · si
+
+(b) gluing
+
+Figure 1: (a) visualization of groups and subgroups. (b) visualization of the gluing procedure.
+
+The gluing
+At this point our gluing operation comes into play. After a simple pre-rounding step which
+costs us a o(1) term, we can assume that all entries in x are multiples of q1 := 14 . Recall
+log n
+
+that initially we have a single copy from each item. We group consecutive items together
+into groups of size β = 14 and round their sizes to the smallest one in the group. By stanlog n
+
+dard arguments this incurs a negligible cost of O(
+
+1
+). Now we can assume that we have a
+log4 n
+
+sufficiently large number of copies for every item. Suppose that after this agglomeration we
+find an item i and a pattern p in the support such that indeed p i is large, say p i s i ≥ 18 .
+p
+
+log n
+
+The crucial observation is that this pattern p alone covers w := ⌊ qi ⌋ many copies of item i in
+the input since x p · p i ≥ w . Next, take w many copies of item i in p and glue them together
+to obtain a new, bigger item i ′ of size s i ′ = w · s i . The pattern p has enough items to do this
+5
+
+q times, see Figure 1.(b). In other words, the modified pattern now contains q copies of a
+new artificial item i ′ . The reason why we want q copies of this new item is that the modified
+pattern p alone covers q · x p = 1 copies of i ′ . Thus, in a finally obtained integral solution we
+would have a slot for the artificial item i ′ , which we can then replace with the copies of the
+original item i .
+Observe that the size of this newly obtained item type is s i ′ = w · s i ≥ 112 . So we call
+log n
+
+items above that size large and below that size small. The interesting effect is that if we apply this gluing procedure to all small items whenever possible, the penalty that we pay for
+rounding the remaining small items is so small that the overall cost is completely dominated
+by the contribution of the large items (i.e. those items that were either large from the beginning or that were created during the gluing process). In other words, we obtain the same
+approximation guarantee as if the instance would only contain items of size at least 112
+log n
+
+from the beginning on; for those instances already [KK82] produces a solution with at most
+OP T f +O(log n · log log n) bins, so this is our final approximation guarantee for all instances.
+
+Contribution
+Our main contribution is the following theorem:
+Theorem 2. For any Bin Packing instance s 1 , . . . , s n ∈ [0, 1], one can compute a solution with
+at most OP T f + O(logOP T f · log logOP T f ) bins in expected time O(n 6 log5 (n)), where OP T f
+denotes the optimum value of the Gilmore-Gomory LP relaxation.
+This partly solves problem #3 in the list of 10 open problems in approximation algorithms stated by Williamson and Shmoys [WS11] (they asked for a constant integrality gap).
+
+3 Related work
+The classical application of the partial coloring lemma is to find a coloring χ : [m] → {±1} for
+P
+m elements such that for a given set system S 1, . . . , S n 4 the discrepancy maxi ∈[n] | j ∈S i χ( j )|
+is minimized. For example, one can obtain Spencer’s bound [Spe85] on the discrepancy of
+arbitrary set systems, by applying log m times Lemma 1 starting with x := ( 12 , . . . , 21 ) and a uniq
+m
+form bound of λ := C log 2n
+m where v i ∈ {0, 1} is the characteristic vector of S i . This results
+q
+in a coloring χ : [m] → {±1} with |χ(S)| ≤ O( m log 2n
+). Note that e.g. for n ≤ O(m), this is a
+m
+p
+p
+O( m) coloring, while a pure random coloring would be no better than O( m · log m).
+p
+Other applicationspof this method give a O( t log m) bound if no element is in more than
+t sets [Sri97] and a O( k log m) bound for the discrepancy of k permutations
+p[SST]. For the
+first quantity, alternative proof techniques give bounds of 2t −1 [BF81] and O( t · log m) [Ban98].
+In fact, we could use those classical techniques and extend [Rot12] to obtain a OP T f +
+O(logOP T f · log logOP T f ) integrality gap result. It might appear surprising that one can
+bound integrality gaps by coloring matrices, but this is actually a well known fact, which is
+expressed by the Lovász-Spencer-Vesztergombi Theorem [LSV86]: Given a matrix A and a
+4 The standard notation in discrepancy theory is to have n as number of elements and m as the number of
+
+sets. However, that conflicts with the standard notation for Bin Packing, where n is the number of items which is
+essentially the number of v -vectors.
+
+6
+
+vector x ∈ [0, 1]m such that any submatrix of A admits a discrepancy α coloring. Then there
+is a y ∈ {0, 1}m with kAx − Ayk∞ ≤ α. For a more detailed account on discrepancy theory, we
+recommend Chapter 4 in the book of Matoušek [Mat99].
+
+4 Preliminaries
+In the Bin Packing literature, it is well known that it suffices to show bounds as in Theorem 2
+with an n instead of OP T f and that one can also assume that items are not too tiny, e.g.
+s i ≥ n1 . Though the following arguments are quite standard (see e.g. [KK82]), we present
+them for the sake of completeness.
+Lemma 3. Assume for a monotone function f , there is a poly(m)-time OP T f + f (n) algorithm
+for Bin Packing instances s ∈ [0, 1]m with |{s i | i ∈ [m]}| ≤ n many different item sizes and
+min{s i | i ∈ [m]} ≥ n1 . Then there is a polynomial time algorithm that finds a solution with at
+most OP T f + f (OP T f ) + O(logOP T f ) bins.
+P
+Proof. Let s ∈ [0, 1]m be any bin packing instance and define σ := m
+i =1 s i as their size. First,
+split items into large ones L := {i ∈ [m] | s i ≥ σ1 } and small ones S := {i ∈ [m] | s i < σ1 }.
+We perform the grouping procedure from [KK82] (or from Lemma 5) to large items L
+P
+and produce an instance with sizes s ′ such that each size s i′ that appears has j :s ′j =si′ s i′ ≥ 1.
+
+Moreover, after discarding items of total size at most O(log min{s1i |i ∈L} ) ≤ O(log σ) one has
+OP T f′ ≤ OP T f . Thus the number of different item sizes in s ′ is bounded by σ. We run the as-
+
+sumed algorithm to assign items in L to at most OP T f′ + f (σ) ≤ OP T f + f (OP T f ) bins (using
+that OP T f ≥ σ and f is monotone). Adding the discarded items increases the objective function by at most another O(logOP T f ) term. Now we assign the small items greedily over those
+bins. If no new bin needs to be opened, we are done. Otherwise, we know that the solution
+consists of k bins such that k − 1 bins are at least 1 − σ1 full. This implies σ ≥ (k − 1) · (1 − σ1 ),
+and hence k ≤ σ + 3 ≤ OP T f + 3 assuming σ ≥ 2.
+
+From now on, we have the implicit assumption s i ≥ n1 . In an alternative Bin Packing
+definition, also called the cutting stock problem, the input consists of a pair (s, b) such that
+b i ∈ Z≥0 gives the number of copies of s i . The Karmarkar Karp bound of O(log2 n) on the
+additive integrality gap still holds true in this general setting, where n is the number of
+item types. Note that the time to solve the LP (1) up to an additive constant is polynoP
+mial in ni=1 b i . In this paper, we will work with a more general formulation in which any
+b ∈ cone{p ∈ Zn≥0 | s T p ≤ 1} may serve as vector of multiplicities (note that such a vector
+might have fractional entries). From our starting solution x, we can immediately remove the
+P
+integral parts ⌊x p ⌋ and assume that 0 ≤ x < 1, which has the consequence that ni=1 s i b i < n.
+It will be useful to reformulate bin packing as follows: consider a size vector s ∈ [0, 1]n
+(s 1 ≥ . . . ≥ s n ) with pattern matrix A and a given vector x ∈ Rm
+≥0 as input and aim to solve the
+following problem
+min 1T y
+X
+Aj y
+j ≤i
+
+y
+
+(4)
+≥
+∈
+
+X
+
+Aj x
+
+j ≤i
+Zm
+≥0
+
+7
+
+∀i ∈ [n]
+
+P
+P
+We write y º x if j ≤i A j y ≥ j ≤i A j x for all i ∈ [n]. In words: we have a fractional solution
+x to LP (1) for an instance with A i x many items of type i in the input and aim to find an
+P
+integral solution y that reserves j ≤i A j y many slots for items of type 1, . . . , i . The condition
+y º x guarantees that y can be easily transformed into a feasible solution by simply assigning
+items to slots of larger items. We make the following observation:
+
+Observation 1. Consider any instance 1 ≥ s 1 ≥ . . . ≥ s n > 0 with pattern matrix A and vector
+x ∈ Rm
+≥0 such that Ax = 1. Then the value of the optimum integral solution to (4) and (1)
+coincide.
+However, (4) has the advantage that we can split the solution x = x ′ + x ′′ and then separately consider x ′ and x ′′ while the vector b ′ = Ax ′ might be fractional, which is somewhat
+unintuitive when speaking about classical bin packing. When Ax ∈ Zn≥0 and y with y º x is
+integral, then it is clear that y defines a solution in which each item represented by multiplicity vector Ax can be mapped to one slot in the patterns of y.
+
+Notation
+To fix some notation, p denotes a pattern which we interpret either as a multi-set of items
+or as a vector where p i ∈ Z≥0 denotes the number of copies of item i contained in p. The
+matrix formed by all possible patterns is denoted by A. Moreover A i is the i th row of A and
+by a slight abuse of notation, sometimes we interpret p as a column index for pattern p and
+write A p as the pth column. As usual [n] = {1, . . . , n} and 1 denotes the all-ones vector of
+P
+suitable dimension. For a subset I ⊆ [n], we write s(I ) := i ∈I s i . For any k that is a power
+of 2, we denote the subset of items {i ∈ [n] | k1 ≤ s i < k2 } as one size class. The quantity m will
+usually refer to the number of patterns in A.
+
+5 Operations on fractional solutions
+We introduce two useful operations that we can apply to a fractional solution: the classical item grouping procedure similar to [FdlVL81, KK82] and a novel item gluing operation.
+Finally, we show how they can be combined to obtain a well spread instance in which no
+pattern contains a significant fraction of copies of a single item.
+In order to keep the maintained solution feasible in these procedures it will be necessary
+to add some additional patterns. In the classical literature [FdlVL81, KK82] this would be
+done with the phrase “discard the following set of items. . . ” meaning that those items are
+assigned to separate bins in a greedy manner. We choose to handle this slightly differently.
+We allow additional columns in A – for each i ∈ [n], we add a waste pattern {i }, which can be
+bought in arbitrary fractional quantities at cost 2s i per copy. For a vector x ∈ Rm
+≥0 representing a fractional solution, we write
+(1, 2s)T x =
+
+X
+
+p regular pattern
+
+xp +
+
+X
+
+2s i x {i }
+
+{i } waste pattern
+
+as objective function. During our rounding algorithm, we do not make any attempt to round
+entries x {i } belonging to waste patterns to integral values. This can be easily done at the very
+end as follows:
+8
+
+p ∈ supp(x) contain only one item, i.e.
+Lemma 4. Let x ∈ Rm
+≥0 and suppose that all patterns
+Pn
+P
+kpk1 = 1. Then there is an integral y º x with i =1 s i y {i } ≤ ni=1 s i x {i } + 1.
+
+Proof. By adding dummy copies, we may assume that x p = q1 for all p (for some large number q). Sort the patterns p 1, . . . , p Q such that the item sizes in those patterns are non-increasing.
+Buy each qth pattern starting with p q plus one copy of p 1 .
+P
+Finally, any set of Bin Packing items S ⊆ [n] can be assigned to at most 2 i ∈S s i + 1 bins
+using a First Fit assignment, which is the reason for the penalty factor of 2 for waste patterns.
+
+5.1 Grouping
+The operation of grouping items is already defined by de la Vega and Luecker in their asymptotic PTAS for Bin Packing [FdlVL81]. For some parameter k, they form groups of k input
+items each and round up the item sizes to the size of the largest item in that group. This essentially reduces the number of different item types by a factor of k. In contrast, we will
+replace items in the fractional solution x with smaller items. The reason for our different approach is that we measure progress in our algorithm in terms of |supp(x)|, while e.g.
+Karmarkar-Karp measure the progress in terms of the total size of remaining input items. As
+a consequence we have to be careful that no operation increases |supp(x)|.
+Lemma 5 (Grouping Lemma). Let x ∈ Rm
+≥0 be a vector, β > 0 any parameter and S ⊆ [n] be
+a subset of items. Then there is an x ′ º x with identical fractionality as x (except of waste
+patterns) with (1, 2s)T x ′ ≤ (1, 2s)T x+O(β·log(2 maxi , j ∈S { ssi }), and for any i ∈ S, either A i x ′ = 0
+j
+
+or s i A i x ′ ≥ β.
+
+Proof. It suffices to consider the case in which α ≤ s i ≤ 2α for all i ∈ S and show that the
+increase in the objective function is bounded by O(β). The general case follows by applying
+the lemma to all size classes S ∩ {i ∈ [n] | ( 12 )ℓ+1 < s i ≤ ( 12 )ℓ }. We also remove those items that
+have already s i A i x ≥ β from S since there is nothing to do for them.
+In the following, we assume that items are sorted according to their sizes. We consider
+the index set I := {(i , p) | i ∈ S, p ∈ supp(x)}. For any subset G ⊆ I , we define the weight as
+P
+w (G) := (i ,p)∈G s i p i x p . Note that any single index has weight w ({(i , p)}) = s i p i x p ≤ s i A i x ≤
+β by assumption. Hence we can partition I = G 1 ˙
+∪... ˙
+∪G r such that
+• w (G k ) ∈ [2β, 4β] ∀k = 1, . . . , r − 1
+• w (G r ) ≤ 2β
+• (i , p) ∈ G k , (i ′ , p ′ ) ∈ G k+1 ⇒ i ≤ i ′
+Now, for each k ∈ {1, . . . , r − 1} and each index (i , p) ∈ G k , we replace items of type i in p with
+the smallest item type that appears in G k . Furthermore, for indices (i , p) ∈ G r , we remove
+β
+items of type i from p. Finally, we add 4 α many copies of the largest item in I to the waste
+β
+
+β
+
+(note that the number 4 α can be fractional and even 4 α ≪ 1 is meaningful). Let x ′ denote
+the emerging solution. Clearly, x ′ only uses patterns that have size at most 1. Moreover,
+β
+(1T , 2s)x ′ − (1T , 2s)x ≤ 4 α · 2 max{s i | i ∈ S} ≤ 16β.
+P
+It remains to argue that x ′ º x. Consider any item i ∈ [n] and the difference j ≤i A j x ′ −
+P
+j ≤i A j x. There is at most one group G k whose items were (partly) larger than i in x and then
+9
+
+smaller in x ′ . The weight of that group is w (G k ) ≤ 4β, thus their “number” is
+4β
+α . We add at least this “number” of items to the waste, thus
+
+X
+
+j ≤i
+
+A j x′ −
+
+X
+
+j ≤i
+
+Aj x ≥
+
+P
+
+(i ,p)∈G k p i x p ≤
+
+X
+4β
+pi xp ≥ 0
+−
+α (i ,p)∈G k
+
+5.2 Gluing
+We now formally introduce our novel item gluing method. Assume we would a priori know
+some set of items which in an optimal integral solution is assigned to the same bin. Then
+there would be no harm in gluing these items together to make sure they will end up in the
+same bin. The crucial point is that this is still possible with copies of an item i appearing in
+the same pattern in a fractional solution as long as the contribution x p ·p i to the multiplicity
+vector is integral, see again Figure 1.(b).
+Lemma 6 (Gluing Lemma). Suppose that there is a pair of pattern p and item i with x p = qr
+and p i ≥ w · q (r, q, w ∈ N) as well as a size s i ′ = w · s i . Modify x such that w · q items of type
+i in pattern p are replaced by q items of type i ′ and call the emerging solution x ′ . Then the
+following holds:
+a) The patterns in x ′ have still size at most one and 1T x = 1T x ′ .
+b) Any integral solution y ′ º x ′ can be transformed into an integral solution y º x of the
+same cost.
+Proof. The first claim is clear as q · s i ′ = w q · s i .
+Now, let y ′ º x ′ be an integral solution. Recall that A i ′ x ′ ≥ qr · q = r ∈ Z>0 . Select the r
+smallest slots of size at least s i ′ that are contained in Ay ′ . Substitute each such slot with w
+items of type i and call the emerging solution y. Note that y is integral with y º x.
+Any sequence of grouping and gluing produces a solution which dominates the original instance in the sense that any integral solution for the transformed instance implies an
+integral solution for the original one.
+Corollary 7. Let s ∈ [0, 1]m and x ∈ Rm
+≥0 be any instance for (4). Suppose there is a sequence
+(0)
+(T )
+(T )
+m
+x = x , . . . , x with x ∈ Z≥0 such that for each t ∈ {1, . . . , T }, at least one of the cases is true:
+• (i) x (t ) º x (t −1)
+• (ii) x (t ) emerges from x (t −1) by gluing items via Lemma 6.
+T
+T (T )
+Then one can construct an integral solution y ∈ Zm
+in polyno≥0 with y º x and 1 y ≤ 1 x
+mial time.
+
+Proof. Follows by induction over T , the definition of “º” and Lemma 6.b).
+
+10
+
+5.3 Obtaining a well-spread instance
+As already argued in the introduction, a rounding procedure based on the partial coloring
+method would beat [KK82] if the patterns in p ∈ supp(x) would satisfy A i p ≤ δ · A i x for δ ≤
+o(1). We call this property δ-well-spread w.r.t. ε-small items. A crucial lemma is to show that
+1
+-well-spread solution while loosing
+we can combine grouping and gluing to obtain a polylog(n)
+
+1
+a negligible additive polylog(n)
+term in the objective function.
+To simplify notation, let us assume that the vector s contains already all sizes k · s i for
+i = 1, . . . , n and k ∈ N (even if x does not contain any item of that size).
+
+Lemma 8. Let 1 ≥ s 1 ≥ . . . ≥ s n ≥ n1 and x ∈ [0, 1]m be given such that for some q ∈ Z>0 one has
+x p ∈ Zq≥0 for all p ∈ supp(x) and |supp(x)| ≤ n. Choose any parameters δ, β > 0 and call items
+β
+
+of size at least ε := δ 2q large and small otherwise. Then one can apply Grouping and Gluing
+
+to obtain a solution x̃ with (1, 2s)T x̃ ≤ (1, 2s)T x +O(β log2 n) and the property that p i ≤ δ· A i x̃
+for all small items i and all p ∈ supp(x̃).
+
+Proof. First apply grouping with parameter β to the small items to obtain a vector x ′ º x with
+(1, 2s)T x ′ ≤ (1, 2s)T x +O(β·log n) such that s i · A i x ′ ≥ β whenever A i x ′ > 0. Now apply gluing
+for each i and p ∈ supp(x ′ ), wherever s i A i p ≥ 2δ · β with maximal possible w . In fact, that
+2δβ
+
+δβ
+
+δβ
+
+i
+
+i
+
+i
+
+δβ
+
+means w ≥ ⌊ qs ⌋ ≥ qs since qs ≥ qε ≥ 1. The size of the items emerging from the gluing
+δβ
+
+process is at least w · s i ≥ q , thus they are large by definition. We have at most q items of
+δβ
+
+type i remaining in the pattern and their total size is q · s i ≤ q · ε ≤ 2 . Let x ′′ be the new
+solution.
+β
+If after gluing, we still have s i A i x ′′ ≥ 2 , then we say i is well-covered. If indeed all small
+δβ
+
+items are well-covered, then we are done because s i A i p ≤ s i q ≤ 2 ≤ δ · s i A i x ′′ for all small i
+and p ∈ supp(x ′′ ).
+Thus, let S := {i small | i not well-covered} be the set of those items whose number has
+decreased to less than half due to gluing. We apply again grouping (Lemma 5) to S (note that
+we do not touch the well-covered items). Then we apply again gluing where ever possible
+and repeat the procedure until all small items are well-covered. Note that once an item is
+well-covered it stays well-covered as it is neither affected by grouping nor by gluing.
+In each iteration the waste increases by O(β·log n), thus it suffices to argue that the procedure stops after at most O(log n) iterations. Note that the total size of not well-covered items
+P
+1
+i not well-covered s i A i x decreases by at least a factor of 2 in each iteration. Moreover at the bePn
+P
+ginning we had i =1 s i A i x < n and we can stop the procedure when i not well-covered s i A i x ≤
+1 5
+, which shows the claim.
+n2
+
+6 The algorithm
+In this section, we present the actual rounding algorithm, which can be informally stated as
+follows (we give a more formal definition later):
+1
+p ≤ n we can just move it to the waste. In total over all iterations
+this does not cost us more than an extra 1 term. Then we always have the trivial lower bound s i A i x ≥ 12 as
+n
+s i ≥ n1 .
+5 In fact, whenever we have a pattern p with x
+
+11
+
+(1) FOR log n iterations DO
+Z
+
+≥0
+for all p
+(2) round x s.t. x p ∈ polylog(n)
+
+1
+(3) make x polylog(n)
+-well spread
+
+(4) run the constructive partial coloring lemma to make half of the variables integral
+For the sake of comparison note that the Karmarkar-Karp algorithm [KK82] consists of
+step (1) + (4), just that the application of the constructive partial coloring lemma is replaced
+with grouping + computing a basic solution.
+
+6.1 Finding a partial coloring
+The next step is to show how Lemma 1 can be applied to make at least half of the variables
+integral. As this is the crucial core procedure in our algorithm, we present it as a standalone theorem and list all the properties that we need for matrix A. Later, we will apply
+Theorem 9 to the matrix of patterns p that have 0 < x p < 1, after making the solution wellspread. Mathematically speaking, the point is that any matrix A that is column-sparse and
+has well-spread rows admits good colorings via the entropy method.
+Theorem 9. Let x ∈ [0, 1]m be a vector and δ, ε be parameters with 0 < ε ≤ δ2 ≤ 1 and let A ∈
+n×m
+Z≥0
+(with m ≥ 100 log(maxi { s2 })) be any matrix with numbers 1 ≥ s 1 ≥ . . . ≥ s n > 0. Suppose
+i
+P
+that for any column p ∈ [m], one has A p s = ni=1 A i p s i ≤ 1 and for any row i with s i ≤ ε
+one has kA i k∞ ≤ δ · kA i k1 . Then there is a randomized algorithm with expected polynomial
+T
+T
+running time to compute a y ∈ [0, 1]m with |{p ∈ [m] | y p ∈ {0, 1}}| ≥ m
+2 , 1 y = 1 x and for all
+i ∈ [n]
+
+¯ O( 1 )
+¯X
+si > ε
+¯
+¯
+si
+q
+A j (y − x)¯ ≤
+¯
+2
+1
+
+O( ln( δ ) · δ · si ) s i ≤ ε
+j ≤i
+
+Proof. First of all, it will be convenient for our arguments if each individual row has a small
+norm. Consider a row A i belonging to a large index (i.e. s i > ε) and replace it with kA i k1
+many rows that sum up to A i , each having unit k · k1 -norm. Note that any y that satisfies
+the claim for the modified matrix does so for the original matrix A. Similarly, consider any
+index i belonging to a small item (i.e. s i ≤ ε). Then we know that kA i k∞ ≤ δ · kA i k1 . Thus
+we can replace A i by non-negative integral row vectors that sum up to A i , each of which has
+1
+and δ1 . After this replacement we can assume that
+k · k∞ -norm 1 and k · k1 -norm between 2δ
+1
+each index i with s i ≤ ε satisfies 2δ
+≤ kA i k1 ≤ δ1 and kA i k∞ = 1.
+In the following let C > 0 be a large enough constant that we determine later. We will
+prove the claim via a single application of Lemma 1. In particular we need to make a choice
+of vectors v i and parameters λi . First, we partition the items into groups [n] = I 1 ˙
+∪... ˙
+∪I t
+such that each group I consists of consecutive items and is chosen maximally such that
+P
+i ∈I kA i k1 s i ≤ C and so that I contains only items from one size class. In other words, apart
+from the log(maxi { s2 }) many groups that contain the last items from some size class, we will
+i
+P
+have that i ∈I kA i k1 s i ≥ C −1. For each group I , whether complete or not, we define a vector
+P
+v I := i ∈I A i with parameter λI := 0.
+Now consider a group I that belongs to small items, say the items i ∈ I have size k1 ≤
+s i ≤ k2 for some k. We form subgroups G 1 ⊆ G 2 ⊆ . . . ⊆ G t (I ) = I such that kv G j +1 \G j k1 ∈
+12
+
+p
+p
+p
+p
+p
+δ
+[C δk, 2C δk] (this works out since kA i k1 ≤ δ1 = δ3/2
+≤ εδ ≤ δk; again the last subgroup
+G t (I ) might be smaller). q
+For each subgroup G, we add the vector v G to our list, equipped with
+
+error parameter λG := 4 ln( δ2 ).
+To control the objective function, we also add the all-ones vector v obj := (1, . . . , 1) with
+λobj := 0. Now we want to argue that Lemma 1, applied to all the vectors v I , v G , v obj defined
+above, provides a solution y that satisfies the claim. The first step is to verify that indeed the
+“entropy condition” (3) is satisfied. As the item sizes for each column sum up to most one,
+P
+we know that i ∈[n] kA i k1 s i ≤ m, where m is the number of columns. Each complete group
+P
+2
+m
+has i ∈I kA i k1 s i ≥ C −1, thus the number of groups is t ≤ Cm
+−1 +log(maxi { s i }) ≤ 50 for C large
+2
+
+enough and each group I contributes e −λI /16 = 1 to (3).
+Next, consider any group I and let us calculate the contribution just of its subgroups
+G 1 , . . . ,G t (I ) to (3). The number of I ’s subgroups is t (I ) ≤ p1 + 1 ≤ p2 and each subgroup
+δ
+
+2
+
+δ
+
+G contributes e −λG /16 = δ2 , thus their total contribution is bounded by p2 · δ2 ≤ 1. In other
+δ
+
+m
+as well and
+words, the total contribution of all subgroups is bounded from above by 100
+(3) indeed holds and we can apply Lemma 1. The
+algorithm
+returns
+a
+vector
+y such that
+q
+
+|v I (x − y)| = 0 for each group I and |v G (x − y)| ≤ 4
+
+ln( δ2 ) · kv G k2 for each subgroup G (and of
+
+course 1T x = 1T y).
+Finally, consider any item i and suppose it is small with k1 ≤ s i ≤ k2 . It remains to show
+q
+P
+that | j ≤i A j (x − y)| ≤ O( δ ln( δ2 ) · k). Now we use that the interval {1, . . . , i } can be written as disjoint union of a couple of groups + a single subgroup + a small rest. So let t ′
+be the index with i ∈ I t ′ . Moreover, let G be the (unique) maximal subgroup such that
+S
+S
+G ⊆ {1, . . . , i }\ t ′′ <t ′ I t ′′ and let R := {1, . . . , i }\(G ∪ t ′′ <t ′ I t ′′ ) be the remaining row indices. The
+error that our rounding produces w.r.t. i is
+s µ ¶
+¯
+¯ ¯ X
+¯X
+2
+¯
+¯ ¯
+¯
+· kv G k2 + kv R k1
+A j (x − y)¯ = ¯
+v I t ′′ (x − y) +v G (x − y) + v R (x − y)¯ ≤ 4 ln
+¯
+| {z }
+δ
+{z }
+t ′′ <t ′ |
+j ≤i
+p
+≤2C δk
+
+=0
+
+It remains to bound kv G k2 . At this point, we crucially rely on the assumption kA i k∞ ≤ 2δ ·
+kA i k1 . Using this together with Hölder’s inequality and the triangle inequality we obtain
+r
+r
+p
+p
+p
+X
+X
+kv G k2 ≤ kv G k1 · kv G k∞ ≤ kv G k1 ·
+kA i k∞ ≤ kv G k1 · 2δ
+kA i k1 = 2δ kv G k1 = O( δk)
+| {z }
+i ∈G
+i ∈G
+≤O(k)
+
+Hence the claim is proven for small items. On the other hand for large items i we do not even
+S
+need to use the subgroups. Let t ′ be the group with i ∈ I t ′ and denote R := {1, . . . , i }\ t ′′ <t ′ I t ′′
+P
+P
+as the remaining interval. Then we directly obtain | j ≤i A j (x − y)| = | t ′′ <t ′ v I t ′′ (x − y) +
+v R (x − y)| ≤ kv R k1 ≤ O( s1 ).
+i
+
+One can alternatively prove Theorem 9 by combining the classical partial coloring lemma
+and the Lovász-Spencer-Vesztergombi Theorem [LSV86]. Note that the bound of the classical partial coloring lemma involves an extra O(log λ1 ) term for λ ≤ 2. However, using the
+parametrization as in [SST] one could avoid loosing a super constant factor. Moreover, instead of just 2 different
+q group types (“groups” and “subgroups”), we could use an unbounded
+number to save the
+mation ratio.
+
+ln( δ2 ) factor. However, this would not improve on the overall approxi-
+
+13
+
+Recall that for the gluing procedure in Lemma 8 we need the property that the entries in
+1
+. But this is easy to achieve (in fact, the next lemma
+x p are not too tiny – say at least polylog(n)
+also follows from [KK82] or [Rot12]).
+Lemma 10. Given any instance 1 ≥ s 1 ≥ . . . ≥ s n ≥ n1 , x ∈ Rm
+≥0 and parameter γ > 0. Then
+one can compute a y º x in expected polynomial time such that all y p are multiples of γ and
+(1, 2s)T y ≤ (1, 2s)T x + O(γ · log2 n).
+Proof. After replacing x with a basic solution, we may assume that |supp(x)| ≤ n. We write
+′
+apply log n times Theorem 9 with δ = 1 to
+x = γx ′ + γz with z ∈ Zm
+≥0 and 0 ≤ x ≤ 1. Now P
+′
+′
+m
+T ′
+x to obtain y ∈ {0, 1} with 1 y ≤ 1T x ′ and | j ≤i A j (x − y)| ≤ O(log n · s1i ) (if at the end
+of the rounding process, the fractional support goes below 100 log(n), we can stop and remove the remaining fractional patterns). Let i ℓ be the largest item in size class ℓ. Then for
+ℓ = 0, . . . , log n, we add O(log n · 2ℓ ) copies of item i ℓ to the waste of y ′ . Now (1, 2s)T y ′ ≤
+(1, 2s)T x ′ + O(log2 n) and y ′ º x ′ . Eventually define y := γy ′ + γz and observe that y º x, all
+entries y p are multiples of γ and (1, 2s)T y ≤ (1, 2s)T x + O(γ log2 n).
+Observe that just applying Lemma 10 with γ = 1 yields an integral solution with cost
+OP T f + O(log2 n).
+
+6.2 Proof of the main theorem
+It remains to put all ingredients together and show that each of the log n applications of the
+partial coloring lemma increases the objective function by at most O(log log n).
+Theorem 11. Let 1 ≥ s 1 ≥ . . . ≥ s n ≥ n1 with and x ∈ Rm
+≥0 be given. Then there is an expected
+polynomial time algorithm to compute y º x with 1T y ≤ 1T x + O(log n · log log n).
+Proof. We choose δ := β := γ :=
+
+1
+1
+and ε :=
+≤ 12 γβδ.
+⌈log4 n⌉
+4 log12 n
+
+After moving to a basic
+
+solution and buying integral parts of x, we may assume that x ∈ [0, 1]m and |supp(x)| ≤ n.
+Recall that i ℓ = argmax{i | 2−(ℓ+1) < s i ≤ 2−ℓ }. We perform the following algorithm:
+(1) FOR t = 1 TO log n DO
+(2) Apply Lemma 10 to have all x p being multiples of γ.
+(3) Apply Lemma 8 to make x δ-well spread for items of size at most ε.
+(4) Apply Theorem 9 to x to halve the number of fractional entries6 (if |supp(x)| ≤
+100 log(n), just set x p := 1 for all patterns in the support).
+q
+(5) FOR each size class ℓ, add O(2ℓ ) items of i ℓ to the waste if s i ℓ ≥ ε and O( δ ln( δ2 )·
+2ℓ ) items if s i ℓ < ε.
+
+(6) Resubstitute glued items in x and replace waste patterns via a greedy assignment to
+obtain y.
+6 To be precise, we apply Theorem 9 for the submatrix of A corresponding to the columns in supp(x).
+
+14
+
+Let x (t ) be the value of x at the end of the t th while loop. Let x (t ,2) be the solution x at the end
+of step (2) in the t th iteration. We define x (t ,3) , x (t ,4) , x (t ,5) analogously. Furthermore, x (t ,1) be
+x at the beginning of the while loop.
+First of all, observe that x (t ,2) satisfies x (t ,2) º x (t ,1) and x p(t ,2) ∈ γZ≥0 for all p, by the properties of Lemma 10. The vector x (t ,3) emerges from x (t ,2) by grouping and gluing and acP
+cording to Lemma 8, it satisfies A i p ≤ δ · A i x (t ,3) ≤ δ · p̃∈supp(x (t,3) ) p̃ i for all p ∈ supp(x (t ,3) )
+and all i with s i ≤ ε ≤ 21 γβδ. Finally, the conditions of Theorem 9 are satisfied by parameters δ and ε, thus the extra items bought in step (5) are enough to have x (t ,5) º x (t ,3) . Note
+that none of the steps (2),(3),(5) increases the number of regular patterns in the support, but
+|{p | x p(t ,4) ∉ {0, 1}}| ≤ 21 |{p | x p(t ,3) ∉ {0, 1}}|, thus x (logn) is indeed integral.
+Hence, by Corollary 7 we know that y will be a feasible solution to the original bin packing instance of cost at most (1, 2s)T x (logn) + 1. It remains to account for the increase in
+the objective function. Each application of (2) increases the objective function by at most
+O(γ log2 n). (3) costs us O(β log2 n) and (4) + (5) increases the objective function by O(log ε1 +
+q
+δ ln( δ2 ) log n). In total over log n iterations,
+q
+
+1T y − 1T x ≤ O(γ log3 n)+O(β log3 n)+O(log n ·log 1ε )+O( δ ln( δ2 ) log2 n) ≤ O(log n ·log log n)
+plugging in the choices for δ, β, γ, ε.
+
+Together with the remark from Lemma 3, the approximation guarantee for our main result, Theorem 2 follows. Let us conclude with a quick estimate on the running time. Given a
+Bin Packing instance s 1 , . . . , s n (with one copy of each item, so n is the total number of items),
+2
+one can compute a fractional solution x of cost 1T x ≤ (1+ε)OP T f in time O(( nε4 + ε16 ) log5 ( nε ))
+with |supp(x)| ≤ n (see Theorem 5.11 in [PST95]). We set ε := n1 and obtain an x with 1T x ≤
+OP T f + 1 in time O(n 6 log5 (n)). It suffices to run the Constructive Partial Coloring Lemma
+3
+
+with error parameter δ := n1 , which takes time O( ñδ2 log ñδm̃ ) = Õ(n 5 ) where ñ ≤ n · polylog(n)
+is the number of vectors and m̃ ≤ n is the dimension of x. In other words, the running time
+is dominated by the computation of the fractional solution. Finally we obtain a vector y with
+y p ∈ [0, n1 ] ∪ [1 − n1 , 1] and |supp(y)| ≤ n. We move those entries with y p ≤ n1 to the waste,
+increasing the objective function by at most n · n1 = 1 and we roundup those entries with
+y p ≥ 1 − n1 .
+
+7 Remarks
+An interesting observation concerning the application of the Constructive Partial Coloring
+Lemma is the following: recall that we gave vectors v I for groups and vectors v G for all subgroups as input to Lemma 1. But the solution y returned by that lemma is the end point of
+2
+a Brownian motion and satisfies Pr[|v(x − y)| ≤ λkvk2 ] ≤ e −Ω(λ ) for every λ ≥ 0 and v ∈ Rm
+regardless whether v is known to the algorithm or not. If we choose λG := log n (and δ, γ, ε
+slightly more generous), then the guarantee |v G (x −y)| ≤ λG kv G k is satisfied for all subgroups
+with high probability anyway and there is no need to include them in the input.
+Moreover, we are not even using the full power of the constructive partial coloring lemma.
+Suppose we had only a weaker Lemma 1 which needs the stronger assumption that for exP
+m
+instead of the exponential decay in λ. We would still obtain the
+ample i (1 + λi )−10 ≤ 16
+15
+
+same asymptotic bound of O(log n · log log n), thus a simple fine tuning of parameters is not
+going to give any improvement.
+The obvious question is, how tight is our analysis? In fact, it is plausible that a slightly
+changed algorithm with a more careful analysis can reduce the gap from O(log n · log log n)
+to O(log n). On the other hand, consider the seemingly simple 3-Partition case in which
+all n items have size 14 < s i < 21 . Both, the approaches of Karmarkar and Karp [KK82] and
+ours provide a O(log n) upper bound on the integrality gap. The construction of Newman
+and Nikolov [NNN12] of 3 badly colorable permutations can be used to define a 3-Partition
+instance with an optimum fractional solution x ∈ {0, 21 }m such that any integral solution y ∈
+P
+T
+T
+Zm
+≥0 with supp(y) ⊆ supp(x) and 1 y − 1 x ≤ o(log n) satisfies maxi ∈[n] { j ≤i (A j x − A j y)} ≥
+Ω(log n). This suggests that either the log n bound is best possible for 3-Partition or some
+fundamentally new ideas are needed to make progress.
+Acknowledgements. The author is grateful to Michel X. Goemans for helpful discussions
+and support and to Nikhil Bansal for reading a preliminary version.
+
+References
+[AHK12]
+
+S. Arora, E. Hazan, and S. Kale. The multiplicative weights update method: a
+meta-algorithm and applications. Theory of Computing, 8(6):121–164, 2012.
+
+[Ban98]
+
+W. Banaszczyk. Balancing vectors and Gaussian measures of n-dimensional convex bodies. Random Structures Algorithms, 12(4):351–360, 1998.
+
+[Ban10]
+
+N. Bansal. Constructive algorithms for discrepancy minimization. In FOCS, pages
+3–10, 2010.
+
+[Bec81]
+
+J. Beck. Roth’s estimate of the discrepancy of integer sequences is nearly sharp.
+Combinatorica, 1(4):319–325, 1981.
+
+[Bec88]
+
+J. Beck. Irregularities of distribution ii. Proc. London Math. Soc. (3), 56:1?50, 1988.
+
+[BF81]
+
+J. Beck and T. Fiala. “Integer-making” theorems. Discrete Appl. Math., 3(1):1–8,
+1981.
+
+[CGJ84]
+
+E. G. Coffman, Jr., M. R. Garey, and D. S. Johnson. Approximation algorithms for
+bin-packing—an updated survey. In Algorithm design for computer system design,
+volume 284 of CISM Courses and Lectures, pages 49–106. Springer, Vienna, 1984.
+
+[Dós07]
+
+G. Dósa. The tight bound of first fit decreasing bin-packing algorithm is FFD(I)
+<= 11/9OPT(I) + 6/9. In B. Chen, M. Paterson, and G. Zhang, editors, ESCAPE,
+volume 4614 of Lecture Notes in Computer Science, pages 1–11. Springer, 2007.
+
+[Eis57]
+
+K. Eisemann. The trim problem. Management Science, 3(3):279–284, 1957.
+
+[EPR11]
+
+F. Eisenbrand, D. Pálvölgyi, and T. Rothvoß. Bin packing via discrepancy of permutations. In SODA, pages 476–481, 2011.
+
+16
+
+[EPR13]
+
+F. Eisenbrand, D. Pálvölgyi, and T. Rothvoß. Bin packing via discrepancy of permutations. In Transactions on Algorithms (Special Issue for SODA 2011), 2013.
+
+[FdlVL81] W. Fernandez de la Vega and G. S. Lueker. Bin packing can be solved within 1 + ε
+in linear time. Combinatorica, 1(4):349–355, 1981.
+[GG61]
+
+P. C. Gilmore and R. E. Gomory. A linear programming approach to the cuttingstock problem. Operations Research, 9:849–859, 1961.
+
+[GJ79]
+
+M. R. Garey and D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. W. H. Freeman and Company, New York, New York, 1979.
+
+[GLS81]
+
+M. Grötschel, L. Lovász, and A. Schrijver. The ellipsoid method and its consequences in combinatorial optimization. Combinatorica, 1(2):169–197, 1981.
+
+[JDU+ 74] D. S. Johnson, A. Demers, J. D. Ullman, M. R. Garey, and R. L. Graham. Worstcase performance bounds for simple one-dimensional packing algorithms. SIAM
+Journal on Computing, 3(4):299–325, 1974.
+[Joh73]
+
+D. S. Johnson. Near-optimal bin packing algorithms. PhD thesis, MIT, Cambridge,
+MA, 1973.
+
+[KK82]
+
+N. Karmarkar and R. M. Karp. An efficient approximation scheme for the onedimensional bin-packing problem. In 23rd annual symposium on foundations of
+computer science (Chicago, Ill., 1982), pages 312–320. IEEE, New York, 1982.
+
+[LM12]
+
+S. Lovett and R. Meka. Constructive discrepancy minimization by walking on the
+edges. In FOCS, pages 61–67, 2012.
+
+[LSV86]
+
+L. Lovász, J. Spencer, and K. Vesztergombi. Discrepancy of set-systems and matrices. European J. Combin., 7(2):151–160, 1986.
+
+[Mat99]
+
+J. Matoušek. Geometric discrepancy, volume 18 of Algorithms and Combinatorics.
+Springer-Verlag, Berlin, 1999. An illustrated guide.
+
+[NNN12] A. Newman, O. Neiman, and A. Nikolov. Beck’s three permutations conjecture: A
+counterexample and some consequences. In FOCS, pages 253–262, 2012.
+[PST95]
+
+S. A. Plotkin, D. B. Shmoys, and É. Tardos. Fast approximation algorithms for
+fractional packing and covering problems. Math. Oper. Res., 20(2):257–301, 1995.
+
+[Rot12]
+
+T. Rothvoß. The entropy rounding method in approximation algorithms. In
+SODA, pages 356–372, 2012.
+
+[Spe85]
+
+J. Spencer. Six standard deviations suffice. Transactions of the American Mathematical Society, 289(2):679–706, 1985.
+
+[Sri97]
+
+A. Srinivasan. Improving the discrepancy bound for sparse matrices: Better approximations for sparse lattice approximation problems. In Proceedings of the
+8th Annual ACM-SIAM Symposium on Discrete Algorithms, SODA’97 (New Orleans, Louisiana, January 5-7, 1997), pages 692–701, Philadelphia, PA, 1997. ACM
+SIGACT, SIAM, Society for Industrial and Applied Mathematics.
+17
+
+[SS09]
+
+A. Sebő and G. Shmonin. Proof of the modified integer round-up conjecture for
+bin packing in dimension 7. Personal communication, 2009.
+
+[SST]
+
+J. H. Spencer, A. Srinivasan, and P. Tetali. The discrepancy of permutation families. Unpublished manuscript.
+
+[ST97]
+
+G. Scheithauer and J. Terno. Theoretical investigations on the modified integer
+round-up property for the one-dimensional cutting stock problem. Operations
+Research Letters, 20(2):93 – 100, 1997.
+
+[WS11]
+
+D. P. Williamson and D. B. Shmoys. The Design of Approximation Algorithms.
+Cambridge University Press, 2011.
+
+18
+
+

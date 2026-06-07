@@ -1,0 +1,425 @@
+arXiv:0907.1379v2 [math.CA] 4 Sep 2009
+
+IMPROVED BOUNDS ON THE SUPREMUM OF
+AUTOCONVOLUTIONS
+MÁTÉ MATOLCSI, CARLOS VINUESA
+Abstract. We give a slight improvement of the best known lower
+bound for the supremum of autoconvolutions of nonnegative functions supported in a compact interval. Also, by means of explicit
+examples we disprove a long standing natural conjecture of Schinzel
+and Schmidt concerning the extremal function for such autoconvolutions.
+
+2000 Mathematics Subject Classification. Primary 42A85, Secondary 42A05, 11P70.
+Keywords and phrases. Autoconvolution of nonnegative functions, B2 [g]-sets, generalized Sidon sets.
+1. Introduction
+Consider the set F of all nonnegative real functions f with integral
+1, supported on the interval [− 14 , 14 ]. What is the minimal possible
+value for the supremum of the autoconvolution f ∗ f ? This question
+(or equivalent formulations of it) has been studied in several papers
+recently [4, 5, 7, 6], and is motivated by its discrete analogue, the study
+of the maximal possible cardinality of g-Sidon sets (or B2 [g] sets) in
+{1, . . . , N}. The connection between B2 [g] sets and autoconvolutions
+is described (besides several additional results) in [5, 2, 1].
+If we define the autoconvolution of f as
+Z
+f ∗ f (x) = f (t)f (x − t) dt,
+
+we are interested in
+
+S = inf kf ∗ f k∞
+f ∈F
+
+where the infimum is taken over all functions f satisfying the above
+restrictions.
+Date: December 8, 2021.
+M. Matolcsi was supported by the ERC-AdG 228005.
+C. Vinuesa was supported by grants CCG08-UAM/ESP-3906 and DGICYT
+MTM2008-03880 (Spain).
+1
+
+2
+
+MÁTÉ MATOLCSI, CARLOS VINUESA
+
+This short note gives two contributions to the subject. On the one
+hand, in Section 3 we improve the best known lower bound on S. This
+is achieved by following the ideas of Yu [7], and Martin & O’Bryant
+[6], and improving them in two minor aspects. On the other hand,
+maybe more interestingly, Section 4 provides counterexamples to a
+long-standing natural conjecture of Schinzel and Schmidt [4] concerning
+the extremal function for such autoconvolutions. In some sense these
+examples open up the subject considerably: at this point we do not
+have any natural conjectures for the exact value of S or any extremal
+functions where this value could be attained. Upon numerical evidence
+we are inclined to believe that S ≈ 1.5, unless there exists some hidden “magical” number theoretical construction yielding a much smaller
+value (the possibility of which is by no means excluded).
+In short, we will prove
+1.2748 ≤ S ≤ 1.5098
+which improves the best lower and upper bounds that were known for
+S.
+2. Notation
+Throughout the paper we will use the following notation (mostly
+borrowed from [6]).
+Let F denote the set
+R of nonnegative real functions f supported in
+[−1/4, 1/4] such Rthat f (x) dx = 1. We define the autoconvolution
+of
+R f , f ∗ f (x) = f (t)f (x − t) dt and its autocorrelation, f ◦ f (x) =
+f (t)f (x+ t) dt. We are interested in S = inf f ∈F kf ∗ f k∞ . We remark
+here that the value of S does not change if one considers nonnegative
+step functions in F only. This is proved in Theorem 1 in [4]. Therefore
+the reader may assume that f is square integrable whenever this is
+needed.
+We will need a parameter
+0 < δ ≤ 1/4 and use the notation u =
+R
+1/2 + δ, and g̃(ξ) = u1 R g(x)e−2πixξ/u dx for any function
+g. We will
+R
+also use Fourier coefficients of period 1, i.e. ĝ(ξ) = R g(x)e−2πixξ dx
+for any function g.
+WeRwill need a nonnegative kernel function K supported in [−δ, δ]
+with K = 1. We will also need that K̃(j) ≥ 0 for every integer j.
+We are quite convinced that the choice of K in [6] is optimal, and we
+will not change it (see equation (5) below).
+
+IMPROVED BOUNDS ON THE SUPREMUM OF AUTOCONVOLUTIONS
+
+3
+
+3. An improved lower bound
+We will follow the steps of [6] (which, in turn, is based on [7]). We
+include here all the ingredients for convenience (the proofs can be found
+in [6]).
+Lemma 3.1. [Lemmas 3.1, 3.2, 3.3, 3.4 in [6]] With the notation
+f, K, δ, u as described above, we have
+Z
+
+(1)
+
+(2)
+
+Z
+
+(3)
+
+Z
+
+(f ∗ f (x))K(x) dx ≤ kf ∗ f k∞ .
+
+(f ◦ f (x))K(x) dx ≤ 1 +
+
+p
+
+kf ∗ f k∞ − 1
+
+(f ∗ f (x) + f ◦ f (x))K(x) dx =
+
+q
+
+kKk22 − 1.
+
+X
+2
++ 2u2
+(ℜf˜(j))2 K̃(j).
+u
+j6=0
+
+Let G be an even, real-valued, u-periodic function that takes positive
+values on [−1/4, 1/4], and satisfies G̃(0) = 0. Then
+−1
+
+
+2
+X
+X G̃(j)2
+ .
+(4) u2
+(ℜf˜(j))2 K̃(j) ≥
+min G(x) · 
+0≤x≤1/4
+K̃(j)
+j6=0
+j:G̃(j)6=0
+
+The paper [6] uses the parameter δ = 0.13 (thus u = 0.63), and the
+kernel function
+
+
+x
+1
+2/π
+1
+1
+(5) K(x) = β ◦ β
+where β(x) = √
+− <x<
+δ
+δ
+2
+2
+1 − 4x2
+
+(note here that kKk22 < 0.5747/δ). Finally, in equation (4) they use
+one of Selberg’s functions, G(x) = G0.63,22 (x) defined in Lemma 2.3 of
+[6]. Combining the statements of Lemma 3.1 above they obtain
+q
+p
+(6)
+kf ∗ f k∞ + 1 + kf ∗ f k∞ − 1 kKk22 − 1 ≥
+
+−1
+
+2
+2
+X
+2
+G̃(j) 
+≥ +2
+min G(x) · 
+0≤x≤1/4
+u
+K̃(j)
+j:G̃(j)6=0
+
+and substituting the values and estimates they have for u, G̃(j), K̃(j),
+min0≤x≤1/4 G(x) and kKk22 the bound kf ∗ f k∞ ≥ 1.262 follows.
+
+4
+
+MÁTÉ MATOLCSI, CARLOS VINUESA
+
+Our improvement of the lower bound on kf ∗ f k∞ comes in two
+steps. First, we find a better kernel function G in equation (6). This is
+indeed plausible because Selberg’s functions Gu,n do not correspond to
+the specific choice of K in [6] in any way, therefore we can expect an
+P
+2
+improvement by choosing G so as to minimize the sum j:G̃(j)6=0 G̃(j)
+,
+K̃(j)
+while keeping min0≤x≤1/4 G(x) ≥ 1.
+Next, we observe that if kf ∗ f k∞ is small then the first Fourier
+coefficient of f must also be small in absolute value, and we use this
+information to get a slight further improvement. We will also indicate
+how the method could yield further improvements.
+−1 1
+RTheorem 3.2. If f : [ 4 , 4 ] → R+ is a nonnegative function with
+f = 1, then kf ∗ f k∞ ≥ 1.2748.
+
+Proof. Let K(x) be defined by (5). As in [6] we make use of the facts
+that kKk22 < 0.5747/δ, and K̃(j) = u1 |J0 (πδj/u)|2 where J0 is the
+Bessel J-function of order 0.
+
+As described above, the main improvement comes from finding a
+better
+kernel function G in equation (6). Indeed, if we set G(x) =
+Pn
+a|j|
+j=1 aj cos(2πjx/u), then G̃(j) = 2 for −n ≤ j ≤ n (j 6= 0), and
+thus equation (6) takes the form
+(7)
+
+p
+p
+kf ∗ f k∞ + 1 + kf ∗ f k∞ − 1 0.5747/δ − 1 ≥
+!−1
+
+2
+n
+2
+X
+a
+2 4
+j
+≥ +
+min G(x) ·
+.
+u u 0≤x≤1/4
+|J0 (πδj/u)|2
+j=1
+
+For brevity of notation let us introduce the “gain-parameter” a =
+−1
+2 Pn
+a2j
+4
+. We note for the record that
+min
+G(x)
+0≤x≤1/4
+j=1 |J0 (πδj/u)|2
+u
+a ≈ 0.0342 for the choices δ = 0.13 and G(x) = G0.63,22 (x) in [6]. For
+any fixed δ we are therefore led to the problem of maximizing a (while
+we may as well assume that min0≤x≤1/4 G(x) ≥ 1, as G can be multiplied by any constant without changing the gain a). This problem
+seems hopeless to solve analytically, but one can perform a numerical
+search using e.g. the “Mathematica 6” software. Having done so, we
+obtained that for δ = 0.138 and n = 119 there exists a function G(x)
+with the desired properties such that a > 0.0713. The coefficients aj of
+G(x) are given in the Appendix. Therefore, using this function G(x)
+and δ = 0.138 in equation (7) we obtain S ≥ 1.2743.
+
+IMPROVED BOUNDS ON THE SUPREMUM OF AUTOCONVOLUTIONS
+
+5
+
+Remark. One can wonder how much further improvement could be
+possible by choosing the optimal δ and the optimal G(x) corresponding to it. The answer is that there is very little room left for further
+improvement, the theoretical limit of the argument being somewhere
+around 1.276. To see this, let fs (x) = 21 (f (x) + f (−x)) denote the
+symmetrization of f , let βδ (x) = 1δ β( xδ ) (where β(x) is defined in (5))
+and reformulate equation (3) as follows:
+(8)
+
+Z
+
+(f ∗ f (x) + f ◦ f (x))K(x) dx = 2
+
+Z
+
+(fs ∗ βδ (x))2 dx = 2kfs ∗ βδ k22 .
+
+This equality is easy to see using Parseval and the fact that K̃(j) =
+u(β̃δ (j))2 . Now, with βδ (x) being given, the best lower bound we can
+possibly hope to obtain for the right hand side is inf fs kfs ∗ βδ k22 , where
+the infimum is taken over all nonnegative, symmetric functions fs with
+integral 1. To calculate this infimum, one can discretize the problem,
+i. e. approximate βδ (x) and fs (x) by step functions, the heights of
+the steps of fs being parameters. Then one can minimize the arising
+multivariate quadratic polynomial by computer. Finally, we can use
+equations (1), (2) and (8) to obtain a lower bound for kf ∗ f k∞ . We
+have done this1 for several values of δ and it seems that best lower
+bound is achieved for δ ≈ 0.14 where we obtain kf ∗ f k∞ ≥ 1.276. We
+remark that all this could be done rigorously, but one needs to control
+the error arising from the discretization, and the sheer documentation
+of it is simply not worth the effort, in view of the minimal gain.
+
+We can further improve the obtained result a little bit by exploiting
+some information on the Fourier coefficients of f . For this we need two
+easy lemmas.
+Lemma 3.3. Using the notation z1 = |fˆ(1)| and k1 = K̂(1) = K̂(−1),
+where K is defined by equation (5), we have
+(9)
+
+Z
+
+(f ◦ f (x))K(x)dx ≤
+q
+q
+≤ 1 + 2z12 k1 + kf ∗ f k∞ − 1 − 2z14 kKk22 − 1 − 2k12 .
+
+1The authors are grateful to M. N. Kolountzakis for pointing out that this min-
+
+imization problem can indeed be solved numerically due to convexity arguments.
+
+6
+
+MÁTÉ MATOLCSI, CARLOS VINUESA
+
+Proof. This is an obvious modification of Lemma 3.2 in [6]. Namely,
+Z
+X
+(f ◦ f (x))K(x)dx =
+(f[
+◦ f (j))K̂(j)
+j∈Z
+
+= 1 + 2z12 k1 +
+
+X
+
+j6=0,±1
+
+s X
+
+≤
+
+1 + 2z12 k1 +
+
+q
+
+kf ∗ f k22 − 1 − 2z14
+
+= 1 + 2z12 k1 +
+
+|fˆ(j)|2 K̂(j)
+
+j6=0,±1
+
+|fˆ(j)|4
+
+s X
+
+K̂(j)2
+
+j6=0,±1
+
+q
+
+kKk22 − 1 − 2k12
+q
+q
+≤ 1 + 2z12 k1 + kf ∗ f k∞ − 1 − 2z14 kKk22 − 1 − 2k12 .
+
+
+
+The next observation is that z1 must be quite small if kf ∗ f k∞ is small.
+This is established by an application of the following general fact (the discrete version of which is contained in [3]).
+R
+Lemma 3.4. If h is a nonnegative function with h = 1, supported on the
+π
+interval [− 12 , 12 ] and bounded above by M , then |ĥ(1)| ≤ M
+π sin M .
+Proof. Observe first that
+Z
+Z
+−2πix
+−2πit
+h(x)e
+dx = e
+h(x + t)e−2πix dx
+ĥ(1) =
+R
+
+R
+
+R
+and with a suitable choice of t, the last integral, R h(x+t)e−2πix dx, becomes
+real and nonnegative. Taking absolute values we get
+Z
+h(x + t) cos(2πx)dx.
+|ĥ(1)| =
+R
+
+The lemma becomes obvious now, because in order to maximize this integral,
+h(x+t) needs to be concentrated on the largest values of the cosine function,
+so
+Z 1
+2M
+π
+M
+|ĥ(1)| ≤
+sin .
+M cos(2πx) dx =
+π
+M
+− 1
+2M
+
+
+
+It is now easy to conclude the proof of Theorem 3.2. Assume kf ∗
+f k∞ < 1.2748. By Lemma 3.4 we conclude that
+r
+q
+π
+1.2748
+∗ f (1)| ≤
+sin
+< 0.50426.
+|fˆ(1)| = |f[
+π
+1.2748
+
+

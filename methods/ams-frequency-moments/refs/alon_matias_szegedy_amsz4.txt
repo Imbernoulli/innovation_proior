@@ -1,0 +1,907 @@
+ The space complexity of approximating the frequency moments ∗
+
+                       Noga Alon †            Yossi Matias ‡            Mario Szegedy §
+
+                                             February 22, 2002
+
+
+
+                                                   Abstract
+
+           The frequency moments of a sequence containing mi elements of type i, for 1 ≤ i ≤ n, are
+                           Pn
+        the numbers Fk = i=1 mki . We consider the space complexity of randomized algorithms that
+        approximate the numbers Fk , when the elements of the sequence are given one by one and cannot
+        be stored. Surprisingly, it turns out that the numbers F0 , F1 and F2 can be approximated in
+        logarithmic space, whereas the approximation of Fk for k ≥ 6 requires nΩ(1) space. Applications
+        to data bases are mentioned as well.
+
+
+1       Introduction
+Let A = (a1 , a2 , . . . , am ) be a sequence of elements, where each ai is a member of N = {1, 2, . . . , n}.
+Let mi = |{j : aj = i}| denote the number of occurrences of i in the sequence A, and define, for each
+k≥0
+                                                        n
+                                                        X
+                                                 Fk =         mki .
+                                                        i=1
+
+In particular, F0 is the number of distinct elements appearing in the sequence, F1 ( = m) is the
+length of the sequence, and F2 is the repeat rate or Gini’s index of homogeneity needed in order to
+compute the surprise index of the sequence (see, e.g., [10]). We also define
+
+                                                ∗
+                                               F∞ = max mi .
+                                                        1≤i≤n
+    ∗
+     A preliminary version of this paper appeared in Proceedings of the 28th Annual ACM Symposium on Theory of
+Computing (STOC), May, 1996.
+   †
+     Department of Mathematics, Raymond and Beverly Sackler Faculty of Exact Sciences, Tel Aviv University, Tel
+Aviv, Israel. Email: noga@math.tau.ac.il. Research supported in part by a USA-Israel BSF grant and by a grant from
+the Israel Science Foundation. Part of the research was done while visiting AT&T Bell Labs, Murray Hill, NJ 07974,
+USA.
+   ‡
+     Bell Laboratories, Murray Hill, NJ 07974, USA and Department of Computer Science, Tel Aviv University, Tel
+Aviv, Israel. Email: matias@research.bell-labs.com.
+   §
+     AT&T Research Labs, Florham Park, NJ, USA. Email: ms@research.att.com.
+
+
+
+
+                                                        1
+(Since the moment Fk is defined as the sum of k-powers of the numbers mi and not as the k-th root
+of this sum we denote the last quantity by F∞     ∗ and not by F .) The numbers F are called the
+                                                                   ∞                    k
+frequency moments of A and provide useful statistics on the sequence.
+    The frequency moments of a data set represent important demographic information about the
+data, and are important features in the context of database applications. They indicate the degree
+of skew of the data, which is of major consideration in many parallel database applications. Thus,
+for example, the degree of the skew may determine the selection of algorithms for data partitioning,
+as discussed by DeWitt et al [5] (see also references therein).
+    The recent work by Haas et al [12] considers sampling based algorithms for estimating F0 , and
+proposes a hybrid approach in which the algorithm is selected based on the degree of skew of the
+data, measured essentially by the function F2 . Since skew information plays an important role for
+many applications, it may be beneficial to maintain estimates for frequency moments; and, most
+notably, for F2 . For efficiency purposes, the computation of estimates for frequency moments of a
+relation should preferably be done and updated as the records of the relation are inserted to the
+database. A more concrete discussion about the practical implications of such framework can be
+found in [8].
+    Note that it is rather straightforward to maintain the (exact) frequency moments by maintaining
+a full histogram on the data, i.e., maintaining a counter mi for each data value i ∈ {1, 2, . . . , n},
+which requires memory of size Ω(n) (cf. [14]). However, it is important that the memory used for
+computing and maintaining the estimates be limited. Large memory requirements would require
+storing the data structures in external memory, which would imply an expensive overhead in access
+time and update time. Thus, the problem of computing or estimating the frequency moments in one
+pass under memory constraints arises naturally in the study of databases.
+    There are several known randomized algorithms that approximate some of the frequency moments
+Fk using limited memory. For simplicity, let us consider first the problem of approximating these
+numbers up to some fixed constant factor, say with relative error that does not exceed 0.1, and with
+success probability of at least, say, 3/4, given that m ≤ nO(1) . (In the following sections we consider
+the general case, that is, the space complexity as a function of n, m, the relative error λ and the
+error-probability .) Morris [15] (see also [6], [11]) showed how to approximate F1 (that is; how to
+design an approximate counter) using only O(log log m) (= O(log log n) ) bits of memory. Flajolet
+and Martin [7] designed an algorithm for approximating F0 using O(log n) bits of memory. (Their
+analysis, however, is based on the assumption that explicit families of hash functions with very strong
+random properties are available.) Whang et al [17] considered the problem of approximating F0 in
+the context of databases.
+    Here we obtain rather tight bounds for the minimum possible memory required to approximate
+the numbers Fk . We prove that for every k > 0, Fk can be approximated randomly using at most
+O(n1−1/k log n) memory bits. We further show that for k ≥ 6, any (randomized) approximation algo-
+
+
+
+                                                   2
+rithm for Fk requires at least Ω(n1−5/k ) memory bits and any randomized approximating algorithm
+for F∞∗ requires Ω(n) space. Surprisingly, F can be approximated (randomly) using only O(log n)
+                                             2
+memory bits.
+    In addition we observe that a version of the Flajolet-Martin algorithm for approximating F0 can
+be implemented and analyzed using very simple linear hash functions, and that (not surprisingly)
+the O(log log n) and the O(log n) bounds in the algorithms of [15] and [7] for estimating F1 and F0
+respectively are tight.
+    We also make some comments concerning the space complexity of deterministic algorithms that
+approximate the frequency moments Fk as well as on the space complexity of randomized or deter-
+ministic algorithms that compute those precisely.
+    The rest of this paper is organized as follows. In Section 2 we describe our space-efficient ran-
+domized algorithms for approximating the frequency moments. The tools applied here include the
+known explicit constructions of small sample spaces which support a sequence of four-wise indepen-
+dent uniform binary random variables, and the analysis is based on Chebyshev’s Inequality and a
+simple application of the Chernoff bound. In Section 3 we present our lower bounds which are mostly
+based on techniques from communication complexity. The final Section 4 contains some concluding
+remarks and open problems.
+
+
+2     Space efficient randomized approximation algorithms
+In this section we describe several space efficient randomized algorithms for approximating the fre-
+quency moments Fk . Note that each of these moments can be computed precisely and deterministi-
+cally using O(n log m) memory bits, by simply computing each of the numbers mi precisely. Using
+the method of [15] the space requirement can be slightly reduced, by approximating (randomly) each
+of the numbers mi instead of computing its precise value, thus getting a randomized algorithm that
+approximates the numbers Fk using O(n log log m) memory bits. We next show that one can do
+better.
+
+2.1   Estimating Fk
+The basic idea in our algorithm, as well as in the next randomized algorithm described in this section,
+is a very natural one. Trying to estimate Fk we define a random variable that can be computed under
+the given space constraints, whose expected value is Fk , and whose variance is relatively small. The
+desired result can then be deduced from Chebyshev’s Inequality.
+
+Theorem 2.1 For every k ≥ 1, every λ > 0 and every  > 0 there exists a randomized algorithm
+that computes, given a sequence A = (a1 , . . . , am ) of members of N = {1, 2, . . . , n}, in one pass and
+
+
+
+
+                                                    3
+using
+                                k log (1/) 1−1/k
+                                                                            
+                            O              n      (log n + log m)
+                                    λ2
+memory bits, a number Y so that the probability that Y deviates from Fk by more than λFk is at
+most .
+                        1−1/k
+Proof. Define s1 = 8knλ2       and s2 = 2 log(1/). (To simplify the presentation we omit, from now
+on, all floor and ceiling signs whenever these are not essential). We first assume the length of the
+sequence m is known in advance, and then comment on the required modifications if this is not the
+case.
+    The algorithm computes s2 random variables Y1 , Y2 , . . . , Ys2 and outputs their median Y . Each
+Yi is the average of s1 random variables Xij : 1 ≤ j ≤ s1 , where the Xij are independent, identically
+distributed random variables. Each of the variables X = Xij is computed from the sequence in
+the same way, using O(log n + log m) memory bits, as follows. Choose a random member ap of the
+sequence A, where the index p is chosen randomly and uniformly among the numbers 1, 2, . . . , m.
+Suppose that ap = l ( ∈ N = {1, 2, . . . , n}.) Let
+
+                                          r = |{q : q ≥ p, aq = l}| ( ≥ 1)
+
+be the number of occurrences of l among the members of the sequence A following ap (inclusive),
+and define
+                                    X = m(rk − (r − 1)k ) .
+
+Note that in order to compute X we only need to maintain the log n bits representing ap = l and
+the log m bits representing the number of occurrences of l.
+   The expected value E(X) of X is, by definition,
+                               mh k                                           
+                E(X) =            1 + (2k − 1k ) + . . . + (mk1 − (m1 − 1)k ) +
+                               m                                              
+                                   1k + (2k − 1k ) + . . . + (mk2 − (m2 − 1)k ) + · · · +
+                                                                                     i
+                                          1k + (2k − 1k ) + . . . + (mkn − (mn − 1)k )
+                               n
+                               X
+                        =            mki = Fk .
+                               i=1
+
+To estimate the variance Var(X) = E(X 2 ) − (E(X))2 of X we bound E(X 2 );
+
+                    m2 h  2k                                            
+        E(X 2 ) =         1 + (2k − 1k )2 + . . . + (mk1 − (m1 − 1)k )2 +
+                    m                                                  
+                         12k + (2k − 1k )2 + . . . + (mk2 − (m2 − 1)k )2 + · · · +
+                                                                                i
+                             12k + (2k − 1k )2 + . . . + (mkn − (mn − 1)k )2
+                      h                                                                   
+                ≤ m         k12k−1 + k2k−1 (2k − 1k ) + . . . + kmk−1 k           k
+                                                                  1 (m1 − (m1 − 1) ) +             (1)
+
+                                                          4
+                                                                                                                                    
+                                    k12k−1 + k2k−1 (2k − 1k ) + . . . + kmk−1 k           k
+                                                                          2 (m2 − (m2 − 1) ) + · · · +
+                                                                                                                                     i
+                                    k12k−1 + k2k−1 (2k − 1k ) + . . . + kmk−1 k           k
+                                                                          n (mn − (mn − 1) )
+                           h                                                                   i
+                 ≤ m km2k−1
+                       1    + km2k−1
+                                2    + . . . + km2k−1
+                                                 n
+
+                 = kmF2k−1 = kF1 F2k−1 ,
+
+where (1) is obtained from the following inequality which holds for any numbers a > b > 0:
+
+               ak − bk = (a − b)(ak−1 + ak−2 b + · · · + abk−2 + bk−1 ) ≤ (a − b)kak−1 .
+
+We need the following simple inequality:
+Fact: For every n positive reals m1 , m2 . . . , mn
+
+                                         n
+                                                    !       n
+                                                                          !                         k
+                                                                                                                !2
+                                                                  m2k−1
+                                         X                  X                                       X
+                                                                                       1−1/k
+                                               mi                  i             ≤n                       mki         .
+                                         i=1                i=1                                     i=1
+
+(Note that the sequence m1 = n1/k , m2 = . . . = mn = 1 shows that this is tight, up to a constant
+factor.)
+Proof (of fact): Put M = max1≤i≤n mi , then M k ≤ ni=1 mki and hence
+                                                     P
+
+               n                n                             n                            n
+                          !                       !                      !                               !
+                                      m2k−1
+               X                X                             X                            X
+                                                                                     k−1
+                     mi                i                ≤           mi           M                 mki
+               i=1              i=1                        i=1                             i=1
+                      n
+                                     !    n
+                                                        !(k−1)/k          n
+                                                                                       !           n
+                                                                                                              !   n
+                                                                                                                                !(2k−1)/k
+                      X                   X                               X                        X              X
+                ≤               mi                mki                            mki       =             mi               mki
+                          i=1               i=1                           i=1                      i=1            i=1
+                                      n
+                                                  !1/k        n
+                                                                          !(2k−1)/k                             n
+                                                                                                                            !2
+                                      X                       X                                                 X
+                      1−1/k
+                ≤ n                         mki                     mki                    =n      1−1/k
+                                                                                                                      mki        ,
+                                      i=1                     i=1                                               i=1
+
+where for the last inequality we use the fact that ( ni=1 mi )/n ≤ ( ni=1 mki /n)1/k . 2
+                                                                                 P                           P
+
+   By the above fact, the definition of the random variables Yi and the computation above,
+
+                 Var(Yi ) = Var(X)/s1 ≤ E(X 2 )/s1 ≤ kF1 F2k−1 /s1 ≤ kn1−1/k Fk2 /s1 ,
+
+whereas
+                                                            E(Yi ) = E(X) = Fk .
+
+Therefore, by Chebyshev’s Inequality and by the definition of s1 , for every fixed i,
+
+                                                                             Var(Yi )   kn1−1/k Fk2  1
+                              Prob [|Yi − Fk | > λFk ] ≤                          2   ≤             ≤ .
+                                                                               2
+                                                                              λ Fk       s1 λ2 Fk2   8
+
+It follows that the probability that a single Yi deviates from Fk by more than λFk is at most 1/8,
+and hence, by the standard estimate of Chernoff (cf., for example, [2] Appendix A), the probability
+
+
+                                                                             5
+that more than s2 /2 of the variables Yi deviate by more than λFk from Fk is at most . In case this
+does not happen, the median Yi supplies a good estimate to the required quantity Fk , as needed.
+     It remains to show how the algorithm can be implemented in case m is not known in advance. In
+this case, we start with m = 1 and choose the member al of the sequence A used in the computation
+of X as a1 . If indeed m = 1, r = 1 and the process ends, else we update the value of m to 2, replace
+al by a2 with probability 1/2, and update the value of r as needed. In general, after processing the
+first m − 1 elements of the sequence we have (for each variable Xij ) some value for al and for r.
+When the next element am arrives we replace al by that element with probability 1/m. In case of
+such a replacement, we update r and define it to be 1. Else, al stays as it is and r increases by 1 in
+case am = al and otherwise does not change. It is easy to check that for the implementation of the
+whole process, O(log n + log m) memory bits for each Xij suffice. This completes the proof of the
+theorem. 2
+Remark. In case m is much bigger than a polynomial in n, one can use the algorithm of [15] and
+approximate each number r used in the computation of each Xij using only O(log log m + log(1/λ))
+memory bits. Since      storing the value of al requires log n additional
+                                                                          bits this changes the space
+                    k log(1/) 1−1/k
+complexity to O         λ2
+                              n      (log n + log log m + log(1/λ)) .
+
+2.2   Improved estimation for F2
+The second frequency moment, F2 , is of particular interest, since the repeat rate and the surprise
+index arise in various statistical applications. By the last theorem, F2 can be approximated (for fixed
+                             √
+positive λ and ) using O( n(log n + log m)) memory bits. In the following theorem we show that
+in fact a logarithmic number of bits suffices in this case.
+
+Theorem 2.2 For every λ > 0 and  > 0 there exists a randomized algorithm that computes, given
+a sequence A = (a1 , . . . , am ) of members of N , in one pass and using
+
+                                             log (1/)
+                                                                    
+                                     O                 (log n + log m)
+                                                λ2
+memory bits, a number Y so that the probability that Y deviates from F2 by more than λF2 is at
+most . For fixed λ and , the algorithm can be implemented by performing, for each member of the
+sequence, a constant number of arithmetic and finite field operations on elements of O(log n + log n)
+bits.
+
+Proof. Put s1 = λ162 and s2 = 2 log(1/). As in the previous algorithm, the output Y of the present
+algorithm is the median of s2 random variables Y1 , Y2 , . . . , Ys2 , each being the average of s1 random
+variables Xij : 1 ≤ j ≤ s1 , where the Xij are independent, identically distributed random variables.
+Each X = Xij is computed from the sequence in the same way, using O(log n + log m) memory bits,
+as follows.
+
+
+                                                       6
+    Fix an explicit set V = {v1 , . . . , vh } of h = O(n2 ) vectors of length n with +1, −1 entries, which
+are four-wise independent, that is, for every four distinct coordinates 1 ≤ i1 ≤ . . . ≤ i4 ≤ n and every
+choice of 1 , . . . , 4 ∈ {−1, 1} exactly a (1/16)−fraction of the vectors have j in their coordinate
+number ij for j = 1, . . . , 4. As described in [1] such sets (also known as orthogonal arrays of strength
+4) can be constructed using the parity check matrices of BCH codes. To implement this construction
+we need an irreducible polynomial of degree d over GF (2), where 2d is the smallest power of 2
+greater than n. It is not difficult to find such a polynomial (using O(log n) space), and once it is
+given it is possible to compute each coordinate of each vi in O(log n) space, using a constant number
+of multiplications in the finite field GF (2d ) and binary inner products of vectors of length d. To
+compute X we choose a random vector vp = (1 , 2 , . . . , n ) ∈ V , where p is chosen uniformly between
+1 and h. We then define Z = nl=1 i mi . Note that Z is a linear function of the numbers mi , and
+                                    P
+
+can thus be computed in one pass from the sequence A, where during the process we only have to
+maintain the current value of the sum and to keep the value p (since the bits of vp can be generated
+from p in O(log n) space). Therefore, Z can be computed using only O(log n + log m) bits. When
+the sequence terminates define X = Z 2 .
+    As in the previous proof, we next compute the expectation and variance of X. Since the random
+variables i are pairwise independent and E(i ) = 0 for all i,
+                                   
+                       n
+                       X                    n
+                                            X                         X                              n
+                                                                                                     X
+        E(X) = E (          i mi )2  =         m2i E(2i ) + 2             mi mj E(i )E(j ) =         m2i = F2 .
+                       i−1                  i=1                     1≤i<j≤n                          i=1
+
+Similarly, the fact that the variables i are four-wise independent implies that
+                                                     n
+                                                     X                 X
+                                     E(X 2 ) =             m4i + 6             m2i m2j .
+                                                     i=1             1≤i<j≤j
+
+It follows that
+                                                                          X
+                        Var(X) = E(X 2 ) − (E(X))2 = 4                            m2i m2j ≤ 2F22 .
+                                                                       1≤i<j≤n
+Therefore, by Chebyshev’s Inequality, for each fixed i, 1 ≤ i ≤ s2 ,
+                                                                   Var(Yi )     2F22    1
+                             Prob [|Yi − F2 | > λF2 ] ≤              2  2   ≤     2  2 = .
+                                                                    λ F2      s1 λ F2   8
+The standard estimates of Chernoff now imply, as in the previous proof, that the probability that
+the median Y of the numbers Yi deviates from F2 by more than λF2 is at most , completing the
+proof. 2                                                                 
+Remark. The space complexity can be reduced for very large m to O logλ(1/)   2    (log n + log log m +
+log(1/λ)) by applying the method of [15] to maintain the sum Z with a sufficient accuracy. The
+easiest way to do so is to maintain approximations of the negative and positive parts of this sum
+using O(log n + log log m + log(1/λ)) bits for each, and use the analysis in [11] (as given in formula
+(22), section 3 of [11]) and Chebyshev’s Inequality to show that this gives, with a sufficiently high
+probability, the required result. We omit the details.
+
+                                                               7
+2.3   Comments on the estimation of F0
+Flajolet and Martin [7] described a randomized algorithm for estimating F0 using only O(log n)
+memory bits, and analyzed its performance assuming one may use in the algorithm an explicit
+family of hash functions which exhibits some ideal random properties. Since we are not aware of
+the existence of such a family of hash functions we briefly describe here a slight modification of the
+algorithm of [7] and a simple analysis that shows that for this version it suffices to use a linear hash
+function.
+
+Proposition 2.3 For every c > 2 there exists an algorithm that, given a sequence A of members of
+N , computes a number Y using O(log n) memory bits, such that the probability that the ratio between
+Y and F0 is not between 1/c and c is at most 2/c.
+
+Proof. Let d be the smallest integer so that 2d > n, and consider the members of N as elements
+of the finite field F = GF (2d ), which are represented by binary vectors of length d. Let a and b be
+two random members of F , chosen uniformly and independently. When a member ai of the sequence
+A appears, compute zi = a · ai + b , where the product and addition are computed in the field F .
+Thus zi is represented by a binary vector of length d. For any binary vector z, let r(z) denote the
+largest r so that the r rightmost bits of z are all 0 and put ri = r(zi ). Let R be the maximum
+value of ri , where the maximum is taken over all elements ai of the sequence A. The output of the
+algorithm is Y = 2R . Note that in order to implement the algorithm we only have to keep (besides
+the d = O(log n) bits representing an irreducible polynomial needed in order to perform operations in
+F ) the O(log n) bits representing a and b and maintain the O(log log n) bits representing the current
+maximum ri value.
+    Suppose, now, that F0 is the correct number of distinct elements that appear in the sequence A,
+and let us estimate the probability that Y deviates considerably from F0 . The only two properties
+of the random mapping f (x) = ax + b that maps each ai to zi we need is that for every fixed ai , zi
+is uniformly distributed over F (and hence the probability that r(zi ) ≥ r is precisely 1/2r ), and that
+this mapping is pairwise independent. Thus, for every fixed distinct ai and aj , the probability that
+r(zi ) ≥ r and r(zj ) ≥ r is precisely 1/22r .
+    Fix an r. For each element x ∈ N that appears at least once in the sequence A, let Wx be the
+indicator random variable whose value is 1 iff r(ax + b) ≥ r. Let Z = Zr = Wx , where x ranges
+                                                                                P
+
+over all the F0 elements x that appear in the sequence A. By linearity of expectation and since the
+expectation of each Wx is 1/2r , the expectation E(Z) of Z is F0 /2r . By pairwise independence, the
+variance of Z is F0 21r (1 − 21r ) < F0 /2r . Therefore, by Markov’s Inequality
+
+                               If 2r > cF0 then Prob(Zr > 0) < 1/c ,
+
+since E(Zr ) = F0 /2r < 1/c. Similarly, by Chebyshev’s Inequality
+
+                                If c2r < F0 then Prob(Zr = 0) < 1/c ,
+
+                                                   8
+since Var(Zr ) < F0 /2r = E(Zr ) and hence Prob(Zr = 0) ≤ Var(Zr )/(E(Zr )2 ) < 1/E(Zr ) = 2r /F0 .
+Since our algorithm outputs Y = 2R , where R is the maximum r for which Zr > 0, the two inequalities
+above show that the probability that the ratio between Y and F0 is not between 1/c and c is smaller
+than 2/c, as needed. 2
+
+
+3    Lower bounds
+In this section we present our lower bounds for the space complexity of randomized algorithms
+that approximate the frequency moments Fk and comment on the space required to compute these
+moments randomly but precisely or approximate them deterministically. Most of our lower bounds
+are obtained by reducing the problem to an appropriate communication complexity problem, where
+we can either use some existing results, or prove the required lower bounds by establishing those for
+the corresponding communication problem. The easiest result that illustrates the method is the proof
+that the randomized approximation of F∞    ∗ requires linear memory, presented in the next subsection.
+
+Before presenting this simple proof, let us recall some basic definitions and facts concerning the -error
+probabilistic communication complexity C (f ) of a function f : {0, 1}n × {0, 1}n 7→ {0, 1}, introduced
+by Yao [18]. Consider two parties with unlimited computing power, that wish to compute the value
+of a Boolean function f (x, y), where x and y are binary vectors of length n, the first party possesses
+x and the second possesses y. To perform the computation, the parties are allowed to send messages
+to each other, and each of them can make random decisions as well. At the end of the communication
+they must output the correct value of f (x, y) with probability at least 1 −  (for the worst possible x
+and y). The complexity C (f ) is the expected number of bits communicated in the worst case (under
+the best protocol).
+    As shown by Yao [19] and extended by Babai, Frankl and Simon [3], C (f ) can be estimated by
+considering the related notion of the -error distributional communication complexity D (f |µ) under
+a probability measure on the possible inputs (x, y). Here the two parties must apply a deterministic
+protocol, and should output the correct value of f (x, y) on all pairs (x, y) besides a set of inputs
+whose µ-measure does not exceed . As shown in [19], [3], C (f ) ≥ 12 D2 (f |µ) for all f ,  and µ.
+    Let DISn : {0, 1}n × {0, 1}n 7→ {0, 1} denote the Boolean function (called the Disjointness
+function) where DISn (x, y) is 1 iff the subsets of {1, 2, . . . , n} whose characteristic vectors are x and
+y intersect. Several researchers studied the communication complexity of this function. Improving
+a result in [3], Kalyanasundaram and Schnitger [13] proved that for any fixed  < 1/2, C (DISn ) ≥
+Ω(n). Razborov [16] exhibited a simple measure µ on the inputs of this function and showed that
+for this measure D (DISn |µ) ≥ Ω(n). Our lower bound for the space complexity of estimating F∞            ∗
+
+follows easily from the result of [13]. The lower bound for the approximation of Fk for fixed k ≥ 6 is
+more complicated and requires an extension of the result of Razborov in [16].
+
+
+
+
+                                                     9
+                                             ∗
+3.1   The space complexity of approximating F∞
+Proposition 3.1 Any randomized algorithm that outputs, given a sequence A of at most 2n elements
+                                                                                    ∗ by at least F ∗ /3
+of N = {1, 2, . . . , n} a number Y such that the probability that Y deviates from F∞              ∞
+is less than , for some fixed  < 1/2, must use Ω(n) memory bits.
+
+Proof. Given an algorithm as above that uses s memory bits, we describe a simple communication
+protocol for two parties possessing x and y respectively to compute DISn (x, y), using only s bits
+of communication. Let |x| and |y| denote the numbers of 1-entries of x and y, respectively. Let A
+be the sequence of length |x| + |y| consisting of all members of the subset of N whose characteristic
+vector is x (arranged arbitrarily) followed by all members of the subset of N whose characteristic
+vector is y.
+     The first party, knowing x, runs the approximation algorithm on the first |x| members of A. It
+then sends the content of the memory to the second party which, knowing y, continues to run the
+algorithm for approximating F∞      ∗ on the rest of the sequence A. The second party then outputs
+
+“disjoint” (or 0) iff the output of the approximation algorithm is smaller than 4/3; else it outputs 1.
+It is obvious that this is the correct value with probability at least 1 − , since the precise value of
+F∞ ∗ is 1 if the sets are disjoint, and otherwise it is 2.
+
+     The desired result thus follows from the theorem of [13] mentioned above. 2
+Remark. It is easy to see that the above lower bound holds even when m is bigger than 2n, since
+we may consider sequences in which every number in N occurs either 0 or m/n or 2m/n times. The
+method of the next subsection shows that the linear lower bound holds even if we wish to approximate
+the value of F∞  ∗ up to a factor of 100, say. It is not difficult to see that Ω(log log m) is also a lower
+
+bound for the space complexity of any randomized approximation algorithm for F∞         ∗ (simply because
+
+its final output must attain at least Ω(log m) distinct values with positive probability, as m is not
+known in advance.) Thus Ω(n + log log m) is a lower bound for the space complexity of estimating
+F∞ ∗ for some fixed positive λ and . On the other hand, as mentioned in the previous section, all
+
+frequency moments (including F∞      ∗ ) can be approximated using O(n log log m) bits.
+
+Note that in the above lower bound proof we only need a lower bound for the one-way probabilistic
+communication complexity of the disjointness function, as in the protocol described above there is
+only one communication, from the first party to the second one. Since the lower bound of [13] holds
+for arbitrary communication we can deduce a space lower bound for the approximation of F∞           ∗ even
+
+if we allow algorithms that observe the whole sequence A in its order a constant number of times.
+
+3.2   The space complexity of approximating Fk
+In this subsection we prove the following.
+
+Theorem 3.2 For any fixed k > 5 and γ < 1/2, any randomized algorithm that outputs, given an
+input sequence A of at most n elements of N = {1, 2, . . . , n}, a number Zk such that Prob(|Zk −Fk | >
+
+                                                    10
+0.1Fk ) < γ uses at least Ω(n1−5/k ) memory bits.
+
+    We prove the above theorem by considering an appropriate communication game and by studying
+its complexity. The analysis of the game is similar to that of Razborov in [16], but requires several
+modifications and additional ideas.
+Proof. For positive integers s and t, let DIS(s, t) be the following communication game, played
+by s players P1 , P2 , . . . , Ps . Define n = (2t − 1)s + 1 and put N = {1, 2, . . . , n}. The input of each
+player Pi is a subset Ai of cardinality t of N (also called a t-subset of N ). Each player knows his
+own subset, but has no information on those of the others. An input sequence (A1 , A2 , . . . , As ) is
+called disjoint if the sets Ai are pairwise disjoint, and it is called uniquely intersecting if all the sets
+Ai share a unique common element x and the sets Ai − {x} are pairwise disjoint. The objective of
+the game is to distinguish between these two types of inputs. To do so, the players can exchange
+messages according to any predetermined probabilistic protocol. At the end of the protocol the last
+player outputs a bit. The protocol is called -correct if for any disjoint input sequence the probability
+that this bit is 0 is at least 1 −  and for any uniquely intersecting input sequence the probability
+that this bit is 1 is at least 1 − . (The value of the output bit for any other input sequence may be
+arbitrary). The length of the protocol is the maximum, over all possible input sequences (A1 , . . . , As ),
+of the expected number of bits in the communication. In order to prove Theorem 3.2 we prove the
+following.
+
+Proposition 3.3 For any fixed  < 1/2, and any t ≥ s4 , the length of any randomized -correct
+protocol for the communication problem DIS(s, t) is at least Ω(t/s3 ).
+
+By the simple argument of [19] and [3], in order to prove the last proposition it suffices to exhibit
+a distribution on the inputs and prove that any deterministic communication protocol between the
+players in which the total communication is less than Ω(t/s3 ) bits produces an output bit that errs
+with probability Ω(1), where the last probability is computed over the input distribution. Define a
+distribution µ on the input sequences (A1 , . . . , As ) as follows. Let P = I1 ∪ I2 ∪ · · · ∪ Is ∪ {x} be a
+random partition of N into s + 1 pairwise disjoint sets, where |Ij | = 2t − 1 for each 1 ≤ j ≤ s, x ∈ N
+and P is chosen uniformly among all partitions of N with these parameters. For each j, let Aj be a
+random subset of cardinality t of Ij . Finally, with probability 1/2, define Aj = Aj for all 1 ≤ j ≤ s,
+and with probability 1/2, define Aj = (Ij − Aj ) ∪ {x} for all j. It is useful to observe that an
+alternative, equivalent definition is to choose the random partition P as above, and then let each
+Aj be a random subset of cardinality t of Ij ∪ {x}. If either none of the subsets Aj contain x or all
+of them contain x we keep them as our input sets, and otherwise we discard them and repeat the
+random choice.
+    Note that the probability that the input sequence (A1 , . . . , As ) generated under the above dis-
+tribution is disjoint is precisely 1/2, whereas the probability that it is uniquely intersecting is also
+1/2. Note also that µ gives each disjoint input sequence the same probability and each uniquely in-
+
+
+                                                     11
+tersecting input sequence the same probability. Let (A01 , A02 , . . . , A0s ) denote a random disjoint input
+sequence, and let (A11 , A12 , . . . , A1s ) denote a random uniquely intersecting input sequence.
+    A box is a family X 1 × X 2 × · · · × X s , where each X i is a set of t-subsets N . This is clearly a
+family of s-tuples of t-subsets of N . Standard (and simple) arguments imply that the set of all input
+sequences (A1 , A2 , . . . , As ) corresponding to a fixed communication between the players forms a box.
+As we shall see later, this shows that the following lemma suffices to establish a lower bound on the
+average communication complexity of any deterministic -correct protocol for the above game. Note
+that in the statement of this lemma probabilities are taken over the distribution µ defined above.
+Note also that the approach here is the probabilistic analogue of the common reasoning for deriving
+lower bounds for deterministic communication complexity by showing that no large rectangles are
+monochromatic.
+
+Lemma 3.4 There exists an absolute constant c > 0 such that for every box X 1 × X 2 × · · · × X s
+                         h                                               i
+                   Prob (A11 , A12 , . . . , A1s ) ∈ X 1 × X 2 × · · · × X s ≥
+                        1      h                                                    i         3
+                           Prob (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s − s2−ct/s .
+                        2e
+To prove the lemma, fix a box X 1 × X 2 × · · · × X s . Recall that the distribution µ on the inputs has
+been defined by first choosing a random partition P . For such a partition P , let ProbP [Aj ∈ X j ]
+denote the conditional probability that Aj lies in X j , given that the partition used in the random
+choice of the input sequence (A1 , . . . , As ) is P . The conditional probabilities ProbP [A0j ∈ X j ] and
+ProbP [A1j ∈ X j ] are defined analogously. A partition P = I1 ∪ I2 ∪ · · · ∪ As ∪ {x} is called j-bad,
+where j satisfies 1 ≤ j ≤ s, if
+                                                      1
+                                                          
+                                                                                    3
+                      ProbP [A1j ∈ X j ] <        1−     ProbP [A0j ∈ X j ] − 2−ct/s ,
+                                                     s+1
+
+where c > 0 is a (small) absolute constant, to be chosen later. The partition is bad if it is j-bad for
+some j. If it is not bad, it is good.
+   We need the following two statements about good and bad partitions.
+
+Lemma 3.5 There exists a choice for the constant c > 0 in the last inequality such that the following
+holds. For any set of s − 1 pairwise disjoint t-subsets Ir0 ⊂ N , (1 ≤ r ≤ s, r 6= j), the conditional
+probability that the partition P = I1 ∪ I2 ∪ · · · ∪ Is ∪ {x} is j-bad, given that Ir = Ir0 for all r 6= j, is
+          1
+at most 20s  .
+
+Proof. Note that since Ir is known for all r 6= j, the union Ij ∪ {x} is known as well, and there are
+only 2t possibilities for the partition P . If the number of t-subsets of Ij ∪ {x} that belong to X j is
+smaller than                                        !
+                                               1 2t −ct/s3
+                                                     2
+                                               2 t
+
+                                                         12
+                                                                                      3
+then for each of the 2t possible partitions P , ProbP [A0j ∈ X j ] < 2−ct/s , implying that P is not
+j-bad. Therefore, in this case the conditional probability we have to bound is zero and the assertion
+of the lemma holds. Consider, thus, the case that there are at least that many t-subsets of Ij ∪ {x}
+in X j , let F denote the family of all these t-subsets and put Ij ∪ {x} = {x1 , x2 , . . . , x2t }. Let pi
+denote the fraction of members of F that contain xi , and let H(p) = −p log2 p − (1 − p) log2 (1 − p)
+be the binary entropy function. By a standard entropy inequality (cf., e.g., [4]),
+                                                           P2t
+                                                                   H(pi )
+                                                 |F| ≤ 2     i=1            .
+
+In order to determine the partition P = I1 ∪ I2 ∪ · · · ∪ Is ∪ {x} we have to choose one of the elements
+xi as x. The crucial observation is that if the choice of xi as x results in a j-bad partition P , then
+            1
+pi < (1 − s+1 )(1 − pi ), implying that H(pi ) ≤ 1 − c0 /s2 for some absolute positive constant c0 . Let
+b denote the number of elements xi whose choice as x results in a j-bad partition P . By the above
+discussion                              !
+                                    1 2t −ct/s3                    0 2
+                                         2        ≤ |F| ≤ 22t−bc /s .
+                                    2 t
+This implies that if t/s3 is much larger than log t, then b ≤ O(ct/s), and by choosing c to be
+sufficiently small this upper bound for b is smaller than 2t/(20s), completing the proof of the lemma.
+2
+
+Lemma 3.6 If P = I1 ∪ I2 ∪ · · · ∪ Is ∪ {x} is a good partition then
+                            h                                                   i
+                   ProbP (A11 , A12 , . . . , A1s ) ∈ X 1 × X 2 × · · · × X s ≥
+                         1      h                                                    i         3
+                           ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s − s2−ct/s .
+                         e
+Proof. By the definition of a good partition
+                                                         1                               3
+                         ProbP [A1j ∈ X j ] ≥ (1 −          )ProbP [A0j ∈ X j ] − 2−ct/s
+                                                        s+1
+for every j, 1 ≤ j ≤ s. Multiplying the above inequalities and using the definition of the distribution
+                                 1 s
+µ as well as the fact that (1 − s+1 ) > 1e the desired result follows. 2
+    Returning to the proof of Lemma 3.4, let χ(P ) be the indicator random variable whose value is
+1 iff P is a bad partition. Similarly, let χj (P ) be the indicator random variable whose value is 1 iff
+P is j-bad. Note that χ(P ) ≤ sj=1 χj (P ).
+                                P
+
+    By computing the expectation over all partitions P
+               h                                                     i
+         Prob (A11 , A12 , . . . , A1s ) ∈ X 1 × X 2 × · · · × X s
+                            h                                                  i
+           = E ProbP (A11 , A12 , . . . , A1s ) ∈ X 1 × X 2 × · · · × X s
+                            h                                                  i         
+           ≥ E ProbP (A11 , A12 , . . . , A1s ) ∈ X 1 × X 2 × · · · × X s (1 − χ(P ))
+                1       h                                                    i                    3
+           ≥      E ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s (1 − χ(P )) − s2−ct/s ,
+                e
+
+                                                           13
+where the last inequality follows from Lemma 3.6.
+   It follows that in order to prove the assertion of Lemma 3.4 it suffices to show that for every j,
+1 ≤ j ≤ s,                     h                                                i       
+                     E ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s χj (P )         (2)
+                        1          h                                                 i
+                      ≤   E ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s .                (3)
+                       2s
+Consider a fixed choice for the subsets Ir , r 6= j in the definition of the partition P = I1 ∪ I2 ∪ · · · ∪
+Is ∪ {x}. Given this choice, the union U = Ij ∪ {x} is known, but the actual element x should still
+be chosen randomly in this union. Given the above information on P , the quantity (3) is
+                                              s
+                                          1 Y
+                                                 ProbP [A0r ∈ X r ] ,
+                                          2s r=1
+
+and each of these factors besides the one corresponding to r = j is fixed. The same s−1 factors appear
+also in (2). The last factor in the above product, ProbP [A0j ∈ X j ], is also easy to compute as follows.
+Let l denote the number of t-subsets in X j which are contained in Ij ∪ {x}. Then ProbP [A0j ∈ X j ] is
+precisely l/ 2tt . Note, also, that for any choice of a member of U as x, the probability that A0j lies in
+                 
+
+X j cannot exceed l/ 2t−1     = 2l/ 2tt . By Lemma 3.5, the probability that χj (P ) = 1 given the choice
+                                      
+                          t
+of Ir , r 6= j, is at most 1/(20s) and we thus conclude that
+                             h                                               i       
+                   E ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s χj (P )
+                           1        h                                                    i
+                     ≤        E ProbP (A01 , A02 , . . . , A0s ) ∈ X 1 × X 2 × · · · × X s ,
+                          10s
+implying the inequality in (2), (3) and completing the proof of Lemma 3.4. 2
+Proof of Proposition 3.3. Since it is possible to repeat the protocol and amplify the probabilities,
+it suffices to prove the assertion of the proposition for some fixed  < 1/2, and thus it suffices to show
+that any deterministic protocol whose length is smaller than Ω(t/s3 ), applied to inputs generated
+according to the distribution µ, errs with probability Ω(1). It is easy and well known that any fixed
+communication pattern corresponds to a box of inputs. Therefore, if the number of communication
+                                                                                 3
+patterns in the end of which the protocol outputs 0 is smaller than ρs 2ct/s then, by summing the
+assertion of Lemma 3.4 over all the boxes corresponding to such communication patterns, we conclude
+                                                                                                          1
+that the probability that the protocol outputs 0 on a random input (A11 , A12 , . . . , A1s ) is at least 2e
+times the probability it outputs 0 on a random input (A01 , A02 , . . . , A0s ) minus ρ. By choosing a
+sufficiently small absolute constant ρ > 0 this shows that in this case the algorithm must err with
+                                                                                                     3
+probability Ω(1). Thus, the number of communication patterns must be at least Ω( 1s 2ct/s ) and
+hence the number of bits in the communication must be at least Ω(t/s3 ). 2
+Proof of Theorem 3.2. Fix an integer k > 5. Given a randomized algorithm for approximating
+the frequency moment Fk for any sequence of at most n members of N = {1, 2, . . . , n}, where
+n = (2t−1)s+1, using M memory bits, we define a simple randomized protocol for the communication
+
+                                                       14
+game DIS(s, t) for s = n1/k , t = Θ(n1−1/k ). Let A1 , A2 , . . . , As be the inputs given to the players.
+The first player runs the algorithm on the t elements of his set and communicates the content of the
+memory to the second player. The second player then continues to run the algorithm, starting from
+the memory configuration he received, on the elements of his set, and communicates the resulting
+content of the memory to the third one, and so on. The last player, player number s, obtains the
+output Zk of the algorithm. If it is at most 1.1st he reports that the input sequence (A1 , . . . , As )
+is disjoint. Else, he reports it is uniquely intersecting. Note that if the input sequence is disjoint,
+then the correct value of Fk is st, whereas if it is uniquely intersecting the correct value of Fk is
+sk + s(t − 1) = n + s(t − 1) > (3t − 2)s = ( 23 + o(1))n. Therefore, if the algorithm outputs a good
+approximation to Fk with probability at least 1 − γ, the protocol for DIS(s, t) is γ-correct and its
+total communication is (s − 1)M < sM . By Proposition 3.3 this implies that sM ≥ Ω(t/s3 ), showing
+that
+                                 M ≥ Ω(t/s4 ) = Ω(n/s5 ) = Ω(n1−5/k ) .
+
+This completes the proof. 2
+Remark. Since the lower bound in Proposition 3.3 holds for general protocols, and not only for
+one-way protocols in which every player communicates only once, the above lower bound for the
+space complexity of approximating Fk holds even for algorithms that may read the sequence A in its
+original order a constant number of times.
+    We next show that the randomization and approximation are both required in the estimation of
+Fk when using o(n) memory bits.
+
+3.3   Deterministic algorithms
+It is obvious that given a sequence A, its length F1 can be computed precisely and deterministically in
+logarithmic space. Here we show that for any nonnegative k besides 1, even an approximation of Fk up
+to, say, a relative error of 0.1 cannot be computed deterministically using less than a linear number
+of memory bits. This shows that the randomness is crucial in the two approximation algorithms
+described in Section 2. This is a simple corollary of the known results concerning the deterministic
+communication complexity of the equality function. Since, however, these known results are not
+difficult, we present a self contained proof, without any reference to communication complexity.
+
+Proposition 3.7 For any nonnegative integer k 6= 1, any deterministic algorithm that outputs, given
+a sequence A of n/2 elements of N = {1, 2, . . . , n}, a number Y such that |Y − Fk | ≤ 0.1Fk must use
+Ω(n) memory bits.
+
+Proof. Let G be a family of t = 2Ω(n) subsets of N , each of cardinality n/4 so that any two
+distinct members of G have at most n/8 elements in common. (The existence of such a G follows
+from standard results in coding theory, and can be proved by a simple counting argument). Fix
+a deterministic algorithm that approximates Fk for some fixed nonnegative k 6= 1. For every two
+
+                                                   15
+members G1 and G2 of G let A(G1 , G2 ) be the sequence of length n/2 starting with the n/4 members
+of G1 (in a sorted order) and ending with the set of n/4 members of G2 (in a sorted order). When the
+algorithm runs, given a sequence of the form A(G1 , G2 ), the memory configuration after it reads the
+first n/4 elements of the sequence depends only on G1 . By the pigeonhole principle, if the memory
+has less than log t bits, then there are two distinct sets G1 and G2 in G, so that the content of the
+memory after reading the elements of G1 is equal to that content after reading the elements of G2 .
+This means that the algorithm must give the same final output to the two sequences A(G1 , G1 ) and
+A(G2 , G1 ). This, however, contradicts the assumption, since for every k 6= 1, the values of Fk for the
+two sequences above differ from each other considerably; for A(G1 , G1 ), F0 = n/4 and Fk = 2k n/4
+for k ≥ 2, whereas for A(G2 , G1 ), F0 ≥ 3n/8 and Fk ≤ n/4 + 2k n/8. Therefore, the answer of the
+algorithm makes a relative error that exceeds 0.1 for at least one of these two sequences. It follows
+that the space used by the algorithm must be at least log t = Ω(n), completing the proof. 2
+
+3.4   Randomized precise computation
+As shown above, the randomness is essential in the two algorithms for approximating the frequency
+moments Fk , described in Section 2. We next observe that the fact that these are approximation
+algorithms is crucial as well, in the sense that the precise computation of these moments (for all k
+but k = 1) requires linear space, even if we allow randomized algorithms.
+
+Proposition 3.8 For any nonnegative integer k 6= 1, any randomized algorithm that outputs, given
+a sequence A of at most 2n elements of N = {1, 2, . . . , n} a number Y such that Y = Fk with
+probability at least 1 −  for some fixed  < 1/2 must use Ω(n) memory bits.
+
+Proof. The reduction in the proof of Proposition 3.1 easily works here as well and proves the above
+assertion using the main result of [13]. 2
+
+3.5   Tight lower bounds for the approximation of F0 , F1 , F2
+The results in [15], [7] and those in Section 2 here show that logarithmic memory suffices to approx-
+imate randomly the frequency moments F0 , F1 and F2 of a sequence A of at most m terms up to
+a constant factor with some fixed small error probability. More precisely, O(log log m) bits suffice
+for approximating F1 , O(log n) bits suffice for estimating F0 and O(log n + log log m) bits suffice for
+approximating F2 , where the last statement follows from the remark following the proof of Theorem
+2.2. It is not difficult to show that all these upper bounds are tight, up to a constant factor, as shown
+below.
+
+Proposition 3.9 Let A be a sequence of at most m elements of N = {1, 2, . . . , n}.
+(i) Any randomized algorithm for approximating F0 up to an additive error of 0.1F0 with probability
+at least 3/4 must use at least Ω(log n) memory bits.
+
+
+                                                   16
+(ii) Any randomized algorithm for approximating F1 up to 0.1F1 with probability at least 3/4 must
+use at least Ω(log log m) memory bits.
+(iii) Any randomized algorithm for approximating F2 up to 0.1F2 with probability at least 3/4 must
+use at least Ω(log n + log log m) memory bits.
+Proof.
+(i) The result follows from the construction in the proof of Proposition 3.7, together with the well
+known fact that the randomized communication complexity of the equality function f (x, y) whose
+value is 1 iff x = y, where x and y are l-bit numbers, is Θ(log l). Indeed, when run on an input
+sequence of the form A(G1 , G2 ) (in the notation of the proof of Proposition 3.7), the algorithm should
+decide if G1 and G2 are equal or not.
+(ii) Since the length F1 of the sequence can be any number up to m, the final content of the memory
+should admit at least Ω(log m) distinct values with positive probability, giving the desired result.
+(iii) The required memory is at least Ω(log n) by the argument mentioned in the proof of part (i)
+and is at least Ω(log log m) by the argument mentioned in the proof of part (ii). 2
+
+
+4    Concluding remarks
+We have seen that there are surprisingly space efficient randomized algorithms for approximating
+the first three frequency moments F0 , F1 , F2 , whereas not much space can be gained over the trivial
+algorithms in the approximation of Fk for k ≥ 6. We conjecture that an nΩ(1) space lower bound
+holds for any k (integer or non-integer), when k > 2. It would be interesting to determine or estimate
+the space complexity of the approximation of ni=1 mki for non-integral values of k for k < 2, or the
+                                                     P
+
+space complexity of estimating other functions of the numbers mi . The method described in Section
+2.1 can be applied in many cases and give some nontrivial space savings. Thus, for example, it is
+not too difficult to design a randomized algorithm based on the general scheme in Subsection 2.1,
+that approximates ni=1 log(mi !) up to some fixed small relative error with some small fixed error-
+                          P
+
+probability, whenever m = ni=1 mi ≥ 2n, using O(log n log m) memory bits. Here is an outline of
+                                   P
+
+the algorithm. For s1 = O(log n) and an absolute constant s2 , the algorithm computes s2 random
+variables Y1 , Y2 , . . . , Ys2 and outputs their median Y . Each Yi is the average of s1 random variables
+Xij : 1 ≤ j ≤ s1 , where the Xij are independent, identically distributed random variables. Each of
+the variables X = Xij is computed from the sequence in the same way, using O(log m) memory bits,
+as follows. Choose a random member ap of the sequence A, where the index p is chosen randomly
+and uniformly among the numbers 1, 2, . . . , m. Suppose that ap = l ( ∈ N = {1, 2, . . . , n}.) Put
+
+                                    r = |{q : q ≥ p, aq = l}| ( ≥ 1),
+
+and define X = m log r. It is not difficult to check that the expectation of X is E(X) = ni=1 log(mi !)
+                                                                                           P
+
+and its variance satisfies Var(X) ≤ O(log n)(E(X))2 . This, together with Chebyshev’s Inequality,
+implies the correctness of the algorithm, as in Subsection 2.1.
+
+                                                   17
+   We finally remark that in practice, one may be able to obtain estimation algorithms which for
+typical data sets would be more efficient than the worst case performance implied by the lower
+bounds. Gibbons et al [9] recently presented an algorithm for maintaining an approximate list of the
+k most popular items and their approximate counts (and hence also approximating F∞  ∗ ) using small
+
+memory, which works well for frequency distributions of practical interest.
+
+Acknowledgment
+We thank Colin Mallows for helpful comments regarding the statistics literature, and for pointing
+out [10].
+
+
+References
+ [1] N. Alon, L. Babai and A. Itai, A fast and simple randomized parallel algorithm for the maximal
+     independent set problem, J. Algorithms 7(1986), 567-583.
+
+ [2] N. Alon and J. H. Spencer, The Probabilistic Method, John Wiley and Sons Inc., New York,
+     1992.
+
+ [3] L. Babai, P. Frankl and J. Simon, Complexity classes in communication complexity theory, Proc.
+     of the 27th IEEE FOCS, 1986, 337-347.
+
+ [4] T. M. Cover and J. A. Thomas, Elements of Information Theory, Wiley, 1991.
+
+ [5] D.J. DeWitt, J.F. Naughton, D.A. Schneider, and S. Seshadri, Practical skew handling in parallel
+     joins, Proc. 18th Int’l. Conf. on Very Large Data Bases, 1992. pp. 27.
+
+ [6] P. Flajolet, Approximate counting: a detailed analysis, BIT 25 (1985), 113-134.
+
+ [7] P. Flajolet and G. N. Martin, Probabilistic counting, FOCS 1983, 76-82.
+
+ [8] P. Gibbons, Y. Matias and V Poosala, Fast incremental maintenance of approximate histograms,
+     Proc. 23rd Int’l. Conf. on Very Large Data Bases, to appear, 1997.
+
+ [9] P. Gibbons, Y. Matias and A. Witkowski, Practical maintenance algorithms for high-biased
+     histograms using probabilistic filtering, Technical Report, AT&T Bell Laboratories, Murray Hill,
+     NJ, Dec. 1995.
+
+[10] I. J. Good, Surprise indexes and P -values, J. Statistical Computation and Simulation 32 (1989),
+     90-92.
+
+[11] M. Hofri and N. Kechris, Probabilistic counting of a large number of events, Manuscript, 1995.
+
+
+
+                                                 18
+[12] P.J. Haas, J.F. Naughton, S. Seshadri, and L. Stokes, Sampling-Based Estimation of the Number
+     of Distinct Values of an Attribute, Proc. of the 21st VLDB Conference, 1995, 311-322.
+
+[13] B. Kalyanasundaram and G. Schnitger, The probabilistic communication complexity of set in-
+     tersection, 2nd Structure in Complexity Theory Conference (1987), 41-49.
+
+[14] Y. Ling and W. Sun, A supplement to sampling-based methods for query size estimation in a
+     database system, SIGMOD RECORD, 21(4) (1992), 12–15.
+
+[15] R. Morris, Counting large numbers of events in small registers, CACM 21 (1978), 840-842.
+
+[16] A. A. Razborov, On the distributional complexity of disjointness, Proc. of the ICALP (1990),
+     249-253. (To appear in Theoretical Computer Science.)
+
+[17] K.-Y. Whang, B.T. Vander-Zanden, and H.M. Taylor, A linear-time probabilistic counting algo-
+     rithm for database applications, ACM Transactions on Database Systems, 15(2) (1990), 208-229.
+
+[18] A. C. Yao, Some complexity questions related to distributed computing, Proc of the 11th ACM
+     STOC, 1979, 209-213.
+
+[19] A. C. Yao, Lower bounds by probabilistic arguments, Proc of the 24th IEEE FOCS, 1983, 420-428.
+
+
+
+
+                                                19
+

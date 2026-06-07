@@ -1,0 +1,1062 @@
+                  Renormalization group for one dimensional Ising model
+                                 Masatsugu Sei Suzuki,
+                      Department of Physics, SUNY at Binghamton
+                               (Date: December 04, 2016)
+
+Kenneth Geddes Wilson (June 8, 1936 – June 15, 2013) was an American theoretical physicist
+and a pioneer in leveraging computers for studying particle physics. He was awarded the 1982
+Nobel Prize in Physics for his work on phase transitions—illuminating the subtle essence of
+phenomena like melting ice and emerging magnetism. It was embodied in his fundamental work
+on the renormalization group.
+
+
+
+
+https://en.wikipedia.org/wiki/Kenneth_G._Wilson
+
+    Here we discuss the renormalization group (RG) for the simplest possible example- the one-
+dimensional Ising model. The results of the RG calculations are compared with the exact
+calculations of the correlation functions and the free energy of the one-dimensional Ising model;
+the temperature T = 0 can be treated as a second-order critical point.
+
+______________________________________________________________________________
+Leo Philip Kadanoff:
+    Kadanoff was born in 1937 and spent his early life in New York City. He received his PhD
+from Harvard in 1960 and was a postdoctoral researcher at the Niels Bohr Institute in
+Copenhagen until he moved to the University of Illinois in 1962. His work there concerned the
+development of many-body theory techniques, culminating in a short but highly influential
+monograph with Gordon Baym, which is still widely used today. Kadanoff found himself, in the
+mid- 1960s, working on the problem of phase transitions. It had been known since the work of
+Lev Landau in 1937 that second-order phase transitions would exhibit power-law singularities or
+divergences as the temperature approached the critical point. But 30 years later, the exponents
+characterizing these singularities, which had been measured or estimated by numerical methods
+in a number of systems, were in clear disagreement with Landau’s predictions. A crucial
+contribution was made in 1965 by Benjamin Widom of Cornell University, who showed how the
+form of the scaling laws near the critical point could be obtained from assuming mathematical
+homogeneity in the equation of state, but the interpretation of this assumption seemed obscure.
+Kadanoff made the perspicacious insight that statistical mechanics could be formulated not
+merely in terms of a partition function relating in one fell swoop the microscopic Hamiltonian of
+a system to its system-size thermodynamic free energy, but instead marching one scale at a time
+from small to large.
+    In Kadanoff’s formulation, degrees of freedom on a small scale would influence degrees of
+freedom on a larger scale by changing or ‘renormalizing’ the parameters of the larger-scale
+Hamiltonian. This process, iterated from atomic level to system-size level, led to a mathematical
+structure identical to that postulated by Widom. Although Kadanoff’s ‘block spin construction’
+related the physics on different scales, it did not on its own provide a calculational method for
+estimating critical exponents. This last step was undertaken by Wilson through his realization
+that iteration of a Hamiltonian from one scale to another constituted a form of a dynamical
+system, whose fixed points and the linearized trajectories around them controlled the phases and
+phase transitions of the system. The insights derived from Widom, Kadanoff and Wilson’s work
+revolutionized our understanding of the process of constructing theories in statistical mechanics,
+high-energy physics and beyond.
+
+
+
+
+http://guava.physics.uiuc.edu/~nigel/REPRINTS/2015/NG%20obituary%20for%20Leo%20Kad
+anoff%20Nature%20Physics%202015.pdf
+Fig. Kadanoff’s construction with the combination of coarse graining procedure and rescaling
+procedure.
+
+1.     Renormalization group for the one-dimensional Ising model
+   In order to understand the essence of the renormalization group theory, we concentrate on the
+simple model (one-dimensional Ising model). We already know the exact solution of this model.
+The starting Hamiltonian is given by
+
+                       N                  N
+        H   K  si si1  h si  c
+                       i1               i1
+
+
+
+where c is added as an extra term.
+
+               J                     B B
+        K        ,            h
+             k BT                    k BT
+
+with spin si  1 . The partition function Z is defined by
+
+
+        Z                  .....  exp( H )
+             s1 1 s2  1 s3 1   s N  1
+    If we want to make several successive renormalization group (RG) transformations, the
+structure of H must not change after each transformation. We are thus seeking for such a
+transformation from the old Hamiltonian H to the new Hamiltonian H’ that keeps the structure of
+the Hamiltonian unchanged under successive transformations. In addition, the transformation
+must be such that it does not change the partition function. That is necessary because this ensures
+that the physical properties of the system are not changed.
+    We perform a partial trace by summing over every second spin variable along the chain,
+leaving the alternate spins unaffected. In this way we obtain a renormalized chain with only half
+the number of original spins as illustrated below.
+
+
+
+
+    a                                            Partial summation
+
+
+
+
+       2a                                          Spacial scaling
+
+
+
+
+Fig.    Steps involved in the RG procedure with decimation and rescaling). Renormalization of
+        the 1D Ising model by a scale factor, b = 2. (a) The original lattice. (b) The renormalized
+        lattice. (c) The renormalized lattice with the spins-re-numbered consecutively.
+
+The partition function is given by
+
+Z ( N , K , h)   exp(   H )
+               { s}
+
+                                    h
+               exp[ Ksi si 1      ( si  si 1 )]
+               { s}                 2
+                                                        h                                              h
+               exp[ K ( s1s2  s2 s3 )  hs2           ( s1  s3 )] exp[ K ( s3 s4  s4 s5 )  hs4  ( s3  s5 )]...
+               { s}                                     2                                              2
+
+We divide the lattice into the sublattices ○ (1, 3, 5,…) and ● (2,4,6,…) denote the spins on the ●
+sublattice by  i (2, 4, 6, …)
+                                                      h                                               h
+Z ( N , K , h)   exp[ K ( s1 2   2 s3 )  h 2  ( s1  s3 )] exp[ K ( s3 4   4 s5 )  h 4  ( s3  s5 )]...
+                 { } { s}                            2                                               2
+
+and carry out a partial trace, i.e., we sum over 2 N / 2 configurations of the { } spins sitting on the
+● sublattice:
+
+                                      h                              h
+         Z ( N , K , h)   {exp[( K  )( s1  s3 )  h]  exp[( K  )( s1  s3 )  h]}
+                          { s}        2                              2
+                                       h                              h
+                            {exp[( K  )( s3  s5 )  h]  exp[( K  )( s3  s5 )  h]}...
+                                       2                              2
+
+The entire partition function must not change and H must keep its structure, therefore we have
+the condition
+
+                                    h'
+          exp[ K ' s s
+          { s}
+                       i i 2   
+                                    2
+                                       ( si  si 2 )  2 g ]
+
+
+The equation given by
+
+                  h                                 h                                          h'
+         exp[( K  )( si  si 2 )  h]  exp[( K  )( si  si 2 )  h]  exp[ K ' si si 2  ( si  si 2 )  2 g ]
+                  2                                 2                                          2
+
+hold for any si  1 , si 2  1 , where g is a constant, g  g ( K , h) .
+For si  1 , si 2  1 ,
+
+         exp(2 K  2h)  exp(2 K )  exp( K ' h'2 g )
+
+For si  1 , si 2  1 ,
+
+         exp(2 K  2h)  exp(2 K )  exp( K 'h'2 g )
+
+For si  1 and si 2  1 , or si  1 and si 2  1
+
+         exp(h)  exp(h)  exp( K '2 g )
+
+Then we have
+                   cosh(2 K  h) cosh(2 K  h)
+        e4 K ' 
+                           cosh 2 (h)
+
+                        cosh(2 K  h)
+        e2 h '  e 2h
+                        cosh(2 K  h)
+
+        e8 g  16 cosh 2 (2 K  h) cosh 2 (2 K  h) cosh 2 (h)
+
+or
+
+               1 cosh(2 K  h) cosh(2 K  h)
+        K'      ln
+               4          cosh 2 (h)
+
+                1 cosh(2 K  h)
+        h'  h  ln
+                2 cosh(2 K  h)
+
+           1
+        g  ln[16 cosh 2 (2 K  h) cosh 2 (2 K  h) cosh 2 (h)]
+           8
+
+which are the recursion relations and determine the fixed points and the flow diagram of the
+system.
+
+                                           N     N
+        Z ( N .K , h)  exp[2 g ( K , h)     ]Z ( , K ' , h' )  exp( Ng ( K , h)] exp( H ' )
+                                           2     2                                { s}
+
+
+
+In each iteration, the number of degrees of freedom is reduced by one half, the new Hamiltonian
+H has only one half of the previous spins,
+
+        N ' N / b                  b = 2.
+
+and the lattice spacing is increased,
+
+        a'  b
+
+where a = 1. The correlation length has the dimension of length, but to express it as a pure
+number we may measure it in units of the lattice spacing. The new correlation length is measured
+in units of the new lattice spacing,
+
+         '  / b
+where    ' b .
+
+The remaining spins on the decimated lattice interact with their new nearest neighbors through
+the renormalized coupling constants K’ and are subject to renormalized fields h’.
+
+2.      Kadanoff construction))
+    The above procedure is called the Kadanoff construction. The construction can be performed
+by summing the configurations of every alternate spin variable in the calculation of Z . This
+procedure will give another Ising model (with parameters K ' and h' ), but with a lattice spacing
+which is twice the original spacing. Then, a change in the unit of length is introduced (in fact the
+length unit is doubled) so that the new model looks exactly like the old one. From the
+Hamiltonian of the new model, it will be possible to determine the parameters K ' and h' in
+terms of K and h . Thus the two operations, partial summation of spin configurations and spatial
+length rescaling, can be thought of as a transformation in the parameter space.
+
+                            ( K , h)
+         ( K ' , h' ) 
+                               b
+
+Thus, spin decimation and spatial rescaling produce a new system with a smaller correlation
+length. Therefore, unless  (k , h)  1 , this procedure drives the system away from the critical
+point. Since H and H ' are identical in structure, the functional forms of  ( K , h) and  ( K ' , h' )
+are the same.
+
+                     kT
+          f ( H )   B ln Z ( N , K , h)
+                      N
+
+                      k BT
+         f (H ' )         ln Z ( N ' , K ' , h' )
+                       N'
+                      kT
+                    B ln[Z ( N , K , h) exp( Ng ( K , h)]
+                       N'
+                      kT
+                    B [ln Z ( N , K , h)  Ng ( K , h)]
+                       N'
+                        kT
+                   b B ln Z ( N , K , h)  k BTbg ( K , h)
+                         N
+                   bf ( H )  k BTbg ( K , h)
+
+        Z ( N , K , h)  exp[ Ng ( K , h)]Z ( N ' , K ' , h' )
+
+where
+         N  bN '
+
+The parameter g is the contribution (per site) from the decimated spins.
+
+3.      Flow equations
+
+
+
+        K K K K K K K K K K K K K K K K K K K K K K K K K K K K K K K K K
+
+
+
+
+        K1     K1     K1     K1   K1       K1   K1   K1   K1   K1   K1   K1   K1   K1   K1    K1
+
+
+
+
+           K2               K2        K2         K2        K2        K2         K2         K2
+
+
+
+
+           K3                         K3                   K3                   K3
+
+
+
+
+                                 K4                                       K4
+
+
+
+
+                                                      K5
+
+
+     The equations connecting the parameter set ( K ' , h' ) to ( K , h) are known as flow equations.
+Symbolically, they are expressed as
+
+         K '  RK ( K , h)
+
+         h'  R2 ( K , h)
+                                                                                                J
+The equation for g is not considered since it is explicitly given by K and h. Since K             , these
+                                                                                              k BT
+equations can also be rewritten in terms of T ' and h' as the formk
+
+        T '  R1 (T , h)
+
+        h'  R2 (T , h)
+
+Thus, the application of an RG transformation produces an identical system but at a different
+point in the parameter space. The fixed point (T * , h* ) of the transformation is defined as
+
+        T *  R1 (T * , h* )
+
+        h*  R2 (T * , h* )
+
+By defnition, the fixed point is unaltered by the transformation. That is, if h  h* , then h'  h* :
+However, the correlation length at the fixed point must satisfy
+
+                           (T * , h* )
+         (T * , h* ) 
+                               b
+
+where b is the scale factor. This equation has solutions
+
+         (T * , h* )  0 ,                (T * , h* )  
+
+The zero value is associated to a paramagnetic state while the infinite value corresponds to a
+system at the critical point. Thus (neglecting the solution  (T * , h* )  0 , the fixed point in the
+parameter space represents a critical system since the correlation length corresponding to that
+point is infinity. The flow equations can be linearized near the fixed point by writing
+
+        T '  T *  T '
+
+        h'  h*  h'
+
+        T  T *  T
+
+        h  h*  h
+
+In matrix notation, the linearized transformation equations are
+         T '   R11       R12  T 
+                            
+          h'   R21       R22  h 
+
+
+where
+
+             R                             R
+                     *                        *
+        R11  1 ,                      R12  1
+             T                              h
+
+             R                             R
+                     *                            *
+        R21  2 ,                      R22  2
+              T                             h
+
+4.      General properties of RG transformation
+    The renormalization-group (RG) transformations work by changing the length scale and by
+reducing the number of the degrees of freedom. Only at criticality the system remains unaltered
+under the change in scale and the critical behavior is determined by a fixed point of the
+transformation. The essential condition to be satisfied by any RG transformation is that the
+partition function must not change,
+
+        Z '  Rb Z
+
+The renormalization-group operator Rb reduces the number of degrees of freedom from N to
+N' ;
+
+              N
+        N'
+              bd
+
+Therefore the total free energy does not change but the free energy per unit cell (spin) increases
+as
+
+        f '  Rb f  b d f
+
+All lengths, measured in units of the new lattice spacing, are reduced by the factor b. Thus, the
+correlation length scales as
+
+              
+        '
+              b
+We see from this that the RG group procedure has the effect of shrinking the correlation length.
+Hence, if we recall the central fact of critical phenomena, namely, that  becomes indefinitely
+large as t  0 , we see that the RG has the effect of driving a system away from criticality
+(Fisher).
+
+5.      Recursion relation and fixed points
+    At a fixed point the parameters (the coupling constants – in our case K and h) do not change
+under successive decimations. This means that the system at a fixed point stays at this point in
+the parameter space. With the new variables
+
+          x  e 4 K ,           y  e 2 h ,        z  e 8 g
+
+( 0  { x, y, z )  1
+
+
+                      (1  y ) 2
+          x'  x                                                            (1)
+                 ( x  y )(1  xy )
+
+                   ( x  y)
+          y'  y                                                            (2)
+                   1  xy
+
+                                        1
+          z '  z 2 xy 2                                                    (3)
+                           ( x  y )(1  xy )(1  y ) 2
+
+   The equations for x and y do not depend on z and have three fixed points. We define the fixed
+points ( x* , y * ) which are determined by two equations
+
+                           (1  y * )2
+          x*  x*                                                           (4)
+                     ( x*  y* )(1  x* y* )
+
+                     ( x*  y * )
+          y*  y*                                                           (5)
+                     1  x* y *
+
+We determine the values of x* and y * using the ContourPlot of Eqs.(4) and (5)
+                 1.0   y
+
+
+                 0.8
+
+
+
+
+                 0.6
+
+
+
+
+                 0.4
+
+
+
+
+                 0.2
+
+
+
+
+                 0.0
+
+                                               x
+                           0.0   0.2     0.4       0.6    0.8      1.0
+
+
+Fig.1 The fixed points (denoted by green circles and green line), which is obtained from the
+      shared regions of Figs.2 and 3.
+
+
+
+                 1.0   y
+
+
+                 0.8
+
+
+
+
+                 0.6
+
+
+
+
+                 0.4
+
+
+
+
+                 0.2
+
+
+
+
+                 0.0
+
+                                               x
+                           0.0   0.2     0.4       0.6    0.8      1.0
+                               (1  y * )2
+Fig.2 ContourPlot of x  x * *         *
+                                               in the ( x* , y * ) plane.
+                          ( x  y )(1  x y )
+                                  *        * *
+
+
+
+
+                   1.0   y
+
+
+                   0.8
+
+
+
+
+                   0.6
+
+
+
+
+                   0.4
+
+
+
+
+                   0.2
+
+
+
+
+                   0.0
+
+                                                                 x
+                                 0.0           0.2         0.4        0.6         0.8       1.0
+
+
+
+                                           ( x*  y * )
+Fig.3 ContourPlot of y *  y *                          in the in the ( x* , y * ) plane.
+                                           1 x y* *
+
+
+
+
+(i)     x*  y *  0
+        A frozen spin configuration (aligned spins at all temperatures as a result of an infinite
+        external field)
+
+(ii)    x*  1 ,         y * ; arbitrary
+        The high temperature paramagnetic phase
+
+(iii)   x*  0 ,         y*  1
+        The T = 0 critical point
+
+6.      Flow diagram in the (x, y) plane
+                 y e 2h
+                 A
+           1.0                                       B 0
+
+
+
+           0.8
+
+
+
+
+           0.6                                                                         C
+
+            T 0                                                                   T
+
+           0.4
+
+
+
+
+           0.2
+
+
+
+
+                 O                                   B
+                             0.2              0.4            0.6         0.8            1.0
+
+
+                                                    x e 4K
+Fig.   Schematic flow diagram of the d = 1 Ising model. The point O ( x *  0, y *  0) ; fully
+       aligned configuration. The point A ( x*  0, y *  1) ; ferromagnetic fixed point. The line C;
+        ( x*  1, 0  y *  1) ; Infinity T sink
+
+The recursion relations for x and y do not depend on z. Physically, this means that the singular
+behavior of the free energy does not depend on a shift in th energy scale. Therefore, we first
+investigate the flow diagram and fixed points in the (x, y) plane.
+
+(i)    There is a line of fixed points at x*  1 for 0  y *  1 , corresponding to an infinite-
+       temperature sink. Along this line, the spins are completely disordered and   0 .
+(ii)   The fixed point at ( x*  0, y*  1) (this means B = 0 and T = 0) corresponds to the critical
+       point, where    . This is correct because we know that the d = 1 Ising model has
+       Tc  0 . This fixed point is unstable and any point in its vicinity will flow under RG
+       transformations away from it towards the fixed points on the line at x*  1 . The critical
+       behavior of the d = 1 Ising model is governed by the least stable fixed point at
+       ( x*  0, y*  1) .
+(iii)   The point at ( x*  0, y*  0) is another fixed point which corresponds to T = 0 and B = ∞.
+        At this fixed point, the spins are completely ordered.
+
+                         A                      B 0                        B
+                   K      ,h 0                                       K 0,h 0
+
+
+
+               y e 2h
+
+
+                       T 0                                            T
+
+
+
+
+                         O                      B
+                                              x e 4K
+
+Fig.    Fixed points A (K=∞, h=0; T = 0, B = 0), and B (K = 0, h = 0; T = ∞, B = 0)
+
+When h = 0, there are two fixed points A (K=∞, h=0), and B (K = 0, h = 0, as shown above. The
+point A does not move after the renormalization procedures, showing the unstable fixed point.
+The point B is a stable fixed point. When the initial state is at a point between the line AB, the
+point moves toward the point B after the renormalization group processes.
+                        y e 2h
+                       1.0
+
+
+
+
+                       0.8
+
+
+
+
+                       0.6
+
+
+
+
+                       0.4
+
+
+
+
+                       0.2
+
+
+
+
+                                     0.2           0.4              0.6   0.8    1.0
+                                                               4K
+                                                         x e
+
+Fig.     Flow diagram starting from the point (0.001, 1).
+
+7.      Fixed points and flow diagram in the (x, h) plane.
+      We have the recursion relations in the (x, h) plane,
+
+                   2[1  cosh( 2h)]
+         x'  x                       ,                                         (1)
+                  x  2 x cosh(h)  1
+                   2
+
+
+
+
+                  1
+         h'  2h  [ln(1  xe  2 h )  ln(1  xe 2h )]                         (2)
+                  2
+
+(a)     Determination of the fixed points.
+    Using Eqs.(1) and (2), we determine the fixed point in the (x, h) plane. This can be done by
+using the ContourPlot (Mathematica).
+
+There are two fix points;
+       (i)     x*  0 ,             h*  0
+         (ii)      x*  1 ,         h*  0
+                  1.2
+
+
+
+                  1.0   h
+
+                  0.8
+
+
+
+
+                  0.6
+
+
+
+                  0.4
+
+
+
+                  0.2
+
+
+
+
+                  0.0
+                                                                          x
+                            0.0   0.2     0.4      0.6     0.8      1.0       1.2
+
+
+Fig.   ContouPlot of Eqs.(1) and (2);Eq.(1) (denoted by red lines) and Eq.(2) (denoted by blue
+       line). The intersection of the two ContourPlots leads to the fixed points; (0,0), and (1,0)
+       (denoted by green points).
+
+(b)    The flow diagram in the (x, h) plane
+   The flow diagram in the (x, h) plane is shown below, where the starting point is at (0.001, 0).
+The point moves toward the point (1,0).
+     0.02
+      h
+
+     0.01
+
+
+
+
+                          0.2             0.4             0.6           0.8     1.0
+
+                                                   x
+     0.01
+
+
+
+
+     0.02
+
+Fig.        Flow diagram in the ( x, h) plane. The starting point at at (0.001, 0). There are two fixed
+            points at the points (0,0) and (1,0).
+
+8.          General properties of eigenvalue problem:
+
+            Aˆ a1  a1 a1 ,             Aˆ a2  a2 a2
+
+
+                           U 11                             U12 
+             a1  Uˆ 1         ,           a2  Uˆ 2       
+                           U 21                            U 22 
+
+The RG transformation
+
+             ( n )  Ân 
+
+with
+
+               ai ai 
+                    a
+
+                 a1 a1   a2 a2  ,
+                 z1 a1  z2 a2
+         (1)  Aˆ 
+                 ai ai Aˆ 
+                    a
+
+                a1 a1 a1   a2 a2 a2 
+                a1 z1 a1  a2 z2 a2
+
+
+Similarly,
+
+         ( 2)  Aˆ 2   a1 z1 a1  a2 z2 a2
+                                 2              2
+
+
+
+
+………………………………………………………………………………………………..
+
+         ( n )  Aˆ n   a1 z1 a1  a2 z2 a2
+                                 n              n
+
+
+
+
+where              z1  a1  ,         z 2  a2  .
+
+
+((Renormalization group))
+
+               x                                   x'                         x" 
+                                  (1)    ,                   ( 2)     
+              y                                    y'                         y"
+
+        a1  1 (b) ,       a2   2 (b)
+
+The linearlized RG equations can be written as
+
+                    x'              U 11                 U 
+         (1)     z1 1 (b)           z 2  2 (b) 11 
+                    y'              U 21                  U 21 
+
+If the RG transformation is applied again, we get
+
+                    x"               U                    U 
+         ( 2)         z112 (b) 11   z2  2 2 (b) 11 
+                    y"               U 21                  U 21 
+
+However,  ( 2 )        can be obtained from                 by decimating b 2 and then employing a spatial
+rescaling by b 2 . Then we can write
+                        x"                 U                        U 
+           ( 2)           z11 (b 2 ) 11   z 2  2 2 (b 2 ) 11 
+                        y"                 U 21                     U 21 
+
+The two expressions obtained for  ( 2 ) show that
+
+
+          1 (b 2 )  12 (b) ,              2 (b 2 )   2 2 (b)
+
+For this relation to be obeyed for arbitrary b, we should have
+
+          1 (b)  b    i
+                                (i = 1, 2)
+
+Thus the dependence of the eigenvalues on the scaling b is obtained.
+
+9.      Linearized recursion relation
+      We consider the third fixed point describes the T = 0 critical point ( x*  0 and y *  1 ).
+Suppose that x is close to 0 and y is close to 1. The recursion relation is given by
+
+                        (1  y ) 2
+          x'  x
+                   ( x  y )(1  xy)
+                   (1  1) 2
+            x
+               ( x  1)(1  x )
+             4x
+
+and
+
+                   1 cosh(2 K  h)
+          h'  h  ln
+                   2 cosh(2 K  h)
+                  1
+           2h  [ln(1  xe 2 h )  ln(1  xe 2h )]
+                  2
+           2h
+
+Then we have the recursion relation
+
+          x'  4 x ,             h'  2 h
+
+The fixed point satisfies the equations given by
+          x*  0 , y *  1 ( h*  0 )
+
+From these equations, we get
+
+          x' 22 x ,
+
+          h' 21 h
+
+10.      Solving the eigenvalue problem
+      We start with the linearized recursion relation,
+
+          x'  4 x ,            h'  2 h            (b = 2).
+
+Here we use the temperature and field variables as
+
+          x  e 4 K  t                   (temperature variable)
+
+          h                                (reduced magnetic field)
+
+                        t'                4 0  t 
+           (1)     Aˆ         
+                    h'           0 2  h 
+
+where
+
+                4 0
+          Â        .
+                 0 2  
+
+The eigenvalue of the matrix A is
+
+          a1  1 (b)  22 .               a2  2 (b)  21
+
+with
+
+          1  2 ,                         2  1
+
+Note that
+                 U11   1                                   U12   1 
+          a1           ,                      a2          
+                U 21   0                                  U 22   0 
+
+11.     Finite reduced temperature
+    We assume that t is the reduced temperature deviation from the fixed point A (0, 1). After
+one renormalization procedure (scaling factor b), the resulting temperature t ' is related to the
+original t by
+
+         t '  1 (b)t
+
+After the l-times repetition of the RG procedure, we have
+
+         t (l )  1 (b)t
+                      l
+
+
+
+
+which is equivalent to one RG procedure with scale factor b l such that
+
+         t (l )  1 (bl )t
+
+Then we have the form of 1 (b) as
+
+         1 (b)  b          1
+
+
+
+
+leading to
+
+         t (l )  b 1l t
+
+The correlation length  is
+
+          '  / b
+
+                                    
+          ( l )   (t ( l ) )        l
+                                             b  l  (t )
+                                    b
+
+Suppose that for the effective temperature t ( l )  1 ,  (t (l ) )   (1)
+
+                                                1              1
+                                                          
+                                                1l l          1
+          (t )  b  (1)  (t
+                          l
+                                                    ) t            ,
+since
+
+                                                      1
+                                                  
+                        1l                           1l
+        t   (l )
+                    b t  1,               bt             .
+
+The critical exponent for the correlation length  is
+
+                    1
+                      .
+                   1
+
+The free energy:
+
+         f (l )  f (t ( l ) )  b dl f (t ) ,
+
+or
+
+                            d
+                            1
+         f (t )  t f (1)  t d f (1) .
+
+f(1) is the free energy density at the effective temperature. Since f (t )  t 2
+
+        d  2                            (hyper-scaling law)
+
+12.     Finite reduced field
+    After one renormalization procedure (scaling factor b), the resulting field h' is related to the
+original h by
+
+        h'   2 (b)h .
+
+After the l-times repetition of the RG procedure, we have
+
+        h(l )  [ 2 (b)]l h ,
+
+which is equivalent to one RG procedure with scale factor b l such that
+
+        h ( l )   2 (b l )h .
+
+Then we have the form of  2 (b) as
+          2 (b)  b ,   2
+
+
+
+
+leading to
+
+         h (l )  b 2l h .
+
+The free energy:
+
+          f (l )  f (t ( l ) , h (l ) )  b dl f (t , h)
+
+or
+
+                                                                              d
+                                         2l                         h        1    h                h
+          f (t , h)  b   dl
+                                f (1, b h)  b           dl
+                                                               f (1, 2 )  t f ( 2 )  t d f ( 2 )
+                                                                    t             t                t
+
+where                 f (1, x )  f ( x )
+
+Then we have
+
+           2
+
+leading to the relation
+
+                         
+         2         
+                          
+
+13.      Scaling for the correlation length
+
+          (t , h)  b (t ' , h' )  b (b  t , b  h)
+                                                    1          2
+
+
+
+
+We consider the system with y = 0. Then  is given by
+
+          (t )  b (t ' )  b (b  t )  1
+
+
+
+
+for arbitrary b. Putting b 1 t  1 (or b  t 1 / 1 ), it is found that
+
+          (t )  t 1 /   (1)  x   (1)
+                          1
+where  is the correlation length exponent. Since x  e 4 K , we have
+
+                                                    4 J
+        (t )  exp(4 K )  exp(                        )
+                                                    k BT
+
+Thus, for the 1D Ising model, an exponential divergence is obtained, as compared to the usual
+power law divergence.
+
+14.    Scaling law for the free energy per spin
+
+        f (t , h)  b  d f (t ' , h' )  b  d f (b 1 t , b 2 h)
+
+where the term c’ is omitted. We again choose b  t 1 / 1 . Thus we have
+
+                                          h
+        f (t , h)  t d / 1 f (1,        2 / 1
+                                                    )
+                                     x
+
+which is of the scaling form if
+
+        d                                                    2
+              2    d ,                                     .
+        1                                                   1
+
+____________________________________________________________________________
+REFERENCES
+I. Vilfan, Lecture Notes in Statistical Mechanics (2002).
+J.M. Yeomans, Statistical Mechanics of Phase Transitions (Oxford, 1992).
+F.J.W. Hahne edited, Critical Phenomena, M.E. Fisher, Scaling, Universality and
+        Renormalization Group Theory (Springer-Verlag, 1983).
+H.S. Robertson, Statistical Thermodynamics (P T R Prentice Hall, 1993).
+S.V.G. Menon. Renormalization Group Theory of Critical Phenomena (New Age International
+Limited, 1995).
+P.M. Chaikin and T.C. Lubensky, Principles of Condensed Matter Physics (Cambridge, 1995).
+M.E. Fisher, Rev. Mod. Phys. 46, 597 (1974).
+H.J. Maris and L.P. Kadanoff, Am. J. Phys. 46, 652 (1978).
+

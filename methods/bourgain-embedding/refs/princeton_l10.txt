@@ -1,0 +1,430 @@
+princeton u. sp’02
+
+cos 598B: algorithms and complexity
+
+Lecture 10: Bourgain’s Theorem
+Lecturer: Sanjeev Arora
+
+Scribe:Daniel J. Peng
+
+The goal of this week’s lecture is to prove the `2 version of Bourgain’s Theorem:
+Theorem 1 (Bourgain)
+Every n-point metric embeds into `2 with distortion O(lg n).
+The proof will depend on the partitioning idea from Fakcharoenphol, Rao and Talwar (2003). The
+idea is similar to the proof of Bourgain’s Theorem for `1 from Lecture 3. For each length scale s,
+we define a partition Ps by the following algorithm:
+1. Pick uniformly at random a number R ∈ [2s−1 , 2s ).
+2. Pick uniformly at random an order σ on the elements of X.
+3. Partition the items of X into at most n = |X| blocks as follows.
+(a) Proceed with the elements of X according to the order σ.
+(b) For each element x ∈ X, pick all non-assigned elements within
+distance R from it, and form a new block.
+We call Ps the partition created above, and denote by Ps (x) the block
+in which x was placed.
+Just as in the `1 case, we can apply the Padded Decomposition Property.
+Theorem 2 (Padded Decomposition Property)
+Let Ps be a partition of X, and let x ∈ X. If
+τ≤
+
+2s−3
+,
+B(x, 2s+1 )
+lg
+|B(x, 2s−3 )|
+
+(1)
+
+then Prσ,R [B(x, τ ) ⊆ Ps (x)] ≥ 21 .
+Proof: We proved this theorem in lecture 3. 2
+We also have a corollary; since the growth ratio is less than the number of nodes, that is,
+B(x, 2s+1 )
+≤ n,
+|B(x, 2s−3 )|
+
+(2)
+
+the corollary follows:
+Corollary 3 (Corollary to the Padded Decomposition Property)
+Let Ps be a partition of X. For all x ∈ X and any constant c ∈ R, we have
+ 
+
+
+2s
+1
+Prσ,R B x,
+⊆ Ps (x) ≥ .
+|c lg n|
+2
+1
+
+(3)
+
+2
+Before proving Bourgain’s Theorem,
+we first establish a simpler result, embedding an n-point
+
+
+3
+
+metric into `2 with distortion O (lg n) 2 .
+
+
+Simpler Embedding into `2 with distortion O (lg n)(3/2) .
+
+1
+
+First, we construct “zero sets,” so named because they will have coordinate 0 in the embedding.
+Definition 1 (Zero sets) To construct the zero set Zs , merge nodes whose distance is less than
+2s 1
+1
+10n . Then, pick each block in Ps independently with probability 2 , and take the union.
+Now, we proceed to construct the embedding into `2 . First, scale the distance function so that
+the minimum distance is 1, and let ∆ be the maximum distance.
+Then, since the radius R of a block for Zs is at least 2s−1 , there are lg ∆ nontrivial zero sets:
+Z1 , . . . , Zlg ∆ . Then, we construct the embedding f by Frechet’s technique:
+Definition 2 Let f be the function from X into Rlg ∆ as follows:
+f : x 7→ (d(x, Z1 ), d(x, Z2 ), . . . , d(x, Zlg ∆ ))
+
+We claim that this embedding f has O (lg n)(3/2) distortion, that is,
+d(x, y) ≤ E[|f (x) − f (y)|] ≤ (lg n)(3/2) d(x, y).
+
+(4)
+
+(5)
+
+This is immediate from the following theorem:
+Theorem 4
+If (X, d) is an n-point metric space and f is an embedding as described above, then for all x, y ∈ X,
+we have:
+d(x, y)2
+≤ (E[|f (x) − f (y)|])2 ≤ (lg n)d(x, y)2 .
+(lg n)2
+Proof: The trivial upper bound follows from the triangle inequality:
+v
+ulg ∆
+uX
+|d(x, Zs ) − d(y, Zs )|2
+|f (x) − f (y)| = t
+
+(6)
+
+(7)
+
+s=1
+
+v
+ulg ∆
+uX
+≤t
+|d(x, y)|2
+
+(8)
+
+s=1
+
+p
+≤ d(x, y) lg ∆
+
+(9)
+
+2
+√
+so (E[|f (x) − f (y)|])2 ≤ d(x, y) lg ∆ ≤ d(x, y)2 (lg ∆).
+We improve this bound by observing that only lg n terms contribute to the summation in
+Equation 7. Nodes x and y are merged if 2s ≥ 10n(d(x, y)), so the contribution is zero. On the
+1
+
+s
+
+2
+That is, if d(x, y) < 10n
+, then merge them into one node z. The metric on the new set is is the shortest path
+0
+metric d , where for any u,v, d0 (u, z) = min(d(u, x), d(u, y)) and d0 (u, v) = min(d0 (u, z) + d0 (z, v), d(u, v)).
+
+3
+other hand, when 2s ≤ d(x, y), the distance d(x, Zs ) and d(y, Zs ) will tend to be less than 2s , so this
+contribution falls off geometrically. Thus, the terms matter only for the lg n values of s satisfying
+d(x, y)) ≤ 2s ≤ 10n(d(x, y)). We conclude that (E[|f (x) − f (y)|])2 ≤ d(x, y)2 (lg n).
+For the lower bound, we show that just one coordinate’s contribution makes the required contribution. Fix x ∈ X and y ∈ X. Consider the coordinate s where 2s ≈ d(x,y)
+4 .
+Since the diameter of each block in Ps is at most 2s+1 and the distance d(x, y) is 4(2s ) = 2s+2 ,
+it must be the case that x and y are in different blocks. Thus, the zero set Zs contains x with
+probability 21 , and it contains y with independent probability 21 . By Corollary 3 to the Padded
+s
+Decomposition Property, we have that B(x, 102lg n ) ⊆ P (x) with probability at least 21 . So, with
+s
+probability 18 , the zero set Zs contains x but not y, and d(y, Zs ) ≥ 102lg n . Since d(x, y) ≈ 2s+2 , we
+d(x,y)
+1
+have d(y, Zs ) ≥ 40
+lg n with probability 8 . It follows that
+2
+
+d(x,y)
+.
+(E[|f (x) − f (y)|])2 ≥ 8(40
+lg n)2
+
+(10)
+
+2
+Remark 1 To show this property without the expectation, we simply repeat the process and
+concatenate the embeddings from each iteration. Chernoff bounds show that this process will bring
+the embedding arbitrarily close (1 + ) to the expectation.
+Remark 2 The scale where 2s ≈ d(x, y) is important because it is the only scale where the distances are large enough to make a real contribution, but small enough that x and y are in different
+blocks.
+
+2
+
+Bourgain’s `2 Theorem (full)
+
+We will now prove Bourgain’s theorem: any n-point metric can be embedded into `2 with O(lg n)
+distortion. This will be immediate from the following theorem:
+Theorem 5
+If (X, d) is an n-point metric space and f is an embedding as described below, then for all x, y ∈ X,
+we have:
+d(x, y)2
+≤ (E[|f (x) − f (y)|])2 ≤ (lg n)d(x, y)2 .
+(11)
+lg n
+To prove this theorem, we first apply a technique due to KLMN 2004; we “glue” the lg ∆ scales
+into lg n coordinates.
+Definition 3 Let R(x, t) be the maximum radius R for which |B(x, R)| ≤ 2t .
+Definition 4 Let K(x, t) = dlg R(x, t)e.
+We now define a growth ratio that reflects how quickly the density of vertices changes around x.
+0
+
+Definition 5 For any small natural numbers c and c0 , we let GR = lg
+This definition is ambiguous, but we will fix this later.
+
+B(x,2m+c )
+|B(x,2m−c )|
+
+.
+
+4
+Remark 3 Observe that if lg |B(x, 2m )|  lg B(x, 2m−3 ) , then R(x, t) stays around 2m for many
+|B(x,2m )|
+values of t. More precisely, R(x, t) ≈ 2m (and K(x, t) ≈ m) for about lg |B(x,2
+m−3 )| = lg(GR) values
+of t.
+We have Zs as before, except that we do not need to merge nodes before constructing Zs . The Zs
+will not be the zero sets for this theorem, however. Instead, we will now define the zero sets Wt
+as follows, by “gluing” the Zs together. In order to decide whether or not to join Wt , each node x
+“sniffs” around its neighborhood to determine K(x, t) and then checks if it lies in ZK(x,t) . If so, it
+joins Wt .
+
+Definition 6 Wt = x : x ∈ ZK(x,t) .
+This is not the precise definition we will finally use, but it will convey the general idea of the proof.
+We will define Wt more precisely later.
+Remark 4 Observe that when t = lg n, the maximum radius R for which |B(x, R)| ≤ 2t is the
+maximum distance ∆. Thus, t goes from 1 to lg n, the function R(x, t) goes to ∆, the function
+K(x, t) goes to lg ∆, and ZK(x,t) goes to Zlg ∆ , as we would expect.
+Again, we define the embedding function f in Frechet’s style:
+Definition 7 Let f be the function from X into Rlg ∆ as follows:
+f : x 7→ (d(x, W1 ), d(x, W2 ), . . . , d(x, Wlg n ))
+
+(12)
+
+We now present the proof of Theorem 5.
+Proof: The upper bound follows trivially from the triangle inequality:
+2
+
+lg n
+X
+
+|d(x, Wt ) − d(y, Wt )|2
+
+(13)
+
+|d(x, y)|2
+
+(14)
+
+≤ (lg n)d(x, y)2
+
+(15)
+
+|f (x) − f (y)| =
+
+≤
+
+t=1
+lg n
+X
+t=1
+
+For the lower bound, we consider the scale m where 2m ≈ d(x, y). This is the important scale
+that we noted in Remark 2; however, in contrast to the O((lg n)3/2 ) embedding, the “gluing” now
+gives us multiple coordinates that involve this scale. In the previous embedding, there was just one
+zero set, Zm , that involved this scale; now, since
+Remark 3 gives us lg(GR) values of t for which
+
+K(x, t) ≈ m, we have lg(GR) zero sets Wt = x : x ∈ ZK(x,t) that involve Zm = ZK(x,t) .
+m
+We apply the Padded Decomposition Property to show that B(x, lg2GR ) ⊆ Pm (x) with probability at least 21 . Then, we apply the same logic from the previous proof to each coordinate: with
+d(x,y)
+2s
+probability 81 , the zero set Wt contains x but not y, and d(y, Wt ) ≥ lg(GR)
+≈ lg(GR)
+. Thus, it follows
+that for each t for which K(x, t) ≈ m, we have:
+E[|d(x, Wt ) − d(y, Wt )|] ≥
+
+d(x, y)
+.
+lg(GR)
+
+(16)
+
+5
+This allows us to conclude the proof of the upper bound:
+(E[|f (x) − f (y)|])2 ≥ E[|f (x) − f (y)|2 ]
+≥
+
+lg n
+X
+
+(17)
+
+E[|d(x, Wt ) − d(y, Wt )|2 ]
+
+(18)
+
+X
+
+E[|d(x, Wt ) − d(y, Wt )|2 ]
+
+(19)
+
+d(x, y)2
+(lg(GR))2
+
+(20)
+
+d(x, y)2
+(lg(GR))2
+
+(21)
+
+t=1
+
+≥
+
+t:K(x,t)≈m
+
+By the padding property from Equation (16):
+≥
+
+X
+t:K(x,t)≈m
+
+Since there are log(GR) such coordinates:
+≥ (lg(GR))
+≥
+
+d(x, y)2
+lg(GR)
+
+(22)
+
+≥
+
+d(x, y)2
+lg n
+
+(23)
+
+Since the growth ratio is at most n:
+
+This proves the theorem. 2
+There are two subtleties that we overlooked in the proof of the theorem. We consider them
+here.
+subtlety 1: The Padded Decomposition Property does not strictly apply to Wt . A point x is not
+in Wt because it is not in Zm , where m = K(x, t). The point x hopes that, with good probability,
+it is a distance at least 2m / log GR from Wt , so that it will be far away from a distant point y,
+d(x, y) > 2m+1 that lands in Wt . This hope is jeopardized by the possibility that a point z in
+B(x, τ ) might be in Wt because it is deciding “looking” at a different Zm0 , where m0 = K(z, t) and
+m is not necessarily the same as m0 . We deal with this by showing that the K(·, ·) has a certain
+“smoothness” property which implies that m is necessarily close to m0 .
+Lemma 6 (Smoothness Lemma)
+m
+Let x ∈ X and m = K(x, t). Let z ∈ B(x, τ ), where τ ≤ 210 . Finally, let m0 = K(z, t). Then
+m0 ∈ {m − 4, m − 3, m − 2, m − 1, m, m + 1} .
+Proof: We know that B(x, 2m ) contains roughly 2t points. Since d(x, z) ≤ 2m , we know that
+B(x, 2m ) ⊂ B(z, 2m + 2m ) = B(z, 2m+1 ), and there must be 2t points in B(z, 2m+1 ). Thus,
+m0 ≤ m + 1.
+
+6
+m
+
+0
+
+For the lower bound, we know that B(z, 2m ) contains roughly 2t points. Since d(x, z) ≤ 210 ,
+m
+0
+0
+we know that B(z, 2m ) ⊂ B(x, 2m + 210 ). 2
+So, the concern is warranted, but there are only 6 different scales to worry about. Thus, we
+simply assert that with probability 2−6 , we have
+0
+
+2m
+
+d(x, Zm0 ) ≥
+
+(24)
+
+0
+
+B(x, 2m +1 )
+lg
+
+|B(x, 2m0 −3 )|
+
+for all m0 between m − 4 and m + 1. This simply reduces the constant factor in our padding for
+Wt in Equation 16.
+0
+
+B(x,2m+c )
+
+subtlety 2: The growth ratio GR stands for all of the different growth ratios |B(x,2m−c )| with
+different constants c and c0 . Most notably, in the size of the paddings (Equation 24), we have various
+m0 , and in the number of coordinates (Remark 3), the growth ratios have different constants.
+We resolve this by picking a large constant c. Then, we expand the number of coordinates by
+a factor of 2c + 1 by defining the zero sets:
+Wi,t = x : x ∈ ZK(x,t)−i ,
+where i ranges from −c to c and t ranges from 1 to lg n.
+Since K(x, t) − i ≈ m when K(x, t) ∈ [m − c, m + c], the summation in Equation 19 includes
+|B(x,2m+c )|
+lg |B(x,2m−c )|
+values of (i, t). By making c sufficiently large, we can add more and more coordinates into the sum,
+until we cancel a lg(GR) in the denominator in Equation 21:
+d(x, y)2
+(lg(GR))2
+t:K(x,t)−i≈m
+
+
+d(x, y)2
+|B(x,2m+c )|
+≥ lg |B(x,2m−c )|
+(lg(GR))2
+d(x, y)2
+≥
+lg(GR)
+d(x, y)2
+≥
+lg n
+
+(E[|f (x) − f (y)|])2 ≥
+
+X
+
+(25)
+
+(26)
+(27)
+(28)
+
+

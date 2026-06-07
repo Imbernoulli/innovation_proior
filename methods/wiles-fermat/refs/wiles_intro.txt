@@ -1,0 +1,657 @@
+Modular Elliptic Curves and Fermat's Last Theorem
+Author(s): Andrew Wiles
+Source: Annals of Mathematics , May, 1995, Second Series, Vol. 141, No. 3 (May, 1995),
+pp. 443-551
+Published by: Mathematics Department, Princeton University
+Stable URL: https://www.jstor.org/stable/2118559
+JSTOR is a not-for-profit service that helps scholars, researchers, and students discover, use, and build upon a wide
+range of content in a trusted digital archive. We use information technology and tools to increase productivity and
+facilitate new forms of scholarship. For more information about JSTOR, please contact support@jstor.org.
+Your use of the JSTOR archive indicates your acceptance of the Terms & Conditions of Use, available at
+https://about.jstor.org/terms
+
+is collaborating with JSTOR to digitize, preserve and extend access to Annals of Mathematics
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+Annals of Mathematics, 142 (1995), 443-551
+
+Modular elliptic curves
+and
+
+Fermat's Last Theorem
+By ANDREW WILES*
+
+For Nada, Clare, Kate and Olivia
+
+Cubum autem in duos cubos, aut quadratoquadratum in duos quadratoquadratos, et generaliter nullam in infinitum ultra quadratum
+
+potestatem in duos ejusdem nominis fas est dividere: cujus rei
+demonstrationem mirabilem sane detexi. Hanc marginis exiguitas
+non caperet.
+Pierre de Fermat
+
+Introduction
+
+An elliptic curve over Q is said to be modular if it has a finite covering by
+
+a modular curve of the form Xo(N). Any such elliptic curve has the property
+that its Hasse-Weil zeta function has an analytic continuation and satisfies a
+functional equation of the standard type. If an elliptic curve over Q with a
+given j-invariant is modular then it is easy to see that all elliptic curves with
+
+the same j-invariant are modular (in which case we say that the j-invariant
+
+is modular). A well-known conjecture which grew out of the work of Shimura
+and Taniyama in the 1950's and 1960's asserts that every elliptic curve over Q
+is modular. However, it only became widely known through its publication in a
+
+paper of Weil in 1967 [We] (as an exercise for the interested reader!), in which,
+moreover, Weil gave conceptual evidence for the conjecture. Although it had
+been numerically verified in many cases, prior to the results described in this
+paper it had only been known that finitely many j-invariants were modular.
+
+In 1985 Frey made the remarkable observation that this conjecture should
+imply Fermat's Last Theorem. The precise mechanism relating the two was
+formulated by Serre as the E-conjecture and this was then proved by Ribet in
+
+the summer of 1986. Ribet's result only requires one to prove the conjecture
+for semistable elliptic curves in order to deduce Fermat's Last Theorem.
+
+*The work on this paper was supported by an NSF grant.
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+444
+
+ANDREW
+
+WILES
+
+Our approach to the study of elliptic curves is via their associated Galois
+
+representations. Suppose that pp is the representation of Gal(Q/Q) on th
+p-division points of an elliptic curve over Q, and suppose for the moment that
+p3 is irreducible. The choice of 3 is critical because a crucial theorem of Langlands and Tunnell shows that if p3 is irreducible then it is also modular. We
+
+then proceed by showing that under the hypothesis that p3 is semistable at 3,
+
+together with some milder restrictions on the ramification of p3 at the other
+primes, every suitable lifting of p3 is modular. To do this we link the problem,
+via some novel arguments from commutative algebra, to a class number prob-
+
+lem of a well-known type. This we then solve with the help of the paper [TW].
+This suffices to prove the modularity of E as it is known that E is modular if
+and only if the associated 3-adic representation is modular.
+The key development in the proof is a new and surprising link between two
+
+strong but distinct traditions in number theory, the relationship between Galois
+representations and modular forms on the one hand and the interpretation of
+special values of L-functions on the other. The former tradition is of course
+more recent. Following the original results of Eichler and Shimura in the
+1950's and 1960's the other main theorems were proved by Deligne, Serre and
+Langlands in the period up to 1980. This included the construction of Galois
+representations associated to modular forms, the refinements of Langlands and
+
+Deligne (later completed by Carayol), and the crucial application by Langlands
+of base change methods to give converse results in weight one. However with
+the exception of the rather special weight one case, including the extension by
+Tunnell of Langlands' original theorem, there was no progress in the direction
+of associating modular forms to Galois representations. From the mid 1980's
+the main impetus to the field was given by the conjectures of Serre which
+elaborated on the -conjecture alluded to before. Besides the work of Ribet and
+others on this problem we draw on some of the more specialized developments
+of the 1980's, notably those of Hida and Mazur.
+The second tradition goes back to the famous analytic class number formula of Dirichlet, but owes its modern revival to the conjecture of Birch and
+Swinnerton-Dyer. In practice however, it is the ideas of Iwasawa in this field on
+which we attempt to draw, and which to a large extent we have to replace. The
+principles of Galois cohomology, and in particular the fundamental theorems
+
+of Poitou and Tate, also play an important role here.
+The restriction that p3 be irreducible at 3 is bypassed by means of an
+intriguing argument with families of elliptic curves which share a common
+
+P5. Using this, we complete the proof that all semistable elliptic curves ar
+modular. In particular, this finally yields a proof of Fermat's Last Theorem. In
+addition, this method seems well suited to establishing that all elliptic curves
+over Q are modular and to generalization to other totally real number fields.
+Now we present our methods and results in more detail.
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+MODULAR ELLIPTIC CURVES AND FERMAT'S LAST THEOREM 445
+
+Let f be an eigenform associated to the congruence subgroup r1 (N) of
+
+SL2(Z) of weight k > 2 and character X. Thus if Tn is the Hecke operator
+associated to an integer n there is an algebraic integer c(n, f) such that Tnf =
+c(n, f)f for each n. We let Kf be the number field generated over Q by the
+
+{c(nr, f)} together with the values of X and let Of be its ring of intege
+For any prime A of Of let Of,> be the completion of Of at A. The foll
+theorem is due to Eichler and Shimura (for k = 2) and Deligne (for k > 2).
+The analogous result when k = 1 is a celebrated theorem of Serre and Deligne
+but is more naturally stated in terms of complex representations. The image
+in that case is finite and a converse is known in many cases.
+
+THEOREM 0.1. For each prime p E Z and each prime A I p of Of there
+is a continuous representation
+
+pf ,\: G al(QQ A GL2 (Of ,X)
+which is unramified outside the primes dividing Np and such that for all primes
+
+q t Np,
+
+trace pf,A (FRob q) = c(q, f), det pf,A (Frob q) = X(q)qk-l
+We will be concerned with trying to prove results in the opposite direction,
+that is to say, with establishing criteria under which a A-adic representation
+
+arises in this way from a modular form. We have not found any advantage
+
+in assuming that the representation is part of a compatible system of A-adic
+
+representations except that the proof may be easier for some A than for others.
+Assume
+
+po: Gal(Q/Q) - GL2 (Fp)
+
+is a continuous representation with values in the algebraic closure of a finite
+
+field of characteristic p and that det po is odd. We say that po is modular
+if po and pfA mod A are isomorphic over Fp for some f and A and some
+embedding of Of /A in Fp. Serre has conjectured that every irreducible po of
+odd determinant is modular. Very little is known about this conjecture except
+
+when the image of po in PGL2(Fp) is dihedral, A4 or S4. In the dihedral c
+it is true and due (essentially) to Hecke, and in the A4 and S4 cases it is again
+true and due primarily to Langlands, with one important case due to Tunnell
+
+(see Theorem 5.1 for a statement). More precisely these theorems actually
+associate a form of weight one to the corresponding complex representation
+
+but the versions we need are straightforward deductions from the complex
+case. Even in the reducible case not much is known about the problem in
+the form we have described it, and in that case it should be observed that
+
+one must also choose the lattice carefully as only the semisimplification of
+
+PfA = PfA mod A is independent of the choice of lattice in KA.
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+446
+
+ANDREW
+
+WILES
+
+If 0 is the ring of integers of
+p: Gal(Q/Q) - GL2(0) is a lifting
+residue field of (9 in Fp, 1p an
+will be to assume that po is modular and then to attempt to give conditions
+under which a representation p lifting po comes from a modular form in the
+
+sense that p - pfa, over Kf,A for some f, A. We will restrict our attention to
+two cases:
+
+(I) po is ordinary (at p) by which we mean that there is a one-dimensiona
+subspace of P , stable under a decomposition group at p and such that
+the action on the quotient space is unramified and distinct from the
+action on the subspace.
+
+(II) po is flat (at p), meaning that as a representation of a decomposition
+group at p, po is equivalent to one that arises from a finite flat group
+
+scheme over Zp, and det po restricted to an inertia group at p is the
+cyclotomic character.
+
+We say similarly that p is ordinary (at p) if, viewed as a representation to Q
+
+there is a one-dimensional subspace of Q2 stable under a decomposition group
+at p and such that the action on the quotient space is unramified.
+
+Let e: Gal(Q/Q) -* denote the cyclotomic character. Conjectural
+converses to Theorem 0.1 have been part of the folklore for many years but
+have hitherto lacked any evidence. The critical idea that one might dispense
+with compatible systems was already observed by Drinfeld in the function field
+
+case [Dr]. The idea that one only needs to make a geometric condition on the
+restriction to the decomposition group at p was first suggested by Fontaine and
+
+Mazur. The following version is a natural extension of Serre's conjecture which
+is convenient for stating our results and is, in a slightly modified form, the one
+
+proposed by Fontaine and Mazur. (In the form stated this incorporates Serre's
+
+conjecture. We could instead have made the hypothesis that po is modular.)
+CONJECTURE. Suppose that p: Gal(Q/Q) - GL2(0) is an irreducible
+
+lifting of po and that p is unramified outside of a finite set of prime
+are two cases:
+
+(i) Assume that po is ordinary. Then if p is ordinary and det p = ek-1X f
+some integer k > 2 and some X of finite order, p comes from a modular
+form.
+
+(ii) Assume that po is flat and that p is odd. Then if p restricted to a decomposition group at p is equivalent to a representation on a p-divisible
+group, again p comes from a modular form.
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+MODULAR ELLIPTIC CURVES AND FERMAT'S LAST THEOREM 447
+
+In case (ii) it is not hard to see that if the form exists it has to be of
+weight 2; in (i) of course it would have weight k. One can of course enlarge
+this conjecture in several ways, by weakening the conditions in (i) and (ii), by
+considering other number fields in place of Q and by considering groups other
+than GL2.
+
+We prove two results concerning this conjecture. The first includes the
+
+hypothesis that PO is modular. Here and for the rest of the paper we will
+assume that p is an odd prime.
+
+THEOREM 0.2. Suppose that PO is irreducible and satisfies either (I) or
+(II) above. Suppose also that PO is modular and that
+
+(i) PG is absolutely irreducible when restricted to Q ( (-1)Tp).
+(ii) If q - modp is ramified in PO then either POIDq is reducible over
+
+the algebraic closure where Dq is a decomposition group at q or polIq is
+absolutely irreducible where Iq is an inertia group at q.
+Then any representation p as in the conjecture does indeed come from a modular form.
+
+The only condition which really seems essential to our method is the re-
+
+quirement that PO be modular.
+The most interesting case at the moment is when p = 3 and PO can be defined over F3. Then since PGL2(F3) - S4 every such representation is modular
+by the theorem of Langlands and Tunnell mentioned above. In particular, ev-
+
+ery representation into GL2(Z3) whose reduction satisfies the given conditions
+is modular. We deduce:
+
+THEOREM 0.3. Suppose that E is an elliptic curve defined over Q and
+
+that PO is the Galois action on the 3-division points. Suppose that E has th
+following properties:
+
+(i) E has good or multiplicative reduction at 3.
+
+(ii) P0 is absolutely irreducible when restricted to Q (\-).
+
+(iii) For any q -1 mod 3 either POIDq is reducible over the algebraic clos
+or POIIq is absolutely irreducible.
+Then E is modular.
+
+We should point out that while the properties of the zeta function follow
+
+directly from Theorem 0.2 the stronger version that E is covered by Xo(N)
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+448
+
+ANDREW
+
+WILES
+
+requires also the isogeny theorem proved by Faltings (and earlier by Serre when
+E has nonintegral j-invariant, a case which includes the semistable curves).
+We note that if E is modular then so is any twist of E, so we could relax
+condition (i) somewhat.
+The important class of semistable curves, i.e., those with square-free con-
+
+ductor, satisfies (i) and (iii) but not necessarily (ii). If (ii) fails then in fac
+is reducible. Rather surprisingly, Theorem 0.2 can often be applied in this case
+also by showing that the representation on the 5-division points also occurs for
+
+another elliptic curve which Theorem 0.3 has already proved modular. Thus
+Theorem 0.2 is applied this time with p = 5. This argument, which is explained
+
+in Chapter 5, is the only part of the paper which really uses deformations of
+the elliptic curve rather than deformations of the Galois representation. The
+argument works more generally than in the semistable case but in this setting
+we obtain the following theorem:
+
+THEOREM 0.4. Suppose that E is a semistable elliptic curve defined over
+Q. Then E is modular.
+
+More general families of elliptic curves which are modular are given in Chapter 5.
+
+In 1986, stimulated by an ingenious idea of Frey [Fr], Serre conjectured
+and Ribet proved (in [Ril]) a property of the Galois representations associated
+to modular forms which enabled Ribet to show that Theorem 0.4 implies 'Fermat's Last Theorem'. Frey's suggestion, in the notation of the following theo-
+
+rem, was to show that the (hypothetical) elliptic curve y2 = X(X + UP) (X could not be modular. Such elliptic curves had already been studied in [He]
+but without the connection with modular forms. Serre made precise the idea
+of Frey by proposing a conjecture on modular forms which meant that the representation on the p-division points of this particular elliptic curve, if modular,
+would be associated to a form of conductor 2. This, by a simple inspection,
+could not exist. Serre's conjecture was then proved by Ribet in the summer
+of 1986. However, one still needed to know that the curve in question would
+have to be modular, and this is accomplished by Theorem 0.4. We have then
+
+(finally!):
+THEOREM 0.5. Suppose that uP+vP+wP = O with u,v,w E Q andp > 3,
+then uvw = 0.
+
+The second result we prove about the conjecture does not require the
+
+assumption that po be modular (since it is already known in this ca
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+MODULAR ELLIPTIC CURVES AND FERMAT'S LAST THEOREM 449
+
+THEOREM 0.6. Suppose that po is irreducible and satisfies the hypotheses
+of the conjecture, including (I) above. Suppose further that
+
+(i) po = IndQ Ko for a character Ko of an imaginary quadratic extension
+of Q which is unramified at p.
+
+(ii) det po I P = .
+Then a representation p as in the conjecture does indeed come from a modular
+form.
+This theorem can also be used to prove that certain families of elliptic
+curves are modular. In this summary we have only described the principal
+
+theorems associated to Galois representations and elliptic curves. Our results
+concerning generalized class groups are described in Theorem 3.3.
+
+The following is an account of the origins of this work and of the more
+specialized developments of the 1980's that affected it. I began working on
+these problems in the late summer of 1986 immediately on learning of Ribet's
+result. For several years I had been working on the Iwasawa conjecture for
+
+totally real fields and some applications of it. In the process, I had been using
+and developing results on ?-adic representations associated to Hilbert modular
+forms. It was therefore natural for me to consider the problem of modularity
+from the point of view of ?-adic representations. I began with the assumption
+that the reduction of a given ordinary ?-adic representation was reducible and
+tried to prove under this hypothesis that the representation itself would have
+to be modular. I hoped rather naively that in this situation I could apply the
+techniques of Iwasawa theory. Even more optimistically I hoped that the case
+e = 2 would be tractable as this would suffice for the study of the curves used
+by Frey. From now on and in the main text, we write p for e because of the
+connections with Iwasawa theory.
+After several months studying the 2-adic representation, I made the first
+real breakthrough in realizing that I could use the 3-adic representation instead:
+the Langlands-Tunnell theorem meant that p3, the mod 3 representation of any
+given elliptic curve over Q, would necessarily be modular. This enabled me
+
+to try inductively to prove that the GL2 (Z/3n Z) representation would be
+modular for each n. At this time I considered only the ordinary case. This led
+
+quickly to the study of Hz(Gal(Fx/Q), Wf) for i = 1 and 2, where Fx is th
+splitting field of the m-adic torsion on the Jacobian of a suitable modular curve,
+
+m being the maximal ideal of a Hecke ring associated to p3 and Wf the module
+associated to a modular form f described in Chapter 1. More specifically, I
+
+needed to compare this cohomology with the cohomology of Gal(QE/Q)
+on the same module.
+
+I tried to apply some ideas from Iwasawa theory to this problem. In my
+
+solution to the Iwasawa conjecture for totally real fields [Wi4], I had introduce
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+450
+
+ANDREW
+
+WILES
+
+a new technique in order to deal with the trivial zeroes. It involved replacing
+the standard Iwasawa theory method of considering the fields in the cyclotomic
+
+Zp-extension by a similar analysis based on a choice of infinitely many disti
+primes qi _ 1 mod pfi with ni -* oo as i -* oo. Some aspects of this method
+suggested that an alternative to the standard technique of Iwasawa theory,
+
+which seemed problematic in the study of Wf, might be to make a com
+
+between the cohomology groups as E varies but with the field Q fixed. The
+
+new principle said roughly that the unramified cohomology classes are trapped
+by the tamely ramified ones. After reading the paper [Grel], I realized that the
+duality theorems in Galois cohomology of Poitou and Tate would be useful for
+this. The crucial extract from this latter theory is in Section 2 of Chapter 1.
+In order to put these ideas into practice I developed in a naive form the
+techniques of the first two sections of Chapter 2. This drew in particular on
+a detailed study of all the congruences between f and other modular forms
+of differing levels, a theory that had been initiated by Hida and Ribet. The
+outcome was that I could estimate the first cohomology group well under two
+assumptions, first that a certain subgroup of the second cohomology group
+vanished and second that the form f was chosen at the minimal level for m.
+These assumptions were much too restrictive to be really effective but at least
+
+they pointed in the right direction. Some of these arguments are to be found
+in the second section of Chapter 1 and some form the first weak approximation
+to the argument in Chapter 3. At that time, however, I used auxiliary primes
+q -1 modp when varying E as the geometric techniques I worked with did
+not apply in general for primes q _ 1 mod p. (This was for much the same
+
+reason that the reduction of level argument in [Ril] is much more difficult
+when q -1 mod p.) In all this work I used the more general assumption that
+
+pp was modular rather than the assumption that p = 3.
+In the late 1980's, I translated these ideas into ring-theoretic language. A
+few years previously Hida had constructed some explicit one-parameter families of Galois representations. In an attempt to understand this, Mazur had
+been developing the language of deformations of Galois representations. Moreover, Mazur realized that the universal deformation rings he found should be
+given by Hecke rings, at least in certain special cases. This critical conjecture
+refined the expectation that all ordinary liftings of modular representations
+should be modular. In making the translation to this ring-theoretic language
+
+I realized that the vanishing assumption on the subgroup of H2 which I had
+needed should be replaced by the stronger condition that the Hecke rings were
+complete intersections. This fitted well with their being deformation rings
+where one could estimate the number of generators and relations and so made
+the original assumption more plausible.
+To be of use, the deformation theory required some development. Apart
+from some special examples examined by Boston and Mazur there had been
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+MODULAR ELLIPTIC CURVES AND FERMAT'S LAST THEOREM 451
+
+little work on it. I checked that one could make the appropriate adjustments to
+
+the theory in order to describe deformation theories at the minimal level. In the
+fall of 1989, I set Ramakrishna, then a student of mine at Princeton, the task
+
+of proving the existence of a deformation theory associated to representations
+
+arising from finite flat group schemes over Zp. This was needed in order
+remove the restriction to the ordinary case. These developments are described
+
+in the first section of Chapter 1 although the work of Ramakrishna was not
+completed until the fall of 1991. For a long time the ring-theoretic version
+
+of the problem, although more natural, did not look any simpler. The usual
+
+methods of Iwasawa theory when translated into the ring-theoretic language
+seemed to require unknown principles of base change. One needed to know the
+exact relations between the Hecke rings for different fields in the cyclotomic
+
+Zp-extension of Q, and not just the relations up to torsion.
+The turning point in this and indeed in the whole proof came in the
+
+spring of 1991. In searching for a clue from commutative algebra I had been
+
+particularly struck some years earlier by a paper of Kunz [Ku2]. I had already
+needed to verify that the Hecke rings were Gorenstein in order to compute the
+congruences developed in Chapter 2. This property had first been proved by
+Mazur in the case of prime level and his argument had already been extended
+by other authors as the need arose. Kunz's paper suggested the use of an
+
+invariant (the 77-invariant of the appendix) which I saw could be used to test
+
+for isomorphisms between Gorenstein rings. A different invariant (the p/p2_
+invariant of the appendix) I had already observed could be used to test for
+isomorphisms between complete intersections. It was only on reading Section 6
+
+of [Ti2] that I learned that it followed from Tate's account of Grothendieck
+duality theory for complete intersections that these two invariants were equal
+for such rings. Not long afterwards I realized that, unlikely though it seemed at
+first, the equality of these invariants was actually a criterion for a Gorenstein
+ring to be a complete intersection. These arguments are given in the appendix.
+The impact of this result on the main problem was enormous. Firstly, the
+
+relationship between the Hecke rings and the deformation rings could be tested
+just using these two invariants. In particular I could provide the inductive ar-
+
+gument of Section 3 of Chapter 2 to show that if all liftings with restricted
+ramification are modular then all liftings are modular. This I had been trying
+to do for a long time but without success until the breakthrough in commuta-
+
+tive algebra. Secondly, by means of a calculation of Hida summarized in [Hi2]
+the main problem could be transformed into a problem about class numbers
+of a type well-known in Iwasawa theory. In particular, I could check this in
+the ordinary CM case using the recent theorems of Rubin and Kolyvagin. This
+is the content of Chapter 4. Thirdly, it meant that for the first time it could
+be verified that infinitely many j-invariants were modular. Finally, it meant
+that I could focus on the minimal level where the estimates given by my earlier
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+452
+
+ANDREW
+
+WILES
+
+Galois cohomology calculations looked more promising. Here I was also using
+the work of Ribet and others on Serre's conjecture (the same work of Ribet
+that had linked Fermat's Last Theorem to modular forms in the first place) to
+know that there was a minimal level.
+
+The class number problem was of a type well-known in Iwasawa theory
+
+and in the ordinary case had already been conjectured by Coates and Schmidt.
+However, the traditional methods of Iwasawa theory did not seem quite suf-
+
+ficient in this case and, as explained earlier, when translated into the ringtheoretic language seemed to require unknown principles of base change. So
+instead I developed further the idea of using auxiliary primes to replace the
+change of field that is used in Iwasawa theory. The Galois cohomology estimates described in Chapter 3 were now much stronger, although at that time
+I was still using primes q -1 modp for the argument. The main difficulty
+
+was that although I knew how the q7-invariant changed as one pass
+auxiliary level from the results of Chapter 2, I did not know how to estimate
+
+the change in the p/p2-invariant precisely. However, the method did give t
+right bound for the generalised class group, or Selmer group as it is often called
+
+in this context, under the additional assumption that the minimal Hecke ring
+was a complete intersection.
+
+I had earlier realized that ideally what I needed in this method of auxiliary
+primes was a replacement for the power series ring construction one obtains in
+the more natural approach based on Iwasawa theory. In this more usual setting,
+the projective limit of the Hecke rings for the varying fields in a cyclotomic
+tower would be expected to be a power series ring, at least if one assumed
+the vanishing of the a-invariant. However, in the setting with auxiliary primes
+where one would change the level but not the field, the natural limiting process
+did not appear to be helpful, with the exception of the closely related and very
+
+important construction of Hida [Hil]. This method of Hida often gave one step
+towards a power series ring in the ordinary case. There were also tenuous hints
+
+of a patching argument in Iwasawa theory ([Scho], [Wi4, ?10]), but I searched
+without success for the key.
+
+Then, in August, 1991, I learned of a new construction of Flach [Fl] and
+quickly became convinced that an extension of his method was more plausible. Flach's approach seemed to be the first step towards the construction of
+an Euler system, an approach which would give the precise upper bound for
+the size of the Selmer group if it could be completed. By the fall of 1992, I
+believed I had achieved this and began then to consider the remaining case
+where the mod3 representation was assumed reducible. For several months I
+
+tried simply to repeat the methods using deformation rings and Hecke rings.
+Then unexpectedly in May 1993, on reading of a construction of twisted forms
+
+of modular curves in a paper of Mazur [Ma3], I made a crucial and surprising
+breakthrough: I found the argument using families of elliptic curves with a
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+MODULAR ELLIPTIC CURVES AND FERMAT'S LAST THEOREM 453
+
+common p5 which is given in Chapter 5. Believing now that the proof was
+complete, I sketched the whole theory in three lectures in Cambridge, England
+on June 21-23. However, it became clear to me in the fall of 1993 that the con-
+
+struction of the Euler system used to extend Flach's method was incomplete
+and possibly flawed.
+
+Chapter 3 follows the original approach I had taken to the problem of
+bounding the Selmer group but had abandoned on learning of Flach's paper.
+Darmon encouraged me in February, 1994, to explain the reduction to the complete intersection property, as it gave a quick way to exhibit infinite families
+of modular j-invariants. In presenting it in a lecture at Princeton, I made,
+almost unconsciously, a critical switch to the special primes used in Chapter 3
+as auxiliary primes. I had only observed the existence and importance of these
+primes in the fall of 1992 while trying to extend Flach's work. Previously, I had
+only used primes q -1 modp as auxiliary primes. In hindsight this change
+was crucial because of a development due to de Shalit. As explained before, I
+
+had realized earlier that Hida's theory often provided one step towards a power
+series ring at least in the ordinary case. At the Cambridge conference de Shalit
+had explained to me that for primes q -1 mod p he had obtained a version of
+Hida's results. But except for explaining the complete intersection argument
+in the lecture at Princeton, I still did not give any thought to my initial approach, which I had put aside since the summer of 1991, since I continued to
+
+believe that the Euler system approach was the correct one.
+Meanwhile in January, 1994, R. Taylor had joined me in the attempt to
+repair the Euler system argument. Then in the spring of 1994, frustrated in
+
+the efforts to repair the Euler system argument, I began to work with Taylor
+on an attempt to devise a new argument using p = 2. The attempt to use p = 2
+
+reached an impasse at the end of August. As Taylor was still not convinced that
+the Euler system argument was irreparable, I decided in September to take one
+last look at my attempt to generalise Flach, if only to formulate more precisely
+the obstruction. In doing this I came suddenly to a marvelous revelation: I
+
+saw in a flash on September 19th, 1994, that de Shalit's theory, if generalised,
+could be used together with duality to glue the Hecke rings at suitable auxiliary
+levels into a power series ring. I had unexpectedly found the missing key to my
+
+old abandoned approach. It was the old idea of picking qi's with qi- 1 mod pfi
+
+and ni -x oc as i -* oc that I used to achieve the limiting process. The switc
+to the special primes of Chapter 3 had made all this possible.
+After I communicated the argument to Taylor, we spent the next few days
+making sure of the details. The full argument, together with the deduction of
+
+the complete intersection property, is given in [TW].
+In conclusion the key breakthrough in the proof had been the realization
+in the spring of 1991 that the two invariants introduced in the appendix could
+
+be used to relate the deformation rings and the Hecke rings. In effect the 71-
+
+This content downloaded from
+128.6.45.205 on Wed, 06 Apr 2022 13:33:34 UTC
+All use subject to https://about.jstor.org/terms
+
+

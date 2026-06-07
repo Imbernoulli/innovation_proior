@@ -1,0 +1,73 @@
+Quicksort
+
+certain that the stage will be reached, by repeated items to be sorted, it is sufficient to adopt the rule of
+partitioning, when each segment will contain one or no always postponing the processing of the larger of the
+items. At this stage the process will be terminated. two segments. *
+Quicksort Estimate of Time Taken
+
+After each application of the partitioning process The number of key comparisons necessary to partition
+there remain two segments to be sorted. If either of a segment of N items will depend on the details of the
+these segments is empty or consists of a single item, then method used to choose the bound, or to test for the
+it may be ignored, and the process will be continued on completion of the partition process. In any case the
+the other segment only. Furthermore, if a segment number of comparisons is of the form N ~— kA, where
+consists of less than three or four items (depending on A may be —1, 0, I, 2.
+the characteristics of the computer), then it will be The number of exchanges will vary from occasion to
+advantageous to sort it by the use of a program specially occasion, and therefore only the expected number can
+written for sorting a particular small number of items. be given. An assumption has to be made that the value
+Finally, if both segments are fairly large, it will be of the bound is a random sample from the population
+necessary to postpone the processing of one of them of key values of the items in the segment. If this
+until the other has been fully sorted. Meanwhile, the assumption is not justified by the nature of the data
+addresses of the first and last items of the postponed being sorted, it will be advisable to choose the item
+segment must be stored. It is very important to econo- which yields the bound value at random, so that in any
+mize on storage of the segment details, since the number case the assumption of randomness will be valid.
+of segments altogether is proportional to the number In the calculations which follow, use is made of the
+of items being sorted. Fortunately, it is not necessary principle of conditional expectation. We consider
+to store the details of all segments simultaneously, since separately the case where the bound is the rth in order
+the details of segments which have already been fully of magnitude of all the key values in the segment; the
+sorted are no longer required. value of the conditional expectation of the quantity
+
+The recommended method of storage makes use of which interests us may now be expressed quite simply as
+a nest, i.e. a block of consecutive locations associated a function of r. The rule of conditional expectation
+with a pointer. This pointer always refers to the states that if each conditional expectation is multiplied
+lowest-addressed location of the block whose contents by the probability of occurrence of the condition, and
+may be overwritten. Initially the pointer refers to the they are summed over the whole range of conditions, the
+first location of the block. When information is to be result gives the unconditional or absolute expectation.
+stored in the nest, it is stored in the location referred to According to the assumption of randomness, all the
+by the pointer, and the pointer is stepped on to refer values of r between | and AN inclusive are equally likely.
+
+to the next higher location. When information is taken
+
+: |
+from the list, the pointer is stepped back, and the so that they each have a probability of 4): If, therefore.
+
+information will be found in the location referred to by the expression which gives the conditional expectation
+the pointer. The important properties of a nest are on assumption of a given r is summed with respect to r
+that information is read out in the reverse order to that and divided by N, we obtain the value of the absolute
+in which it is written, and that the reading of information expectation of the quantity concerned.
+automatically frees the locations in which it has been Consider the situation at the end of the partition
+held, for the storage of further information. process, when the bound was the rth key value in order
+
+When the processing of a segment has to be postponed, of magnitude. As a result of the final exchange, the
+the necessary details are placed in the nest. When a item which yielded this key value will occupy the rth
+segment is found to consist of one or no items, or when position of the segment, and the r — | items with lesser
+it has been sorted by some other method which is used key value will occupy the r — | positions below it in
+on small segments, then it is possible to turn to the the store. The number of exchanges made in the
+processing of one of the postponed segments: the course of the partition process is equal to the number
+segment chosen should always be the one most recently of items which originally occupied the r — | positions
+postponed, and its details may therefore be read from of the lower resulting segment, but which were removed
+the nest. During the processing of this segment, it because they were found to have key values greater than
+may be necessary to make further postponements, but the bound. The probability of any key value being
+now the segment details may overwrite the locations _N-re-
+used during the processing of the previous segment. greater than the bound is — N . and therefore the
+This is, in fact, achieved automatically by the use of a expected number of such items among the r — | items
+nest.
+
+It is important to know in advance the maximum * A description of Quicksort in ALGOL (Hoare, 1961) is rather
+number of locations used by the nest; in order to ensure deceptively simple, since the use of recursion means that the
+
+; - . : administration of the nest does not have to be explicitly described.
+that the number of segments postponed at any one time The claim to a negative sorting time in the reference is, of course,
+
+never exceeds the logarithm (base 2) of the number of due to a misprint.
+
+11

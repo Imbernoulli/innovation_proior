@@ -1,5 +1,3 @@
-# Context: subcubic matrix multiplication and the algebraic-complexity landscape
-
 ## Research question
 
 Given two n×n matrices A and B over a field, compute the product C = AB, whose entries are
@@ -58,29 +56,38 @@ depends only on how many multiplications survive.
 
 **Bilinear maps and their decompositions.** Matrix multiplication is *bilinear*: each output
 entry c_ij is a sum of products (linear form in A)·(linear form in B). A general way to
-compute a set of bilinear forms is a **bilinear algorithm**: a decomposition
+compute a set of bilinear forms is a **bilinear algorithm**. Choose linear forms u_s in the
+entries of A, linear forms v_s in the entries of B, and scalar recombination coefficients
+w_{s,ij}. Compute
 
-    A·B = Σ_{k=1}^r u_k(A) · v_k(B) · W_k,
+    p_s = u_s(A) · v_s(B),              s = 1, ..., r,
+    c_ij = Σ_{s=1}^r w_{s,ij} p_s.
 
-where u_k and v_k are linear forms in the entries of A and B respectively, the products
-u_k(A)·v_k(B) are the only nonscalar multiplications, and the W_k are fixed coefficient
-matrices that recombine the r products by additions. The number r of products is the cost
-that matters. Because each factor is a *linear form in one matrix's entries only*, such an
-algorithm never multiplies two A-entries or two B-entries together — so it remains valid when
-the entries are replaced by non-commuting objects such as matrix blocks, which is exactly what
-makes recursion possible.
+The products p_s are the only nonscalar multiplications; the w_{s,ij} only add, subtract,
+or scale already-computed products into the output entries. The number r of products is the
+cost that matters. Because each factor is a *linear form in one matrix's entries only*, such
+an algorithm never multiplies two A-entries or two B-entries together — so it remains valid
+when the entries are replaced by non-commuting objects such as matrix blocks, which is exactly
+what makes recursion possible.
 
 **The tensor of a bilinear map.** The bilinear map of matrix multiplication, ⟨n,n,n⟩ : K^{n×n}
 × K^{n×n} → K^{n×n}, is encoded by a three-dimensional array (a tensor) t whose entries record
-which products a_ik b_kj appear in which output f_ij. For ⟨2,2,2⟩ this tensor lives in
-K^{4×4×4}; its nonzero pattern is t_{(i,j),(k,l),(p,q)} = δ_{i,p} δ_{j,k} δ_{l,q}. A rank-one
-tensor ("triad") is u⊗v⊗w. The minimum number of triads whose sum is t — the **rank** R(t) of
-the tensor — equals exactly the minimum number of multiplications r in a bilinear algorithm
-for the map. Thus "how few multiplications does matrix multiplication need" is literally "what
-is the rank of the matrix-multiplication tensor," a basis-free invariant. Tensors multiply:
-⟨k,m,n⟩ ⊗ ⟨k',m',n'⟩ = ⟨kk', mm', nn'⟩, and rank is submultiplicative, R(t⊗t') ≤
-R(t)·R(t'). So a rank bound on one fixed-size matrix tensor, raised to a tensor power, bounds
-the rank of arbitrarily large ones — recursion *is* taking tensor powers.
+which products a_ik b_kj appear in which output c_ij. With axes indexed by A-slots, B-slots,
+and output slots, its nonzero entries are
+
+    t_{(i,k),(k,j),(i,j)} = 1
+
+and all other entries are zero. For ⟨2,2,2⟩ this tensor lives in K^{4×4×4}. A rank-one tensor
+("triad") is u⊗v⊗w: u is the A-side linear form, v is the B-side linear form, and w records how
+that product is added back into the output slots. A sum of r triads is therefore the same object
+as a bilinear algorithm with r nonscalar products, linear preprocessing, and linear
+recombination. The minimum such r — the **rank** R(t) of the tensor over the chosen field — is
+exactly the multiplication count being optimized. Thus "how few multiplications does matrix
+multiplication need" is literally "what is the rank of the matrix-multiplication tensor," a
+basis-free invariant. Tensors multiply: ⟨k,m,n⟩ ⊗ ⟨k',m',n'⟩ = ⟨kk', mm', nn'⟩, and rank is
+submultiplicative, R(t⊗t') ≤ R(t)·R(t'). So a rank bound on one fixed-size matrix tensor, raised
+to a tensor power, bounds the matrix products at power-of-two sizes, with padding handling the
+intermediate sizes — recursion *is* taking tensor powers.
 
 **Numerical and practical context.** The classical algorithm is backward stable. Any scheme
 that trades multiplications for additions introduces extra subtractions and hence extra
@@ -121,8 +128,8 @@ polynomial identity in indeterminate entries), and empirically by agreeing with 
 product on random integer/floating matrices of assorted sizes (including odd n, which require
 padding). For a recursive scheme one also measures wall-clock crossover against a tuned cubic
 kernel, and — since extra additions cause cancellation — backward error ‖Ĉ − AB‖ relative to
-the classical algorithm. Inputs are square (or rectangular) matrices over ℚ, ℝ (floating
-point), or a finite field.
+the classical algorithm. The recursive harness below focuses on square matrices over ℚ, ℝ
+(floating point), or a finite field, where the exponent question is already visible.
 
 ## Code framework
 
@@ -145,7 +152,7 @@ def block_product(A, B, recurse):
     """
     Multiply two even-size matrices by treating them as 2x2 block matrices.
     The blocks are matrices and do NOT commute, so any identity used here
-    may only multiply an A-block by a B-block (never two A-blocks).
+    may only multiply an A-block by a B-block (never two A-blocks or two B-blocks).
     `recurse(X, Y)` multiplies two same-size blocks.
 
     TODO: replace the naive eight block products
@@ -154,7 +161,7 @@ def block_product(A, B, recurse):
     """
     pass  # TODO
 
-def fast_matmul(A, B, leaf=64):
+def recursive_matmul(A, B, leaf=64):
     """
     Recursive divide-and-conquer matrix product for square inputs. Pads to
     an even size when needed, recurses via block_product down to a crossover
@@ -162,6 +169,8 @@ def fast_matmul(A, B, leaf=64):
     """
     A = np.asarray(A)
     B = np.asarray(B)
+    if leaf < 1:
+        raise ValueError("leaf must be at least 1")
     if A.ndim != 2 or B.ndim != 2 or A.shape != B.shape or A.shape[0] != A.shape[1]:
         raise ValueError("this square recursive harness expects two n x n matrices")
 

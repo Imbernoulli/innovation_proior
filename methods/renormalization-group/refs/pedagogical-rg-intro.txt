@@ -1,0 +1,1610 @@
+                                                          Thermodynamical Phase transitions, the
+                                                         mean-field theories, and the renormalization
+
+
+
+
+arXiv:1402.6837v1 [cond-mat.stat-mech] 27 Feb 2014
+                                                          (semi)group: A pedagogical introduction
+
+                                                                                     Navinder Singh∗
+                                                                                    February 28, 2014
+
+
+                                                        “Since ’tis Nature’s law to change,
+                                                        Constancy alone is strange” — Earl of Rochester.
+                                                                                          Abstract
+                                                              While analyzing second order thermodynamical phase transitions, Lev
+                                                          Landau (the famous Russian physicist) introduced a very vital concept,
+                                                          the concept of an ”order parameter”. This not only amalgamated the
+                                                          previous fragmentary theoretical understanding of phase transitions (an
+                                                          arsenal of mean-field theories) but also it put forward the important theory
+                                                          of ”spontaneous symmetry breaking”. Today, order parameter concept is
+                                                          a paradigm both in condensed matter physics and in high energy physics,
+                                                          and Landau theory is a pinnacle of all mean-field theories. Mean field
+                                                          theories are good qualitative descriptors of the phase transition behavior.
+                                                          But all mean-field theories (including Landau’s theory) fail at the criti-
+                                                          cal point (the problem of large correlation length). The problems with
+                                                          large correlation length in quantum many-body systems are the hardest
+                                                          problems known in theoretical physics (both in condensed matter and in
+                                                          particle physics). It was Ken Wilson’s physical insights and his power-
+                                                          ful mathematical skills that opened a way to the solution of such hard
+                                                          problems.
+                                                              This manuscript is a perspective on these issues. Starting with sim-
+                                                          ple examples of phase transitions (like ice/water; diamond/graphite etc.)
+                                                          we address the following important questions: Why does non-analyticity
+                                                          (sharp phase transitions) arise when thermodynamical functions (i.e., free
+                                                          energies etc) are good analytic functions? How does Landau’s program
+                                                          unify all the previous mean-field theories? Why do all the mean-field theo-
+                                                          ries fail near the critical point? How does Wilson’s program go beyond all
+                                                          the mean-field theories? What is the origin emergence and universality?
+
+
+                                                     Contents
+                                                     1 Introduction to Thermodynamical Phase Transitions                                 2
+                                                       1.1 Some examples . . . . . . . . . . . . . . . . . . . . . . . . . . . .         3
+                                                       ∗ navinder.phy@gmail.com
+
+
+
+
+                                                                                               1
+2 Phase transitions without Landau’s paradigm                                       8
+  2.1 Ehrenfest’s classification of phase transitions . . . . . . . . . . .         8
+  2.2 The Mean-Field Theories(MFTs) . . . . . . . . . . . . . . . . . .            10
+
+3 Landau’s paradigm: symmetry breaking and the order param-
+  eter concept                                              15
+
+4 Problems of the Mean-Field Theories and Landau’s paradigm 18
+
+5 Going beyond Landau’s paradigm–The renormalization (semi)group
+  (RG)                                                                       18
+  5.1 Kadanoff’s great insight . . . . . . . . . . . . . . . . . . . . . . . 20
+  5.2 Wilson’s formulation . . . . . . . . . . . . . . . . . . . . . . . . . 22
+
+6 Why do MFTs fail and how does RGT rectify that?                                  27
+
+7 Appendix: K. G. Wilson–a short biographical sketch                               28
+
+
+1     Introduction to Thermodynamical Phase Tran-
+      sitions
+Mankind is familiar with various phases of matter and transitions between the
+phases from antiquity. For example, ice-water-steam; ice is solid that exhibit
+characteristic rigidity, water is liquid and it flows like other liquids, and steam is
+a gas, much like other gases. It is only in the 19th century that with the advent
+of the science of thermodynamics the phases of matter and their transformations
+were rationalized within the scientific domain. The phase transition of water
+to steam gave birth to the great discovery of the steam engine by Thomas
+Newcomen in 1712, and it resulted in the subsequent great industrial revolution
+first in Britain and then in Europe. It is beyond doubt that man is able to use,
+for the service of humanity, the great practical potential of the fundamental
+understanding of the materials and their transformations.
+    Aim of the the present paper is to give a broad overview of the phase tran-
+sition phenomena from fundamental perspective starting from early works of
+Andrews and van der Waals. The Mean-Field Theories (MFTs) were devel-
+oped to understand thermodynamical phase transitions from atomic/molecular
+perspective, and van der Waals was the pioneer in this[1]. We discuss various
+Mean-Field Theories (MFTs) and their reformulation by Lev Landau in 1937[2].
+MFTs are good qualitative descriptors of the phase transition behavior. But
+all mean-field theories fail at the critical point including the Landau’s formu-
+lation. At the critical point correlation length (defined precisely in the text)
+diverges and fluctuations dominate over the average behavior. It is this failure
+of the MFTs that triggered further investigations that resulted the formulation
+of renormalization group by Wilson and others in 1970s[3]. The problems with
+large correlation length in quantum many-body systems are the hardest prob-
+lems known in theoretical physics (both in condensed matter and in particle
+physics) and this branch of physics is far from being closed.
+    The present paper is a pedagogical introduction to this vast but coherent
+topic. The story of the successes and failures of MFTs and their systematic
+
+
+                                          2
+replacement at the critical point by the renormalization group theory is given
+in a clear and pedagogical way. We also address, more specifically, the follow-
+ing questions: Why does non-analyticity (sharp phase transitions) arise when
+thermodynamical functions (i.e., free energies etc) are good analytic functions?
+How does Landau’s program unify all the previous mean-field theories? Why
+do all the mean-field theories fail near the critical point? How does Wilson’s
+program go beyond all the mean-field theories? What is origin emergence and
+universality?
+     The answers of above questions are well known[3, 4, 5]. Presentation here
+is sufficiently self-contained to address the above questions. Thus it will be
+useful to the students learning the subject. We also express our standpoint re-
+garding the failure of MFTs, and point out that MFTs faithfully reproduce
+diverging fluctuations at the critical point and divergence of fluctuations can be
+understood most clearly by recognizing the fact that the property of Statisti-
+cal Independence (SI) is violated in systems with long correlation length (when
+various parts of the system become statistically correlated)[6]. And the funda-
+mental thesis of Boltzmann-Gibbs statistical mechanics–fluctuations converge
+as ∝ N1 in sum-function observables[6]–is no longer applicable in systems with
+large correlation length (of the order of the system’s size) making the fluctu-
+ations to dominate over the average behavior. The reason why MFTs predict
+wrong values of critical indices is given in[7], that also clarifies a common mis-
+conception.
+     The paper is organized as follows. In the next subsection we give some exam-
+ples of phase transitions. The next section (section 2) is devoted to Ehrenfest’s
+classification and to some mean-field theories. Then in section 3 we present
+Landau’s formulation of MFTs. Section 4 deals with the problems of MFTs.
+After recognizing the difficulties when dealing with problems with long correla-
+tion length we present Kadanoff’s construction and Wilson’s Renormalization
+Group (RG) formulation that rectify the problems of MFTs (section 5). This
+is illustrated by a specific example of φ4 -theory. Although there are many dif-
+ferent formulations of renormalization group method and has been applied to
+many different problems[3, 4, 5, 8, 9, 10, 11], our point here is to present the
+essence of the method for pedagogical purposes. In section 6 we also address
+the important question: Why do all the mean-field theories fail near the critical
+point and how does Wilson’s program go beyond MFTs? A short biographical
+sketch of Ken Wilson is given in the appendix.
+
+1.1    Some examples
+Phase transitions are ubiquitous in Nature! Most common phase transition is
+that of water and ice (Figure 1(a)). We see this when we put liquid water
+in the refrigerator for making ice, a common experience. We know that to
+make ice from water we need to extract some heat for a given mass of water.
+This is called the latent heat and for water it is 334 Joules/gram . Thus to
+make ice from water you have to extract this much amount of heat per gram
+from water (i.e., by cooling it) and to convert back water from ice you have
+to supply that amount (i.e., by heating the ice). You also note that when you
+cool water to convert it into ice, it expands, i.e., the volume of ice for a given
+mass of water is more than the volume of liquid water of that mass, or ice
+floats on water. These facts can be quantitatively described by introducing
+
+
+                                        3
+the thermodynamical free energy[22]. Discontinuity of its first order derivatives
+with respect to thermodynamical parameters leads to above discontinuities. We
+will explain this in the section devoted to Ehrenfest’s classification.
+
+                                                        P
+
+
+                                                                             Melting Curve
+
+                                                              Solid
+
+                                                                                             Liquid
+                                                                                                              .
+                                               1 ATM                                                          Critical Point
+
+                                                              Triple Point
+                                                  0.006 ATM                                     Vapour−pressure Curve
+
+
+                                                                                              Vapour
+                                                                 Sublimation Curve                                    T
+                                                    0
+                                                                             0.01 C                   100 C
+
+                     (a)                                                         (b)
+
+Figure 1: (a) Three phases of water. (b) Phase diagram of a simple substance
+like water.
+
+    Figure 1(b) depicts a typical phase diagram of a “simple” substance like wa-
+ter for example (only change one has to make is that of a negative slope of the
+liquid-solid phase line for the case of water). Phase diagram depicts the kind of
+phases that are taken by a given substance under a given set of external con-
+ditions. These external conditions are the thermodynamical parameters of the
+system, for example, Pressure (P) and Temperature (T) for a simple substance,
+or, temperature and external magnetic field for a magnetic substance, like, for
+example, a ferromagnetic.
+    The phase diagram, as in figure 1(b), is a two dimensional projection on
+the P-T plane of a three dimensional picture, with free energy along an axis
+coming out of the plane of the paper (for example, referring to figure 1(b)) and
+perpendicular to the P-T axis. So in this 3-D picture one has three free energy
+surfaces. A substance is stable in a given region of the phase diagram if its
+free energy surface takes the minimum value. Consider the gaseous regime, in
+this, the free energy surface for the gaseous phase takes the minimum value as
+compared to two other free energy surfaces that of liquid and solid. The phase
+boundary lines shown in figure 1(b) are the lines at which above mentioned
+surfaces cut each other. And at each phase line free energies of two substances
+separated by that line takes the same value. Thus on each phase line both can
+co-exist. The point at which all can co-exist is called the triple point. Another
+important point is called the critical point. It is a point in a phase diagram
+where first order phase transition goes to second order phase transition. The
+discontinuity in the first order derivatives of g (latent heat and change of volume
+per unit mass) goes to zero. Thus in liquid-gas transition the density difference
+(between gas and liquid) becomes zero and it is not possible to distinguish
+gas from liquid at the critical point1 . However, the second order derivatives
+   1 But density fluctuations dominate over all length scales at the critical point. Density
+
+fluctuations on the length scale of the wavelength of visible light cause strong scattering of
+light and results in a very spectacular phenomenon called the critical opalescence. Here is
+
+
+
+                                              4
+of the Gibbs free energy remains discontinuous (see the section on Ehrenfest’s
+classification).
+
+
+
+                                                                60
+                                                                                          Liquid
+
+
+
+                                                 Pressure GPa
+                                                                40     Diamond
+
+
+                                                                20   Artificial Diamonds
+
+
+                                                                                       Graphite
+                                                                 0        2000              4000   T (K)
+                      (a)                                                        (b)
+
+Figure 2:     (a) Allotropes of Carbon:     Graphite is soft!        while
+Diamond     is    the   hardest   material    known     (Figure    source:
+http://mrsec.wisc.edu/Edetc/nanoquest/carbon/index.html).      (b) Phase
+diagram of Graphite.
+
+    Diamond and Graphite: Another example of phase transitions is that of di-
+amond and Graphite (figure (2)). These are two allotropes of Carbon. Pencils
+write because layers of graphite easily slip past each other and can coat an-
+other object, such as paper. Diamonds look very very different from pencils!
+They are the hardest mineral known!! This is an example of the structural
+phase transition in which Carbon atoms rearrange themselves. Diamonds and
+Graphite are naturally occurring substances. Diamonds formed from Carbon
+deep under earth (∼ 200 km) by geologic processes under larger pressure and
+temperature environments (as compared to ambient conditions). One can even
+transform Graphite into Diamonds–in a Lab! This is possible by applying a
+very large pressure, 100, 000 times that of normal atmospheric pressure, with
+graphite sample kept at 2000 K (figure 2 (b)). Thus formed artificial diamonds
+are smaller in size as compared to diamonds created by geological processes.
+Nature is a smarter creator! One would like to say!
+    Superfluidity and Superconductivity: Phase transitions can also lead to
+quantum behavior at macro-scale. Superconductivity and superfluidity are two
+prime examples[13]. One interesting example is that of Helium. Helium exists
+in nature in two stable isotopes. One common isotope is 2 He4 . The other rare
+isotope 2 He3 is one atom for a million atoms of 2 He4 in earth’s atmosphere.
+Consider first the phase diagram of common isotope 2 He4 (Figure 3(a)). It liq-
+uefies at 4.2 K at the ambient pressure (Heike Kamerlingh Onnes was the first
+to liquefy helium. He liquefied it in 1908 and later discovered superconductivity
+a quick experiment[12]. Take equal quantities of cyclohexane and acetic anhydride in a test
+tube. Two liquids do not mix at room temperature, but on heating they mix. If one let
+the mixture to cool, near 53 C the mixture turns milky white—-A spectacular phenomenon
+called critical opalescence.
+
+
+                                            5
+ P (ATM)                                               P (ATM)
+ 40                                                    40                                      Rare Isotope
+                        Common Isotope                          A                                             3
+ 30            Solid                         4
+                                        He             30
+                                                                           Solid
+                                                                                                         He
+                                       2                                                               2
+                                                                    0.18            0.49 K
+    20                                                          B    Superfluid
+                        lambda line                    20
+           Superfluid                                                      Liquid
+    10                    Normal Liquid Pc                                                                          Pc
+             He II                                     10
+                              He I             . ...                0.001 K                                        . ...
+                                        . . Vapour                                                        . . . Vapour
+                                                                                                                 . .. T
+      0
+                         . . . . . . . . .. T
+                                      .      .              0
+                                                                                         . .     .  . . . .   .
+          0K     1K     2K    3K         4K                     0K                  1K             2K           3K
+                         (a)                                                             (b)
+
+Figure 3: Phase transitions in Helium. (a) Common Isotope 2 He4 , (b) The rare
+isotope 2 He3 .
+
+
+in Mercury in 1911). When cooled further ∼ 2.17 K it transforms to a new
+form of liquid (a new thermodynamical phase called the superfluid phase). In
+this phase liquid Helium flows without friction (zero viscosity) and becomes a
+“super-heat-conductor”. This superfluid phase of 2 He4 is also called the HeII
+phase (the normal one is called HeI). Heat capacity shows an infinite disconti-
+nuity at 2.17 K (figure (4)). There is no latent heat involved2 . The shape of
+heat capacity curve resembles with that of a Greek letter lambda (λ). Thus it
+is also called the lambda-transition in liquid Helium literature. Liquid Helium
+can be made solid by applying a pressure of 25 atm for temperature less than 2
+K. Higher temperatures require higher pressure for solidification (figure 3 (a)).
+Interestingly it does not have a triple point! The rare isitope 2 He3 behaves
+
+ C (cal/g/deg)
+
+4                                     λ− transition in
+                                                 4
+                                                 He
+3                                            2
+
+                                       Liquid He I
+2 Superfluid
+    He II
+
+                             2.172 K                                  T
+     0K           1K        2K     3K                  4K
+                   Figure 4: The lambda-transition in common Helium.
+
+exotically (figure 3(b)). If you start from a very low temperature, say 0.0001 K,
+   2 But it is not the second order phase transition! see Ehrenfest’s classification in the next
+
+section.
+
+
+                                                   6
+ c
+
+
+ Heat Capacity
+                              c        T
+
+
+                          −1.7 Tc /T
+                 c        e
+                     Tc           T(K)
+
+Figure 5: Superconducting phase transition. (a) Heat capacity show a finite dis-
+continuity at Tc , (b) Superconducting substances show Meissner effect (Image:
+public domain/Wikimedia Commons.).
+
+
+with a sample of 2 He3 at 30 atm pressure, you first have liquid Helium. On
+reaching 0.18 K it solidifies! It remains solid upto 0.49 K and again turns liquid
+for higher temperatures. This behavior of the rare isotope of Helium is quite
+unusual (as common solids remain solid with reducing temperature!).
+     The superfluidity of the normal isotope 2 He4 is due to the Bose-Einstein
+condensation below the condensation temperature ∼ 2.17 K. As 2 He4 atoms
+are bosons they condense into the ground state with order parameter (the con-
+densate wavefunction) as ρeφ . Where ρ is the superfluid density and φ is phase
+of the wave function. All the observed properties can be understood using two-
+fluid picture (see for details[14]). The reason why Helium remains liquid down
+to the lowest temperatures achievable at normal pressure is the large amplitudes
+of the zero-point quantum oscillations that disrupt the crystalline order.
+     The case of the rare isotope is much more interesting. As 2 He3 atoms are
+fermions they cannot show BEC directly and thus superfuildity. But experimen-
+tally superfuildity has been seen. The reason for superfluidity in the rare iso-
+tope is the formation of Cooper pairs between Helium atoms much like the BCS
+(Bardeen-Cooper-Schrieffer) theory of superconductivity[15], but with impor-
+tant differences: As there is no crystalline lattice, phonons are not operative in
+forming Cooper pairs (in contrast to simple metals explainable by BCS theory).
+The origin of Cooper pairing in the rare isotope is magnetic and Coopers pairs
+resides in higher angular momentum states with internal degrees-of-freedom (see
+Anderson-Morel[16]).
+     Superconductivity is an another example that show macroscopic quantum
+effects. First discovered by Heike Kamerlingh Onnes in 1911, it took about
+fifty years of theoretical efforts and finally the microscopic understanding came
+with BCS theory of superconductivity in 1957[15]. Loosely speaking the basis of
+superconductivity is the Bose-Einstein condensation of Cooper pairs formed due
+to mutual attractive interaction mediated by the exchange of lattice phonons.
+The important difference between rare isotope of Helium and superconductivity
+in simple metals is that the size of a Cooper pair in metals is much greater than
+mean particle separation (∼ 1000 times the lattice constant) while in Helium
+it is like forming a bosonic molecule by two fermionic atoms (the size of the
+
+
+                                           7
+Cooper pair is mean particle separation). BCS theory quantitatively account
+for many observed properties of simple superconductors (excluding Cuprate
+superconductors[13, 17]).
+    Magnetism of Iron: Iron loses its magnetic properties above 770 C (the
+Curie temperature). What happens is that due to thermal agitation the ordered
+arrangement of electronic spins becomes unstable. The origin of magnetism in
+Iron is due to a dual role played by d-band electrons[18, 19]. They participate in
+metallic bounding as well as act like localized spins. Iron drives its magnetism
+from electron-electron repulsive Coloumb interaction due to which they avoid
+each other in real space and that is effectively executed by keeping spins in the
+same direction. This a rough picture (see for more accurate and quantitative
+analysis[19]).
+    Cosmological Phase Transition: The origin of SU3, Isospin, and Parity! It
+has been postulated (after the discovery of Hubble expansion) that when our
+universe was very young (only sub-pico seconds of age) after the Big-Bang,
+our universe underwent a phase transition from that high energy scale–called
+the Cosmological phase transition. Below that high energy scale the electroweak
+symmetry is broken. This the phase transition of vacuum itself in which vacuum
+expectation value of a scalar field takes non-zero value[20]. This is intimately
+connected to the Higgs mechanism[21].
+    The above are some examples of phase transitions. Obviously, there are
+many more examples. The above are sufficient for our purpose of illustrating
+the mean-field theories and renormalization group. Before we discuss the MFTs
+we first review the work of Ehrenfest on the classifications of phase transitions.
+
+
+2      Phase transitions without Landau’s paradigm
+2.1     Ehrenfest’s classification of phase transitions
+Paul Ehrenfest (1880-1933)3 classified various phase transitions in 1933 accord-
+ing to the behavior of the derivatives of the Gibbs free energy (unfortunately,
+later that year he killed himself as he was suffering from severe depression).
+According to this scheme, the order of a phase transi-
+tion is given by the order of the discontinuous deriva-
+tive of Gibbs free energy. On the line separating
+the two phases (say, in the liquid-gas transition) the
+Gibbs free energies per unit mass g(T, P ) of the two
+phases take the same value. On the left of the line, g
+is less for the liquid, and on the right of it it is less
+for the gas. By definition[22]: g(T, P ) = U − T s + P v
+or dg = −sdT + vdP with                                   Figure 6: Ehrenfest and
+                                       ∂g                 his son with Einstein
+            Entropy/mass = s = −          |P .            1920.
+                                       ∂T
+                                                  ∂g
+                            V olume/mass = v =       |T
+                                                  ∂P
+First order phase transitions are those in which first order derivatives of the
+Gibbs’ Free energy are discontinuous: i.e., if the above derivatives are discon-
+    3 He was a student of Ludwig Boltzmann.
+
+
+
+
+                                              8
+tinuous. If we cross the liquid-solid line vertically in up direction (at constant
+temperature, see figure 1 (b)) clearly:
+
+                                        ∂gl      ∂gs
+                                            |T >     |T
+                                        ∂P       ∂P
+As the system goes from liquid stability to solid stability (an experimental fact!).
+This implies that:
+                                   ∂gl            ∂gs
+                             vl =      |T > vs =       |T
+                                   ∂P             ∂P
+In other words, for a given mass, volume of the liquid phase is more than that
+of the solid phase, or, substances expand on melting!4
+    If we cross the liquid-gas line horizontally (ref. figure 1(b)) from left to right
+(at constant pressure) clearly:
+
+                                        ∂gs      ∂gl
+                                            |P >     |P
+                                        ∂T       ∂T
+As system goes from solid stability to liquid stability (again an experimental
+fact!). Above implies that
+                                  −ss > −sl
+or
+                                            ql − qs
+                                 ss < sl ,    ⇒     > 0.
+                                               T
+Where ql − qs = l is called the latent heat of solid-to-liquid transition, which
+is positive! as it should be! Thus heat must be absorbed from solid to liquid
+transition. Examples of first order are: Solid-liquid-vapor, transitions in simple
+fluids, allotropic transformations (like diamond graphite) etc.
+    For the second order phase transitions, first order derivative of Gibbs free
+energy, i.e., v, s, are continuous, but the second order derivatives, i.e., heat
+capacity c, and compressibility κ are discontinuous. Thus no latent heat and
+volume change occur during a second order phase transition. But in a second
+order transition, heat capacity and compressibility show finite discontinuity. An
+ideal second order transition is the superconducting transition in zero magnetic
+field[22].
+    Phase transition in liquid Helium is not second order (as the discontinuity
+in heat capacity is infinite). This is a special transition called the λ−transition.
+    Above is called the Ehrenfest’s classification scheme. One can define higher
+order phase transitions along these lines (third and higher order derivatives of
+the Gibbs free energy), but those are seldom observed in practice. Ehrenfest’s
+scheme is based on the fundamental thermodynamical principle: the phase of
+minimum free energy is the stable one[22]. From this it derives other properties
+of phase transitions like latent heat, volume changes etc. Importantly, it does
+not provide more fundamental statistical mechanical formulation of the phase
+transition behavior. We will see in the next section that MFTs are the first
+steps in these directions.
+    We will also see that with the Landau’s paradigm above scheme of Ehren-
+fests’ can be nicely re-interpreted by using the order parameter concept.
+   4 Note that the case of water is opposite (ice is lighter) as the ice-water (solid-liquid) line
+
+has negative slop.
+
+
+
+                                                9
+2.2     The Mean-Field Theories(MFTs)
+The above is the macroscopic way of understanding/classifying the phase tran-
+sitions without any microscipic (atomic/molecular) point of view. Attempts
+to understand the laws of heat from the microscipic (atomic/molecular) per-
+spective resulted in the science of statistical mechanics and Ludwig Boltzamnn
+(1844-1906) was the pioneer[23]. Similar to this philosophy, to understand phase
+transition phenomena from atomic/moleculaer perspective, early attempts were
+made by van der Waals5 .
+    Thus the credit of first mean-field theory goes to van der Waals’[1]. Van der
+Waals was interested in the notion of continuity of matter, namely, how a gaseous
+substance, on cooling, transforms into a liquid while chemically, at molecular
+level things remain intact6 . His main concern was the ideal gas equation and
+the problems of the Boyle’s law. Here is a rough sketch of his argument.
+    We know that the ideal gas equation
+                                 P V = N kB T = nRT
+shows no phase transition for obvious reasons (due to the neglect of inter-
+molecular forces). In contrast, real gases at low temperature and high pressure
+deviate markedly from the ideal gas behavior. To see this, let Vm0 be the molar
+volume (volume per mole) of an ideal gas:
+                                       pVm0 = RT.
+Define the compression factor Z at a temperature T for a real gas (P Vm = RT ):
+                                          Vm    pVm
+                                    Z=        =     .
+                                          Vm0   RT
+In figure 7(a) compression factors of both the gases are plotted as a function
+of pressure. In an ideal gas, as there is no interaction between the molecules,
+the compression factor remains unity with pressure while for a real gas it first
+decreases and then at higher pressure it starts to rise again (figure 7(a)). This
+can be easily correlated with the inter-molecular potential plotted in figure 7(b).
+At high pressure gas is compressed and molecules are relatively near to each
+other and thus exert repulsive forces on each other as the potential is large
+positive (figure 7(b)). This makes the compression factor greater than that of
+an ideal gas. In other words, for the same number of moles of a real gas and
+an ideal gas in the high pressure limit (when the mean separation between the
+molecules is less than rc ), same pressure will be exerted only if the real gas
+occupies more volume thus making Z > 1. In the opposite limit of low pressure
+(mean inter molecular separation greater than rc ), molecules exert attractive
+forces and thus smaller molar volume and smaller compression factor for the real
+gas. To account for deviations of the ideal gas law and to understand the phase
+    5 The thought process of understanding macro-phenomema from microscopic perspective
+
+is very old one, and is related to one of the very basic aspect of human psychology, namely
+the habit of understanding phenomena around from the basic “building blocks”. Examples
+go back to BC era, for example, Democritus was the first to postulate atoms and atomic
+constitution of matter. Other example is that of statistical mechanics (thermodynamics from
+atomic/molecular perspective) and so on. And this unique habit of mankind resulted in a
+body of organized knowledge that we call science. Author do not want to go into the debates
+of reductionism and emergence philosophies[24]
+    6 There is no chemical reaction when water converts from liquid to steam and vice versa.
+
+
+
+
+                                            10
+                                                                                Potential energy of interaction
+                                          Real Gas ( CH4)
+
+
+
+
+       Compression Factor, Z
+                                                        ne
+                                                     tha
+                                                   Me
+                                                                   Z=1                                                rc           Separation
+                                                             Perfect gas
+
+
+
+
+                                                             T=0 C
+
+                                   200       400             600
+                           0             p/atm
+
+
+
+Figure 7: (a) Behavior of the compression factor for an ideal gas as compared
+with a real gas. (b) Inter molecular force as a function of separation in a real
+gas.
+
+
+
+
+   P                                                                       P
+                                     1                                                                                         1
+                               2                                                                                           2
+                                                                                                                  3
+           3
+
+
+                                                                   V                                                                            V
+van der Waals isotherms                                                                                           Real gas isotherms
+Figure 8: Comparing isotherms obtained from van der Waals’ equation with
+those of experiment: curve 1 for T > Tc ; curve 2 at T = Tc ; curve 3 at T < Tc .
+
+
+
+
+                                                                           11
+transition of gas-to-liquid, van de Waals postulated a modified equation of state,
+now called the van der Waals equation of state[1]. This is a remarkable piece of
+physical intuition and deduction of an equation of state from average properties
+of molecular interactions without going into formal mathematical development.
+This is a physical tour de force and he was awarded with Nobel prize (1910) for
+this.
+    He argued “....as you are aware the two factors
+which I specified as reasons why a non-dilute aggre-
+gate of moving particles fails to comply with Boyle’s
+law are firstly the attraction between the particles,
+secondly their proper volume...” —-From Nobel prize
+lecture—JOHANNES D. VAN DER WAALS.
+    Thus replacing the actual volume and pressure in
+the ideal gas equation by an effective ones:
+                                 N kB T
+                       pef f =
+                                  Vef f
+                      N kB T       N
+                  p=          − a( )2                      Figure 9: van der Waals
+                     V − Nb        V
+results a mean-field theory. This takes “an average (1837–1923)).
+effect” of molecular interactions, and this type of theory is called the mean-field
+theory. As the real molecules repel at short distance, the effective volume is less
+Vef f = V − N b (where N is the number of molecules and b is an effective volume
+of a single molecule). Similarly effective pressure Pef f is less due to long range
+attarctive interaction between the molecules. If we compare the isotherms of
+a real gas with those obtained by van der Waals equation we get a qualitative
+agreement. Van der Waals isotherms look qualitatively the same as those in the
+experimental one (figure (8)), but this has two basic defects:
+   1. Unphysical van der Waals loops.
+   2. Different critical point behaviour.
+The unphysical loops means that if one increases volume pressure increases (for
+the curve with positive slop in figure (8) in the coexistence regime). This is
+unphysical and can be rectified with Maxwell construction7 .
+                         The critical pressure, temperature, and volume can be
+                     calculated from:
+                                                dp     d2 p
+                                                    =       = 0.
+                                                dV    dV 2
+                          And near the critical point |Tc − T | << Tc and from the
+                          above derivatives, it can be easily shown that:
+                                            ρliquid − ρgas ∝ (Tc − T )β .
+                      From van der Waals’ theory β comes out to be 1/2 (the
+Figure 10: Thomas mean-field value). But, in actual experiments on liquid-
+Andrews      (1813– gas systems, β = 1/3. This was first experimentally de-
+1885)                 duced by T. Andrews in 1869! This very clearly showed
+the contradiction of the mean-field theory with experiment.
+   7 In Maxwell’s construction one replaces the curve in the co-existence regime by a straight
+
+horizontal line such that the area under it is equal the area above it (ref. figure 8 (a))[25].
+
+
+                                              12
+    We will see that this discrepancy is not specific to van der Waals theory but
+a basic defect of all such theories called the MFTs at the critical point. It took
+about 100 years for the resolution of this discrepancy!! This happened in the
+hands of K. G. Wilson in early 70s. The culprit is non-negligible fluctuations
+(density fluctuations in this liquid-gas case) at all length scales that invalidates
+the application of the mean-field theory itself[7].
+    The second example of MFT we consider is that of the famous Ising model—-
+a caricature for spontaneous ferromagnetism (like in Iron). A simple two dimen-
+
+
+                                                                              χ(Τ)
+                                                                              Susceptibility
+
+
+
+
+                                                 Spontaneous Magnitization
+                                                                                        Temperature
+                                                                             Tc
+
+
+         2−D Ising Model
+       Figure 11: (a) 2-D Ising model (b) Phase diagram of the model.
+
+sional Ising model is depicted in figure 11(a) in which spins are represented by
+arrows and these interact with their nearest neighbors. Each spin can have two
+states, either up, or down. This short range interacting model shows the phe-
+nomenon of spontaneous magnetization. Consider that the model is immersed
+in an external magnetic field H. Write the Hamiltonian in dimensionless form:
+                            H         X             X
+                                = −K      σi σJ − h   σi
+                           kB T      <nn>           i
+
+
+Here K = kBJT and h = kµH
+                       BT
+                          . There are two competing tendencies:
+  1. Lining-up of spins due to mutual spin-spin interaction (K) and the exter-
+     nal field (h).
+  2. Disruption due to thermal agitation.
+At low temperatures first tendency wins over and at high temperature the second
+one wins over. To calculate mean magnetization (a measure of the lining-up of
+the spins), one computes the Free Energy in the standard way:
+                                                             
+                                      X
+               F = −kB T ln                      e−H(c)/kB T  .
+                                 [all conf igurations: c]
+
+
+Here comes the big question: Why do statistical mechanical systems show phase
+transitions (non-analytical behavior like spontaneous magnetization, see figure
+11(b); the graph near T = Tc ) when the system’s free energy is a smooth
+
+
+                                          13
+function of temperature and of system’s parameters (an analytical function)?
+Sum of smooth exponentials is a smooth function!
+    The origin of non-analyticity (like spontaneous magnetization) is in the ther-
+modynamical limit (infinite system size!): Larger the system size sharper is the
+transition: As real phase transitions involve thermodynamical systems having
+very large number of particles of the order of Avogadro number, transitions
+appear infinitely sharp to human perception! This has been dubbed as “ex-
+tended singularity theorem” by Leo Kadanoff or better one can say “extended
+singularity conjecture”[4]. As the proof exists only in one special case[26].
+    Mean-field theory for the Ising model is done in usual way[4, 27, 28]:
+  1. First, consider that just one spin is immersed in magnetic field (that can
+     take two values: +1 (up-spin, say), and −1 (down-spin)). Thermal expec-
+     tation value of the spin is:
+                                  P
+                                          σehσ
+                           hσi = Pσ=±1 hσ = tanh(h).
+                                     σ=±1 e
+
+
+  2. Second, when our test spin is interacting with many neighboring spins, all
+     immersed in magnetic field:
+                 P
+                         σehef f σ                 X
+           hσi = Pσ=±1 hef f σ = tanh(h + K            σi ) ≃ tanh(hef f ).
+                    σ=±1 e                        <nn>
+
+
+
+
+            hef f = h + effective field due to other spins = h + zK hσi.
+                              P
+     Here the exact field K <nn> σi due to near-neighbor spins is replaced
+     by the effective field ∼ zKhσi (z is called the coordination number, = 4
+     in 2D). This constitutes the mean-field approximation.
+   Thus in MFT: hσi = tanh(h + zKhσi). To see what values hσi can take,
+one must solve this self-consistently. As K ∝ T1 it turns out that zK = TTc
+(where Tc is the critical temperature). In zero external field h = 0 the equation
+hσi = tanh( TTc hσi) has the following solutions (figure 12):
+                              
+                               0              if T > Tc
+                        hσi =     0, +1, −1    if T < Tc
+                              
+                                  degenerate if T = Tc
+
+ The region T ≤ Tc is of particular importance. Near the critical point hσi ≃ 0,
+tanh(x) can be expanded for small x as ≃ x − 31 x3 + .... And it can be easily
+shown that near the critical point:
+
+                                hσi ∝ (Tc − T )β .
+
+With β = 21 (the mean field value). Compare this with van der Waals theory!
+(THE VERY SAME BETA VALUE!)
+    Experiments on a wide variety of magnetic systems show that β ≃ 31 . Again,
+we see the contradiction between mean-field theory and experiments. So, some-
+thing is wrong with mean-field theory near the critical point! But, as mentioned
+
+                                       14
+      T>Tc                         T<Tc                         T=Tc
+                                               tanh
+
+
+
+
+             Figure 12: Solutions of the zero field mean-field equation.
+
+
+before, solution comes much later. However, the great merit of MFTs is that
+they qualitatively explain the emergence of phases below Tc (refer to the middle
+graph in figure (12)). One can show that the free energy for hσi = 0 phase is
+greater than the other phases with non-zero hσi, and the phase with minimum
+free energy is the phase that is realized in a thermodynamical system. Thus one
+has non-zero hσi for temperature less than the critical temperature (figure 11).
+
+
+3     Landau’s paradigm: symmetry breaking and
+      the order parameter concept
+                              In a landmark paper[2] of 1937 Lev Landau formu-
+                              lated the phase transition problems from the broken
+                              symmetry perspective. All the above phase transi-
+                              tion theories can be written in one mathematical
+                              language near the critical point. He noticed that
+                              most of the phase transitions involves breaking of
+                              discrete or continuous symmetry and introduced a
+                              very important concept to capture the nature and
+                              extent of this symmetry breaking: the order param-
+                              eter concept. One can appreciate this rather formal
+                              language related to symmetry breaking by consider-
+                              ing some concrete examples. Before we do that, let
+Figure 13: Lev. Landau us first consider two important theorems related to
+(1908–1968)                   symmetry and its breaking. Emy Noether in 1918
+                              put forward an important theorem: The Noether
+theorem (1918):
+    “Every continuous symmetry of a system can be associated with a conserved
+quantity.” This theorem is the cornstone of classical mechanics. There are
+numerous example, consider for example; if, gravitational potential along x-
+direction is constant, then linear momentum along that direction is conserved
+and so on. Another important theorem, for the present context, is the Goldstone
+theorem (1961): “The spontaneous breaking of a continuous symmetry can be
+associated with a spinless and massless particle–the Nambu-Goldstone boson
+(or simply the Goldstone Boson)”. To illustrate this we consider few examples:
+    Example No. 1:
+    1. liquid-to-Crystal transition: In the liquid state atoms/molecules are un-
+       der the effect of mutual potential (like van der Waals potential) which
+
+
+                                          15
+ Figure 14: Emmy Noether (1882–1935) and Jeffrey Goldstone (born 1933).
+
+
+      does not break the translational and rotational symmetry of the space
+      (molecules/atoms are free to wander around and rotate).
+  2. In the crystalline state, a periodic potential emerges, which break the
+     continuous symmetry under translations (however, this leads to a discrete
+     translational symmetry due to the periodicity of the lattice: the crystal
+     momentum)[18].
+  3. Since in the above example continuous translational symmetry is broken,
+     momentum does not remain a conserved quantity. And this violation of
+     the conservation of momentum in the crystalline state leads a Goldstone
+     boson called the phonon (lattice vibrations).
+Example no. 2: Ferromagnetic transition and broken rotational symmetry: In
+a ferromagnetic system above the transition temperature, spins are randomly
+oriented in all possible directions. But below the transition temperature, this
+rotational symmetry is broken and spins align in the same direction. The Gold-
+stone boson in the ferromagnetic case is the spin-wave excitations (or, collective
+excitation of spin waves).
+    One can consider many more examples. Thus each phase transition is a
+manifestation of some kind of broken symmetry: In ferromagnetic rotational
+symmetry is broken; in crystal formation translational symmetry is broken; in
+superconductor or superfluid electromagnetic gauge symmetry is broken.... On
+this basis, Landau introduced the very important concept of an order parameter.
+For example, in ferromagnetic transition the order parameter is an average mag-
+netization per unit volume (which is zero for T > Tc and non-zero for T < Tc );
+in liquid-gas transition it is the density difference; in superconductor it is the
+                                               †
+expectation value of the Cooper field < ψσ† ψ−σ   >; and in electroweak symmetry
+breaking it is expectation value of Higgs field < φ >.... Order parameter is zero
+in symmetrical phase and is non-zero in the unsymmetrical phase. It is a macro-
+scopic variable, much like a hydrodynamical variable. It has discontinuous jump
+for first order transitions as the order parameters are the first order derivatives
+                                            ∂G
+of the free energy (for example, M = − ∂H      ). Thus one can connect Landau’s
+scheme with that of Ehrenfests’ and one can interpret Ehrenfests’ scheme in
+terms of continuity or discontinuity of order parameters. For the second order
+transitions order parameter evolve from zero in symmetrical phase to non-zero
+in the unsymmetrical phase in continuous manner (thus 2nd order transitions
+are also called continuous transitions). Landau’s great contribution in unifying
+
+                                        16
+the theoretical understanding of wide variety of phase transitions lies in his se-
+ries expansion of free energy as a function of order parameter near the critical
+point where the order parameter is small.
+
+                 G(M, T ) = G0 (T ) + r(T )M 2 + u(T )M 4 + ...
+
+Where M is some order parameter (like magnetization in ferromagnetic case).
+The fundamental assumption that goes into this is the analyticity of free energy
+as a function of order parameter (magnetization here) and temperature. This
+fundamental assumption gets its justification a-posterior! Most importantly,
+this is in accord with ”extended singularity conjecture” in which free energy
+per unit volume remains finite in the thermodynamical limit (N → ∞, V →
+∞, N V = f inite). The sharpness of phase transitions (apparent non-analyticity)
+is something to do with very large number, of the order of Avogedro number,
+of particles present in the system.
+    Landau argued, according to the basic principle of thermodynamics, that
+at a given temperature, the phase with minimum free energy is the stable one:
+ ∂G
+∂M = 0 leads to:
+                             r(T )M + 2u(T )M 3 = 0.
+                                             q
+                                                  r(T )
+Which implies that either M = 0 or M = ± − 2u(T        ).
+    One can relate these to the following two possible cases:
+  1. Case A: If r(T ) > 0: one has only one minimum at M = 0 (u(T ) has to
+     be positive as free energy is bounded from below). M = 0 in this case and
+     it corresponds to symmetrical phase (T > Tc ).
+                                                           q
+                                                                r(T )
+  2. Case B: If r(T ) < 0: one has two minima at M = ± − 2u(T        ) and this
+     corresponds to the unsymmetrical phase (T < Tc ) (see figure (15)) with
+     non-zero value of the order parameter.
+From above, one can deduce the critical exponent β as follows:
+  1. As r(T ) is positive for T > Tc and negative for T < Tc , it must pass
+     through zero at T = Tc .
+
+  2. So near the critical temperature r(T ) can be expanded as: r(t) = a(T −
+     Tc ) + O((T − Tc )2 ).
+                                                                 q
+  3. Thus magnetization in T < Tc phase can be written as: M = ± a(T   −Tc )
+                                                                     2u(T ) ∼
+     (T − Tc )β . Here β = 12 .
+Again β takes the same value 1/2, as in van der Waals theory and in the mean-
+field theory of the Ising model. The general disagreement of MFTs with ex-
+periment is clear. We will see in the next section that systems near criticality
+violates an important property of statistical independence and the correlation
+length diverges at the critical point. Before we embark upon the question of the
+behaviour of correlation length and renormalization group we first would like
+to consider the question of the critical point in the next section in the light of
+some exact solutions.
+
+
+
+                                       17
+4     Problems of the Mean-Field Theories and Lan-
+      dau’s paradigm
+In the previous section we have seen the contradiction
+of MFT with experiment near a critical point. The
+βtheory = 12 and βexperiment = 31 . This was apparent                      G
+even in the first decade of 20th century. Still, MFTs were
+developed (like Curi-Weiss, Ising model, Landau’s gener-
+alization) and trusted. Nobody attempted to resolve the
+problems of MFTs at the critical point[4]. Then in 1944,            T>Tc
+with the Onsager’s—a mathematical tour de force—exact                            T<Tc
+solution of the 2-D Ising model, it became very clear that
+something is very much wrong with MFTs near critical-                                   M
+lity:
+
+    1. C. N. Yang with an extension of Onsager’s solution
+       found that β is 1/8 different from mean-field result
+       β = 1/2.                                             Figure 15: Behav-
+    2. Onsager’s solution showed that heat capacity di- ior of free energy
+       verges as a logarithm of T − Tc whereas MFT shows in Landau’s formu-
+       a finite jump in heat capacity at T .                lation.
+                                          c
+
+    3. The correlation length ξ diverges as √T 1−T in MFT
+                                                  c
+                                 1
+       whereas it diverges as T −T c
+                                     in the Onsager’s solu-
+       tion. Thus, ν, the critical index of the correlation length, is one half in
+       MFT whereas it is equal to one in the Onsager’s solution!
+
+    Here comes the 2nd big question: why do MFTs fail to predict the correct
+values of critical indices? The answer lies in the fact that mean-field equation
+hσi = tanh(h + TTc hσi) fails to take into account the longer length scale fluctu-
+ations (as compared to inter-particle and lattice constant). See for details[7].
+    As fluctuations at all length scales (from lattice constant to the correlation
+length) become important near a critical point, a proper theory in this regime
+must address this issue. The theory is called the renormalization group (next
+section).
+
+
+5     Going beyond Landau’s paradigm–The renor-
+      malization (semi)group (RG)
+The renormalization theory in general deals with problems of long correlation
+length. The presence of long correlation length leads to the breakdown of an
+important property of statistical mechanical systems called Statistical Indepen-
+dence (SI). Thus the results of standard Gibbs-Boltzmann statistical mechanics
+become unreliable. Near the critical point correlation length diverges as can be
+easily seen:
+    Consider that the order parameter is space dependent M (x) and vary very
+slowly as compared to atomic dimensions: One writes Ginzburg-Landau free
+
+
+
+                                        18
+energy functional[3]:
+           Z
+      F = d3 x{(∇M (x))2 + r(T )M (x)2 + u(T )M (x)4 − B(x)M (x)}.
+
+Correlation length ξ is defined as the distance over which the effect of a test
+spin extends out to other nearby spins. To calculate ξ consider B(x) = B0 δ 3 (x)
+(magnetic field in a narrow region of space). Neglect the smaller 4th order term
+and by minimizing F with a variational calculation, one readily obtains:
+
+                       −∇2 M (x) + r(T )M (x) = B0 δ 3 (x).
+                                                                     √
+                                                                         r(T )|x|
+With Fourier transforms one gets an immediate solution:M (x) ∼ e |x| . From
+                                                1         1
+which one defines a correlation length ξ = r(T    ) ∝ (T −Tc )1/2 . Thus correlation
+length diverges at the critical point with critical index ν = 1/2.
+    Due to this diverging correlation length various parts of the system respond
+in a correlated way. This makes the system non-self-averaging! The funda-
+mental hypothesis (actually an important property of ordinary statistical me-
+chanical systems with short range interactions) of statistical independence as
+highlighted by Landau[6] cannot be applied and fluctuations in the additive ob-
+servables (sum-functions) do not obey √1N law[6]. In other words, fluctuations
+could be significant as compared to the average behavior. A comparison of phys-
+ical problems with short and long correlation length is presented in table (1)
+The problems with large correlation length are among the hardest problems in
+
+
+       Table 1: Physical problems with short and long correlation length
+                              Physical Problems
+ Problems with short correlation Problems with large correlation
+ length (ξ << L)                        length (ξ ∼ L)
+ Various parts of the system with size As correlations extend throughout
+ < ξ behaves statistically indepen- the system, various parts of it are
+ dently                                 statistically correlated!
+ Statistical independence (SI) leads ρ12 6= ρ1 ρ2
+ to product distribution functions:
+ ρ12 = ρ1 ρ2
+ Entropy and Energy of sub-parts be- non-additivity of entropy and en-
+ come additive (weakly interacting ergy of sub-parts
+ sub-parts of size ξ)
+ Standard statistical mechanics can Results of standard statistical me-
+ be applied                             chanics are not reliable!
+ Fluctuations in observable converge As SI breaks down, fluctuations in
+ ∼ √1N                                  observable diverge!
+ Examples: systems away from crit- Thermodynamical systems near
+ icallity: MFTs; Hartree-Fock; Clus- criticallity; QCD; Knodo problem;
+ ter and virial exp...                  cuprate superconductivity etc.
+
+theoretical physics. For example, thermodynamical systems near criticallity;
+Kondo problem; high temperature superconductivity; relativistic quantum field
+theory; strong interactions and QCD etc. And most importantly, systems with
+
+                                        19
+2−D Ising Model
+Kadanoff’s construction
+  16 original spins
+
+
+
+
+                      spins are well correlated on l<< ξ
+
+
+
+
+ 4 effective spins
+                                 effective lattice
+
+
+
+
+                 Figure 16: Kadanoff’s Block spin renormalization idea
+
+
+large correlation length show a certain kind of cooperative behavior in which the
+details of the microscopic interactions play secondary role! Before we explore
+the renormalization group as formulated by Wilson, we first review the essence
+of a key work due to Kadanoff[29, 4] on which Wilson highly relied.
+
+5.1      Kadanoff’s great insight
+   1. Consider for concreteness the 2-D Ising model. Away from critical point
+                                                         1
+      (T = Tc ) the correlation length is small (ξ ∝ (T −T c)
+                                                              ν ), fluctuations on a
+
+      smaller length scale are important and one can reliably use the mean field
+      theory.
+   2. At T = Tc the correlation diverges, as shown before. A reliable picture
+      can only be obtained if one take all the spins into account in an area ∼ ξ 2
+      (A HOPELESS TASK !).
+   3. Kadanoff approached the problem with a brilliant idea: map the problem
+      of large correlation length to a problem with small correlation length!!!!
+   4. This is possible by exploiting the fact that on smaller lengths scales l << ξ
+      spins are well correlated!
+
+To execute the point number 3 above, consider the original lattice (figure 16)
+with lattice constant = a in which we mentally construct blocks, each containing
+four spins (dashed squares in the figure). We then assign an effective spin to
+each block–the block spin. The effective spin is an average of the original spins
+(one can use simple majority rule, if majority is up the effective spin or block is
+also up). The ease with which we can define block spins is granted by the point
+4 above. If all the spins are up in a given block, then our effective spin is four
+times the original spin. The resulting lattice of this effective block spins will
+have lattice constant a1 = 2a. The block spins or effective spins will interact
+with each other with some modified interaction that one has to calculate from
+the detailed model. The correlation length scales as follows: If the ξ is 1000 a
+
+
+                                                     20
+(in the original lattice), then it will be 500 a1 (in the scaled lattice).
+    Thus the problem with ξ = 1000 is reduced to the problem with ξ = 500!
+Repetition of this procedure ultimately leads to ξ ∼ 1 (for a finite system). But
+for a system in thermodynamical limit (system of infinite extent) one can exploit
+the following fundamental fact: “ξ diverges at the critical point” This funda-
+mental fact in an infinite system leads to a very curious behavior of system’s
+couplings. They tend towards a fixed point as explained P     below:
+    Let the Hamiltonian of un-scaled system be H =              n,i K0 sn sn+i . Here
+K0 is near neighbor interaction in the un-scaled lattice. After first scaling, let
+                           (1)                  (1)
+K0 → K1ef f and sn → sn (i.e., block spins sn interact with effective coupling
+K1ef f ). Thus after first scaling:
+                         X                 X ef f        (1)
+                              K0 sn sn+i →    K1 s(1)n sn+i .
+                        n,i                      n,i
+
+After m repetitions:
+                              (m)
+                                           X                (m)
+                                                   ef f (m)
+                          Hef f ective =          Km   sn sn+i .
+                                           n,i
+
+The correlation length behaves as follows:
+    After first scaling ξ (1) (K1ef f ) = 12 ξ(K0 ) (If the ξ is 1000 a (in the origi-
+nal lattice), then it will be 500 a1 (in the scaled lattice)). After m-scalings
+: ξ (m) (Km
+          ef f
+               ) = 21m ξ(K0 ). Now the fundamental assumption that goes in
+Kadanoff treatment is this: The scaling does not change the physics of the
+problem, namely, ξ (m) (Km  ef f
+                                 ) diverges as Km  ef f
+                                                        → Kc as the original correla-
+                                              J
+tion length ξ(K0 ) does at Kc (Kc = kB Tc ). If one knows the functional form
+  ef f        ef f
+Km     = f (Km−1   ) for one transformation, the same functional form will be true
+for all scalings!—precisely at the critical point K0 = Kc (where correlation
+length is infinite). This scale invariance (figure 17(a)) leads to m independent
+relation (AT THE CRITICAL PONIT):
+
+                                     Kc = f (Kc .)
+
+ The self consistent solution to this equation leads to the critical point solution
+(or fixed point solution) that gives Tc (figure 17(b)). Thus from the Kadanoff
+picture Tc can be calculated if one knows the function f (K). More importantly,
+the critical index ν can be expressed in terms of the derivative of f (K) wrt K
+at K = Kc : Suppose K is near to Kc , then f (K) = f (Kc ) + (K − Kc )λ. Here
+       df
+λ = dK    . As Kc = f (Kc ), implies f (K) − Kc = λ(K − Kc ). Now suppose
+correlation length behaves as ξ(K) ∼ (K − Kc )−ν , then one must have
+                                                           −ν
+                              ξ(f (K))         f (K) − Kc
+                                       =
+                                ξ(K)             K − Kc
+
+From the Taylor expansion above, it immediately follows that 21 = (λ)−ν as the
+scaling factor is 2. Thus if λ is known then ν can be determined (see for other
+complications[3]).
+    The problem of the Kadanoff’s procedure is that it does not give the central
+method to determine the important function f (K). He used the above argument
+to derive scaling relations[29]. Important point worth noting is that Kadanoff
+
+                                               21
+                                                  f(K)
+                                                  K
+                          Scale Invariance                                    fixed point
+                                                             K
+
+                                                                  f(K)
+                                                                                        K
+                                              o                          Kc
+
+Figure 17: (a) Scale invariance: same kind of structure re-appears at all length
+scales when correlation length diverges (if one magnifies any part of the system,
+then it is not possible to notice the difference between the magnified part and
+the original system). (b) Fixed points: self-consistent solution of K = f (K).
+
+
+approach is radically different from traditional statistical mechanical approach
+of constructing ensembles and using probability distribution functions.
+    This qualitative picture of Kadanoff’s was turned into an efficient computa-
+tional procedure with far reaching further physical insights (origin of universality
+etc) by Ken Wilson in early 70s. This approach is known as the renormalization
+group approach of Ken Wilson[3]. Although the concept in its primitive form
+and with certain drawbacks was know in the early days of quantum field theory
+(QFT) for example, Gell-Mann and Low etc, it was new approach in critical
+phenomena (in 1970s) that resolved the problems of MFTs in describing critical
+indices. We will clarify the Wilson’s approach using one specific example, the
+φ4 −theory, although the approach has much more general applicability. The φ4
+theory also connects to our previous example of the Ising model!
+    Next subsection is devoted to Wilson’s formulation. A brief biographical
+sketch of the man behind this great feat is given in the appendix.
+
+5.2    Wilson’s formulation
+As promised in the last subsection we would like to answer the following ques-
+tion: How did Wilson change Kadanoff’s qualitative scheme into a
+powerful computational method? For this we consider the φ4 - theory.
+    The φ4 − − Theory: Consider again the example of the Ising model (fig-
+ure 11) in zero external magnetic field:
+                             H            X
+                                  = −K        σi σj .
+                            kB T         <nn>
+
+We stress that if one wants to understand the physics of the renormalization
+group one must work through the mathematical apparatus which is rather stan-
+dard now; namely, the functional integrals and the method of contractions.
+Below the logic of the calculation and essential steps are given (see for details
+the original reference; Wilson-Kogut in[3]). The partition function Z for the
+Ising model can be written as:
+Y Z +∞                    P P               Y Z +∞           1   2    4
+                                                                          P P
+          dsm 2δ(s2m −1)eK n i sn sn+i =⇒             dsm e− 2 bsm −usm eK n i sn sn+i
+m     −∞                                                 m   −∞
+
+
+
+                                             22
+                     Smoothing delta functions
+
+
+
+
+                                                                  Sm
+   +1                −1    Sm            +1                  −1
+
+ Figure 18: Smoothing the delta function peaks into narrow Gaussian peaks.
+
+
+Where on the resulting expression on the right hand side we have smoothed the
+sharp delta function peaks into narrow Gaussian peaks (see figure 18 ). Writing
+the above in fourior space with:
+              Z                       Z           Z +π          Z +π
+                     iq.n                     1
+        sm = σq e         ,   where       =            dq1 ....      dqd ,
+               q                        q   (2π)d −π             −π
+
+transforms the partition function to:
+     Y Z +∞              R     P iqj 2                    R R R
+                    − 12    (K    |e −1| +b−2Kd)σq σ−q −u           σq1 σq2 σq3 σ−q1 −q2 −q3
+Z=            dsm e       q     j                          q1 q2 q3
+                                                                                             .
+        m       −∞
+
+
+    The program is: We will perform one quick step and then the sequence of
+steps! With this we will end up at two coupled algebraic equations. From there
+we can compute the critical indices.
+    One quick step:
+    Let us assume that the atomic scale fluctuations do not effect the value of the
+critical indices (an assumption which can only be verified a-posterior). Thus we
+will consider wavelengths much larger than the lattice constant. A momentum
+cut-off |q| < qc will be imposed in the integrals (where qc << 2π  a , a = 1, a is
+the lattice constant). Thus one can approximate |eiqi − 1|2 ≃ qi2 . But limiting
+|q| < qc harms:                       Z
+                                               sm =          σq eiq.n
+                                                         q
+
+One cannot get back the original sm (as large momenta |q| > qc are excluded in
+the limits of the integral!) So there is a technical problem. To resolve this one
+is forced to define the functional integral to count all possible states that the
+system can realize:
+       &      R 2               R R R
+           −1   (q +r)σq σ−q −u           σq1 σq2 σq3 σ−q1 −q2 −q3      b − 2Kd
+  Z= e 2 q                       q1 q2 q3
+                                                                   , r=         .
+                                                                           K
+            σ
+
+Where                                  &
+                                                   Y Z +∞
+                                               =                  (....)dσqj
+                                                   j     −∞
+                                           σ
+
+And now                         Z                  Z +qc                 Z +qc
+                                        1
+                                    =                         dq1 ....           dqd .
+                                  q   (2qc )d          −qc                −qc
+
+
+
+                                                         23
+This is one typical example of defining an Effective Field Theory (EFT)! Our aim
+is to execute Kadanoff’s idea of “thinning out the degrees-of-freedom”. Here we
+are doing in momentum space (instead in real space as was done in the previous
+example of the last subsection). Higher momentum states will be integrated
+out iteratively. The logic of the procedure is given below. The fundamental
+importance of Wilson’s iterative procedure (the renormalization group) is that
+we will get the pivotal function f (K) of the previous example. From that it is
+possible to get the critical point and all the critical indices&etc.
+
+    The Procedure: Define the functional integral as: Z = eH[σ] with H[σ] =
+    R                   R R R                                   σ
+− 12 q (q 2 +r)σq σ−q −u q1 q2 q3 σq1 σq2 σq3 σ−q1 −q2 −q3 . This functional integral
+can be written as the product of two functional integrals (as is clear from the
+definition of the functional integral above).
+                              &        &             !
+                                 Z=                           eH[σ0 +σ1 ]
+                                             σ0          σ1
+                                                     |           {z         }
+                                                  higher momenta integrals
+
+Here                                     
+                                             σ0,q ≡ σ0        if 0 < |q| < q2c
+                          σq =
+                                             σ1,q ≡ σ1        if q2c < |q| < qc
+We want to integrate out σ1 s (the higher momentum shell). Also rename various
+parts of the Hamiltonian as:
+                  Z                      Z Z Z
+                1
+      H[σ] = −      (q 2 + r)σq σ−q + −u           σq1 σq2 σq3 σ−q1 −q2 −q3 .
+                2 q                       q1 q2 q3
+              |         {z        } |                 {z                  }
+                              HF [σ]                                            HI [σ]
+
+Let the integration of higher momenta states yields:
+                                    &
+                                ′    ′
+                          eH [σ ] = eHF [σ0 ]                 eHF [σ1 ]+HI [σ0 +σ1 ] .
+                                                         σ1
+
+   Here we define σ ≡ σq′ ′ = 1ζ σ0,q (i.e., σ ′ and q′ are rescaled variables with
+                          ′
+
+0 < |q ′ | < qc and 0 < |q| < q2c ). HF [σ0 ] can be written in terms of scaled
+variables trivially as:
+      Z                                            Z
+    1                                1                             2              ′
+  −              (q 2 + r)σq σ−q =⇒ − (ζ 2 2−d−2 )             (q ′ + 4r) σ ′ q′ σ−q ′.
+    2 0<|q|< q2c                     2                   ′
+                                                     0<|q |<qc |     {z }
+                                                                                         notice!
+
+This trivial scaling cannot be done on the interaction term (due to coupling of
+momenta). One must use perturbation theory and express:
+                                                     1
+                                    eHI [σ] ≃ 1 − × + (×)(×) − ...
+                                                     2
+Where × ≡ −HI [σ]. In this series expansion inside the functional integral one
+will encounter terms like:
+                  &
+I(q1 , q2 , ....qk ) =        σ1,q1 σ1,q2 .........σ1,qk eHF [σ1 ] ∝ {σ1,q1 σ1,q2 σ1,q3 σ1,q4 ...... + ....all combinations...} .
+                         σ1
+
+
+                                                         24
+                                                              D
+    un+1                                                r
+                         un+1 = un
+                                                                              direction of iterations
+
+
+                                                                                                u
+
+
+                                                           u* r*       2
+                                                       fixed pt
+                                                                              1            3     Starting pts.
+               u*                  u0      un
+                                                                                         u0(Tc) r0 (Tc )
+
+                       (a)                                                        (b)
+
+Figure 19: (a)Iteration formula for un . (b) Calculation of ν: if one starts with
+some initial u0 , r0 at T = Tc , after sufficient number of iterations r → r∗ , u →
+u∗ (the fixed point). If one starts at T 6= Tc iterations take the initial conditions
+to some asymptotic line D.
+
+
+For the proof of it see the original article: Wilson-Kogut in[3]. After doing the
+functional integral over σ1 s (say up to 2nd order) one must rescale the σ0 as
+before (by expanding the momenta 0 < |q| < q2c to 0 < |q′ | < qc etc). Effective
+Hamiltonian (after integrating upto second order (see for details Wilson-Kogut
+in[3])) takes the form:
+                  Z                                Z Z Z
+                1        2                       ′
+    H[σ ′ ] = −      (q ′ + r′ )σq′ ′ σ−q
+                                       ′
+                                          ′ + −u             σq′ ′ σq′ ′ σq′ ′ σ−q
+                                                                                ′
+                                                                                   ′ −q′ −q′ .
+                2 q′                                 ′  ′  ′
+                                                    q1 q2 q3
+                                                                 1     2     3     1   2   3
+              |            {z            } |                     {z                        }
+                        HF [σ′ ]                                   HI [σ′ ]
+
+With
+                                                      u
+                                     r′ = 4(r + 3c       )
+                                                     1+r
+                                                        u2
+                               u′ = 24−d (u − 9c              ).
+                                                     (1 + r)2
+
+    These are the coupled algebraic equations. One can make analogy to the
+             ef f       ef f
+equation Km       = f (Km−1  ) that we derived by using Kadanoff’s real space
+blocking method. Here calculation is done in momentum space. By invoking
+the same logic that at the critical point the function f becomes scale indepen-
+dent due to the divergence of correlation length. This divergence of correlation
+length leads to fixed point solution (as we learn in Kadanoff’s method in last
+subsection). Thus self-consistent solution of the above contains the physics of
+the critical point. One can obtain the self consistent solution by iterative pro-
+cedure i.e., by evolving the above equations as a recursive procedure. This
+iterative procedure can be depicted by the following diagram (figure 19(a)).
+Let us express the equations after nth iteration as
+                                                        un
+                                   rn+1 = 4(rn + 3c          )
+                                                      1 + rn
+
+                                                         u2n
+                             un+1 = 24−d (un − 9c                ).
+                                                      (1 + rn )2
+
+
+                                             25
+After sufficient number of iterations one will end up at the critical point u∗ , r∗ .
+For illustration consider the case of un (figure 19(a)). The two curves (one for
+u and other for f (u)) meet at point u∗ . If one starts with some initial value u0
+(u0 > u∗ or u0 < u∗ , does not matter) one will end up, after sufficient number
+of iteration, at u∗ .
+     The great advantage of the Wilson’s formulation is that we are able to know
+the required function explicitly. The other important point is that the critical
+fixed point r∗ , u∗ does not depend on the initial parameters in the Hamiltonian
+i.e., r0 , u0 . Thus the critical point behavior does not depend on the microscopic
+details of the system. This is called the universality. For example, β = 1/3
+both for the magnetic systems and for the liquid gas transitions!(see for details
+[3, 4, 5, 11, 27]).
+     This how Wilson changed Kadanoff’s qualitative ideas into a powerful com-
+putational procedure, as we know today, RG has been applied to wide variety
+of problems. Here by considering one example we have covered the basics of the
+method.
+     One can also compute the critical indices. Let us take one example of the
+calculation of ν. For this we need to linearize the fixed point equations. For T
+very near to Tc (say curves 2, or 3 in figure 19(b)):
+                                                        drl
+                       rl (T ) = rl (Tc ) + (T − Tc )       |T + ...
+                                                        dT c
+                                                        dul
+                      ul (T ) = ul (Tc ) + (T − Tc )        |T + ...
+                                                        dT c
+As r = b−2Kd
+           K    is a function of temperature through K = kBJ T , and u = kBUT is
+also a function of temperature. Thus these can be Taylor expanded for T near
+Tc . For very large l:
+                                                    drl
+                         rl (T ) = r∗ + (T − Tc )       |T + ...
+                                                    dT c
+                                                    dul
+                        ul (T ) = u∗ + (T − Tc )        |T + ...
+                                                    dT c
+Or
+                                               drl+1
+                      rl+1 (T ) − r∗ = (T − Tc )     |Tc + ...
+                                                dT
+                                               dul+1
+                    ul+1 (T ) − u∗ = (T − Tc )        |Tc + ...
+                                                dT
+   For T sufficiently close to Tc . As rl+1 = f (rl , ul ) and ul+1 = g(rl , ul )
+(our fixed point equations), the temperature derivatives can again be Taylor
+expanded around the fixed point. This leads to:
+
+                       rl+1 − r∗ = c1 (rl − r∗ ) + c2 (ul − u∗ )
+
+                      ul+1 − u∗ = c3 (rl − r∗ ) + c4 (ul − u∗ )
+As the functions f (rl , ul ) and g(rl , ul ) are known one can work out the expansion
+coefficients explicitly (see for details Wilson-Kogut in [3]):
+                                                             
+                            rl+1 − r∗                   rl − r∗
+                                             = M2×2
+                            ul+1 − u∗                   ul − u∗
+
+                                           26
+By iterating n−times:
+                                                                
+                        rl+n − r∗                        rl − r∗
+                                        = (M2×2 )n
+                        ul+n − u∗                        ul − u∗
+
+The purpose of iterating n-times is that the matrix M n is completely dominated
+by the largest eigenvalue λn (λ = 4 for u = 0 case). One can find eigensystem
+of the above matrix and finally (as the largest eigenvalue dominates!):
+
+                          rl+n − r∗ ≃ λn1 w11 cl (T − Tc ).
+
+here λ1 is the largest eigen value, w11 is the corresponding eigenvector, and cl is
+a constant (see for details Wilson-Kogut in[3]). And a similar expression holds
+for the ul . One observe that:
+                                         τ
+      rl+n+1 (T ) − r∗ at (T − Tc =         ) = rl+n (T ) − r∗ at T − Tc = τ
+                                         λ1
+Thus the correlation length:
+
+             ξ(rl+n+1 , ul+n+1 ) T =Tc +τ /λ1 = ξ(rl+n , ul+n ) T =T +τ .
+                                                                       c
+
+
+Now
+    1                     1                                                  1
+        ξ(Tc + τ /λ1 ) = l+n ξ(Tc + τ ),       as      ξ(rl+n , ul+n ) =        ξ(r0 , u0 ).
+ 2l+n+1                 2                                                  2l+n
+If correlation length scales as:
+
+                                   ξ(Tc + τ ) ∝ τ −ν
+
+Then from above:
+                              τ −ν                 ln2
+                          (      ) = 2τ −ν =⇒ ν =      .
+                              λ1                  lnλ1
+If u = 0 (simple Gaussian model), then λ1 = 4 which leads to ν = 0.5 (the MFT
+result). With explicit calculation of λ1 for u 6= 0 (see for details Wilson-Kogut
+in[3]), ν comes out to be:
+                                    ν ≃ 0.58
+This is very close to the experimentally observed value ν = 0.6 (in MFT it is
+0.5!!!!). Similarly other critical indices can be calculated and are quite close to
+what is observed experimentally[11, 27].
+
+
+6     Why do MFTs fail and how does RGT rectify
+      that?
+Thus, by exploiting scale invariance at the critical point and by finding the crit-
+ical point from fixed point equations by iterative procedure one is able to calcu-
+lated correct values of critical indices. The important point that goes implicit in
+the above statement is that iterative procedure is not only a mathematical de-
+vice to reach to the fixed point but also at each step of iteration one is averaging
+over smaller length scale (or higher momentum scale) fluctuations and with this
+appropriate averaging over increasingly longer length scales one is able calculate
+
+                                          27
+the correct values of critical indices. With this sophistication of renormalization
+group method we immediately see the drawback of MFTs. In MFTs we do an
+abrupt step in dealing with the fluctuations: hσi = tanh(h + TTc hσi) i.e., we
+average out only the smaller length scale (of the order of lattice constant) fluc-
+tuations (in calculating the effective field seen by the test spin). Near the critical
+point just below the critical temperature, ensemble averages over smaller length
+scales (of the order of lattice constant) lead to zero value of the order parameter
+(here mean magnetization). Only when one averages over a large length scale
+(of the order of correlation length) can one see some tiny magnetization just be-
+low criticality. Thus our assumption of tiny mean magnetization over a smaller
+length scale (of the order of lattice constant) in MFT breaks down! And MFT
+predicts wrong values of critical indices( see also[7]).
+
+
+7     Appendix: K. G. Wilson–a short biographical
+      sketch
+
+
+
+
+Figure 20: Kenneth Geddes Wilson (8 June 1936 – 15 June 2013) with Hans
+Bethe and colleagues; 1982 Nobel Prize in Physics for the renormalization group
+method (Image source: http://news.cornell.edu/stories/2013/06/physics-nobel-
+laureate-kenneth-wilson-dies).
+
+    Ken Wilson earned his Ph.D. from the California Institute of Technology
+(CalTech) in 1961, studying under Murray Gell-Maan. Elementary Particle
+Physics (now called high energy physics) was a fashionable subject in those
+days (today also it is one of the mainstream topics along with condensed matter
+physics) and students would like to opt for it. But Wilson rebelled, and worked
+for a while on plasma physics. Something that did not go very well[3]. During
+that time he used to discuss his problems with S. Chandrasekhar (cousin of sir
+C. V. Raman). Here is an interesting story[12]:
+    His father had told him: ’When you go to Caltech, be sure to meet the two
+great physicists there namely, Feynman and Gell-Mann’. K. Wilson says that
+when he called on Feynman, the latter seemed to be gazing at the ceiling. He
+asked Feynman, ’Professor, what are you working on at present?’ Feynman
+replied, ’Nothing! Wilson then went to Gell-Mann and became his student!!!
+                                                                        d(e2 )
+    He worked on the solutions of Gell-Mann and Low equation λ2 dλλ2 =
+φ(e2λ , m2 /λ2 ) and on fixed-source meson theory for his PhD Thesis. Around
+1963 he read Onsager’s paper and became interested in critical phenomena,
+
+
+                                         28
+and after that studying other works on critical phenomena he developed the
+renormalization group theory, using tricks and techniques that he had learnt in
+particle physics.
+
+
+References
+  [1] van der Waals, Nobel Lecture (Nobel prize 1910), Physics, 1901, Elsevier
+      Pub. Company, Amsterdam (1967).
+  [2] L. D. Landau, Phys. Zurn. Sowjetunion 26, 11 (1937) [see collected papers
+      of Lev Landau; D ter Haar, Vol II, Pergamon Press, Oxford, 1969].
+  [3] K. G. Wilson, Rev. Mod. Phys. 55, 583 (1983); K. G. Wilson and J.
+      Kogut, Phys. Rep. 12, 75 (1974).
+  [4] Leo Kadanoff, arXiv: 1002.2985v1 (2010); Leo Kadanoff, J. Stat. Phys.
+      137, 777 (2009).
+  [5] K. G. Wilson, Scientific American , 158 (1979).
+  [6] L. D. Landau and E. M. Lifschitz, Statistical Physics, Vol. 6, Pergamon
+      Press, U.K.(1980).
+  [7] Navinder Singh, accompanying paper, arXiv:..... (2014).
+  [8] K. G. Wilson, Rev. Mod. Phys. 47, 773 (1975).
+  [9] R. Shankar, Rev. Mod. Phys. 66, 129 (1994).
+
+ [10] S. R. White, Phys. Rev. Lett. 69, 2863 (1992).
+ [11] J. Zinn-Justin, Quantum field theory and critical phenomena, Oxford,
+      Clarendon Press (2002); N. Goldenfeld, Lectures on Phase transitions and
+      the renormalization group, Addison-Wesley (1992).
+ [12] G. Venkataraman, The many phases of matter, Universities Press, India
+      (1997).
+
+ [13] A. Leggett, Quantum liquids: Bose condensation and cooper pairing in
+      condensed-matter systems, OUP, Oxford (2006).
+ [14] L. D. Landau and E. M. Lifschitz, Statistical Physics, Part 2, Vol. 9,
+      Pergamon Press, U. K.(1980).
+ [15] J. Bardeen, L. Cooper, R. Schrieffer, Phys. Rev. 108, 1175 (1957).
+ [16] P. W. Anderson and P. Morel, Phys. Rev. 123, 1911 (1963).
+ [17] D. J. Scalapino, Rev. Mod. Phys. 84, 1383 (2012); P. W. Anderson, Int.
+      J. Mod. Phys. B 25, 1 (2011).
+ [18] Charles Kittel, Introduction to solid state physics, 6th Ed. John Wiley and
+      sons (1986).
+ [19] J. Hubbard, Phys. Rev. B 19, 2626 (1979).
+
+
+                                       29
+[20] T. W. B. Kibble, Phys. Rep. 67, 183 (1980).
+[21] P. W. Higgs, Phys. Lett. 12, 132 (1964).
+[22] A. B. Pippard, Elements of classical thermodynamics, CUP, U.K. (1966).
+[23] G. Gallavotti, W. L. Reiter, J. Yngvason, Boltzmann Legacy, European
+     Math. Soc. (2008); Navinder Singh, Mod. Phys. Lett. B 27, 1330003
+     (2013).
+[24] A. Scott, J. of Consciousness Studies, 11, 51 (2004); Eric R. Kandel,
+     In search of memory: the emergence of a new science of mind, Norton
+     (2007); P. W. Anderson, Science, 177, 4047 (1972); R. B. Laughlin and
+     David Pines, PNAS 97, 28 (2000).
+[25] P. W. Atkins and J. de Paula, Physical Chemistry, OUP, Oxford (2002).
+[26] S. N. Isakov, Comm. Math. Phys. 95, 427 (1984).
+[27] Leo Kadanoff, Statistical Physics–statics, dynamics and renormalization,
+     WS (2000).
+[28] K. Huang, Statistical Mechanics, Wiley, Canada (1987).
+[29] L. P. Kadanoff, Physics, 2, 263 (1965).
+
+
+
+
+                                     30
+

@@ -1,0 +1,1283 @@
+                                               11
+                LOW-DENSITY PARITY-CHECK CODES
+                                                                                                     {ch:LDPC}
+Low-density parity-check (LDPC) error correcting codes were introduced in 1963
+by Robert Gallager in his Ph.D. thesis. The basic motivation came from the ob-
+servation that random linear codes, cf. Section ??, had excellent theoretical per-
+formances but were unpractical. In particular, no efficient algorithm was known
+for decoding. In retrospect, this is not surprising, since it was later shown that
+decoding for linear codes is an NP-hard problem.
+    The idea was then to restrict the RLC ensemble. If the resulting codes had
+enough structure, one could exploit it for constructing some efficient decoding
+algorithm. This came of course with a price: restricting the ensemble could spoil
+its performances. Gallager’s proposal was simple and successful (but ahead of
+times): LDPC codes are among the most efficient codes around.
+    In this Chapter we introduce one of the most important families of LDPC en-
+sembles and derive some of their basic properties. As for any code, one can take
+two quite different points of view. The first is to study the code performances27
+under optimal decoding. In particular, no constraint is imposed on the computa-
+tional complexity of decoding procedure (for instance decoding through a scan
+of the whole, exponentially large, codebook is allowed). The second approach
+consists in analyzing the code performance under some specific, efficient, decod-
+ing algorithm. Depending on the specific application, one can be interested in
+algorithms of polynomial complexity, or even require the complexity to be linear
+in the block-length.
+    Here we will focus on performances under optimal decoding. We will derive
+rigorous bounds, showing that appropriately chosen LDPC ensembles allow to
+communicate reliably at rates close to Shannon’s capacity. However, the main
+interest of LDPC codes is that they can be decoded efficiently, and we will discuss
+a simple example of decoding algorithm running in linear time. The full-fledged
+study of LDPC codes under optimal decoding is deferred to Chapters ??. A more
+sophisticated decoding algorithm will be presented and analyzed in Chapter ??.
+    After defining LDPC codes and LDPC code ensembles in Section 11.1, we
+discuss some geometric properties of their codebooks in Section 11.2. In Sec-
+tion 11.3 we use these properties to a lower bound on the threshold for reliable
+communication. An upper bound follows from information-theoretic considera-
+
+   27 Several performance parameters (e.g. the bit or block error rates, the information capacity,
+
+etc.) can be of interest. Correspondingly, the ‘optimal’ decoding strategy can vary (for instance
+symbol MAP, word MAP, etc.). To a first approximation, the choice of the performance criterion
+is not crucial, and we will keep the discussion general as far as possible.
+
+
+                                              215
+               216                     LOW-DENSITY PARITY-CHECK CODES
+
+               tions. Section 11.4 discusses a simple-minded decoding algorithm, which is shown
+               to correct a finite fraction of errors.
+
+{se:DefLDPC}   11.1     Definitions
+               11.1.1   Boolean linear algebra
+               Remember that a code is characterized by its codebook C, which is a subset of
+               {0, 1}N . LDPC codes are linear codes, which means that the codebook is a
+               linear subspace of {0, 1}N . In practice such a subspace can be specified through
+               an M ×N matrix H, with binary entries Hij ∈ {0, 1}, and M < N . The codebook
+               is defined as the kernel of H:
+
+                                          C = { x ∈ {0, 1}N : Hx = 0 } .                            (11.1)
+
+               Here and in all this chapter, the multiplications and sums involved in Hx are
+               understood as being computed modulo 2. The matrix H is called the parity
+               check matrix of the code. The size of the codebook is 2N −rank(H) , where rank(H)
+               denotes the rank of the matrix H (number of linearly independent rows). As
+               rank(H) ≤ M , the size of the codebook is |C| ≥ 2N −M . With a slight modification
+               with respect to the notation of Chapter 1, we let L ≡ N − M . The rate R of the
+               code verifies therefore R ≥ L/N , equality being obtained when all the rows of H
+               are linearly independent.
+                  Given such a code, encoding can always be implemented as a linear operation.
+               There exists a N × L binary matrix G (the generating matrix) such that the
+               codebook is the image of G: C = {x = Gz , where z ∈ {0, 1}L}. Encoding is
+               therefore realized as the mapping z 7→ x = Gz. (Notice that the product H G is
+               a M × L ‘null’ matrix with all entries equal to zero).
+
+               11.1.2   Factor graph
+               In Example 9.5 we described the factor graph associated with one particular
+               linear code (a Hamming code). The recipe to build the factor graph, knowing
+               H, is as follows. Let us denote by ia1 , . . . , iak(a) ∈ {1, . . . , N } the column indices
+               such that H has a matrix element equal to 1 at row a and column iaj . Then the
+               a-th coordinate of the vector Hx is equal to xia1 ⊕ · · · ⊕ xiak(a) . Let PH (x) be the
+               uniform distribution over all codewords of the code H (hereafter we shall often
+               identify a code with its parity check matrix). It is given by:
+                                                     M
+                                                 1 Y
+                                      PH (x) =         I(xia1 ⊕ · · · ⊕ xiak = 0) .                 (11.2)
+                                                 Z a=1
+
+               Therefore, the factor graph associated with PH (x) (or with H) includes N variable
+               nodes, one for each column of H, and M function nodes (also called, in this
+               context, check nodes), one for each row. A factor node and a variable node are
+               joined by an edge if the corresponding entry in H is non-vanishing. Clearly this
+               procedure can be inverted: to any factor graph with N variable nodes and M
+                                             DEFINITIONS                                       217
+
+           function nodes, we can associate an M × N binary matrix H, the adjacency
+           matrix of the graph, whose non-zero entries correspond to the edges of the
+           graph.
+
+           11.1.3   Ensembles with given degree profiles
+                                                                                                      {se:LDPCegdp}
+           In Chapter 9 we introduced the ensembles of factor graphs         P∞DN (Λ, nP ). These
+           have
+           P∞       N  variable  nodes,   and the two  polynomials   Λ(x)  =    n=0 Λn x , P (x) =
+                         n
+                n=0 nP  x   define the   degree profiles: Λ n is the probability  that a randomly
+           chosen variable node has degree n, Pn is the probability that a randomly cho-
+           sen function node has degree n. We always assume that variable nodes have
+           degrees ≥ 1, and function nodes have degrees ≥ 2, in order to eliminate triv-
+           ial cases. The numbers of parity check and variable nodes satisfy the relation
+           M = N Λ′ (1)/P ′ (1).
+                  We define the ensemble LDPCN (Λ, P ) to be the ensemble of LDPC codes
+           whose parity check matrix is the adjacency matrix of a random graph from the
+           DN (Λ, P ) ensemble. (We will be interested in the limit N → ∞ while keeping the
+           degree profiles fixed. Therefore each vertex typically connects to a vanishingly
+           small fraction of other vertices, hence the qualification ‘low density’). The ratio
+           L/N = (N − M )/N = 1 − Λ′ (1)/P ′ (1), which is a lower bound to the actual rate
+           R, is called the design rate Rdes of the code (or, of the ensemble). The actual
+           rate of a code from the LDPCN (Λ, P ) ensemble is of course a random variable,
+           but we will see below that it is in general sharply concentrated ‘near’ Rdes .
+                  A special case which is often considered is the one of ‘regular’ graphs with
+           fixed degrees: all variable nodes have degree l and all functions nodes have degree
+           k, (i.e. P (x) = xk and Λ(x) = xl ). The corresponding code ensemble is usually
+           simply denoted as LDPCN (l, k), or, more synthetically as (l, k). It has design
+           rate Rdes = 1 − kl .
+                  Generating a uniformly random graph from the DN (Λ, P ) ensemble is not a
+           trivial task. The simplest way to by-pass such a problem consists in substituting
+           the uniformly random ensemble with a slightly different one which has a simple
+           algorithmic description. One can proceed for instance as follows. First separate
+           the set of variable nodes uniformly at random into subsets of sizes N Λ0 , N Λ1 ,
+           . . . , N Λlmax , and attribute 0 ‘sockets’ to the nodes in the first subset, one socket
+           to each of the nodes in the second, and so on. Analogously, separate the set of
+           check nodes into subsets of size M P0 , M P1 , . . . , M Pkmax and attribute to nodes
+           in each subset 0, 1, . . . , kmax socket. At this point the variable nodes have N Λ′ (1)
+           sockets, and so have the check nodes. Draw a uniformly random permutation over
+           N Λ′ (1) objects and connect the sockets on the two sides accordingly.
+
+           Exercise 11.1 In order to sample a graph as described above, one needs two
+           routines. The first one separates a set of N objects uniformly into subsets of
+           prescribed sizes. The second one samples a random permutation over a N Λ′ (1).
+           Show that both of these tasks can be accomplished with O(N ) operations
+           (having at our disposal a random number generator).
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                   218                   LOW-DENSITY PARITY-CHECK CODES
+
+                       This procedure has two flaws: (i) it does not sample uniformly DN (Λ, P ),
+                   because two distinct factor graphs may correspond to a different number of
+                   permutations. (ii) it may generate multiple edges joining the same couple of
+                   nodes in the graph.
+                       In order to cure the last problem, we shall agree that each time n edges join
+                   any two nodes, they must be erased if n is even, and they must be replaced
+                   by a single edge if n is odd. Of course the resulting graph does not necessarily
+                   have the prescribed degree profile (Λ, P ), and even if we condition on this to be
+                   the case, its distribution is not uniform. We shall nevertheless insist in denoting
+                   the ensemble as LDPCN (Λ, P ). The intuition is that, for large N , the degree
+                   profile is ‘close’ to the prescribed one and the distribution is ‘almost uniform’,
+                   for all our purposes. Moreover, what is really important is the ensemble that is
+                   implemented in practice.
+
+                   Exercise 11.2 This exercise aims at proving that, for large N , the degree
+                   profile produced by the explicit construction is close to the prescribed one.
+                      (i) Let m be the number of multiple edges appearing in the graph and com-
+                          pute its expectation. Show that E m = O(1) as N → ∞ with Λ and P
+                          fixed.
+                     (ii) Let (Λ′ , P ′ ) be the degree profile produced by the above procedure. De-
+                          note by
+                                                    X                 X
+                                                d≡      |Λl − Λ′l | +   |Pk − Pk′ | ,         (11.3)
+                                                   l               k
+
+                          the ‘distance’ between the prescribed and the actual degree profiles.
+                          Derive an upper bound on d in terms of m and show that it implies
+                          E d = O(1/N ).
+
+
+                   11.2   Geometry of the codebook
+     {se:WELDPC}
+                   As we saw in Sec. 6.2, a classical approach to the analysis of error correcting codes
+                   consists in studying the ‘geometric’ properties of the corresponding codebooks.
+                   An important example of such properties is the distance enumerator Nx0 (d),
+                   giving the number of codewords at Hamming distance d from x0 . In the case
+                   of linear codes, the distance enumerator does not depend upon the reference
+              ⋆    codeword x0 (the reader is invited to prove this simple statement).It is therefore
+                   customary to take the all-zeros codeword as the reference, and to use the denom-
+                   ination weight enumerator: N (w) = Nx0 (d = w) is the number of codewords
+                   having weight (the number of ones in the codeword) equal to w.
+                       In this section we want to estimate the expected weight enumerator N (w) ≡
+                   E N (w), for a random code in the LDPCN (Λ, P ) ensemble. In general one ex-
+                   pects, as for the random code ensemble of Sec. 6.2, that N (w) grows exponen-
+                   tially in the block-length N , and that most of the codewords have a weight
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                              GEOMETRY OF THE CODEBOOK                                   219
+
+                      w = N ω growing linearly with N . We will in fact compute the exponential
+                      growth rate φ(ω) defined by
+                                                              .
+  {eq:weightphidef}                               N (w = N ω) = eN φ(ω) .                (11.4)
+                          Notice that this number is an ‘annealed average’, in the terminology of dis-
+                      ordered systems: in other words, it can be dominated by rare instances in the
+                      ensemble. On the other hand, one expects log N (w) to be tightly concentrated
+                      around its typical value N φq (ω). The typical exponent φq (ω) can be computed
+                      through a quenched calculation, for instance considering limN →∞ N −1 E log [1 + N (w)].
+                      Of course φq (ω) ≤ φ(ω) because of the concavity of the logarithm. In this Chap-
+                      ter we keep to the annealed calculation, which is much easier and gives an upper
+                      bound. Quenched calculations will be the object of Chapter ???.
+                          Let x ∈ {0, 1}N be a binary word of length N and weight w. Notice that
+                      Hx = 0 mod 2 if and only if the corresponding factor graph has the following
+                      property. Consider all variable nodes i such that xi = 1, and color in red all
+                      edges incident on these nodes. Color in blue all the other edges. Then all the
+                      check nodes must have an even number of incident red edges. A little thought
+                      shows that N (w) is the number of ‘colored’ factor graphs having this property,
+                      divided by the total number of factor graphs in the ensemble. We shall compute
+                      this number first for a graph with fixed degrees, associated with a code in the
+                      LDPCN (l, k) ensemble, and then we shall generalize to arbitrary degree profiles.
+                      11.2.1 Weight enumerator: fixed degrees
+                      In the fixed degree case we have N variables nodes of degree l, M function nodes
+                      of degree k. We denote by F = M k = N l the total number of edges. A valid
+                      colored graph must have E = wl red edges. It can be      constructed as follows. First
+                      choose w variable nodes, which can be done in N        w ways. Assign to each node in
+                      this set l red sockets, and to each node outside the set l blue sockets. Then, for
+                      each of the M function nodes, color in red an even subset of its sockets in such
+                      a way that the total number of red sockets is E = wl. Let mr be the number of
+                      function nodes with r red sockets. TheP        numbers mr can bePnon-zero only when
+                                                                      k                  k
+                      r is even, and they are constrained by r=0 mr = M and r=0 rmr = lw. The
+                      number of ways one can color the sockets of the function nodes is thus:
+                                         X (e)                       k             k
+                                                          M              X                X             
+                        C(k, M, w) =                                   I     mr = M I         rmr = lw ,
+                                       m ,...,m
+                                                   m 0 , . . . , mk      r=0              r=0
+                                        0      k
+                                                                                                (11.5) {eq:colsock}
+                                       P(e)
+                      where the sum          means that non-zero mr appear only for r even. Finally
+                      we join the variable node and check node sockets in such a way that colors are
+                      matched. There are (lw)!(F − lw)! such matchings out of the total number of F !
+                      corresponding to different element in the ensemble. Putting everything together,
+                      we get the final formula:
+                                                   (lw)!(F − lw)! N
+                                                                   
+                                          N (w) =                      C(k, M, w) .             (11.6)
+                                                         F!         w
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                       220                     LOW-DENSITY PARITY-CHECK CODES
+
+                          In order to compute the function φ(ω) in (11.4), one needs to work out
+                       the asymptotic behavior of this formula when N → ∞ at fixed ω = w/N .
+                       Assuming that mr = xr M = xr N l/k, one can expand the multinomial factors
+                       using Stirling’s formula. This gives:
+                                            "                                      #
+                                          ∗               l X                       k
+  {eq:weightphires1}       φ(ω) = max (1 − l)H(ω) +            −xr log xr + xr log       , (11.7)
+                                    {xr }                 k r                       r
+
+                       where the max∗ is taken
+                                            P over all choices
+                                                             P of x0 , x2 , x4 , . . . in [0, 1], subject to
+                       the two constraints r xr = 1 and r rxr = kω. The maximization can be
+                       done by imposing these constraints via two Lagrange multipliers. One gets xr =
+                       Cz r kr I(r even), where C and z are two constants fixed by the constraints:
+
+                                                                    2
+                                                    C=                                                              (11.8)
+                                                           (1 + z)k + (1 − z)k
+                                                            (1 + z)k−1 − (1 − z)k−1
+                                                     ω=z                                                            (11.9)
+                                                               (1 + z)k + (1 − z)k
+
+                       Plugging back the resulting xr into the expression (11.10) of φ, this gives finally:
+
+                                                          l     (1 + z)k + (1 − z)k
+  {eq:weightphires1}            φ(ω) = (1 − l)H(ω) +        log                     − ωl log z ,                (11.10)
+                                                          k              2
+                       where z is the function of ω defined in (11.9).
+                          We shall see in the next sections how to use this result, but let us first explain
+                       how it can be generalized.
+
+                       11.2.2   Weight enumerator: general case
+                                                                                          .
+                       We want to compute the leading exponential behavior N (w) = exp[N φ(ω)] of
+                       the expected weight enumerator for a general LDPCN (Λ, P ) code. The idea of
+                       the approach is the same as the one we have just used for the case of regular
+                       ensembles, but the computation becomes somewhat heavier. It is therefore useful
+                       to adopt more compact notations. Altogether this section is more technical than
+                       the others: the reader who is not interested in the details can skip it and go to
+                       the results.
+                           We want to build a valid colored graph, let us denote  Q by E its number of
+                       edges (which is no longer fixed by w). There are coeff[ l (1 + xy l )N Λl , xw y E ]
+                       ways of choosing the w variable nodes in such a way that their degrees add up to
+                       E 28 . As before, for each of the M function nodes, we color in red an even subset
+                       of its sockets in such
+                                          Q a way that the total number of red sockets is E. This can
+                       be done in coeff[ k qk (z)MPk , z E ] ways, where qk (z) ≡ 21 (1 + z)k + 12 (1 − z)k .
+                       The numbers of ways one can match the red sockets in variable and function
+
+                        28 We denote by coeff[f (x), xn ] the coefficient of xn in the formal power series f (x).
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                                 GEOMETRY OF THE CODEBOOK                                                               221
+
+
+
+
+                                                                                                                                            1
+
+                                                                                                                                            0.5
+                 9
+                                                                                                                                            0      Im(z)
+                 6                                                              1
+                                                                          0.5                                                               -0.5
+                 3
+                                                                      0    Im(z)                                                            -1
+                 0
+                  -1                                              -0.5                   -1        -0.5        0              0.5       1
+                           -0.5
+                                      0                                                                      Re(z)
+                                  Re(z)        0.5           -1
+
+
+
+                                  Fig. 11.1. Modulus of the function z −3ξ q4 (z)3/4 for ξ = 1/3.                                                  {fig:SaddleWE}
+
+                       nodes is still E!(F − E)!, where F = N Λ′ (1) = M P ′ (1) is the total number of
+                       edges in the graph. This gives the exact result
+
+                                    F
+                                    X E!(F − E)!
+                         N (w) =
+                                                 F!
+                                    E=0
+                                              "l                                    #           "k                            #
+                                                Ymax                                              max
+                                                                                                  Y
+                                                              l N Λl       w E                               MPk          E
+   {eq:WELeading1}                    coeff            (1 + xy )         ,x y           coeff           qk (z)       ,z           . (11.11)
+                                                l=1                                              k=2
+
+                           In order to estimate the leading exponential behavior at large N , when w =
+                       N ω, we set E = F ξ = N Λ′ (1)ξ. The asymptotic behaviors of the coeff[. . . , . . . ]
+                       terms can be estimated using the saddle point method. Here we sketch the idea
+                       for the second of these terms. By Cauchy theorem
+                                                                    kY
+                             "k                   # I
+                               max
+                                                              1      max
+                                                                               MPk dz      f (z)N dz
+                               Y                                                         I
+                                         MPk    E
+                       coeff       qk (z)    ,z    =                     qk (z)        ≡                ,
+                              k=2
+                                                       z N Λ (1)ξ+1
+                                                            ′
+                                                                                   2πi
+                                                                                    k=2
+                                                                                              z   2πi
+                                                                                                                                    (11.12)
+
+                       where the integral runs over any path encircling the origin in the complex z
+                       plane, and
+                                                                         kY
+                                                                          max
+                                                                  1                       ′         ′
+                                                 f (z) ≡                        qk (z)Λ (1)Pk /P (1) .                              (11.13)
+                                                            z Λ′ (1)ξ k=2
+
+                       In Fig. 11.1 we plot the modulus of the function f (z) for degree distributions
+                       Λ(x) = x3 , P (x) = x4 and ξ = 1/3. The function has a saddle point, whose
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           222                        LOW-DENSITY PARITY-CHECK CODES
+
+           location z∗ = z∗ (ξ) ∈ R+ solves the equation f ′ (z) = 0, which can also be
+           written as
+                                               kX
+                                                max
+                                                             (1 + z)k−1 − (1 − z)k−1
+                                      ξ=              ρk z                           ,                            (11.14)
+                                                                (1 + z)k + (1 − z)k
+                                               k=2
+
+           where we used the notation ρk ≡ kPk /P ′ (1) already introduced in Sec. 9.5
+           (analogously, we shall write λl ≡ lΛl /Λ′ (1)). This equation generalizes (11.9). If
+           we take the integration contour in Eq. (11.12) to be the circle of radius z∗ , the
+           integral is dominated by the saddle point at z∗ (together with the symmetric
+           point −z∗ ). We get therefore
+                 "k                   #      ( "                           kmax
+                                                                                               #)
+                   max
+                   Y
+                             MPk    E   .             ′             Λ′ (1) X
+           coeff       qk (z)    ,z     = exp N −Λ (1)ξ log z∗ + ′              Pk log qk (z∗ )   .
+                                                                    P (1)
+                  k=2                                                                                 k=2
+
+              Proceeding analogously with the second coeff[. . . , . . . ] term in Eq. (11.11),
+                              .
+           we get N (w = N ω) = exp{N φ(ω)}. The function φ is given by
+                                    n
+             φ(ω) = sup inf          −Λ′ (1)H(ξ) − ω log x − Λ′ (1)ξ log(yz) +
+                        ξ   x,y,z
+
+                                              lX                             kmax
+                                                                                               )
+                                               max
+                                                                      Λ′ (1) X
+                                                                       l
+                                          +          Λl log(1 + xy ) + ′          Pk log qk (z) , (11.15)
+                                                                      P (1)
+                                               l=2                                     k=2
+
+           where the minimization over x, y, z is understood to be taken over the positive
+           real axis while ξ ∈ [0, 1]. The stationarity condition with respect to variations of
+           z is given by Eq. (11.14). Stationarity with respect to ξ, x, y yields, respectively
+                                                      lX                                 lX
+                          yz                           max
+                                                                    xy l                  max
+                                                                                                       xy l
+                  ξ=           ,               ω=            Λl            ,      ξ=            λl            .   (11.16)
+                        1 + yz                                    1 + xy l                           1 + xy l
+                                                      l=1                                l=1
+
+           If we use the first of these equations to eliminate ξ, we obtain the final parametric
+           representation (in the parameter x ∈ [0, ∞[) of φ(ω):
+                                                                                 lX
+                                                                                  max
+
+                     φ(ω) = −ω log x − Λ′ (1) log(1 + yz) +                             Λl log(1 + xy l ) +       (11.17)
+                                                                                 l=1
+                                                                                  k
+                                                                           Λ′ (1) Xmax
+
+                                                                       +               Pk log qk (z) ,
+                                                                           P ′ (1)
+                                                                                  k=2
+                                 lX
+                                  max
+                                                 xy l
+                            ω=            Λl            ,                                                         (11.18)
+                                               1 + xy l
+                                    l=1
+
+           with y = y(x) and z = z(x) solutions of the coupled equations
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                 GEOMETRY OF THE CODEBOOK                                         223
+
+                           Pkmax                          Plmax
+                                 ρk p −
+                                      k (z)                       l=1 λl xy
+                                                                            l−1
+                                                                                /(1 + xy l )
+                       y = Pk=2
+                            kmax      +
+                                            ,       z=            Plmax                        (11.19)
+                                                                                     l
+                            k=2 ρk pk (z)                           l=1 λl /(1 + xy ) ,
+                                            k−1         k−1
+                                     (1+z)    ±(1−z)
+           where we defined p±
+                             k (z) ≡   (1+z)k +(1−z)k
+                                                              .
+
+           Exercise 11.3 The numerical solution of Eqs. (11.18) and (11.19) can be quite
+           tricky. Here is a simple iterative procedure which seems to work reasonably well
+           (at least, in all the cases explored by the authors). The reader is invited to try
+           it with her favorite degree distributions Λ, P .
+               First, solve Eq. (11.18) for x at given y ∈ [0, ∞[ and ω ∈ [0, 1], using a
+           bisection method. Next, substitute this value of x in Eq. (11.19), and write the
+           resulting equations as y = f (z) and z = g(y, ω). Define Fω (y) ≡ f (g(y, ω)).
+           Solve the equation y = Fω (y) by iteration of the map yn+1 = Fω (yn ) Once the
+           fixed point y∗ is found, the other parameters are computed as z∗ = g(y∗ , ω) and
+           x∗ is the solution of Eq. (11.18) for y = y∗ . Finally x∗ , y∗ , z∗ are substituted in
+           Eq. (11.17) to obtain φ(ω).
+               Examples of functions φ(ω) are shown in Figures 11.2, 11.3, 11.4. We shall
+           discuss these results in the next section, paying special attention to the region
+           of small ω.
+           11.2.3   Short distance properties
+           In the low noise limit, the performance of a code depends a lot on the existence
+           of codewords at short distance from the transmitted one. For linear codes and
+           symmetric communication channels, we can assume without loss of generality
+           that the all zeros codeword has been transmitted. Here we will work out the
+           short distance (i.e. small weight ω) behavior of φ(ω) for several LDPC ensembles.
+           These properties will be used to characterize the code performances in Section
+           11.3.
+               As ω → 0, solving Eqs. (11.18) and (11.19) yields y, z → 0. By Taylor expan-
+           sion of these equations, we get
+                        y ≃ ρ′ (1)z ,   z ≃ λlmin xy lmin −1 ,         ω ≃ Λlmin xy lmin ,     (11.20)
+           where we neglected higher order terms in y, z. At this point we must distinguish
+           whether lmin = 1, lmin = 2 or lmin ≥ 3.                         √
+              We start with the case lmin = 1. Then x, y, z all scale like ω, and a short
+           computation shows that
+                                           1
+                                   φ(ω) = − ω log ω/Λ21 + O(ω) .
+                                                       
+                                                                                               (11.21)
+                                           2
+           In particular φ(ω) is strictly positive for ω sufficiently small. The expected num-
+           ber of codewords within a small (but Θ(N )) Hamming distance from a given
+           codeword is exponential in N . Furthermore, Eq. (11.21) is reminiscent of the
+           behavior in absence of any parity check. In this case φ(ω) = H(ω) ≃ −ω log ω.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           224                     LOW-DENSITY PARITY-CHECK CODES
+
+
+                                  0.7                         0.06
+                                                              0.04
+                                  0.6                         0.02
+                                  0.5                         0.00
+                                                                 0.00       0.02    0.04
+                                  0.4
+                           φ(ω)
+                                  0.3
+
+                                  0.2
+
+                                  0.1
+
+                                   0
+
+                                        0   0.2   0.4            0.6          0.8          1
+                                                          ω
+
+           Fig. 11.2. Logarithm of the expected weight enumerator, φ(ω), plotted versus
+           the reduced weight ω = w/N , for the ensemble LDPCN ( 14 x + 14 x2 + 12 x3 , x6 ).
+           Inset: small weight region. φ(ω) is positive near to the origin, and in fact its
+           derivative diverges as ω → 0: each codeword is surrounded by a large number of
+           very close other codewords. This makes it a very bad error correcting code.        {fig:WEIRR1}
+
+
+           Exercise 11.4 In order to check Eq. (11.21), compute the weight enumerator
+           for the regular LDPCN (l = 1, k) ensemble. Notice that, in this case the weight
+           enumerator does not depend on the code realization and admits the simple
+           representation N (w) = coeff[qk (z)N/k , z w ].
+
+               An example of weight enumerator for an irregular code with lmin = 1 is shown
+           in Fig. 11.2. The behavior (11.21) is quite bad for an error correcting code. In
+           order to understand why, let us for a moment forget that this result was obtained
+           by taking ω → 0 after N → ∞, and apply it in the regime N → ∞ at w = N ω
+           fixed. We get
+                                                              12 w
+                                                          N
+                                            N (w) ∼                     .                      (11.22)
+                                                          w
+
+           It turns out that this result holds not only in average but for most codes in the
+           ensemble. In other words, already at Hamming distance 2 from any given code-
+           word there are Θ(N ) other codewords. It is intuitively clear that discriminating
+           between two codewords at Θ(1) Hamming distance, given a noisy observation, is
+           in most of the cases impossible. Because of these remarks, one usually discards
+           lmin = 1 ensembles for error correcting purposes.
+               Consider now the case lmin = 2. From Eq. (11.20), we get
+
+                                                          P ′′ (1) 2Λ2
+                                                                        
+                             φ(ω) ≃ Aω ,          A ≡ log                  .                   (11.23)
+                                                          P ′ (1) Λ′ (1)
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                   GEOMETRY OF THE CODEBOOK                                       225
+
+
+                                   0.6
+                                                                 0.020
+                                   0.5                           0.010
+                                                                 0.000
+                                   0.4
+                                                                     0.00   0.01    0.02
+                                   0.3
+                            φ(ω)
+                                   0.2
+
+                                   0.1
+
+                                    0
+
+                                         0   0.2       0.4         0.6        0.8          1
+                                                             ω
+
+           Fig. 11.3. Logarithm of the expected weight enumerator for the LDPCN (2, 4)
+           ensemble: Λ(x) = x2 , meaning that all variable nodes have degree 2, and
+           P (x) = 4, meaning that all function nodes have degree 4. Inset: small weight
+           region. The constant A is positive, so there exist codewords at short distances {fig:WE24}
+
+           The code ensemble has significantly different properties depending on the sign
+           of A. If A > 0, the expected number of codewords within a small (but Θ(N ))
+           Hamming distance from any given codeword is exponential in the block-length.
+           The situation seems similar to the lmin = 1 case. Notice however that φ(ω) goes
+           much more quickly to 0 as ω → 0 in the present case. Assuming again that
+           (11.23) holds beyond the asymptotic regime in which it was derived, we get
+                                                   N (w) ∼ eAw .                               (11.24)
+           In other words the number of codewords around any particular one is o(N )
+           until we reach a Hamming distance d∗ ≃ log N/A. For many purposes d∗ plays
+           the role of an ‘effective’ minimum distance. The example of the regular code
+           LDPCN (2, 4), for which A = log 3, is shown in Fig. 11.3
+               If on the other hand A < 0, then φ(ω) < 0 in some interval ω ∈]0, ω∗ [. The
+           first moment method then shows that there are no codewords of weight ‘close
+           to’ N ω for any ω in this range.
+               A similar conclusion is reached if lmin ≥ 3, where one finds:
+                                           lmin − 2
+                                                                 
+                                                               ω
+                                 φ(ω) ≃               ω log           ,           (11.25)
+                                               2              Λlmin
+           An example of weight enumerator exponent for a code with good short distance
+           properties, the LDPCN (3, 6) code, is given in Fig. 11.4.
+              This discussion can be summarized as:
+           Proposition 11.1 Consider a random linear code from the LDPCN (Λ, P ) en-
+                                                ′′
+           semble with lmin ≥ 2 and assume PP ′ (1)(1) 2Λ2
+                                                      Λ′ (1) < 1. Let ω∗ ∈]0, 1/2[ be the first
+           non-trivial zero of φ(ω), and consider any interval [ω1 , ω2 ] ⊂]0, ω∗[. With high
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                   226                       LOW-DENSITY PARITY-CHECK CODES
+
+
+                                            0.6
+                                                                         0.005
+                                            0.5                          0.000
+                                                                        -0.005
+                                            0.4                         -0.010
+                                                                             0.00   0.02   0.04
+                                            0.3
+                                     φ(ω)
+                                            0.2
+
+                                            0.1
+
+                                             0
+
+                                                  0   0.2     0.4         0.6       0.8           1
+                                                                    ω
+
+                   Fig. 11.4. Logarithm of the expected weight enumerator for the LDPCN (3, 6)
+                   ensemble. Inset: small weight region. φ(ω) < 0 for ω < ω∗ ∼ .02. There are no
+      {fig:WE36}   codewords except from the ‘all-zeros’ one in the region ω < ω∗ .
+
+                   probability, there does not exist any pair of codewords with distance belonging to
+                   this interval.
+                       Notice that our study only deals with weights w = ωN which grow linearly
+                   with N . The proposition excludes the existence of codewords of arbitrarily small
+                   ω, but it does not tell anything about possible codewords of sub-linear weight:
+                   w = o(N ) (for instance, with w finite as N → ∞). It turns out that, if lmin ≥ 3,
+                   the code has with high probability no such codewords, and its minimum distance
+                   is at least N ω∗ . If on the other hand lmin = 2, the code has typically codewords
+                   of finite weight. However (if A < 0), they can be eliminated without changing
+                   the code rate by an ‘expurgation’ procedure.
+
+                   11.2.4   Rate
+                   The weight enumerator can also be used to obtain a precise characterization of
+                   the rate of a LDPCN (Λ, P ) code. For ω = 1/2, x = y = z = 1 satisfy Eqs. (11.18)
+                   and (11.19); this gives:
+
+                                                        Λ′ (1)
+                                                              
+                                   φ(ω = 1/2) = 1 − ′            log 2 = Rdes log 2 .        (11.26)
+                                                        P (1)
+
+                   It turns out that, in most29 of the cases of practical interest, the curve φ(ω) has
+                   its maximum at ω = 1/2 (see for instance the figures 11.2, 11.3, 11.4). In such
+                   cases the result (11.26) shows that the rate equals the design rate:
+     {prop:Rate}
+                   Proposition 11.2 Let R be the rate of a code from the LDPCN (Λ, P )ensemble,
+                   Rdes = 1 − Λ′ (1)/P ′ (1) the associated design rate and φ(ω) the function defined
+                   in Eqs. (11.17) to (11.19). Assume that φ(ω) achieves its absolute maximum
+                    29 There exist exceptions though (see the Notes section for references).
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           CAPACITY OF LDPC CODES FOR THE BINARY SYMMETRIC CHANNEL 227
+
+           over the interval [0, 1] at ω = 1/2. Then, for any δ > 0, there exists a positive
+           N -independent constant C1 (δ) such that
+
+                                    P{|R − Rdes | ≥ δ} ≤ C1 (δ) 2−N δ/2 .                       (11.27)
+
+           Proof: Since we already established that R ≥ Rdes , we only need to prove an
+           upper bound on R. The rate is defined as R ≡ (log2 N )/N , where N is the total
+           number of codewords. Markov’s inequality gives:
+
+                      P{R ≥ Rdes + δ} = P{N ≥ 2N (Rdes +δ) } ≤ 2−N (Rdes +δ) E N .              (11.28)
+                                                                    .
+           The expectation of the number of codewords is E N (w) = exp{N φ(w/N )}, and
+           there are only N + 1 possible values of the weight w, therefore:
+                                             .
+                                         E N = exp{N sup φ(ω)} ,                                (11.29)
+                                                         ω∈[0,1]
+
+
+           As sup φ(ω) = φ(1/2) = Rdes log 2 by hypothesis, there exists a constant C1 (δ)
+           such that, for any N , E N ≤ C1 (δ)2N (Rdes +δ/2) for any N . Plugging this into
+           Eq. (11.28), we get
+
+                                      P{R ≥ Rdes + δ} ≤ C1 (δ) 2N δ/2 .                         (11.30)
+
+           
+
+           11.3    Capacity of LDPC codes for the binary symmetric channel
+                                                                                                            {se:BoundsLDPC}
+           Our study of the weight enumerator has shown that codes from the LDPCN (Λ, P )
+           ensemble with lmin ≥ 3 have a good short distance behavior. The absence of
+           codewords within an extensive distance N ω∗ from the transmitted one, guar-
+           antees that any error (even introduced by an adversarial channel) changing a
+           fraction of the bits smaller than ω∗ /2 can be corrected. Here we want to study
+           the performance of these codes in correcting typical errors introduced from a
+           given (probabilistic) channel. We will focus on the BSC(p) which flips each bit
+           independently with probability p < 1/2. Supposing as usual that the all-zero
+           codeword x(0) = 0 has been transmitted, let us call y = (y1 . . . yN ) the received
+           message. Its components are iid random variables taking value 0 with probability
+           1 − p, value 1 with probability p. The decoding strategy which minimizes the
+           block error rate is word MAP decoding30 , which outputs the codeword closest to
+           the channel output y. As already mentioned, we don’t bother about the practical
+           implementation of this strategy and its computational complexity.
+               The block error probability for a code C, denoted by PB (C), is the probability
+           that there exists a ‘wrong’ codeword, distinct from 0, whose distance to y is
+           smaller than d(0, y). Its expectation value over the code ensemble, PB = E PB (C),
+             30 Since all the codewords are a priori equiprobable, this coincides with maximum likelihood
+
+           decoding.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                   228                    LOW-DENSITY PARITY-CHECK CODES
+
+                   is an important indicator of ensemble performances. We will show that in the
+                   large N limit, codes with lmin ≥ 3 undergo a phase transition, separating a low
+                   noise phase, p < pML , in which the limit of PB is zero, from a high noise phase,
+                   p > pML , where it is not. While the computation of pML is deferred to Chapter
+                   ??, we derive here some rigorous bounds which indicate that some LDPC codes
+                   have very good (i.e. close to Shannon’s bound) performances under ML decoding.
+
+     {se:LBLDPC}   11.3.1   Lower bound
+                   We start by deriving a general bound on the block error probability PB (C) on
+                   the BSC(p) channel, valid for any linear code. Let N = 2N R be the size of the
+                   codebook C. By union bound:
+
+                                              n                                   o
+                                    PB (C) = P ∃ α 6= 0 s.t. d(x(α) , y) ≤ d(0, y)
+                                                N
+                                                X −1    n                     o
+                                           ≤           P d(x(α) , y) ≤ d(0, y) .               (11.31)
+                                                α=1
+
+
+
+                   As the components of y are iid Bernoulli variables, the probability P{d(x(α) , y) ≤
+                   d(0, y)} depends on x(α) only through its weight. Let x(w) be the vector formed
+                   by w ones followed by N − w zeroes, and denote by N (w) the weight enumerator
+                   of the code C. Then
+
+                                                N
+                                                X             
+                                     PB (C) ≤          N (w) P d(x(w), y) ≤ d(0, y) .          (11.32)
+                                                w=1
+
+
+
+                   The probability P d(x(w), y) ≤ d(0, y) can be written as u w
+                                                                           P      u      w−u
+                                                                                u p (1−p)      I(u ≥
+                   w/2), where u is the number of yi = 1 in the first w components. A good bound
+                   is provided by a standard Chernov estimate. For any λ > 0:
+
+
+                         P d(x(w), y) ≤ d(0, y) ≤ Eeλ[d(0,y)−d(x(w),y)] = [(1 − p) e−λ + p eλ ]w .
+                          
+
+
+
+                   The best bound is obtained for λ = 12 log( 1−p
+                                                               p ) > 0, and gives
+
+
+                                                            N
+                                                            X
+                                                PB (C) ≤          N (w) e−γw .                 (11.33)
+                                                            w=1
+
+
+                                  p                           p
+                   where γ ≡ − log 4p(1 − p) ≥ 0. The quantity 4p(1 − p) is sometimes referred
+                   to as Bhattacharya parameter.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           CAPACITY OF LDPC CODES FOR THE BINARY SYMMETRIC CHANNEL 229
+
+
+           Exercise 11.5 Consider the case of a general binary memoryless symmetric
+           channel with transition probability Q(y|x), x ∈ {0, 1} y ∈ Y ⊆ R. First show
+           that Eq. (11.31) remains valid if the Hamming distance d(x, y) is replaced by
+           the log-likelihood
+                                                   N
+                                                   X
+                                    dQ (x|y) = −         log Q(yi |xi ) .             (11.34)
+                                                   i=1
+
+           [Hint: remember the general expressions (6.3), (6.4) for the probability P (x|y)
+           that the transmitted codeword was x, given that the received message is y].
+           Then repeat the derivation from Eq. (11.31) to Eq. (11.33). The final expression
+           involves γ = − log BQ , where the Bhattacharya parameter is defined as BQ =
+           P p
+             y    Q(y|1)Q(y|0).
+
+               Equation (11.33) shows that the block error probability depends on two fac-
+           tors: one is the weight enumerator, the second one, exp(−γw) is a channel-
+           dependent term: as the weight of the codewords increases, their contribution is
+           scaled down by an exponential factor because it is less likely that the received
+           message y will be closer to a codeword of large weight than to the all-zero code-
+           word.
+               So far the discussion is valid for any given code. Let us now consider the
+           average over LDPCN (Λ, P ) code ensembles. A direct averaging gives the bound:
+                                     N
+                                                          (                      )
+                                                −γw .
+                                    X
+                  PB ≡ EC PB (C) ≤      N (w) e     = exp N sup [φ(ω) − γω] . (11.35)
+                                    w=1                              ω∈]0,1]
+
+
+           As such, this expression is useless, because the supω [φ(ω) − γω], being larger or
+           equal than the value at ω = 0, is positive. However, if we restrict to codes with
+           lmin ≥ 3, we know that, with probability going to one in the large N limit, there
+           exists no wrong codeword in the ω interval ]0, ω∗ [. In such cases, the maximization
+           over ω in (11.35) can be performed in the interval [ω∗ , 1] instead of ]0, 1]. (By
+                                                                   P ω∗ −1
+           Markov inequality, this can be proved whenever N N        w=1    N (w) → 0 as N →
+           ∞). The bound becomes useful whenever the supremum supω∈[ω∗ ,1] [φ(ω)−γω] <
+           0: then PB vanishes in the large N limit. We have thus obtained:
+                                                                                                  {propo:LDPCUnionBound}
+           Proposition 11.3 Consider the average block error rate PB for a random code
+           in the LDPCN (Λ, P ) ensemble,
+                                     p      with lmin ≥ 3, used over a BSC(p) channel, with
+           p < 1/2. Let γ ≡ − log 4p(1 − p) and let φ(ω) be the the weight enumerator
+           exponent, defined in (11.4) [φ(ω) can be computed using Eqs. (11.17), (11.18),
+           and (11.19)]. If φ(ω) < γω for any ω ∈ (0, 1] such that φ(ω) ≥ 0, then PB → 0
+           in the large block-length limit.
+              This result has a pleasing geometric interpretation which is illustrated in
+           Fig. 11.5 for the (3, 6) regular ensemble. As p increases from 0 to 1/2, γ decreases
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           230                      LOW-DENSITY PARITY-CHECK CODES
+
+
+                                   0.6
+
+                                   0.5       p<plb                 p=plb
+
+                                   0.4
+                                                                            p>plb
+                                   0.3
+                            φ(ω)
+                                   0.2
+
+                                   0.1
+
+                                    0
+
+                                         0    0.2       0.4       0.6      0.8      1
+                                                              ω
+
+           Fig. 11.5. Geometric construction yielding the lower bound on the threshold
+           for reliable communication for the LDPCN (3, 6) ensemble used over the binary
+           symmetric channel. In this case pLB ≈ 0.0438737. The other two lines refer to
+           p = 0.01 < pLB and p = 0.10 > pLB .                                           {fig:UnionBound36}
+
+           from +∞ to 0. The condition φ(ω) < γω can be rephrased by saying that the
+           weight enumerator exponent φ(ω) must lie below the straight line of slope γ
+           through the origin. Let us call pLB the smallest value of p such that the line γω
+           touches φ(ω).
+              The geometric construction implies pLB > 0. Furthermore, for p large enough
+           Shannon’s Theorem implies that PB is bounded away from 0 for any non-
+           vanishing rate R > 0. The ML threshold pML for the ensemble LDPCN (Λ, P )
+           can be defined as the largest (or, more precisely, the supremum) value of p such
+           that limN →∞ PB = 0. This definition has a very concrete practical meaning: for
+           any p < pML one can communicate with an arbitrarily small error probability,
+           by using a code from the LDPCN (Λ, P ) ensemble provided N is large enough.
+           Proposition 11.3 then implies:
+
+
+                                                     pML ≥ pLB .                        (11.36)
+
+
+           In general one expects limN →∞ PB to exist (and to be strictly positive) for
+           p > pML . However, there exists no proof of this statement.
+               It is interesting to notice that, at p = pLB , our upper bound on PB is domi-
+           nated by codewords of weight w ≈ N ω̃, where ω̃ > 0 is the value where φ(ω)−γω
+           is maximum (which is larger than ω∗ ). This suggests that, each time an error
+           occurs, a finite fraction of the bits are decoded incorrectly and this fraction fluc-
+           tuates little from transmission to transmission (or, from code to code in the
+           ensemble). The geometric construction also suggests the less obvious (but essen-
+           tially correct) guess that this fraction jumps discontinuously from 0 to a finite
+           value when p crosses the critical value pML .
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           CAPACITY OF LDPC CODES FOR THE BINARY SYMMETRIC CHANNEL 231
+
+
+           Exercise 11.6 Let us study the case lmin = 2. Proposition 11.3 is no longer
+           valid, but we can still apply Eq. (11.35). (i) Consider the (2, 4) ensemble whose
+           weight enumerator exponent is plotted in Fig. 11.3, the small weight behavior
+           being given by Eq. (11.24). At small enough p, it is reasonable to assume that
+           the block error rate is dominated by small weight codewords. Estimate PB
+           using Eq. (11.35) under this assumption. (ii) Show that the p assumption breaks
+           down for p ≥ ploc , where ploc ≤ 1/2 solves the equation 3 4p(1 − p) = 1. (iii)
+           Discuss the case of a general code ensemble with lmin = 2, and φ(ω) concave
+           for ω ∈ [0, 1]. (iv) Draw a weight enumerator exponent φ(ω) such that the
+           assumption of low-weight codewords dominance breaks down before ploc . (v)
+           What do you expect of the average bit error rate Pb for p < ploc ? And for
+           p > ploc ?
+
+           Exercise 11.7 Discuss the qualitative behavior of the block error rate for the
+           cases where lmin = 1.
+
+           11.3.2   Upper bound
+                                                                                                   {se:UBLDPC}
+           Let us consider as before the communication over a BSC(p), but restrict for
+           simplicity to regular codes LDPCN (l, k). Gallager has proved the following upper
+           bound:                                                                                  {thm:GallUB}
+           Theorem 11.4 Let pML be the threshold for reliable communication over the
+           binary symmetric channel using codes from the LDPCN (l, k), with design rate
+           Rdes = 1 − k/l. Then pML ≤ pUB , where pUB ≤ 1/2 is the solution of
+
+                                                      1 − (1 − 2p)k
+                                                                   
+                                H(p) = (1 − Rdes )H                   ,              (11.37)
+                                                            2
+
+           We shall not give a full proof of this result, but we show in this section a sequence
+           of heuristic arguments which can be turned into a proof. The details can be found
+           in the original literature.
+               Assume that the all-zero codeword 0 has been transmitted and that a noisy
+           vector y has been received. The receiver will look for a vector x at Hamming
+           distance about N p from y, and satisfying all the parity check equations. In other
+           words, let us denote by z = Hx, z ∈ {0, 1}M , (here H is the parity check matrix
+           and multiplication is performed modulo 2), the syndrome. This is a vector
+           with M components. If x is a codeword, all parity checks are satisfied, and we
+           have z = 0. There is at least one vector x fulfilling these conditions (namely
+           d(x, y) ≈ N p, and z = 0): the transmitted codeword 0. Decoding is successful
+           only if it is the unique such vector.
+               The number of vectors x whose Hamming distance from y is close to N p is
+           approximatively 2N H(p) . Let us now estimate the number of distinct syndromes
+           z = Hx, when x is on the sphere d(x, y) ≈ N p. Writing x = y ⊕ x′ , this is
+           equivalent to counting the number of distinct vectors z ′ = Hx′ when the weight
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                     232                   LOW-DENSITY PARITY-CHECK CODES
+
+                     Table 11.1 Bounds on the threshold for reliable communication over the BSC(p)
+                     channel using LDPCN (l, k) ensembles. The third column is the rate of the code,
+                     the fourth and fifth columns are, respectively, the lower bound of Proposition 11.3
+                     and the upper bound of Theorem 11.4. The sixth column is an improved lower
+                     bound by Gallager, and the last one is the Shannon limit.
+                       l k Rdes LB of Sec. 11.3.1 Gallager UB Gallager LB Shannon limit
+                       3 4 1/4     0.1333161       0.2109164   0.2050273    0.2145018
+                       3 5 2/5     0.0704762       0.1397479   0.1298318    0.1461024
+                       3 6 1/2     0.0438737       0.1024544   0.0914755    0.1100279
+                       4 6 1/3     0.1642459       0.1726268   0.1709876    0.1739524
+    {TableLDPCBSC}     5 10 1/2    0.0448857       0.1091612   0.1081884    0.1100279
+
+                     of x′ is about N p. It is convenient to think of x′ as a vector of N iid Bernoulli
+                     variables of mean p: we are then interested in the number of distinct typical
+                     vectors z ′ . Notice that, since the code is regular, each entry zi′ is a Bernoulli
+                     variable of parameter
+
+                                             k  
+                                             X  k n              1 − (1 − 2p)k
+                                      pk =        p (1 − p)k−n =               .                 (11.38)
+                                                n                      2
+                                             n odd
+
+
+                     If the bits of z ′ were independent, the number of typical vectors z ′ would be
+                     2N (1−Rdes )H(pk ) (the dimension of z ′ being M = N (1 − Rdes )). It turns out that
+                     correlations between the bits decrease this number, so we can use the iid estimate
+                     to get an upper bound.
+                         Let us now assume that for each z in this set, the number of reciprocal
+                     images (i.e. of vectors x such that z = Hx) is approximatively the same. If
+                     2N H(p) ≫ 2N (1−Rdes )H(pk ) , for each z there is an exponential number of vectors
+                     x, such that z = Hx. This will be true, in particular, for z = 0: the received
+                     message is therefore not uniquely decodable. In the alternative situation most of
+                     the vectors z correspond to (at most) a single x. This will be the case for z = 0:
+                     decoding can be successful.
+
+                     11.3.3   Summary of the bounds
+                     In Table 11.1 we consider a few regular LDPCN (Λ, P ) ensembles over the BSC(p)
+                     channel. We show the window of possible values of the noise threshold pML , using
+                     the lower bound of Proposition 11.3 and the upper bound of Theorem 11.4. In
+                     most cases, the comparison is not satisfactory (the gap from capacity is close to a
+                     factor 2). A much smaller uncertainty is achieved using an improved lower bound
+                     again derived by Gallager, based on a refinement of the arguments in the previous
+                     Section. However, as we shall see in next Chapters, neither of the bounds is tight.
+                     Note that these codes get rather close to Shannon’s limit, especially when k, l
+                     increase.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                            A SIMPLE DECODER: BIT FLIPPING                              233
+
+
+              1                                                       0.05
+
+
+             0.8                                                      0.04
+
+
+             0.6                                                      0.03
+        PB                                                       E*
+             0.4                               N=10000                0.02
+                                               N=20000
+                                               N=40000                                           N=10000
+                                                                                                 N=20000
+             0.2                                                      0.01                       N=40000
+
+
+              0                                                         0
+              0.016       0.020    0.024      0.028      0.032          0.016   0.020   0.024   0.028      0.032
+                                        p                                                   p
+
+                   Fig. 11.6. Performances of the bit-flipping decoding algorithm on random codes
+                   from the (5, 10) regular LDPC ensemble, used over the BCS(p) channel. On the
+                   left: block error rate. On the right residual number of unsatisfied parity checks
+                   after the algorithm halted. Statistical error bars are smaller than symbols.      {fig:Flip510}
+
+
+                   Exercise 11.8 Let pSh be the upper bound on pML provided by Shannon
+                   channel coding Theorem. Explicitly pSh ≤ 1/2 is the solution of H(p) = 1 − R.
+                   Prove that, if R = Rdes (as is the case with high probability for LDPCN (l, k)
+                   ensembles) pUB < pSh .
+
+                   11.4    A simple decoder: bit flipping
+                                                                                                                   {se:BitFlippingLDPC}
+                   So far we have analyzed the behavior of LDPC ensembles under the optimal
+                   (ML) decoding strategy. However there is no known way of implementing this
+                   decoding with a fast algorithm. The naive algorithm goes through each codeword
+                   x(α) , α = 0, . . . 2N R − 1 and finds the one of greatest likelihood Q(y|x(α) ) (since
+                   all the codeword are a priori equiprobable, this is in fact the same as word
+                   MAP decoding). However this approach takes a time which grows exponentially
+                   with the block-length N . For large N (which is the regime where the error rate
+                   becomes close to optimal), this is unpractical.
+                       LDPC codes are interesting because there exist fast sub-optimal decoding
+                   algorithms with performances close to the theoretical optimal performance, and
+                   therefore close to Shannon’s limit. Here we show one example of a very sim-
+                   ple decoding method, called the bit flipping algorithm. We have received the
+                   message y and try to find the sent codeword x by:
+                         Bit-flipping decoder
+                      0. Set x(0) = y.
+                      1. Find a bit belonging to more unsatisfied than satisfied parity checks.
+                      2. If such a bit exists, flip it: xi (t+1) = xi (t)⊕1. Keep the other bits:
+                         xj (t + 1) = xj (t) for all j 6= i. If there is no such bit, return x(t) and
+                         halt.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           234                   LOW-DENSITY PARITY-CHECK CODES
+
+             3. Repeat steps 2 and 3.
+           The bit to be flipped is usually chosen uniformly at random among the ones
+           satisfying the condition at step 1. However this is irrelevant in the analysis below.
+
+           Exercise 11.9 Consider a code from the (l, k) regular LDPC ensemble (with
+           l ≥ 3). Assume that the received message differs from the transmitted one only
+           in one position. Show that the bit-flipping algorithm always corrects such an
+           error.
+
+           Exercise 11.10 Assume now that the channel has introduced two errors.
+           Draw the factor graph of a regular (l, k) code for which the bit-flipping al-
+           gorithm is unable to recover such an error event. What can you say of the
+           probability of this type of graphs in the ensemble?
+              In order to monitor the bit-flipping algorithm, it is useful to introduce the
+           ‘energy’:
+
+                  E(t) ≡ Number of parity check equations not satisfied by x(t) . (11.39)
+
+           This is a non-negative integer, and if E(t) = 0 the algorithm is halted and its
+           output is x(t). Furthermore E(t) cannot be larger than the number of parity
+           checks M and decreases (by at least one) at each cycle. Therefore, the algorithm
+           complexity is O(N ) (this is a commonly regarded as the ultimate goal for many
+           communication problems).
+                It remains to be seen if the output of the bit-flipping algorithm is related
+           to the transmitted codeword. In Fig. 11.6 we present the results of a numerical
+           experiment. We considered the (5, 10) regular ensemble and generated about 1000
+           random code and channel realizations for each value of the noise in some mesh.
+           Then, we applied the above algorithm and traced the fraction of successfully
+           decoded blocks, as well as the residual energy E∗ = E(t∗ ), where t∗ is the
+           total number of iterations of the algorithm. The data suggests that bit-flipping
+           is able to overcome a finite noise level: it recovers the original message with
+           high probability when less than about 2.5% of the bits are corrupted by the
+           channel. Furthermore, the curves for Pbf   B under bit-flipping decoding become
+           steeper and steeper as the system size is increased. It is natural to conjecture
+           that asymptotically, a phase transition takes place at a well defined noise level
+           pbf : Pbf                       bf
+                   B → 0 for p < pbf and PB → 1 for p > pbf . Numerically pbf = 0.025±0.005.
+                This threshold can be compared with the one for ML decoding: The re-
+           sults in Table 11.1 imply 0.108188 ≤ pML ≤ 0.109161 for the (5, 10) ensemble.
+           Bit-flipping is significantly sub-optimal, but is still surprisingly good, given the
+           extreme simplicity of the algorithm.
+                Can we provide any guarantee on the performances of the bit-flipping de-
+           coder? One possible approach consists in using the expansion properties of the
+           underlying factor graph. Consider a graph from the (l, k) ensemble. We say that
+           it is an (ε, δ)-expander if, for any set U of variable nodes such that |U | ≤ N ε,
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                               A SIMPLE DECODER: BIT FLIPPING                                235
+
+           the set |D| of neighboring check nodes has size |D| ≥ δ|U |. Roughly speaking, if
+           the factor graph is an expander with a large expansion constant δ, any small
+           set of corrupted bits induces a large number of unsatisfied parity checks. The
+           bit-flipping algorithm can exploit these checks to successfully correct the errors.
+               It turns out that random graphs are very good expanders. This can be under-
+           stood as follows. Consider a fixed subset U . As long as U is small, the subgraph
+           induced by U and the neighboring factor nodes D is a tree with high probability.
+           If this is the case, elementary counting shows that |D| = (l − 1)|U | + 1. This
+           would suggest that one can achieve an expansion factor (close to) l − 1, for small
+           enough ε. Of course this argument have several flaws. First of all, the subgraph
+           induced by U is a tree only if U has sub-linear size, but we are interested in all
+           subsets U with |U | ≤ εN for some fixed N . Then, while most of the small subsets
+           U are trees, we need to be sure that all subsets expand well. Nevertheless, one
+           can prove that the heuristic expansion factor is essentially correct:
+           Proposition 11.5 Consider a random factor graph F from the (l, k) ensemble.
+           Then, for any δ < l − 1, there exists a constant ε = ε(δ; l, k) > 0, such that F is
+           a (ε, δ) expander with probability approaching 1 as N → ∞.
+                In particular, this implies that, for l ≥ 5, a random (l, k) regular factor graph
+           is, with high probability a (ε, 43 l) expander. In fact, this is enough to assure that
+           the code will perform well at low noise level:
+           Theorem 11.6 Consider a regular (l, k) LDPC code C, and assume that the cor-
+           responding factor graph is an (ε, 43 l) expander. Then, the bit-flipping algorithm
+           is able to correct any pattern of less then N ε/2 errors produced by a binary sym-
+           metric channel. In particular PB (C) → 0 for communication over a BSC(p) with
+           p < ε/2.
+           Proof: As usual, we assume the channel input to be the all-zeros codeword 0.
+           We denote by w = w(t) the weight of x(t) (the current configuration of the bit-
+           flipping algorithm), and by E = E(t) the number of unsatisfied parity checks, as
+           in Eq. (11.39). Finally, we call F the number of satisfied parity checks among the
+           ones which are neighbors of at least one corrupted bit in x(t) (a bit is ‘corrupted’
+           if it takes value 1).
+                Assume first that 0 < w(t) ≤ N ε at some time t. Because of the expansion
+           property of the factor graph, we have E + F > 34 l w. On the other hand, every
+           unsatisfied parity check is the neighbor of at least one corrupted bit, and every
+           satisfied check which is the neighbor of some corrupted bit must involve at least
+           two of them. Therefore E +2F ≤ l w. Eliminating F from the above inequalities,
+           we deduce that E(t) > 12 l w(t). Let Ei (t) be the number of unsatisfied checks
+           involving bit xi . Then:
+                                       X                        1
+                                              Ei (t) ≥ E(t) > l w(t) .                    (11.40)
+                                                                2
+                                    i:xi (t)=1
+
+           Therefore, there must be at least one bit having more unsatisfied than satisfied
+           neighbors, and the algorithm does not halt.
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+           236                   LOW-DENSITY PARITY-CHECK CODES
+
+               Let us now start the algorithm with w(0) ≤ N ε/2. It must halt at some
+           time t∗ , either with E(t∗ ) = w(t∗ ) = 0 (and therefore decoding is successful),
+           or with w(t∗ ) ≥ N ε. In this second case, as the weight of x(t) changes by one
+           at each step, we have w(t∗ ) = N ε. The above inequalities imply E(t∗ ) > N lε/2
+           and E(0) ≤ lw(0) ≤ N lε/2. This contradicts the fact that E(t) is a strictly
+           decreasing function of t. Therefore the algorithm, started with w(0) ≤ N ε/2
+           ends up in the w = 0, E = 0 state. 
+               The approach based on expansion of the graph has the virtue of pointing
+           out one important mechanism for the good performance of LDPC codes, namely
+           the local tree-like structure of the factor graph. It also provides explicit lower
+           bounds on the critical noise level pbf for bit-flipping. However, these bounds turn
+           out to be quite pessimistic. For instance, in the case of the (5, 10) ensemble, it
+           has been proved that a typical factor graph is an (ε, 34 l) = (ε, 154 ) expander for
+           ε < ε∗ ≈ 10−12 . On the other hand, numerical simulations, cf. Fig. 11.6, show
+           that the bit flipping algorithm performs well up noise levels much larger than
+           ε∗ /2.
+
+           Notes
+           Modern (post-Cook Theorem) complexity theory was first applied to coding
+           by (Berlekamp, McEliecee and van Tilborg, 1978) who showed that maximum
+           likelihood decoding of linear codes is NP-hard.
+               LDPC codes were first introduced by Gallager in his Ph.D. thesis (Gallager,
+           1963; Gallager, 1962), which is indeed older than these complexity results. See
+           also (Gallager, 1968) for an extensive account of earlier results. An excellent de-
+           tailed account of modern developments is provided by (Richardson and Urbanke,
+           2006).
+               Gallager proposal did not receive enough consideration at the time. One
+           possible explanation is the lack of computational power for simulating large
+           codes in the sixties. The rediscovery of LDPC codes in the nineties (MacKay,
+           1999), was (at least in part) a consequence of the invention of Turbo codes by
+           (Berrou and Glavieux, 1996). Both these classes of codes were soon recognized
+           to be prototypes of a larger family: codes on graphs.
+               The major technical advance after this rediscovery has been the introduc-
+           tion of irregular ensembles (Luby, Mitzenmacher, Shokrollahi, Spielman and
+           Stemann, 1997; Luby, Mitzenmacher, Shokrollahi and Spielman, 1998). There
+           exist no formal proof of the ‘equivalence’ (whatever this means) of the various
+           ensembles in the large block-length limit. But as we will see in Chapter ??, the
+           main property that enters in the analysis of LDPC ensembles is the local tree-
+           like structure of the factor graph as described in Sec. 9.5.1; and this property is
+           rather robust with respect to a change of the ensemble.
+               Gallager (Gallager, 1963) was the first to compute the expected weight enu-
+           merator for regular ensembles, and to use it in order to bound the threshold for
+           reliable communication. The general case ensembles was considered in (Litsyn
+           and Shevelev, 2003; Burshtein and Miller, 2004; Di, Richardson and Urbanke,
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+                                              NOTES                                       237
+
+           2004b). It turns out that the expected weight enumerator coincides with the typ-
+           ical one to leading exponential order for regular ensembles (in statistical physics
+           jargon: the annealed computation coincides with the quenched one). This is not
+           the case for irregular ensembles, as pointed out in (Di, Montanari and Urbanke,
+           2004a).
+               Proposition 11.2 is essentially known since (Gallager, 1963). The formulation
+           quoted here is from (Méasson, Montanari and Urbanke, 2005a). This paper con-
+           tains some examples of ‘exotic’ LDPC ensembles such that the maximum of the
+           expected weight enumerator is at weight w = N ω∗ , with ω∗ 6= 1/2.
+               A proof of the upper bound 11.4 can be found in (Gallager, 1963). For some
+           recent refinements, see (Burshtein, Krivelevich, Litsyn and Miller, 2002).
+               Bit-flipping algorithms played an important role in the revival of LDPC codes,
+           especially following the work of Sipser and Spielman (Sipser and Spielman, 1996).
+           These authors focused on explicit code construction based on expander graph.
+           They also provide bounds on the expansion of random LDPCN (l, k) codes. The
+           lower bound on the expansion mentioned in Sec. 11.4 is taken from (Richardson
+           and Urbanke, 2006).
+
+
+
+
+‘‘Info Phys Comp’’ Draft: October 9, 2007 -- ‘‘Info Phys Co
+

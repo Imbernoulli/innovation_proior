@@ -1,0 +1,723 @@
+                                            EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS
+
+                                                         STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+
+
+
+arXiv:0809.4621v2 [math.NT] 22 Nov 2008
+                                                    A BSTRACT. We explicitly construct infinite families of MSTD (more sums than differ-
+                                                    ences) sets, i.e., sets where |A + A| > |A − A|. There are enough of these sets to prove
+                                                    that there exists a constant C such that at least C/r4 of the 2r subsets of {1, . . . , r} are
+                                                    MSTD sets; thus our family is significantly denser than previous constructions (whose
+                                                    densities are at most f (r)/2r/2 for some polynomial f (r)). We conclude by general-
+                                                    izing our method to compare linear forms ǫ1 A + · · · + ǫn A with ǫi ∈ {−1, 1}.
+
+
+
+                                                                                      1. I NTRODUCTION
+                                               Given a finite set of integers A, we define its sumset A + A and difference set A − A
+                                          by
+                                                                          A+A          =     {ai + aj : ai , aj ∈ A}
+                                                                          A−A          =     {ai − aj : ai , aj ∈ A},                                (1.1)
+                                          and let |X| denote the cardinality of X. If |A+A| > |A−A|, then, following Nathanson,
+                                          we call A an MSTD (more sums than differences) set. As addition is commutative while
+                                          subtraction is not, we expect that for a ‘generic’ set A we have |A − A| > |A + A|, as a
+                                          typical pair (x, y) contributes one sum and two differences; thus we expect MSTD sets
+                                          to be rare.
+                                             Martin and O’Bryant [MO] proved that, in some sense, this intuition is wrong. They
+                                          considered the uniform model1 for choosing a subset A of {1, . . . , n}, and showed that
+                                          there is a positive probability that a random subset A is an MSTD set (though, not
+                                          surprisingly, the probability is quite small). However, the answer is very different for
+                                          other ways of choosing subsets randomly, and if we decrease slightly the probability
+                                          an element is chosen then our intuition is correct. Specifically, consider the binomial
+                                          model with parameter p(n), with limn→∞ p(n) = 0 and n−1 = o(p(n)) (so p(n) doesn’t
+                                          tend to zero so rapidly that the sets are too sparse).2 Hegarty and Miller [HM] recently
+                                          proved that, in the limit as n → 0, the percentage of subsets of {1, . . . , n} that are
+                                          MSTD sets tends to zero in this model.
+                                             Though MSTD sets are rare, they do exist (and, in the uniform model, are some-
+                                          what abundant by the work of Martin and O’Bryant). Examples go back to the 1960s.
+                                             Date: August 25, 2021.
+                                             2000 Mathematics Subject Classification. 11P99 (primary).
+                                             Key words and phrases. Sum dominated sets, infinite families of MSTDs.
+                                             We thank Dan Katz for comments on an earlier draft. The first named author was partly supported
+                                          by NSF grant DMS0600848. The second named author was supported by the George I. Alden UTRA at
+                                          Brown University.
+                                             1This means each of the 2n subsets of {1, . . . , n} are equally likely to be chosen, or, equivalently, that
+
+                                          the probability any k ∈ {1, . . . , n} is in A is just 1/2.
+                                             2This model means that the probability k ∈ {1, . . . , n} is in A is p(n).
+                                                                                                  1
+2                 STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+Conway is said to have discovered {0, 2, 3, 4, 7, 11, 12, 14}, while Marica [Ma] gave
+{0, 1, 2, 4, 7, 8, 12, 14, 15} in 1969 and Freiman and Pigarev [FP] found {0, 1, 2, 4, 5,
+9, 12, 13, 14, 16, 17, 21, 24, 25, 26, 28, 29} in 1973. Recent work includes infinite fam-
+ilies constructed by Hegarty [He] and Nathanson [Na2], as well as existence proofs by
+Ruzsa [Ru1, Ru2, Ru3].
+   Most of the previous constructions3 of infinite families of MSTD sets start with a
+symmetric set which is then ‘perturbed’ slightly through the careful addition of a few
+elements that increase the number of sums more than the number of differences; see
+[He, Na2] for a description of some previous constructions and methods. In many
+cases, these symmetric sets are arithmetic progressions; such sets are natural starting
+points because if A is an arithmetic progression, then |A + A| = |A − A|.4
+   In this work we present a new method which takes an MSTD set satisfying certain
+conditions and constructs an infinite family of MSTD sets. While these families are not
+dense enough to prove a positive percentage of subsets of {1, . . . , r} are MSTD sets,
+we are able to elementarily show that the percentage is at least C/r 4 for some constant
+C. Thus our families are far denser than those in [He, Na2]; trivial counting5 shows
+all of their infinite families give at most f (r)2r/2 of the subsets of {1, . . . , r} (for some
+polynomial f (r)) are MSTD sets, implying a percentage of at most f (r)/2r/2.
+
+  We first introduce some notation. The first is a common convention, while the second
+codifies a property which we’ve found facilitates the construction of MSTD sets.
+
+        • We let [a, b] denote all integers from a to b; thus [a, b] = {n ∈ Z : a ≤ n ≤ b}.
+
+        • We say a set of integers A has the property Pn (or is a Pn -set) if both its sumset
+          and its difference set contain all but the first and last n possible elements (and
+          of course it may or may not contain some of these fringe elements).6 Explicitly,
+          let a = min A and b = max A. Then A is a Pn -set if
+
+                                   [2a + n, 2b − n] ⊂ A + A                                              (1.2)
+
+    3
+  P An alternate method constructs an infinite family from a given MSTD set A by considering At =
+{ ti=1 ai mi−1 : ai ∈ A}. For m sufficiently large, these will be MSTD sets; this is called the base
+expansion method. Note, however, that these will be very sparse. See [He] for more details.
+    4
+     As |A + A| and |A − A| are not changed by mapping each x ∈ A to αx + β for any fixed α and β, we
+may assume our arithmetic progression is just {0, . . . , n}, and thus the cardinality of each set is 2n + 1.
+    5
+     For example, consider the following construction of MSTD sets from [Na2]: let m, d, k ∈ N with
+m ≥ 4, 1 ≤ d ≤ m − 1, d 6= m/2, k ≥ 3 if d < m/2 else k ≥ 4. Set B = [0, m − 1]\{d}, L =
+{m−d, 2m−d, . . . , km−d}, a∗ = (k+1)m−2d and A = B ∪L∪(a∗ −B)∪{m}. Then A is an MSTD
+set. The width of such a set is of the order km. Thus, if we look at allPtriplesP(m, d, k)     Pwith km ≤ r
+satisfying the above conditions, these generate on the order of at most k≤r m≤r/k d≤m 1 ≪ r2 ,
+and there are of the order 2r possible subsets of {0, . . . , r}; thus this construction generates a negligible
+number of MSTD sets. Though we write f (r)/2r/2 to bound the percentage from other methods, a more
+careful analysis shows it is significantly less; we prefer this easier bound as it is already significantly less
+than our method. See for example Theorem 2 of [He] for a denser example.
+    6It is not hard to show that for fixed 0 < α ≤ 1 a random set drawn from [1, n] in the uniform model
+
+is a P⌊αn⌋ -set with probability approaching 1 as n → ∞.
+                   EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                               3
+
+         and
+                          [−(b − a) + n, (b − a) − n] ⊂ A − A.                                        (1.3)
+
+
+
+   We can now state our construction and main result.
+Theorem 1.1. Let A = L ∪ R be a Pn , MSTD set where L ⊂ [1, n], R ⊂ [n + 1, 2n],
+and 1, 2n ∈ A;7 see Remark 1.2 for an example of such an A. Fix a k ≥ n and let m be
+arbitrary. Let M be any subset of [n + k + 1, n + k + m] with the property that it does
+not have a run of more than k missing elements (i.e., for all ℓ ∈ [n + k + 1, n + m + 1]
+there is a j ∈ [ℓ, ℓ + k − 1] such that j ∈ M). Assume further that n + k + 1 6∈ M
+and set A(M; k) = L ∪ O1 ∪ M ∪ O2 ∪ R′ , where O1 = [n + 1, n + k], O2 =
+[n + k + m + 1, n + 2k + m] (thus the Oi ’s are just sets of k consecutive integers), and
+R′ = R + 2k + m. Then
+    (1) A(M; k) is an MSTD set, and thus we obtain an infinite family of distinct MSTD
+        sets as M varies;
+    (2) there is a constant C > 0 such that as r → ∞ the percentage of subsets of
+        {1, . . . , r} that are in this family (and thus are MSTD sets) is at least C/r 4 .
+Remark 1.2. In order to show that our theorem is not trivial, we must of course exhibit
+at least one Pn , MSTD set A satisfying all our requirements (else our family is empty!).
+We may take the set8 A = {1, 2, 3, 5, 8, 9, 13, 15, 16}; it is an MSTD set as
+  A+A          =     {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+                        22, 23, 24, 25, 26, 28, 29, 30, 31, 32}
+  A−A          =     {−15, −14, −13, −12, −11, −10, −8, −7, −6, −5, −4, −3, −2, −1,
+                        0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15}                    (1.4)
+(so |A + A| = 30 > 29 = |A − A|). A is also a Pn -set, as (1.2) is satisfied since
+[10, 24] ⊂ A + A and (1.3) is satisfied since [−7, 7] ⊂ A − A.
+   For the uniform model, a subset of [1, 2n] is a Pn -set with high probability as n → ∞,
+and thus examples of this nature are plentiful. For example, of the 1748 MSTD sets with
+minimum 1 and maximum 24, 1008 are Pn -sets.
+   Unlike other estimates on the percentage of MSTD sets, our arguments are not proba-
+bilistic, and rely on explicitly constructing large families of MSTD sets. Our arguments
+share some similarities with the methods in [He] (see for example Case I of Theorem
+8) and [MO]. There the fringe elements of the set were also chosen first. A random
+set was then added in the middle, and the authors argued that with high probability the
+resulting set is an MSTD set. We can almost add a random set in the middle; the reason
+we do not obtain a positive percentage is that we have the restriction that there can be
+no consecutive block of size k of numbers in the middle that are not chosen to be in
+   7Requiring 1, 2n ∈ A is quite mild; we do this so that we know the first and last elements of A.
+   8
+    This A is trivially modified from [Ma] by adding 1 to each element, as we start our sets with 1 while
+other authors start with 0. We chose this set as our example as it has several additional nice properties
+that were needed in earlier versions of our construction which required us to assume slightly more about
+A.
+4               STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+A(M; k). This is easily satisfied by requiring us to choose at least one number in con-
+secutive blocks of size k/2, and this is what leads to the loss of a positive percentage9
+(though we do obtain sets that are known to be MSTD sets, and not just highly likely to
+be MSTD sets).
+   The paper is organized as follows. We describe our construction in §2, and prove our
+claimed lower bounds for the percentage of sets that are MSTD sets in §3. We then
+generalize our construction in §4 and explore when there are infinite families of sets
+satisfying
+              |ǫ1 A + · · · + ǫn A| > |e
+                                       ǫ1 A + · · · + ǫen A| , ǫi , ǫei ∈ {−1, 1}.         (1.5)
+We end with some concluding remarks and suggestions for future research in §5.
+
+              2. C ONSTRUCTION OF INFINITE FAMILIES OF MSTD SETS
+   Let A ⊂ [1, 2n]. We can write this set as A = L ∪ R where L ⊂ [1, n] and R ⊂
+[n + 1, 2n]. We have
+                         A + A = [L + L] ∪ [L + R] ∪ [R + R]                               (2.1)
+where L + L ⊂ [2, 2n], L + R ⊂ [n + 2, 3n] and R + R ⊂ [2n + 2, 4n], and
+                   A − A = [L − R] ∪ [L − L] ∪ [R − R] ∪ [R − L]                           (2.2)
+where L − R ⊂ [−1, −2n + 1], L − L ⊂ [−(n − 1), n − 1], R − R ⊂ [−(n − 1), n − 1]
+and R − L ⊂ [1, 2n − 1].
+   A typical subset A of {1, . . . , 2n} (chosen from the uniform model, see Footnote 1)
+will be a Pn -set (see Footnote 6). It is thus the interaction of the “fringe” elements that
+largely determines whether a given set is an MSTD set. Our construction begins with a
+set A that is both an MSTD set and a Pn -set. We construct a family of Pn , MSTD sets
+by inserting elements into the middle in such a way that the new set is a Pn -set, and the
+number of added sums is equal to the number of added differences. Thus the new set is
+also an MSTD set.
+   In creating MSTD sets, it is very useful to know that we have a Pn -set. The reason
+is that we have all but the “fringe” possible sums and differences, and are thus reduced
+to studying the extreme sums and differences. The following lemma shows that if A
+is a Pn , MSTD set and a certain extension of A is a Pn -set, then this extension is also
+an MSTD set. The difficult step in our construction is determining a large class of
+extensions which lead to Pn -sets; we will do this in Lemma 2.2.
+Lemma 2.1. Let A = L ∪ R be a Pn -set where L ⊂ [1, n] and R ⊂ [n + 1, 2n]. Form
+A′ = L ∪ M ∪ R′ where M ⊂ [n + 1, n + m] and R′ = R + m. If A′ is a Pn -set then
+|A′ + A′ | − |A + A| = |A′ − A′ | − |A − A| = 2m (i.e., the number of added sums is
+equal to the number of added differences). In particular, if A is an MSTD set then so is
+A′ .
+Proof. We first count the number of added sums. In the interval [2, n + 1] both A + A
+and A′ + A′ are identical, as any sum can come only from terms in L + L. Similarly,
+we can pair the sums of A + A in the region [3n + 1, 4n] with the sums of A′ + A′ in
+    9
+    Without this requirement, we could take any M and thus would have a positive percentage work,
+specifically at least 2−(2k+2n) .
+               EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                         5
+
+the region [3n + 2m + 1, 4n + 2m], as these can come only from R + R and (R + m) +
+(R + m) respectively. Since we have accounted for the n smallest and largest terms
+in both A + A and A′ + A′ , and as both are Pn -sets, the number of added sums is just
+(3n + 2m + 1) − (3n + 1) = 2m.
+   Similarly, differences in the interval [1 − 2n, −n] that come from L − R can be
+paired with the corresponding terms from L − (R + m), and differences in the interval
+[n, 2n − 1] from R − L can be paired with differences coming from (R + m) − L.
+Thus the size of the middle grows from the interval [−n + 1, n − 1] to the interval
+[−n − m + 1, n + m − 1]. Thus we have added (2n + 2m + 3) − (2n + 3) = 2m
+differences. Thus |A′ + A′ | − |A + A| = |A′ − A′ | − |A − A| = 2m as desired.      
+   The above lemma is not surprising, as in it we assume A′ is a Pn -set; the difficulty
+in our construction is showing that our new set A(M; k) is also a Pn -set for suitably
+chosen M. This requirement forces us to introduce the sets Oi (which are blocks of k
+consecutive integers), as well as requiring M to have at least one of every k consecutive
+integers.
+   We are now ready to prove the first part of Theorem 1.1 by constructing an infinite
+family of distinct Pn , MSTD sets. We take a Pn , MSTD set and insert a set in such a
+way that it remains a Pn -set; thus by Lemma 2.1 we see that this new set is an MSTD
+set.
+Lemma 2.2. Let A = L ∪ R be a Pn -set where L ⊂ [1, n], R ⊂ [n + 1, 2n], and
+1, 2n ∈ A. Fix a k ≥ n and let m be arbitrary. Choose any M ⊂ [n + k + 1, n + k + m]
+with the property that M does not have a run of more than k missing elements, and
+form A(M; k) = L ∪ O1 ∪ M ∪ O2 ∪ R′ where O1 = [n + 1, n + k], O2 = [n + k +
+m + 1, n + 2k + m], and R′ = R + 2k + m. Then A(M; k) is a Pn -set.
+Proof. For notational convenience, denote A(M; k) by A′ . Note A′ +A′ ⊂ [2, 4n+4k +
+2m]. We begin by showing that there are no missing sums from n + 2 to 3n + 4k + 2m;
+proving an analogous statement for A′ − A′ shows A′ is a Pn -set. By symmetry10 we
+only have to show that there are no missing sums in [n + 2, 2n + 2k + m]. We consider
+various ranges in turn.
+   We observe that [n + 2, n + k + 1] ⊂ A′ + A′ because we have 1 ∈ L and these
+sums result from 1 + O1 . Additionally, O1 + O1 = [2n + 2, 2n + 2k] ⊂ A′ + A′ .
+Since n ≤ k we have n + k + 1 ≥ 2n + 1, these two regions are contiguous and thus
+[n + 2, 2n + 2k] ⊂ A′ + A′ .
+   Now consider O1 +M. Since M does not have a run of more than k missing elements,
+the worst case scenario (in terms of getting the required sums) is that the smallest ele-
+ment of M is n+2k and that the largest element is n+m+1 (and, of course, we still have
+at least one out of every k consecutive integers is in M). If this is the case then we still
+have O1 +M ⊃ [(n+1)+(n+2k), (n+k)+(n+m+1)] = [2n+2k+1, 2n+k+m+1].
+We had already shown that A′ + A′ has all sums up to 2n + 2k; this extends the sumset
+to all sums up to 2n + k + m + 1.
+   All that remains is to show we have all sums in [2n + k + m + 2, 2n + 2k + m]. This
+follows immediately from O1 + O2 = [2n + k + m + 2, 2n + 3k + m] ⊂ A′ + A′ . This
+extends our sumset to include all sums up to 2n+3k+m, which is well past our halfway
+  10
+    Apply the arguments below to the set 2n + 2k + m − A′ , noting that 1, 2n + 2k + m ∈ A′ .
+6                STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+mark of 2n + 2k + m. Thus we have shown that A′ + A′ ⊃ [n + 2, 3n + 4k + 2m + 1].
+
+   We now do a similar calculation for the difference set, which is contained in [−(2n +
+2k+m)+1, (2n+2k+m)−1]. As we have already analyzed the sumset, all that remains
+to prove A is a Pn -set is to show that A′ − A′ ⊃ [−n − 2k − m + 1, n + 2k + m − 1]. As
+all difference sets11 are symmetric about and contain 0, it suffices to show the positive
+elements are present, i.e., that A′ − A′ ⊃ [1, n + 2k + m − 1].
+   We easily see [1, k − 1] ⊂ A′ − A′ as [0, k − 1] ⊂ O1 − O1 . Now consider M − O1 .
+Again the worst case scenario (for getting the required differences) is that the least
+element of M is n + 2k and the greatest is n + m + 1. With this in mind we see that
+M − O1 ⊃ [(n + 2k) − (n + k), (n + m + 1) − (n + 1)] = [k, m]. Now O2 − O1 ⊃
+[(n + k + m + 1) − (n + k), (n + 2k + m) − (n + 1)] = [m + 1, 2k + m − 1], and we
+therefore have all differences up to 2k + m − 1.
+   Since 2n ∈ A we have 2n + 2k + m ∈ A′ . Consider (2n + 2k + m) − O1 =
+[n + k + m, n + 2k + m − 1]. Since k ≥ n we see that n + k + m ≤ 2k + m; this
+implies that we have all differences up to n + 2k + m − 1 (this is because we already
+have all differences up to 2k + m − 1, and n + k + m is either less than 2k + m − 1, or
+at most one larger).                                                                   
+
+Proof. Proof of Theorem 1.1(1). The proof of the first part of Theorem 1.1 follows
+immediately. By Lemma 2.2 our new sets A(M; k) are Pn -sets, and by Lemma 2.1
+they are also MSTD. All that remains is to show that the sets are distinct; this is done by
+requiring n+k+1 is not in our set (for a fixed k, these sets have elements n+1, . . . , n+k
+but not n + k + 1; thus different k yield distinct sets).                                 
+
+                 3. L OWER BOUNDS FOR THE PERCENTAGE OF MSTD S
+   To finish the proof of Theorem 1.1, for a fixed n we need to count how many sets
+f
+M of the form O1 ∪ M ∪ O2 (see Theorem 1.1 for a description of these sets) of width
+r = 2k + m can be inserted into a Pn , MSTD set A of width 2n. As O1 and O2 are
+just intervals of k consecutive ones, the flexibility in choosing them comes solely from
+the freedom to choose their length k (so long as k ≥ n). There is far more freedom to
+choose M.
+   There are two issues we must address. First, we must determine how many ways there
+are there to fill the elements of M such that there are no runs of k missing elements.
+Second, we must show that the sets generated by this method are distinct. We saw in
+the proof of Theorem 1.1(1) that the latter is easily handled by giving A(M; k) (through
+our choice of M) slightly more structure. Assume that the element n + k + 1 is not in
+M (and thus not in A). Then for a fixed width r = 2k + m each value of k gives rise
+to necessarily distinct sets, since the set contains [n + 1, n + k] but not n + k + 1. In
+our arguments below, we assume our initial Pn , MSTD set A is fixed; we could easily
+increase the number of generated MSTD sets by varying A over certain MSTD sets of
+size 2n. We choose not to do this as n is fixed, and thus varying over such A will only
+change the percentages by a constant independent of k and m.
+
+    11
+     Unless, of course, A is the empty set!
+              EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                    7
+
+   Fix n and let r tend to infinity. We count how many M      f’s there are of width r such
+that in M there is at least one element chosen in any consecutive block of k integers.
+One way to ensure this is to divide M into consecutive, non-overlapping blocks of size
+k/2, and choose at least one element in each block. There are 2k/2 subsets of a block
+of size k/2, and all but one have at least one element. Thus there are 2k/2 − 1 =
+2k/2 (1 − 2−k/2 ) valid choices for each block of size k/2. As the width of M is r − 2k,
+there are ⌈ r−2k
+             k/2
+                       r
+                 ⌉ ≤ k/2 −3 blocks (the last block may have length less than k/2, in which
+case any configuration will suffice to ensure there is not a consecutive string of k omitted
+elements in M because there will be at least one element chosen in the previous block).
+                                                                                      r −3
+We see that the number of valid M’s of width r − 2k is at least 2r−2k 1 − 2−k/2 k/2 .
+As O1 and O2 are two sets of k consecutive 1’s, there is only one way to choose either.
+   We therefore see that, for a fixed k, of the 2r = 2m+2k possible subsets of r consec-
+                                                      r −3
+utive integers, we have at least 2r−2k 1 − 2−k/2 k/2 are permissible to insert into A.
+To ensure that all of the sets are distinct, we require n+k+1 6∈ M; the effect of this is to
+eliminate one degree of freedom in choosing an element in the first block of M, and this
+will only change the proportionality constants in the percentage calculation (and not the
+r or k dependencies). Thus if we vary k from n to r/4 (we could go a little higher, but
+once k is as large as a constant times r the number of generated sets of width r is negli-
+                                                         Pr/4                  r −3
+gible) we have at least some fixed constant times 2r k=n 212k 1 − 2−k/2 k/2 MSTD
+sets; equivalently, the percentage of sets O1 ∪M ∪O2 with Oi of width k ∈ {n, . . . , r/4}
+and M of width r − 2k that we may add is at least this divided by 2r , or some universal
+constant times
+                                   Xr/4                 k/2
+                                                           r
+                                         1           1
+                                          2k
+                                               1 − k/2                                 (3.1)
+                                   k=n
+                                        2          2
+(as k ≥ n and n is fixed, we may remove the −3 in the exponent by changing the
+universal constant).
+   We now determine the asymptotic behavior of this sum. More generally, we can
+consider sums of the form
+                                       r/4
+                                       X               r/ck
+                                            1        1
+                       S(a, b, c; r) =       ak
+                                                 1 − bk       .            (3.2)
+                                       k=n
+                                           2        2
+
+For our purposes we take a = 2 and b = c = 1/2; we consider this more general sum
+so that any improvements in our method can readily be translated into improvements in
+counting MSTD sets. While we know (from the work of Martin and O’Bryant [MO])
+that a positive percentage of such subsets are MSTD sets, our analysis of this sum yields
+slightly weaker results. The approach in [MO] is probabilistic, obtained by fixing the
+fringes of our subsets to ensure certain sums and differences are in (or not in) the sum-
+and difference sets. While our approach also fixes the fringes, we have far more possible
+fringe choices than in [MO] (though we do not exploit this). While we cannot prove a
+positive percentage of subsets are MSTD sets, our arguments are far more elementary.
+   The proof of Theorem 1.1(2) is clearly reduced to proving the following lemma, and
+then setting a = 2 and b = c = 1/2.
+8                STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+Lemma 3.1. Let
+                                              r/4
+                                              X               r/ck
+                                                   1        1
+                              S(a, b, c; r) =       ak
+                                                        1 − bk       .               (3.3)
+                                              k=n
+                                                  2        2
+Then for any ǫ > 0 we have
+                                  1                   (log r)2a+ǫ
+                                 a/b
+                                     ≪ S(a, b, c; r) ≪            .               (3.4)
+                            r                             r a/b
+Proof. We constantly use (1 − 1/x)x is an increasing function in x. We first prove the
+lower bound. For k ≥ (log2 r)/b and r large, we have
+                      r/ck               2bk rbk             r· b
+                     1                    1     ck2             1 c log2 r     1
+               1 − bk          = 1 − bk               ≥ 1−                  ≥     (3.5)
+                    2                    2                      r              2
+(in fact, for r large the last bound is almost exactly 1). Thus we trivially have
+                                                r/4
+                                                X            1 1       1
+                         S(a, b, c; r)   ≥                    ak
+                                                                 · ≫ a/b .           (3.6)
+                                                            2     2  r
+                                             k=(log2 r)/b
+
+  For the upper bound, we divide the k-sum into two ranges: (1) bn ≤ bk ≤ log2 r −
+log2 (log r)δ ; (2) log2 r − log2 (log r)δ ≤ bk ≤ br/4. In the first range, we have
+                              r/ck                       r/ck
+                            1                      (log r)δ
+                       1 − bk           ≤      1−
+                           2                           r
+                                                               
+                                                     b(log r)δ
+                                        ≪ exp −
+                                                      c log2 r
+                                                                          
+                                                     b log 2           δ−1
+                                        ≤ exp −              · (log r)       .      (3.7)
+                                                         c
+                                                       b log 2    δ−2
+If δ > 2 then this factor is dominated by r − c ·(log r)       ≪ r −A for any A for r
+sufficiently large. Thus there is negligible contribution from k in range (1) if we take
+δ = 2 + ǫ/a for any ǫ > 0.
+                                                                          r/ck
+   For k in the second range, we trivially bound the factors 1 − 1/2bk          by 1. We
+are left with
+                   X                                 ∞
+                               1          (log r)aδ X 1        (log r)aδ
+                                ak
+                                   · 1 ≤       a/b        aℓ
+                                                             ≪      a/b
+                                                                         .           (3.8)
+                           δ
+                              2              r      ℓ=0
+                                                        2         r
+                log2 r  log (log r)
+           k≥     b
+                       − 2 b
+
+Combining the bounds for the two ranges with δ = 2 + ǫ/a completes the proof.           
+Remark 3.2. The upper and lower bounds in Lemma 3.1 are quite close, differing by
+                                                              a/b
+a few powers of log r. The true value will be at least logr r      ; we sketch the proof in
+Appendix A.
+Remark 3.3. We could attempt to increase our lower bound for the percentage of sub-
+sets that are MSTD sets by summing r from R0 to R (as we have fixed r above, we are
+only counting MSTD sets of width 2n + r where 1 and 2n + r are in the set. Unfor-
+tunately, at best we can change the universal constant; our bound will still be of the
+order 1/R4 . To see this, note the number of such MSTD sets is at least a constant times
+                  EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                                         9
+PR       r  4                                           R
+   r=R0 2 /r (to get the percentage, we divide this by 2 ). If r ≤ R/2 then there are
+                                         −4          4      4
+exponentially few sets. If r ≥ R/2 then r ∈ [1/R , 16/R ]. Thus the percentage of
+such subsets is still only at least of order 1/R4 .
+                             4. G ENERALIZING OUR CONSTRUCTION
+  Instead of searching for A such that |A + A| > |A − A|, we now consider the more
+general problem12 of when
+                  |ǫ1 A + · · · + ǫn A| > |e
+                                           ǫ1 A + · · · + ǫen A| , ǫi , ǫei ∈ {−1, 1}.                        (4.1)
+   Consider the generalized sumset
+                       fj1 , j2 (A) = A + A + · · · + A − A − A − · · · − A,                                  (4.2)
+where there are j1 pluses13 and j2 minuses, and set j = j1 + j2 . Our notion of a Pn -set
+generalizes, and we find that if there exists one set A with |fj1 , j2 (A)| > |fj1′ , j2′ (A)|,
+then we can construct infinitely many such A. Note without loss of generality that we
+may assume j1 ≥ j2 .14
+Definition 4.1 (Pnj -set.). Let A ⊂ [1, k] with 1, k, ∈ A. We say A is a Pnj -set if any
+fj1 , j2 (A) contains all but the first n and last n possible elements.
+Remark 4.2. Note that a Pn2-set is the same as what we called a Pn -set earlier.
+   We expect the following generalization of Theorem 1.1 to hold.
+Conjecture 4.3. For any fj1 , j2 and fj1′ , j2′ , if there exists a finite set of integers A which
+is (1) a Pnj -set; (2) A ⊂ [1, 2n] and 1, 2n ∈ A; and (3) |fj1 , j2 (A)| > |fj1′ , j2′ (A)|, then
+there exists an infinite family of such sets.
+   The difficulty in proving the above conjecture is that we need to find a set A satisfying
+|fj1 , j2 (A)| > |fj1′ , j2′ (A)|; once we find such a set, we can mirror the construction from
+Theorem 1.1. Currently we can only find such A for j ∈ {2, 3}:
+Theorem 4.4. Conjecture 4.3 is true for j ∈ {2, 3}.
+   As the proof is similar to that of Theorem 1.1, we just highlight the changes. We
+prove the lemmas below in greater generality than we need for our theorem as this
+generality is needed to attack Conjecture 4.3. The first step is an analogue of Lemma
+2.1, the second is proving that a Pn2 -set is also a Pnj -set, and the third is constructing
+sets A (when j = 3) to start the construction.
+Lemma 4.5. Let A = L ∪ R be a Pnj -set, where L ⊂ [1, n], R ⊂ [n + 1, 2n]. Form
+A′ = L ∪ M ∪ R′ , where M ⊂ [n + 1, n + m] and R′ = R + m. If A′ is a Pnj -set, then
+|fj1 , j2 (A′ )| − |fj1 , j2 (A)| = |fj1′ , j2′ (A′ )| − |fj1′ , j2′ (A)|. Thus if |fj1 , j2 (A)| > |fj1′ , j2′ (A)|,
+the same is true for A′ .
+   12We do not consider the most general problem of comparing arbitrary combinations of A, contenting
+
+ourselves to this special case; see [HM] for some thoughts about such generalizations.
+   13By a slight abuse of notation, we say there are two sums in A + A − A, as is clear when we write it
+
+as ǫ1 A + ǫ2 A + ǫ3 A.
+   14
+      This follows as we are only interested in |fj1 , j2 (A)|, which equals |fj2 , j1 (A)|. This is because B
+and −B have the same cardinality, and thus (for example) we see A + A − A and −(A − A − A) have
+the same cardinality.
+10                 STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+Proof. Since A ⊂ [1, 2n] and is a Pnj -set, we know f (A) ⊂ [j1 − 2nj2 , 2nj1 − j2 ] and
+[j1 − 2nj2 + n, 2nj1 − j2 − n] ⊂ f (A). Note any elements in f (A) ∩ [j1 − 2nj2 , j1 −
+2nj2 + n − 1] can only come from L + L + L + · · · + L − R − R − R − · · · − R.
+   As A′ ⊂ [1, 2n + m], f (A′ ) ⊂ [j1 − (2n + m)j2 , (2n + m)j1 − j2 ] and [j1 − (2n +
+m)j2 + n, (2n + m)j1 − j2 − n] ⊂ f (A)]. Any elements in f (A) ∩ [j1 − (2n + m)j2 , j1 −
+(2n+m)j2 +n−1] can only come only from L+L+L+· · ·+L−R′ −R′ −R′ −· · ·−R′ ,
+which is simply a translation of L + L + L + · · · + L − R − R − R − · · · − R.
+   A similar argument works for the right fringe of fj1 , j2 (A′ ). Thus |f (A′)| = |f (A)| +
+jm (this is because the potential width of fj1 , j2 (A′ ) is jm more than that of fj1 , j2 (A),
+and the two fringes of these sets are in a 1-1 correspondence). Since |fj1 , j2 (A′ )| −
+|fj1 , j2 (A)| depends only on j = j1 +j2 , it holds for any pair of forms with j coefficients,
+and the lemma is proven.                                                                     
+Lemma 4.6. For j ≥ 3, any Pn2 -set is also a Pnj -set.
+Proof. Let A be a Pn2 -set, where A ⊂ [1, k] and 1, k ∈ A. Assume k ≥ 2n. Then
+A + A ∩ [n + 2, 2k − n] = [n + 2, 2k − n] (as A is a Pn2 -set).
+   Let fj1 , j2 be a form with j ≥ 3, and thus either j1 or j2 is at least 2; without loss of
+generality we assume j1 ≥ 2. There is a form fj1 −2, j2 such that fj1 −2, j2 (A) + A + A =
+fj1 , j2 (A). The proof follows by showing fj1 −2, j2 ({1, k})+A+A contains all necessary
+elements, namely [j1 −kj2 +n, j1 k −j2 −n]. (By fj1 −2, j2 ({1, k}) we mean all numbers
+of the form ǫ1 a1 + · · · + ǫj−2 aj−2 , with the ǫi the coefficients of the form fj1 −2,j2 and
+ai ∈ {1, k}.) We have
+                fj1 −2, j2 ({1, k}) ⊃ {j1 − 2 − i + k(i − j2 ) | 0 ≤ i ≤ j − 2}.                  (4.3)
+To see this, we first consider i ≤ j1 − 2. For such i, for the positive summands choose
+1 a total of j1 − 2 − i times and k a total of i times, while for the negative summands
+we choose k each of the j2 times. If now j1 − 2 < i ≤ j − 2, for the positive summands
+we choose k a total of i − j2 times (which is permissible as this is at most j1 − 2) and
+we choose 1 the remaining j1 − 2 − (i − j2 ) times, while for the negative summands we
+choose 1 all j2 times. This leads to a sum of k · (i − j2 ) + 1 · (j1 − 2 + j2 − i) − 1 · j2 ,
+which equals j1 − 2 − i + k(i − j2 ) as claimed. Unfortunately, this argument fails if
+i = j1 − 1 and j1 = j2 , as we would then be choosing k from the positive summands
+negative one times.15 We are thus left with showing that we may obtain the sum −1 − k
+in this special case. As j1 = j2 , we just choose 1 for the j1 − 2 positive summands and
+−1 for all but one of the j2 negative summands (where we choose one to be k).
+   As A is a Pn2 -set, A + A ⊃ [n + 2, 2k − n]. Thus
+                           j−2
+                           [
+                                 [Li , Ui ]   ⊂   fj1 −2, j2 ({1, k}) + A + A,                    (4.4)
+                           i=0
+
+where
+                           Li       =     j1 − 2 − i + k(i − j2 ) + n + 2
+                           Ui       =     j1 − 2 − i + k(i − j2 ) + 2k − n.                       (4.5)
+     15This is the only bad case we need consider, as we know j
+                                                               1 ≥ j2 , and the only problem arises when
+i − j2 < 0.
+                 EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                     11
+
+  We see that L0 = j1 − kj2 + n and Uj−2 = j1 k − j2 − n, our two desired endpoints.
+The proof is completed by showing the intervals [Li , Ui ] cover the desired interval and
+has no gap with its neighbors.
+  Since 2n ≤ k, we have:
+                 Li − 1    =     j1 − i + k(i − j2 ) + n − 1
+                           =     (j1 − i + ki − j2 k − 1) + n
+                           ≤     (j1 − i + ki − j2 k − 1) + k − n
+                           =     j1 − 2 − (i − 1) + k((i − 1) − j2 ) + 2k − n
+                           ≤     Ui−1 .                                                    (4.6)
+Thus there are no gaps between the intervals [Li−1 , Ui−1 ], [Li , Ui ] and they therefore
+cover the necessary range.                                                              
+Remark 4.7. Note that the above lemma is false if the size of n is unrestricted. To take
+an extreme example, let A = {1, 10} and n = 9. Then A is a Pn2 -set (11 ∈ A + A, 0 ∈
+A − A) but A is not a Pn3 -set.
+Proof of Theorem 4.4. Lemmas 4.5 and 4.6 imply that the sets described in Lemma 2.2
+also work in our generalized case. The counting argument of §3 requires no modifica-
+tion. Thus the theorem is proved provided we can find an A to start the process.
+   The following set was obtained by taking elements in {2, . . . , 49} to be in A with
+probability16 1/3 (and, of course, requiring 1, 50 ∈ A); it took about 300000 sets to find
+the first one satisfying our conditions:
+                A = {1, 2, 5, 6, 16, 19, 22, 26, 32, 34, 35, 39, 43, 48, 49, 50}.          (4.7)
+          3
+To be a P25 -set we need to have A+A+A ⊃ [n+3, 6n−n] = [28, 125] and A+A−A ⊃
+[−n + 2, 3n − 1] = [−23, 74]. A simple calculation shows A + A + A = [3, 150], all
+possible elements, while A + A − A = [−48, 99]\{−34} (i.e., every possible element
+                        3
+but -34). Thus A is a P25 -set satisfying |A + A + A| > |A + A − A|, and thus we have
+the example we need to prove Theorem 4.4.                                          
+Remark 4.8. We could also have taken
+       A = {1, 2, 3, 4, 8, 12, 18, 22, 23, 25, 26, 29, 30, 31, 32, 34, 45, 46, 49, 50},    (4.8)
+which has the same A + A + A and A + A − A.
+
+                   5. C ONCLUDING REMARKS AND FUTURE RESEARCH
+   One avenue of future research is to complete the proof of Conjecture 4.3 and give an
+elementary example of an infinite family of sets satisfying |fj1 , j2 (A)| > |fj1′ , j2′ (A)|. We
+have reason to believe the correct model is to look for Pnj -sets by choosing the numbers
+{2, . . . , 2n − 1} to be in A with probability 1/j (and, of course, requiring 1, 2n ∈ A).
+Unfortunately the density of such sets appears to decrease rapidly with n, and to date
+straightforward computer searches have been unsuccessful when j = 4. As we shall see
+below, perhaps a better algorithm would incorporate choosing elements near the fringes
+  16
+    Note the probability is 1/3 and not 1/2.
+12             STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+
+Estimated ΓHk,nL
+
+
+
+     0.60
+
+
+     0.55
+
+
+     0.50
+
+
+     0.45
+
+
+                                                                                          k
+                       20             40              60             80             100
+
+        F IGURE 1. Estimation of γ(k, 100) as k varies from 1 to 100 from a
+        random sample of 4458 MSTD sets.
+
+
+
+(i.e., near 1 and 2n) with a different probability than 1/j.
+
+   We also observed earlier (Footnote 6) that for a constant 0 < α ≤ 1, a set randomly
+chosen from [1, 2n] is a P⌊αn⌋ -set with probability approaching 1 as n → ∞. MSTD
+sets are of course not random, but it seems logical to suppose that this pattern continues.
+
+Conjecture 5.1. Fix a constant 0 < α ≤ 1/2. Then as n → ∞ the probability that a
+randomly chosen MSTD set in [1, 2n] containing 1 and 2n is a P⌊αn⌋ -set goes to 1.
+
+   In our construction and that of [MO], a collection of MSTD sets is formed by fixing
+the fringe elements and letting the middle vary. The intuition behind both is that the
+fringe elements matter most and the middle elements least. Motivated by this it is inter-
+esting to look at all MSTD sets in [1, n] and ask with what frequency a given element is
+in these sets. That is, what is
+
+                               #{A : k ∈ A and A is an MSTD set}
+                   γ(k; n) =                                                         (5.1)
+                                  #{A : A is an MSTD set}
+
+as n → ∞? We can get a sense of what these probabilities might be from Figure 1.
+   Note that, as the graph suggests, γ is symmetric about n+12
+                                                               , i.e. γ(k, n) = γ(n + 1 −
+k, n). This follows from the fact that the cardinalities of the sumset and difference set
+are unaffected by sending x → αx + β for any α, β. Thus for each MSTD set A we get
+                EXPLICIT CONSTRUCTIONS OF INFINITE FAMILIES OF MSTD SETS                    13
+
+a distinct MSTD set n + 1 − A showing that our function γ is symmetric. These sets
+are distinct since if A = n + 1 − A then A is sum-difference balanced.17
+   From [MO] we know that a positive percentage of sets are MSTD sets. By the central
+limit theorem we then get that the average size of an MSTD set chosen from [1, n] is
+about n/2. This tells us that on average γ(k, n) is about 1/2. The graph above suggests
+that the frequency goes to 1/2 in the center. This leads us to the following conjecture:
+Conjecture 5.2. Fix a constant 0 < α < 1/2. Then limn→∞ γ(k, n) = 1/2 for ⌊αn⌋ ≤
+k ≤ n − ⌊αn⌋.
+Remark 5.3. More generally, we could ask which non-decreasing functions f (n) have
+f (n) → ∞, n − f (n) → ∞ and limn→∞ γ(k, n) = 1/2 for all k such that ⌊f (n)⌋ ≤
+k ≤ n − ⌊f (n)⌋.
+
+                             A PPENDIX A. S IZE OF S(a, b, c; r)
+  We sketch the proof that the sum
+                                           r/4
+                                           X               r/ck
+                                                1        1
+                           S(a, b, c; r) =       ak
+                                                     1 − bk                              (A.1)
+                                           k=n
+                                               2        2
+                   
+              log r a/b
+is at least     r
+                        . We determine the maximum value of the summands
+                                                                  r/ck
+                                                1             1
+                           f (a, b, c; k, r) = ak         1 − bk           .             (A.2)
+                                               2             2
+Clearly f (a, b, c; k, r) is very small if k is small due to the second factor; similarly it is
+small if k is large because of the first factor. Thus the maximum value of f (a, b, c; k, r)
+will arise not from an endpoint but from a critical point.
+  It is convenient to change variables to simplify the differentiation. Let u = 2k (so
+k = log u/ log 2). Then
+                                                                   ub · mblog 2
+                                                        −a        1      cu log u
+               g(a, b, c; u, r) = f (a, b, c; k, r) = u      1− b                 .     (A.3)
+                                                                  u
+Thus                                                              
+                                                −a         r log 2
+                         g(a, b, c; u, r) ≈ u exp − b                 .                (A.4)
+                                                         cu log u
+Maximizing this is the same as minimizing h(a, b, c; u, r) = 1/g(a, b, c; u, r). After
+some algebra we find
+                              h(a, b, c; u, r)                                      
+      h′ (a, b, c; u, r) =               2     acub log2 u − r log 2 · (b log u + 1) . (A.5)
+                                  cu log u
+Setting the derivative equal to zero yields
+                          acub log2 u      =    r log 2 · (b log u + 1) .                (A.6)
+  17The following proof is standard (see, for instance, [Na2]). If A = n + 1 − A then
+
+                 |A + A| = |A + (n + 1 − A)| = |n + 1 + (A − A)| = |A − A|.               (5.2)
+14               STEVEN J. MILLER, BROOKE OROSZ, AND DANIEL SCHEINERMAN
+
+As we know u must be large, looking at just the main term from the right hand side
+yields
+                                    acub log u ≈ rb log 2,                                        (A.7)
+or
+                                                                     b log 2
+                                 ub log u ≈ Cr, C =                          .                    (A.8)
+                                                                        ac
+To first order, we see the solution is
+                                                    ! 1b                         1b
+                                           (Cr)                  ′         r
+                            umax =        log(Cr)
+                                                           ≈ C                          .         (A.9)
+                                                                         log r
+                                             b
+Straightforward algebra shows that the maximum value of our summands is approxi-
+                            a/b
+mately (C ′ e1/b )−a logr r      .
+                                            R EFERENCES
+[FP]     G. A. Freiman and V. P. Pigarev, The relation between the invariants R and T, Number theoretic
+         studies in the Markov spectrum and in the structural theory of set addition (Russian), Kalinin.
+         Gos. Univ., Moscow, 1973, 172–174.
+[He]     P. V. Hegarty, Some explicit constructions of sets with more sums than differences (2007), Acta
+         Arithmetica 130 (2007), no. 1, 61–77.
+[HM]     P. V. Hegarty and S. J. Miller, When almost all sets are difference dominated, to appear in Ran-
+         dom Structurs and Algorithms. http://arxiv.org/abs/0707.3417
+[Ma]     J. Marica, On a conjecture of Conway, Canad. Math. Bull. 12 (1969), 233–234.
+[MO]     G. Martin and K. O’Bryant, Many sets have more sums than differences. To appear in the Pro-
+         ceedings of CRM-Clay Conference on Additive Combinatorics, Montréal 2006.
+[Na1]    M. B. Nathanson, Problems in additive number theory, 1. To appear in the Proceedings of CRM-
+         Clay Conference on Additive Combinatorics, Montréal 2006.
+[Na2]    M. B. Nathanson, Sets with more sums than differences, Integers : Electronic Journal of Combi-
+         natorial Number Theory 7 (2007), Paper A5 (24pp).
+[Ru1]    I. Z. Ruzsa, On the cardinality of A + A and A − A, Combinatorics year (Keszthely, 1976), vol.
+         18, Coll. Math. Soc. J. Bolyai, North-Holland-Bolyai Tàrsulat, 1978, 933–938.
+[Ru2]    I. Z. Ruzsa, Sets of sums and differences, Séminaire de Théorie des Nombres de Paris 1982-1983
+         (Boston), Birkh¨user, 1984, 267–273.
+[Ru3]    I. Z. Ruzsa, On the number of sums and differences, Acta Math. Sci. Hungar. 59 (1992), 439–447.
+
+
+
+
+     E-mail address: Steven.J.Miller@williams.edu
+
+  D EPARTMENT OF M ATHEMATICS AND S TATISTICS , W ILLIAMS C OLLEGE , W ILLIAMSTOWN , MA
+01267
+
+     E-mail address: BOrosz@gc.cuny.edu
+
+     D EPARTMENT OF M ATHEMATICS , T HE G RADUATE C ENTER /CUNY, N EW YORK , NY 10016
+
+     E-mail address: Daniel Scheinerman@brown.edu
+
+     D EPARTMENT OF M ATHEMATICS , B ROWN U NIVERSITY, P ROVIDENCE , RI 02912
+

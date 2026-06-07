@@ -1,0 +1,182 @@
+
+\subsection{Gurvits' Machinery and Generalizations}
+\label{sec:Gurvits}
+%Let $\mu:2^{[n]}\to\R_+$ be a strongly Rayleigh distribution. 
+%For $T\subseteq [n]$ and $S\sim\mu$, where $S_T = |S \cap T|$,
+The following is the main result of this subsection.
+\begin{proposition}\label{lem:427gen}
+	Given a SR distribution $\mu:2^{[n]}\to\R_+$, let $A_1,\dots,A_m$ be random variables corresponding to the number of elements sampled from $m$ disjoint sets, and let integers  $n_1,\dots,n_m\geq 0$ be such that for any $S\subseteq [m]$,
+	\begin{eqnarray*}
+		 \P{\sum_{i\in S} A_i \geq \sum_{i\in S} n_i} &\geq & \eps,\\
+		 \P{\sum_{i\in S} A_i \leq \sum_{i\in S} n_i} &\geq & \eps,\\
+	\end{eqnarray*}
+	it follows that,
+	$$ \P{\forall i: A_i=n_i} \geq f(\eps)\P{A_1+\dots+A_m=n_1+\dots+n_m},$$
+	where $f(\eps)\geq \eps^{2^m}\prod_{k=2}^m \frac1{\max\{n_k, n_1+\dots+n_{k-1}\}+1}$. 
+\end{proposition}
+We remark that in  applications of the above statement, it is enough to know that for any set $S\subseteq [m]$, $\sum_{i\in S} n_i-1 < \E{\sum_{i\in S} A_i}<\sum_{i\in S} n_i+1$. Because, then by \cref{thm:rayleigh_expectconstprob} we can prove a lower bound on the probability that $\sum_{i\in S} A_i = \sum_{i\in S} n_i$. 
+
+We also remark the above lower bound of $f(\eps)$ is not tight; in particular, we expect the dependency on $m$ should only be exponential (not doubly exponential). We leave it as an open problem to find a tight lower bound on $f(\eps)$.
+\begin{proof}	
+%Wlog, perhaps after renaming, assume $n_1\geq n_2,\dots,n_m$.
+Let $\cE$ be the event $A_1+\dots+A_m=n_1+\dots+n_m$.
+\begin{align*}
+	\P{1\leq i\leq m: A_i=n_i} =& \P{\cE}\P{A_m=n_m|\cE}\P{A_{m-1}=n_{m-1} |A_m=n_m,\cE}\\
+	&\dots \P{A_2=n_2 | A_3=n_3,\dots,S_{A_m}=n_m,\cE}
+\end{align*}	
+So, to prove the statement, it is enough to prove that for any $2\leq k\leq n$,
+\begin{equation}\label{eq:XAkkp1Am} \P{A_k=n_k | A_{k+1}=n_{k+1},\dots,A_m=n_m,\cE}\geq \eps^{2^{m-k+1}}\frac1{\max\{n_k, n_1+\dots+n_{k-1}\}+1}
+\end{equation}
+By the following \cref{claim:eps-to-the-2^m},
+\begin{eqnarray*}
+	\P{A_k\geq n_k | A_{k+1}=n_{k+1},\dots,A_m=n_m,\cE} &\geq & \eps^{2^{m-k+1}},\\
+	\P{A_k\leq n_k | A_{k+1}=n_{k+1},\dots,A_m=n_m,\cE} &\geq & \eps^{2^{m-k+1}}.
+\end{eqnarray*}
+So, \eqref{eq:XAkkp1Am} simply follows by \cref{lem:logconcavity}. Now we prove this claim.
+\begin{claim}\label{claim:eps-to-the-2^m} Let $[k]:=\{1,\dots,k\}$.
+For any $2\leq k\leq m$, and any set $S\subsetneq [k]$,
+\begin{eqnarray*}
+	\P{\sum_{i\in S} A_i\geq \sum_{i\in S} n_i | A_{k+1}=n_{k+1},\dots,A_m=n_m,\cE}&\geq& \eps^{2^{m-k+1}},\\
+	\P{\sum_{i\in S} A_i\leq \sum_{i\in S} n_i | A_{k+1}=n_{k+1},\dots,A_m=n_m,\cE}&\geq& \eps^{2^{m-k+1}}	
+\end{eqnarray*}	
+\end{claim}
+\begin{proof}
+%We define $X_S=\sum_{i\in S} S_{A_i}$. 
+%We also define $n_S=\sum_{i\in S} n_i$.
+%First observe that for any $k$, the event $X_{A_{k+1}}=n_{k+1},\dots,X_{A_m}=n_m,\cE$ is the same as the event, $X_{[k]}=n_{[k]},\dots,X_{[m]}=n_{[m]}$. 
+%For any $k$, define $\mu_k$ to be 
+%$$ \{\mu | X_{[k]}=n_{[k]},\dots,X_{[m]}=n_{[m]}\}$$
+%
+%We prove the claim for measures $\mu_m,\mu_{m-1},\dots,$ by induction. The base case for $\mu_m$ simply follows by \cref{lem:updowntruncation}.
+%Suppose the claim holds for $\mu_{k+1}$, namely, for any $S\subsetneq [k+1]$,
+%$$ \PP{\mu_{k+1}}{X_S\geq n_S}, \PP{\mu_{k+1}}{X_S\leq n_S}\geq \eps^{2^{m-k}}.$$
+We prove by induction. 
+First, notice for $k=m$ the statement holds just by lemma's assumption and \cref{lem:updowntruncation}.
+Now, suppose the statement holds for $k+1$.
+Now, fix a set $S\subsetneq [k]$. %, We prove that 
+%\begin{equation}\label{eq:goalkeps2k}
+%	\PP{\mu_{k+1}}{X_S\geq n_S | X_{[k]}=n_{[k]}}, \PP{\mu_{k+1}}{X_S\leq n_S | X_{[k]}=n_{[k]}}\geq \eps^{2^{m-k+1}}.
+%\end{equation}
+ Let $\overline{S}=[k]\smallsetminus S$.
+Define $A=\sum_{i\in S} A_i$ and $B=\sum_{i\in \overline{S}} A_i$, and similarly define $n_A,n_B$.
+ By the induction hypothesis,
+ $$ \eps^{2^{m-k}}\leq \P{A\leq n_A | A_{k+2}=n_{k+2},\dots,A_m=n_m,\cE} %= \P{A\leq n_A | A_{k+2}=n_{k+2},\dots,A_m=n_m, \cE_{k+1}},
+ $$
+% where $\cE_{k+1}$ is the event that $\sum_{i=1}^{k+1} A_i=\sum_{i=1}^{k+1} n_i$. 
+ The same statement holds for events $A\geq n_A, 
+ B\leq n_B, B\geq n_B, A+B\geq n_A+n_B, A+B\leq n_A+n_B$.
+Let $\cE_{k+1}$ be the event $A_{k+2}=n_{k+2},\dots,A_m=n_m, \cE$. Note that conditioned on $\cE_{k+1}$,  $A+B=n_A+n_B$  if and only if $A_{k+1}=n_{k+1}$. 
+ By \cref{lem:logconcavity}, $\P{A+B=n_A+n_B| \cE_{k+1}}>0$. Therefore,
+ by \cref{lem:updowntruncation},
+$$ \P{A\geq n_A | A+B=n_A+n_B, \cE_{k+1}}, \P{A\leq n_A | A+B=n_A+n_B, \cE_{k+1}} \geq (\eps^{2^{m-k}})^2=\eps^{2^{m-k+1}}$$
+as desired. 
+\end{proof}
+This finishes the proof of \cref{lem:427gen}
+\end{proof}
+
+
+\begin{lemma}\label{lem:logconcavity}
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be a $d$-homogeneous SR distribution. If for an integer $0\leq k\leq d$, $\PP{S\sim\mu}{|S|\geq k}\geq \eps$ and $\PP{\mu}{|S|\leq k}\geq \eps$. Then, 
+\begin{align*}\P{|S|=k}&\geq \min\{\frac{\eps}{k+1},\frac{\eps}{d-k+1}\},\\
+\P{|S|=k}&\geq \min\left\{p_m, \eps\left(1-\left(\frac{\eps}{p_m}\right)^{1/\max\{k,d-k\}}\right)\right\}.
+\end{align*}
+where $p_m \leq \max_{0\leq i\leq d}\P{|S|=i}$ is a lower bound on the mode of $|S|$.
+\end{lemma}
+\begin{proof}
+%Projecting $\mu$ on $S$ gives a SR distribution. 
+%First, if  $s_k\geq 1/(d+1)$ then we are done so we assume $s_k\leq 1/(d+1)$.
+Since $\mu$ is SR, the sequence $s_0, s_1,\dots,s_d$ where $s_i=\P{|S|=i}$ is log-concave and unimodal. So, either the mode is in the interval $[0,k]$ or in $[k,d]$. We assume the former and prove the lemma; the latter can be proven similarly.
+First, observe that since $s_k\geq s_{k+1}\geq \dots\geq s_d$, we get $s_k\geq \eps/(d-k+1)$. In the rest of the proof, we show that $s_k\geq \eps(1-(\eps/p_m)^{1/k})$ or $s_k \ge p_m$.
+
+Suppose $s_i$ is the mode. %Note that  
+It follows that there is $i\leq j\leq k-1$ such that $\frac{s_j}{s_{j+1}}\geq \left(\frac{s_i}{s_k}\right)^{1/(k-i)}$.  So, by \cref{lem:logconcaveexpecation}, 
+$$\eps\leq  s_k+\dots+s_d\leq \frac{s_k}{1-\left(\frac{s_k}{s_i}\right)^{1/(k-i)}}$$ 
+If $s_k\geq p_m$ or $s_k\geq \eps$ then we are done. Otherwise, 
+$$ s_k\geq \eps \left(1-(s_k/p_m)^{1/(k-i)}\right)\geq \eps\left(1- \left(\eps/p_m\right)^{1/k}\right)$$
+where we used $s_i\geq p_m$ and $s_k\leq \eps$.
+\end{proof}
+
+
+\begin{lemma}\label{lem:updowntruncation}
+Given a strongly Rayleigh distribution $\mu:2^{[n]}\to \R_{\geq 0}$, let $A,B$ be two (nonnegative) random variables corresponding to the number of elements sampled from two {\em disjoint} sets such that  $\P{A+B=n}>0$ where $n=n_A+n_B$. Then,
+\begin{eqnarray}
+	\P{A\geq n_A | A+B=n}=\P{B\leq n_B | A+B=n} & \geq & \P{A\geq n_A}\P{B\leq n_B},  \\
+	\P{A\leq n_A|A+B=n}=\P{B\geq n_B | A+B=n}  &\geq &  \P{A\leq n_A}\P{B\geq n_B}.
+\end{eqnarray} 
+\end{lemma}
+\begin{proof}
+We prove the second statement. The first one can be proven similarly.
+%Also, note that $\P{A\leq n_A | A+B=n} = \P{B\geq n_B | A+B=n}.$
+First, notice
+\begin{align*}
+%	=&\P{B\geq n_B | A\leq n_A,A+B\geq n}\P{A\leq n_A,A+B\geq n}\\
+%	~~&+\P{A\leq n_A | B\geq n_B, A+B\leq n} \P{B\geq n_B, B\leq n}\\
+	&\P{A\leq n_A , A+B \geq n} + \P{B\geq n_B , A+B < n}\\
+	=&\P{B\geq n_B, A\leq n_A, A+B\geq n} + \P{A\leq n_A, B\geq n_B, A+B< n}\\
+	=& \P{B\geq n_B, A\leq n_A} \geq \P{B\geq n_B}\P{A\leq n_A}=:\alpha,
+\end{align*}
+where the last inequality follows by negative association.
+Say $q=\P{A+B\geq n}$.
+From above, either $\P{A\leq n_A, A+B \geq n}\geq \alpha q$ or $\P{B\geq n_B, A+B<n}\geq \alpha (1-q)$. In the former case, we get $\P{A\leq n_A | A+B\geq n}\geq \alpha$ and in the latter we get $\P{B\geq n_B | A+B<n}\geq \alpha$.
+Now the lemma follows by the stochastic dominance property
+\begin{eqnarray*} 
+\P{A\leq n_A | A+B=n} &\geq& \P{A\leq n_A | A+B \geq n} \\
+\P{B\geq n_B | A+B=n} &\geq& \P{B\geq n_B | A+B < n}	
+\end{eqnarray*}
+Note that in the special case that $A+B<n$ never happens, the lemma holds trivially.
+\end{proof}
+
+Combining the previous two lemmas, we get
+%\begin{corollary}\label{lem:SRA=nA}
+%Let $\mu:2^{[n]}\to\R_{\geq 0}$ be a SR distribution. Let $A,B$ be two random variables corresponding to the number of elements sampled from two disjoint sets of elements. If $\P{A\geq n_A},\P{B\geq n_B}\geq \eps_1$ and $\P{A\leq n_A},\P{B\leq n_B}\geq \eps_2$, then 
+%\begin{align*}
+%	&\P{A=n_A | A+B=n_A+n_B}\geq \eps \min\{\frac1{n_A+1},\frac{1}{n_B+1}\},\\
+%&\P{A=n_A | A+B=n_A+n_B}\geq \min\left\{p_m, \eps(1-(\eps /p_m)^{1/\max\{n_A,n_B\}})\right\}
+%\end{align*}
+%where $\eps=\eps_1\eps_2$ and $p_m\leq\max_{0\leq k\leq n_A+n_B} \P{A=k | A+B=n_A+n_B}$ is a lower bound on the mode of $A$.
+%
+%For $n_A=1,n_B=1$,  if   $\P{A=1 | A+B=2} \le \eps$,  $p_m \ge   1-2\eps$. This is because since the distribution of $A$ is unimodal, $\min\{\P{A=0}, \P{A=2}\} \le \eps$.
+%Therefore, if $\eps\leq 1/3$, 
+%$$\P{A=1 | A+B=2}\geq  \max\left\{\eps/2, \eps\left(1-\frac{\eps}{1-2\eps}\right)\right\}.$$
+%\end{corollary}
+
+\begin{corollary}\label{lem:SRA=nA}
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be a SR distribution. Let $A,B$ be two random variables corresponding to the number of elements sampled from two disjoint sets of elements such that $A \ge k_A$ with probability 1 and $B \ge k_B$ with probability 1. If $\P{A\geq n_A},\P{B\geq n_B}\geq \eps_1$ and $\P{A\leq n_A},\P{B\leq n_B}\geq \eps_2$, then, letting $n'_A = n_A-k_A, n'_B = n_B-k_B$,
+\begin{align*}
+	&\P{A=n_A | A+B=n_A+n_B}\geq \eps \min\{\frac1{n'_A+1},\frac{1}{n'_B+1}\},\\
+&\P{A=n_A | A+B=n_A+n_B}\geq \min\left\{p_m, \eps(1-(\eps /p_m)^{1/\max\{n'_A,n'_B\}})\right\}
+\end{align*}
+where $\eps=\eps_1\eps_2$ and $p_m\leq\max_{k_A\leq k\leq n_A+n_B-k_B} \P{A=k | A+B=n_A+n_B}$ is a lower bound on the mode of $A$.
+
+In the special case that $n_A=1,n_B=1$, $k_A=0,k_B=0$,  if   $\P{A=1 | A+B=2} \le \eps$,  $p_m \ge   1-2\eps$. If $\eps\leq 1/3$, 
+$$\P{A=1 | A+B=2}\geq  \max\left\{\eps/2, \eps\left(1-\frac{\eps}{1-2\eps}\right)\right\}.$$
+\end{corollary}
+To get the first statement, we construct a new SR distribution from $\mu$ as follows. First, we symmetrize $g_\mu$ by setting all $x_a \in A$ to $x$ and all $x_b \in B$ to $y$; call the resulting polynomial $q_\mu$. Then, notice $q'_\mu = q_\mu/(x^{k_A}x^{k_B})$ is real stable. Therefore, we can apply the above corollary to a distribution with generating polynomial $q'_\mu$.\footnote{To be precise, we apply the above corollary to the polarization of $q'_\mu$, where $x,y$ are polarized by a disjoint set of variables of size equal to their maximum degree.}
+
+To get the second statement, notice that since the distribution of $A$ is unimodal, $$\min\{\P{A=0}, \P{A=2}\} \le \eps$$
+
+
+%In most applications of the above corollary, $n_A,n_B=1$.
+
+%\begin{remark} When applying this lemma, we typically use the final inequality above to get a lower bound on $\P{A=n_A | A+B=n_A+n_B}$ that is close to $\eps$. 
+%For example, say you know $\eps_1 = 0.4$ and $\eps_2 = 0.25$ and $n_A=n_B=1$. Then $\eps = 0.1$.
+%So, either $\P{A = 1 | A+B=2} \ge 0.1$  or $p_m \ge r =  0.8$.
+%The latter is because the distribution of $A$ is unimodal;
+%so either $\P{A = 0 | A+B=2} < 0.1$ or  $\P{A = 2 | A+B=2} < 0.1$. 
+%Thus,  plugging $r=0.8$ in for $\p_m$ and $\eps = 0.1$ in the formula, and you get a lower bound of $0.1 (1-(0.1/0.8)) = 0.0875$.
+%
+%\end{remark}
+
+
+
+
+%which, if $r$ is large enoughObserve that the second inequality is much stronger if we can prove a decent lower bound on $p_m\gg \eps$; in such a case we essentially get $\P{A=n_A | A+B=n_A+n_B}\geq \eps$. Here
+%is how this might be done:
+%Say you know $\eps_1 = 0.4$ and $\eps_2 = 0.25$ and $n_A=n_B=1$. Then $\eps = 0.1$.
+%So, either $\P{A = 1 | A+B=2} \ge 0.1$  or $p_m > 0.8$.
+%The latter is because the distribution of $A$ is unimodal;
+%so either $\P{A = 0 | A+B=2} < 0.1$ or  $\P{A = 2 | A+B=2} < 0.1$ . Now, plug $p_m=0.8$ and $\eps = 0.1$ in the formula, and you get $0.1 (1-(0.1/0.8)) = 0.0875$.
+
+
+
+

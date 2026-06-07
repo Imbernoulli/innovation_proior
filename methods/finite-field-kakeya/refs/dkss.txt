@@ -1,0 +1,1700 @@
+Extensions to the Method of Multiplicities, with applications to
+Kakeya Sets and Mergers
+
+arXiv:0901.2529v2 [math.CO] 13 May 2009
+
+Zeev Dvir∗
+
+Swastik Kopparty †
+
+Shubhangi Saraf ‡
+
+Madhu Sudan§
+
+November 26, 2024
+
+Abstract
+We extend the “method of multiplicities” to get the following results, of interest in combinatorics and randomness extraction.
+1. We show that every Kakeya set (a set of points that contains a line in every direction) in
+Fnq must be of size at least q n /2n . This bound is tight to within a 2 + o(1) factor for every
+n as q → ∞, compared to previous bounds that were off by exponential factors in n.
+2. We give improved randomness extractors and “randomness mergers”. Mergers are seeded
+functions that take as input Λ (possibly correlated) random variables in {0, 1}N and a short
+random seed and output a single random variable in {0, 1}N that is statistically close to
+having entropy (1 − δ) · N when one of the Λ input variables is distributed uniformly. The
+seed we require is only (1/δ) · log Λ-bits long, which significantly improves upon previous
+construction of mergers.
+3. Using our new mergers, we show how to construct randomness extractors that use logarithmic length seeds while extracting 1 − o(1) fraction of the min-entropy of the source.
+Previous results could extract only a constant fraction of the entropy while maintaining
+logarithmic seed length.
+The “method of multiplicities”, as used in prior work, analyzed subsets of vector spaces over finite
+fields by constructing somewhat low degree interpolating polynomials that vanish on every point
+in the subset with high multiplicity. The typical use of this method involved showing that the
+interpolating polynomial also vanished on some points outside the subset, and then used simple
+bounds on the number of zeroes to complete the analysis. Our augmentation to this technique
+is that we prove, under appropriate conditions, that the interpolating polynomial vanishes with
+high multiplicity outside the set. This novelty leads to significantly tighter analyses.
+To develop the extended method of multiplicities we provide a number of basic technical
+results about multiplicity of zeroes of polynomials that may be of general use. For instance,
+we strengthen the Schwartz-Zippel lemma to show that the expected multiplicity of zeroes of a
+non-zero degree d polynomial at a random point in S n , for any finite subset S of the underlying
+field, is at most d/|S| (a fact that does not seem to have been noticed in the CS literature
+before).
+∗
+
+IAS. zeev.dvir@gmail.com. Research partially supported by NSF Grant CCF-0832797 (Expeditions in computing grant) and by NSF Grant DMS-0835373 (pseudorandomness grant).
+†
+MIT CSAIL. swastik@mit.edu. Research supported in part by NSF Award CCF 0829672.
+‡
+MIT CSAIL. shibs@mit.edu. Research supported in part by NSF Award CCF 0829672.
+§
+MIT CSAIL. madhu@mit.edu. Research supported in part by NSF Award CCF 0829672.
+
+1
+
+1
+
+Introduction
+
+The goal of this paper is to improve on an algebraic method that has lately been applied, quite
+effectively, to analyze combinatorial parameters of subsets of vector spaces that satisfy some given
+algebraic/geometric conditions. This technique, which we refer to as as the polynomial method (of
+combinatorics), proceeds in three steps: Given the subset K satisfying the algebraic conditions, one
+first constructs a non-zero low-degree polynomial that vanishes on K. Next, one uses the algebraic
+conditions on K to show that the polynomial vanishes at other points outside K as well. Finally, one
+uses the fact that the polynomial is zero too often to derive bounds on the combinatorial parameters
+of interest. The polynomial method has seen utility in the computer science literature in works on
+“list-decoding” starting with Sudan [Sud97] and subsequent works. Recently the method has been
+applied to analyze “extractors” by Guruswami, Umans, and Vadhan [GUV07]. Most relevant to this
+current paper are its applications to lower bound the cardinality of “Kakeya sets” by Dvir [Dvi08],
+and the subsequent constructions of “mergers” and “extractors” by Dvir and Wigderson [DW08].
+(We will elaborate on some of these results shortly.)
+The method of multiplicities, as we term it, may be considered an extension of this method. In
+this extension one constructs polynomials that vanish with high multiplicity on the subset K. This
+requirement often forces one to use polynomials of higher degree than in the polynomial method,
+but it gains in the second step by using the high multiplicity of zeroes to conclude “more easily” that
+the polynomial is zero at other points. This typically leads to a tighter analysis of the combinatorial
+parameters of interest. This method has been applied widely in list-decoding starting with the work
+of Guruswami and Sudan [GS99] and continuing through many subsequent works, most significantly
+in the works of Parvaresh and Vardy [PV05] and Guruswami and Rudra [GR06] leading to rateoptimal list-decodable codes. Very recently this method was also applied to improve the lower
+bounds on the size of “Kakeya sets” by Saraf and Sudan [SS08].
+The main contribution of this paper is an extension to this method, that we call the extended method
+of multiplicities, which develops this method (hopefully) fully to derive even tighter bounds on the
+combinatorial parameters. In our extension, we start as in the method of multiplicities to construct
+a polynomial that vanishes with high multiplicity on every point of K. But then we extend the
+second step where we exploit the algebraic conditions to show that the polynomial vanishes with
+high multiplicity on some points outside K as well. Finally we extend the third step to show that
+this gives better bounds on the combinatorial parameters of interest.
+By these extensions we derive nearly optimal lower bounds on the size of Kakeya sets and qualitatively improved analysis of mergers leading to new extractor constructions. We also rederive
+algebraically a known bound on the list-size in the list-decoding of Reed-Solomon codes. We
+describe these contributions in detail next, before going on to describe some of the technical observations used to derive the extended method of multiplicities (which we believe are of independent
+interest).
+
+1.1
+
+Kakeya Sets over Finite Fields
+
+Let Fq denote the finite field of cardinality q. A set K ⊆ Fnq is said to be a Kakeya set if it “contains
+a line in every direction”. In other words, for every “direction” b ∈ Fnq there should exist an “offset”
+a ∈ Fnq such that the “line” through a in direction b, i.e., the set {a + tb|t ∈ Fq }, is contained in
+2
+
+K. A question of interest in combinatorics/algebra/geometry, posed originally by Wolff [Wol99],
+is: “What is the size of the smallest Kakeya set, for a given choice of q and n?”
+The trivial upper bound on the size of a Kakeya set is q n and this can be improved to roughly
+1
+1
+q n (precisely the bound is 2n−1
+q n + O(q n−1 ), see [SS08] for a proof of this bound due to Dvir).
+2n−1
+An almost trivial lower bound is q n/2 (every Kakeya set “contains” at least q n lines, but there are
+at most |K|2 lines that intersect K at least twice). Till recently even the exponent of q was not
+known precisely (see [Dvi08] for details of work prior to 2008). This changed with the result of
+[Dvi08] (combined with an observation of Alon and Tao) who showed that for every n, |K| ≥ cn q n ,
+for some constant cn depending only on n.
+Subsequently the work [SS08] explored the growth of the constant cn as a function of n. The result
+of [Dvi08] shows that cn ≥ 1/n!, and [SS08] improve this bound to show that cn ≥ 1/(2.6)n . This
+still leaves a gap between the upper bound and the lower bound and we effectively close this gap.
+Theorem 1 If K is a Kakeya set in Fnq then |K| ≥ 21n q n .
+Note that our bound is tight to within a 2 + o(1) multiplicative factor as long as q = ω(2n ) and in
+particular when n = O(1) and q → ∞.
+
+1.2
+
+Randomness Mergers and Extractors
+
+A general quest in the computational study of randomness is the search for simple primitives that
+manipulate random variables to convert their randomness into more useful forms. The exact notion
+of utility varies with applications. The most common notion is that of “extractors” that produce
+an output variable that is distributed statistically close to uniformly on the range. Other notions
+of interest include “condensers”, “dispersers” etc. One such object of study (partly because it is
+useful to construct extractors) is a “randomness merger”. A randomness merger takes as input
+Λ, possibly correlated, random variables A1 , . . . , AΛ , along with a short uniformly random seed
+B, which is independent of A1 , . . . , AΛ , and “merges” the randomness of A1 , . . . , AΛ . Specifically
+the output of the merger should be statistically close to a high-entropy-rate source of randomness
+provided at least one of the input variables A1 , . . . , AΛ is uniform.
+Mergers were first introduced by Ta-Shma [TS96a] in the context of explicit constructions of extractors. A general framework was given in [TS96a] that reduces the problem of constructing good
+extractors into that of constructing good mergers. Subsequently, in [LRVW03], mergers were used
+in a more complicated manner to create extractors which were optimal to within constant factors.
+The mergers of [LRVW03] had a very simple algebraic structure: the output of the merger was a
+random linear combination of the blocks over a finite vector space. The [LRVW03] merger analysis
+was improved in [DS07] using the connection to the finite field Kakeya problem and the (then)
+state of the art results on Kakeya sets.
+The new technique in [Dvi08] inspired Dvir and Wigderson [DW08] to give a very simple, algebraic,
+construction of a merger which can be viewed as a derandomized version of the [LRVW03] merger.
+They associate the domain of each random variable Ai with a vector space Fnq . With the Λ-tuple
+of random variables A1 , . . . , AΛ , they associate a curve C : Fq → Fnq of degree ≤ Λ which ‘passes’
+through all the points A1 , . . . , AΛ (that is, the image of C contains these points). They then select
+3
+
+a random point u ∈ Fq and output C(u) as the “merged” output. They show that if q ≥ poly(Λ · n)
+then the output of the merger is statistically close to a distribution of entropy-rate arbitrarily close
+to 1 on Fnq .
+While the polynomial (or at least linear) dependence of q on Λ is essential to the construction
+above, the requirement q ≥ poly(n) appears only in the analysis. In our work we remove this
+restriction to show:
+Informal Theorem [Merger]: For every Λ, q the output of the Dvir-Wigderson merger is close
+to a source of entropy rate 1 − logq Λ. In particular there exists an explicit merger for Λ sources (of
+arbitrary length) that outputs a source with entropy rate 1 − δ and has seed length (1/δ) · log(Λ/ǫ)
+for any error ǫ.
+The above theorem (in its more formal form given in Theorem 17) allows us to merge Λ sources
+using seed length which is only logarithmic in the number of sources and does not depend entirely
+on the length of each source. Earlier constructions of mergers required the seed to depend either
+linearly on the number of blocks [LRVW03, Zuc07] or to depend also on the length of each block
+[DW08]. 1
+One consequence of our improved merger construction is an improved construction of extractors.
+Recall that a (k, ǫ)-extractor E : {0, 1}n × {0, 1}d → {0, 1}m is a deterministic function that takes
+any random variable X with min-entropy at least k over {0, 1}n and an independent uniformly
+distributed seed Y ∈ {0, 1}d and converts it to the random variable E(X, Y) that is ǫ-close in
+statistical distance to a uniformly distributed random variable over {0, 1}m . Such an extractor is
+efficient if E is polynomial time computable.
+A diverse collection of efficient extractors are known in the literature (see the survey [Sha02]
+and the more recent [GUV07, DW08] for references) and many applications have been found for
+explicit extractor is various research areas spanning theoretical computer science. Yet all previous
+constructions lost a linear fraction of the min-entropy of the source (i.e., acheived m = (1 − ǫ)k
+for some constant ǫ > 0) or used super-logarithmic seed length (d = ω(log n)). We show that our
+merger construction yields, by combining with several of the prior tools in the arsenal of extractor
+1
+fraction of the minentropy of the source,
+constructions, an extractor which extracts a 1 − polylog(n)
+while still using O(log n)-length seeds. We now state our extractor result in an informal way (see
+Theorem 21 for the formal statement).
+Informal Theorem [Extractor]: There exists an explicit (k, ǫ)-extractor for all min-entropies k
+with O(log n) seed, entropy loss O(k/polylog(n)) and error ǫ = 1/polylog(n), where the powers in
+the polylog(n) can be arbitrarily high constants.
+
+1.3
+
+List-Decoding of Reed-Solomon Codes
+
+The Reed-Solomon list-decoding problem is the following: Given a sequence of points
+(α1 , β1 ), . . . , (αn , βn ) ∈ Fq × Fq ,
+and parameters k and t, find the list of all polynomials p1 , . . . , pL of degree at most k that agree
+with the given set of points on t locations, i.e., for every j ∈ {1, . . . , L} the set {i|pj (αi ) = βi } has
+1
+
+The result we refer to in [Zuc07, Theorem 5.1] is actually a condenser (which is stronger than a merger).
+
+4
+
+at least t elements. The associated combinatorial problem is: How large can the list size, L, be for
+a given choice of k, t, n, q (when maximized over all possible set of distinct input points)?
+A somewhat nonstandard, yet reasonable, interpretation of the list-decoding algorithms of [Sud97,
+GS99] is that they give algebraic proofs, by the polynomial method√and the method of multiplicities,
+of known combinatorial upper bounds on the list size, when t > kn. Their proofs happen also to
+be algorithmic and so lead to algorithms to find a list of all such polynomials.
+However, the bound given on the list size in the above works does not match the best known
+combinatorial bound. The best known bound to date seems to be that of Cassuto and Bruck [CB04]
+who show that, letting R = k/n and γ = t/n, if γ 2 > R, then the list size L is bounded by O( γ 2γ−R )
+(in contrast, the Johnson bound and the analysis of [GS99] gives a list size bound of O( γ 2 1−R ),
+√
+which is asymptotically worse for, say, γ = (1 + O(1)) R and R tending to 0). In Theorem 34 we
+recover the bound of [CB04] using our extended method of multiplicities.
+
+1.4
+
+Technique: Extended method of multiplicities
+
+The common insight to all the above improvements is that the extended method of multiplicities can
+be applied to each problem to improve the parameters. Here we attempt to describe the technical
+novelties in the development of the extended method of multiplicities.
+For concreteness, let us take the case of the Kakeya set problem. Given a set K ⊆ Fnq , the method
+first finds a non-zero polynomial P ∈ Fq [X1 , . . . , Xn ] that vanishes with high multiplicity m on each
+point of K. The next step is to prove that P vanishes with fairly high multiplicity ℓ at every point
+in Fnq as well. This step turns out to be somewhat subtle (and is evidenced by the fact that the
+exact relationship between m and ℓ is not simple). Our analysis here crucially uses the fact that
+the (Hasse) derivatives of the polynomial P , which are the central to the notion of multiplicity of
+roots, are themselves polynomials, and also vanish with high multiplicity at points in K. This fact
+does not seem to have been needed/used in prior works and is central to ours.
+A second important technical novelty arises in the final step of the method of multiplicities, where we
+need to conclude that if the degree of P is “small”, then P must be identically zero. Unfortunately
+in our application the degree of P may be much larger than q (or nq, or even q n ). To prove that it
+is identically zero we need to use the fact that P vanishes with high multiplicity at every point in
+Fnq , and this requires some multiplicity-enhanced version of the standard Schwartz-Zippel lemma.
+We prove such a strengthening, showing that the expected multiplicity of zeroes of a degree d
+polynomial (even when d ≫ q) at a random point in Fnq is at most d/q (see Lemma 8). Using this
+lemma, we are able to derive much better benefits from the “polynomial method”. Indeed we feel
+that this allows us to fully utilize the power of the polynomial ring Fq [X] and are not limited by
+the power of the function space mapping Fnq to Fq .
+Putting these ingredients together, the analysis of the Kakeya sets follows easily. The analysis of
+the mergers follows a similar path and may be viewed as a “statistical” extension of the Kakeya
+set analysis to “curve” based sets, i.e., here we consider sets S that have the property that for
+a noticeable fraction points x ∈ Fnq there exists a low-degree curve passing through x that has a
+noticeable fraction of its points in S. We prove such sets must also be large and this leads to the
+analysis of the Dvir-Wigderson merger.
+
+5
+
+Organization of this paper. In Section 2 we define the notion of the multiplicity of the roots
+of a polynomial, using the notion of the Hasse derivative. We present some basic facts about
+multiplicities and Hasse derivatives, and also present the multiplicity based version of the SchwartzZippel lemma. In Section 3 we present our lower bounds for Kakeya sets. In Section 4 we extend
+this analysis for “curves” and for “statistical” versions of the Kakeya property. This leads to our
+analysis of the Dvir-Wigderson merger in Section 5. We then show how to use our mergers to
+construct the novel extractors in Section 6. Finally, in Section 7, we include the algebraic proof of
+the list-size bounds for the list-decoding of Reed-Solomon codes.
+Version history. This version of the paper adds a new section (Section 6) constructing extractors
+based on the mergers given in the previous version of this paper (dated 15 January 2009).
+
+2
+
+Preliminaries
+
+In this section we formally define the notion of “mutliplicity of zeroes” along with the companion
+notion of the “Hasse derivative”. We also describe basic properties of these notions, concluding
+with the proof of the “multiplicity-enhanced version” of the Schwartz-Zippel lemma.
+
+2.1
+
+Basic definitions
+
+We start with some notation. We use [n] to denote the setP{1, . . . , n}. For a vector i = hi1 , . . . , in i
+of non-negative integers, its weight, denoted wt(i), equals nj=1 ij .
+
+Let F be any field, and Fq denote the finite field of q elements. For X = hX1 , . . . , Xn i, let F[X] be
+the ring of polynomials in X1 , . . . , Xn with coefficients in F. For a polynomial P (X), we let HP (X)
+denote the homogeneous part of P (X) of highest total degree.
+Q
+i
+For a vector of non-negative integers i = hi1 , . . . , in i, let Xi denote the monomial nj=1 Xjj ∈ F[X].
+Note that the (total) degree of this monomial equals wt(i). For n-tuples of non-negative integers i
+and j, we use the notation
+ Y
+n  
+i
+ik
+=
+.
+j
+jk
+k=1
+
+i
+r−i
+Note that the coefficient of Z W
+in the expansion of (Z + W)r equals ri .
+Definition 2 ((Hasse) Derivative) For P (X) ∈ F[X] and non-negative vector i, the ith (Hasse)
+def
+
+derivative of P , denoted P (i) (X), is the coefficient of Zi in the polynomial P̃ (X, Z) = P (X + Z) ∈
+F[X, Z].
+Thus,
+P (X + Z) =
+
+X
+
+P (i) (X)Zi .
+
+(1)
+
+i
+
+We are now ready to define the notion of the (zero-)multiplicity of a polynomial at any given point.
+6
+
+Definition 3 (Multiplicity) For P (X) ∈ F[X] and a ∈ Fn , the multiplicity of P at a ∈ Fn ,
+denoted mult(P, a), is the largest integer M such that for every non-negative vector i with wt(i) <
+M , we have P (i) (a) = 0 (if M may be taken arbitrarily large, we set mult(P, a) = ∞).
+Note that mult(P, a) ≥ 0 for every a. Also, P (a) = 0 if and only if mult(P, a) ≥ 1.
+
+The above notations and definitions also extend naturally to a tuple P (X) = hP1 (X), . . . , Pm (X)i
+of polynomials with P (i) ∈ F[X]m denoting the vector h(P1 )(i) , . . . , (Pm )(i) i. In particular, we define
+mult(P, a) = minj∈[m] {mult(Pj , a)}.
+
+The definition of multiplicity above is similar to the standard (analytic) definition of multiplicity
+with the difference that the standard partial derivative has been replaced by the Hasse derivative.
+The Hasse derivative is also a reasonably well-studied quantity (see, for example, [HKT08, pages
+144-155]) and seems to have first appeared in the CS literature (without being explicitly referred to
+by this name) in the work of Guruswami and Sudan [GS99]. It typically behaves like the standard
+derivative, but with some key differences that make it more useful/informative over finite fields. For
+completeness we review basic properties of the Hasse derivative and multiplicity in the following
+subsections.
+
+2.2
+
+Properties of Hasse Derivatives
+
+The following proposition lists basic properties of the Hasse derivatives. Parts (1)-(3) below are
+the same as for the analytic derivative, while Part (4) is not! Part (4) considers the derivatives of
+the derivatives of a polynomial and shows a different relationship than is standard for the analytic
+derivative. However crucial for our purposes is that it shows that the jth derivative of the ith
+derivative is zero if (though not necessarily only if) the (i + j)-th derivative is zero.
+Proposition 4 (Basic Properties of Derivatives) Let P (X), Q(X) ∈ F[X]m and let i, j be
+vectors of nonnegative integers. Then:
+1. P (i) (X) + Q(i) (X) = (P + Q)(i) (X).
+2. If P is homogeneous of degree d, then P (i) is homogeneous of degree d − wt(i).
+3. (HP )(i) (X) = HP (i) (X)
+ (i+j)
+(j)
+(X) = i+j
+(X).
+4. P (i)
+i P
+
+Proof
+
+Items 1 and 2 are easy to check, and item 3 follows immediately from them. For item 4, we expand
+P (X + Z + W) in two ways. First expand
+X
+P (X + (Z + W)) =
+P (k) (X)(Z + W)k
+k
+
+ 
+k j i
+P (k) (X)
+ZW
+i
+k i+j=k
+
+
+X
+i+j j i
+=
+P (i+j) (X)
+ZW.
+i
+
+=
+
+X X
+
+i,j
+
+7
+
+On the other hand, we may write
+P ((X + Z) + W) =
+
+X
+
+P (i) (X + Z)Wi =
+
+i
+
+(j)
+XX
+P (i)
+(X)Zj Wi .
+i
+
+j
+
+Comparing coefficients of Zj Wi on both sides, we get the result.
+
+2.3
+
+Properties of Multiplicities
+
+We now translate some of the properties of the Hasse derivative into properties of the multiplicities.
+Lemma 5 (Basic Properties of multiplicities) If P (X) ∈ F[X] and a ∈ Fn are such that
+mult(P, a) = m, then mult(P (i) , a) ≥ m − wt(i).
+Proof By assumption, for any k with wt(k) < m, we have P (k) (a) = 0.  Now take any j
+(i+j) (a). Since
+such that wt(j) < m − wt(i). By item 3 of Proposition 4, (P (i) )(j) (a) = i+j
+i P
+wt(i + j) = wt(i) + wt(j) < m, we deduce that (P (i) )(j) (a) = 0. Thus mult(P (i) , a) ≥ m − wt(i).
+We now discuss the behavior of multiplicities under composition of polynomial tuples. Let X =
+(X1 , . . . , Xn ) and Y = (Y1 , . . . , Yℓ ) be formal variables. Let P (X) = (P1 (X), . . . , Pm (X)) ∈ F[X]m
+and Q(Y) = (Q1 (Y ), . . . , Qn (Y )) ∈ F[Y]n . We define the composition polynomial P ◦ Q(Y) ∈
+F[Y]m to be the polynomial P (Q1 (Y), . . . , Qn (Y)). In this situation we have the following proposition.
+Proposition 6 Let P (X), Q(Y) be as above. Then for any a ∈ Fℓ ,
+mult(P ◦ Q, a) ≥ mult(P, Q(a)) · mult(Q − Q(a), a).
+In particular, since mult(Q − Q(a), a) ≥ 1, we have mult(P ◦ Q, a) ≥ mult(P, Q(a)).
+Proof Let m1 = mult(P, Q(a)) and m2 = mult(Q − Q(a), a). Clearly m2 > 0. If m1 = 0 the
+result is obvious. Now assume m1 > 0 (so that P (Q(a)) = 0).
+
+
+X
+P (Q(a + Z)) = P Q(a) +
+Q(i) (a)Zi 
+i6=0
+
+
+
+= P Q(a) +
+
+X
+
+wt(i)≥m2
+
+
+
+Q(i) (a)Zi 
+
+= P (Q(a) + h(Z))
+X
+= P (Q(a)) +
+P (j) (Q(a))h(Z)j
+
+since mult(Q − Q(a), a) = m2 > 0
+where h(Z) =
+
+P
+
+wt(i)≥m2 Q
+
+(i) (a)Zi
+
+j6=0
+
+=
+
+X
+
+P (j) (Q(a))h(Z)j
+
+since mult(P, Q(a)) = m1 > 0
+
+wt(j)≥m1
+
+8
+
+Thus, since each monomial Zi appearing in h has wt(i) ≥ m2 , and each occurrence of h(Z) in
+P (Q(a
+P+ Z)) is raised to the power j, with wt(j) ≥ m1 , we conclude that P (Q(a + Z)) is of the
+form wt(k)≥m1 ·m2 ck Zk . This shows that (P ◦ Q)(k) (a) = 0 for each k with wt(k) < m1 · m2 , and
+the result follows.
+
+Corollary 7 Let P (X) ∈ F[X] where X = (X1 , . . . , Xn ). Let a, b ∈ Fn . Let Pa,b (T ) be the
+polynomial P (a + T · b) ∈ F[T ]. Then for any t ∈ F,
+mult(Pa,b , t) ≥ mult(P, a + t · b).
+Proof Let Q(T ) = a + T b ∈ F[T ]n . Applying the previous proposition to P (X) and Q(T ), we
+get the desired claim.
+
+2.4
+
+Strengthening of the Schwartz-Zippel Lemma
+
+We are now ready to state and prove the strengthening of the Schwartz-Zippel lemma. In the
+standard form this lemma states that the probability that P (a) = 0 when a is drawn uniformly
+at random from S n is at most d/|S|, where P is a non-zero degree d polynomial and S ⊆ F is a
+finite set. Using min{1,
+Pmult(P, a)} as the indicator variable that is 1 if P (a) = 0, this lemma can
+be restated as saying a∈S n min{1, mult(P, a)} ≤ d · |S|n−1 . Our version below strengthens this
+lemma by replacing min{1, mult(P, a)} with mult(P, a) in this inequality.
+Lemma 8 Let P ∈ F[X] be a nonzero polynomial of total degree at most d. Then for any finite
+S ⊆ F,
+X
+mult(P, a) ≤ d · |S|n−1 .
+a∈S n
+
+Proof
+
+We prove it by induction on n.
+
+m divides P (X).
+For the base case when n = 1, we first show that if mult(P, a) = m then (X − a)P
+To see this, note that by definition of multiplicity, we have that P (a + Z) = i P (i) (a)Z i and
+P (i) (a) = 0 for P
+all i < m. We conclude that Z m divides P (a + Z), and thus (X − a)m divides P (X).
+It follows that a∈S mult(P, a) is at most the degree of P .
+
+Now suppose n > 1. Let
+
+P (X1 , . . . , Xn ) =
+
+t
+X
+
+Pj (X1 , . . . , Xn−1 )Xnj ,
+
+j=0
+
+where 0 ≤ t ≤ d, Pt (X1 , . . . , Xn−1 ) 6= 0 and deg(Pj ) ≤ d − j.
+For any a1 , . . . , an−1 ∈ S, let ma1 ,...,an−1 = mult(Pt , (a1 , . . . , an−1 )). We will show that
+X
+mult(P, (a1 , . . . , an )) ≤ ma1 ,...,an−1 · |S| + t.
+an ∈S
+
+9
+
+(2)
+
+Given this, we may then bound
+X
+mult(P, (a1 , . . . , an )) ≤
+a1 ,...,an ∈S
+
+X
+
+a1 ,...,an−1 ∈S
+
+ma1 ,...,an−1 · |S| + |S|n−1 · t.
+
+By the induction hypothesis applied to Pt , we know that
+X
+ma1 ,...,an−1 ≤ deg(Pt ) · |S|n−2 ≤ (d − t) · |S|n−2 .
+a1 ,...,an−1 ∈S
+
+This implies the result.
+We now prove Equation (2). Fix a1 , . . . , an−1 ∈ S and let i = (i1 , . . . , in−1 ) be such that wt(i) =
+(i)
+ma1 ,...,an−1 and Pt (X1 , . . . , Xn−1 ) 6= 0. Letting (i, 0) denote the vector (i1 , . . . , in−1 , 0), we note
+that
+t
+X
+(i)
+Pj (X1 , . . . , Xn−1 )Xnj ,
+P (i,0) (X1 , . . . , Xn ) =
+j=0
+
+and hence P (i,0) is a nonzero polynomial.
+Now by Lemma 5 and Corollary 7, we know that
+mult(P (X1 , . . . , Xn ), (a1 , . . . , an )) ≤ wt(i, 0) + mult(P (i,0) (X1 , . . . , Xn ), (a1 , . . . , an ))
+≤ ma1 ,...,an−1 + mult(P (i,0) (a1 , . . . , an−1 , Xn ), an ).
+
+Summing this up over all an ∈ S, and applying the n = 1 case of this lemma to the nonzero
+univariate degree-t polynomial P (i,0) (a1 , . . . , an−1 , Xn ), we get Equation (2). This completes the
+proof of the lemma.
+The following corollary simply states the above lemma in contrapositive form, with S = Fq .
+Corollary 9 Let P ∈ Fq [X] be a polynomial of total degree at most d. If
+
+d · q n−1 , then P (X) = 0.
+
+3
+
+P
+
+mult(P, a) >
+a∈Fn
+q
+
+A lower bound on the size of Kakeya sets
+
+We now give a lower bound on the size of Kakeya sets in Fnq . We implement the plan described in
+Section 1. Specifically, in Proposition 10 we show that we can find a somewhat low degree non-zero
+polynomial that vanishes with high multiplicity on any given Kakeya set, where the degree of the
+polynomial grows with the size of the set. Next, in Claim 12 we show that the homogenous part
+of this polynomial vanishes with fairly high multiplicity everywhere in Fnq . Using the strengthened
+Schwartz-Zippel lemma, we conclude that the homogenous polynomial is identically zero if the
+Kakeya set is too small, leading to the desired contradiction. The resulting lower bound (slightly
+stronger than Theorem 1) is given in Theorem 11.
+
+10
+
+Proposition 10 Given a set K ⊆ Fn and non-negative integers m, d such that
+
+
+
+
+m+n−1
+d+n
+· |K| <
+,
+n
+n
+there exists a non-zero polynomial P = Pm,K ∈ F[X] of total degree at most d such that mult(P, a) ≥
+m for every a ∈ K.
+
+
+d+n
+Proof The number of possible monomials in P is d+n
+.
+Hence
+there
+are
+degrees of
+n
+n
+freedom in the choice for the coefficients
+for
+these
+monomials.
+For
+a
+given
+point
+a,
+the
+condition
+
+that mult(P, a) ≥ m imposes m+n−1
+homogeneous
+linear
+constraints
+on
+the
+coefficients
+of P .
+n
+
+m+n−1
+Since the total number of (homogeneous) linear constraints is
+· |K|, which is strictly less
+n
+than the number of unknowns, there is a nontrivial solution.
+
+Theorem 11 If K ⊆ Fnq is a Kakeya set, then |K| ≥
+Proof
+
+q n
+.
+2−1/q
+
+Let ℓ be a large multiple of q and let
+m = 2ℓ − ℓ/q
+d = ℓq − 1.
+
+These three parameters (ℓ, m and d) will be used as follows: d will be the bound on the degree of
+a polynomial P which vanishes on K, m will be the multiplicity of the zeros of P on K and ℓ will
+be the multiplicity of the zeros of the homogenous part of P which we will deduce by restricting P
+to lines passing through K.
+Note that by the choices above we have d < ℓq and (m − ℓ)q > d − ℓ. We prove below later that
+d+n
+|K| ≥
+
+q
+as ℓ → ∞.
+where α → 2−1/q
+
+n
+n
+
+m+n−1 ≥ α
+n
+
+d+n
+n
+m+n−1
+n
+
+( )
+. Then, by Proposition 10 there exists a non-zero
+(
+)
+polynomial P (X) ∈ F[X] of total degree exactly d∗ , where d∗ ≤ d, such that mult(P, x) ≥ m for
+every x ∈ K. Note that d∗ ≥ ℓ since d∗ ≥ m (since P is nonzero and vanishes to multiplicity ≥ m
+at some point), and m ≥ ℓ by choice of m. Let HP (X) be the homogeneous part of P (X) of degree
+d∗ . Note that HP (X) is nonzero. The following claim shows that HP vanishes to multiplicity ℓ at
+each point of Fnq .
+Assume for contradiction that |K| <
+
+Claim 12 For each b ∈ Fnq .
+
+mult(HP , b) ≥ ℓ.
+11
+
+Proof Fix i with wt(i) = w ≤ ℓ − 1. Let Q(X) = P (i) (X). Let d′ be the degree of the polynomial
+Q(X), and note that d′ ≤ d∗ − w.
+Let a = a(b) be such that {a + tb|t ∈ Fq } ⊂ K. Then for all t ∈ Fq , by Lemma 5, mult(Q, a + tb) ≥
+m − w. Since w ≤ ℓ − 1 and (m − ℓ) · q > d∗ − ℓ, we get that (m − w) · q > d∗ − w.
+Let Qa,b (T ) be the polynomial Q(a + T b) ∈ Fq [T ]. Then Qa,b (T ) is a univariate polynomial of
+degree at most d′ , and by Corollary 7, it vanishes at each point of Fq with multiplicity m − w. Since
+(m − w) · q > d∗ − w ≥ deg(Qa,b (T )),
+′
+
+we conclude that Qa,b (T ) = 0. Hence the coefficient of T d in Qa,b (T ) is 0. Let HQ be the
+′
+homogenous component of Q of highest degree. Observe that the coefficient of T d in Qa,b (T ) is
+HQ (b). Hence HQ (b) = 0.
+However HQ (X) = (HP )(i) (X) (by item 2 of Proposition 4). Hence (HP )(i) (b) = 0. Since this is
+true for all i of weight at most ℓ − 1, we conclude that mult(HP , b) ≥ ℓ.
+Applying Corollary 9, and noting that ℓq n > d∗ q n−1 , we conclude that HP (X) = 0. This contradicts
+the fact that P (X) is a nonzero polynomial.
+Hence,
+|K| ≥
+Now, by our choice of d and m,
+
+d+n
+
+n
+m+n−1 =
+n
+
+d+n
+n
+m+n−1
+n
+
+
+
+Qn
+ℓq−1+n
+(ℓq − 1 + i)
+n
+Q
+= n i=1
+2ℓ−ℓ/q+n−1
+(2ℓ
+− ℓ/q − 1 + i)
+i=1
+n
+
+
+Since this is true for all ℓ such that ℓ is a multiple of q, we get that
+|K| ≥ lim
+
+ℓ→∞
+
+4
+
+n 
+Y
+i=1
+
+q − 1/l + i/l
+2 − 1/q − 1/l + i/l
+
+
+
+=
+
+
+
+q
+2 − 1/q
+
+n
+
+Statistical Kakeya for curves
+
+Next we extend the results of the previous section to a form conducive to analyze the mergers of
+Dvir and Wigderson [DW08]. The extension changes two aspects of the consideration in Kakeya
+sets, that we refer to as “statistical” and “curves”. We describe these terms below.
+In the setting of Kakeya sets we were given a set K such that for every direction, there was a line
+in that direction such that every point on the line was contained in K. In the statistical setting
+we replace both occurrences of the “every” quantifier with a weaker “for many” quantifier. So we
+12
+
+consider sets that satisfy the condition that for many directions, there exists a line in that direction
+intersecting K in many points.
+A second change we make is that we now consider curves of higher degree and not just lines. We
+also do not consider curves in various directions, but rather curves passing through a given set of
+special points. We start with formalizing the terms “curves”, “degree” and “passing through a
+given point”.
+A curve of degree Λ in Fnq is a tuple of polynomials C(X) = (C1 (X), . . . , Cn (X)) ∈ Fq [X]n such
+that maxi∈[n] deg(Ci (X)) = Λ. A curve C naturally defines a map from Fq to Fnq . For x ∈ Fnq , we
+say that a curve C passes through x if there is a t ∈ Fq such that C(t) = x.
+We now state and prove our statistical version of the Kakeya theorem for curves.
+Theorem 13 (Statistical Kakeya for curves) Let λ > 0, η > 0. Let Λ > 0 be an integer such
+that ηq > Λ. Let S ⊆ Fnq be such that |S| = λq n . Let K ⊆ Fnq be such that for each x ∈ S, there
+exists a curve Cx of degree at most Λ that passes through x, and intersects K in at least ηq points.
+Then,
+
+
+n
+
+λq
+
+ .
+
+|K| ≥  
+Λ λq−1
++
+1
+ηq
+n
+
+ηq
+.
+In particular, if λ ≥ η we get that |K| ≥ Λ+1
+
+Observe that when λ = η = 1, and Λ = 1, we get the same bound as that for Kakeya sets as
+obtained in Theorem 11.
+Proof
+
+Let ℓ be a large integer and let
+d = λℓq − 1
+m=Λ
+
+λℓq − 1 − (ℓ − 1)
++ ℓ.
+ηq
+
+By our choice of m and d, we have ηq(m − (ℓ − 1)) > Λ(d − (ℓ − 1)). Since ηq > Λ, we have that
+for all w such that 0 ≤ w ≤ ℓ − 1, ηq(m − w) > Λ(d − w). Just as in the proof of Theorem 11, we
+will prove that
+
+|K| ≥
+
+where α →
+
+Λ
+
+“ λq ”
+as ℓ → ∞.
+λq−1
++1
+ηq
+
+d+n
+n
+n
+
+m+n−1 ≥ α
+n
+
+d+n
+n
+m+n−1
+n
+
+( )
+. As before, by Proposition 10 there exists a non-zero polynomial
+(
+)
+P (X) ∈ Fq [X] of total degree d∗ , where d∗ ≤ d, such that mult(P, a) ≥ m for every a ∈ K. We
+will deduce that in fact P must vanish on all points in S with multiplicity ℓ. We will then get the
+desired contradiction from Corollary 9.
+
+If possible, let |K| <
+
+Claim 14 For each x0 ∈ S,
+
+mult(P, x0 ) ≥ ℓ.
+13
+
+Proof Fix any i with wt(i) = w ≤ ℓ − 1. Let Q(X) = P (i) (X). Note that Q(X) is a polynomial
+of degree at most d∗ − w. By Lemma 5, for all points a ∈ K, mult(Q, a) ≥ m − w.
+Let Cx0 be the curve of degree Λ through x0 , that intersects K in at least ηq points. Let t0 ∈ Fq
+be such that Cx0 (t0 ) = x0 . Let Qx0 (T ) be the polynomial Q ◦ Cx0 (T ) ∈ Fq [T ]. Then Qx0 (T ) is a
+univariate polynomial of degree at most Λ(d∗ − w). By Corollary 7, for all points t ∈ Fq such that
+Cx0 (t) ∈ K, Qx0 (T ) vanishes at t with multiplicity m − w. Since the number of such points t is at
+least ηq, we get that Qx0 (T ) has at least ηq(m − w) zeros (counted with multiplicity). However,
+by our choice of parameters, we know that
+ηq(m − w) > Λ(d − w) ≥ Λ(d∗ − w) ≥ deg(Qx0 (T )).
+Since the degree of Qx0 (T ) is strictly less than the number of its zeros, Qx0 (T ) must be identically
+zero. Thus we get Qx0 (t0 ) = Q(Cx0 (t0 )) = Q(x0 ) = 0 Hence P (i) (x0 ) = 0. Since this is true for all
+i with wt(i) ≤ ℓ − 1, we conclude that mult(P, x0 ) ≥ ℓ.
+Thus P vanishes at every point in S with multiplicity ℓ. As P (X) is a non-zero polynomial,
+Corollary 9 implies that ℓ|S| ≤ d∗ q n−1 . Hence ℓλq n ≤ dq n−1 , which contradicts the choice of d.
+Thus |K| ≥
+
+d+n
+n
+m+n−1
+n
+
+(
+
+(
+
+)
+
+)
+
+. By choice of d and m,
+
+|K| ≥
+
+λℓq−1+n
+n
+.
+Λ λℓq−1−(ℓ−1)
++ℓ+n−1
+ηq
+n
+
+
+
+Picking ℓ arbitrarily large, we conclude that
+
+n 
+n
+λℓq−1+n
+ℓλq
+−
+1
+λq
+n
+ = 
+ .
+
+
+= lim  
+|K| ≥ lim
+λℓq−1−(ℓ−1)
+λq−1
+λq−1
++ℓ+n−1
+ℓ→∞
+ℓ→∞ Λ
+ηq
+ℓΛ
+Λ
++
+ℓ
++
+1
+ηq
+ηq
+n
+
+5
+
+Improved Mergers
+
+In this section we state and prove our main result on randomness mergers.
+
+5.1
+
+Definitions and Theorem Statement
+
+We start by recalling some basic quantities associated with random variables. The statistical distance
+between two random variables X and Y taking values from a finite domain Ω is defined as
+max |Pr[X ∈ S] − Pr[Y ∈ S]| .
+S⊆Ω
+
+14
+
+We say that X is ǫ-close to Y if the statistical distance between X and Y is at most ǫ, otherwise we
+say that X and Y are ǫ-far. The min-entropy of a random variable X is defined as
+
+
+1
+H∞ (X) , min log2
+.
+Pr[X = x]
+x∈supp(X)
+We say that a random variable X is ǫ-close to having min-entropy m if there exists a random
+variable Y of min-entropy m such that X is ǫ-close to Y.
+A “merger” of randomness takes a Λ-tuple of random variables and “merges” their randomness to
+produce a high-entropy random variable, provided the Λ-tuple is “somewhere-random” as defined
+below.
+Definition 15 (Somewhere-random source) For integers Λ and N a simple (N, Λ)-somewhererandom source is a random variable A = (A1 , . . . , AΛ ) taking values in S Λ , where S is some finite set
+of cardinality 2N , such that for some i0 ∈ [Λ], the distribution of Ai0 is uniform over S. A (N, Λ)somewhere-random source is a convex combination of simple (N, Λ)-somewhere-random sources.
+(When N and Λ are clear from context we refer to the source as simply a “somewhere-random
+source”.)
+We are now ready to define a merger.
+Definition 16 (Merger) For positive integer Λ and set S of size 2N , a function f : S Λ ×{0, 1}d →
+S is called an (m, ǫ)-merger (of (N, Λ)-somewhere-random sources), if for every (N, Λ) somewhererandom source A = (A1 , . . . , AΛ ) taking values in S Λ , and for B being uniformly distributed over
+{0, 1}d , the distribution of f ((A1 , . . . , AΛ ), B) is ǫ-close to having min-entropy m.
+A merger thus has five parameters associated with it: N , Λ, m, ǫ and d. The general goal is
+to give explicit constructions of mergers of (N, Λ)-somewhere-random sources for every choice of
+N and Λ, for as large an m as possible, and with ǫ and d being as small as possible. Known
+mergers attain m = (1 − δ) · N for arbitrarily small δ and our goal will be to achieve δ = o(1) as a
+function of N , while ǫ is an arbitrarily small positive real number. Thus our main concern is the
+growth of d as a function of N and Λ. Prior to this work, the best known bounds required either
+d = Ω(log N + log Λ) or d = Ω(Λ). We only require d = Ω(log Λ).
+Theorem 17 For every ǫ, δ > 0 and integers N, Λ, there exists a ((1 − δ) · N, ǫ)-merger of (N, Λ)somewhere-random sources, computable in polynomial time, with seed length
+ 
+2Λ
+1
+.
+d = · log2
+δ
+ǫ
+
+5.2
+
+The Curve Merger of [DW08] and its analysis
+
+The merger that we consider is a very simple one proposed by Dvir and Wigderson [DW08], and
+we improve their analysis using our extended method of multiplicities. We note that they used
+15
+
+the polynomial method in their analysis; and the basic method of multiplicities doesn’t seem to
+improve their analysis.
+The curve merger of [DW08], denoted fDW , is obtained as follows. Let q ≥ Λ be a prime power,
+and let n be any integer. Let γ1 , . . . , γΛ ∈ Fq be distinct, and let ci (T ) ∈ Fq [T ] be the unique degree
+Λ−1 polynomial with ci (γi ) = 1 and for all j 6= i, ci (γj ) = 0. Then for any x = (x1 , . . . , xΛ ) ∈ (Fnq )Λ
+and u ∈ Fq , the curve merger fDW maps (Fnq )Λ × Fq to Fnq as follows:
+fDW ((x1 , . . . , xΛ ), u) =
+
+Λ
+X
+
+ci (u)xi .
+
+i=1
+
+In other words, fDW ((x1 , . . . , xΛ ), u) picks the (canonical) curve passing through x1 , . . . , xΛ and
+outputs the uth point on the curve..
+Theorem 18 Let q ≥ Λ and A be somewhere-random source taking values in (Fnq )Λ . Let B be
+distributed uniformly over Fq , with A, B independent. Let C = fDW (A, B). Then for
+q≥
+
+
+
+2Λ
+ǫ
+
+1
+δ
+
+,
+
+C is ǫ-close to having min-entropy (1 − δ) · n · log2 q.
+Theorem 17 easily follows from the above. We note that [DW08] proved a similar theorem assuming
+q ≥ poly(n, Λ), forcing their seed length to grow logarithmically with n as well.
+ δ1
+Proof of Theorem 17: Let q = 2d , so that q ≥ 2Λ
+, and let n = N/d. Then we may identify
+ǫ
+identify Fq with {0, 1}d and Fnq with {0, 1}N . Take f to be the function fDW given earlier. Clearly
+f is computable in the claimed time. Theorem 18 shows that f has the required merger property.
+
+We now prove Theorem 18.
+Proof of Theorem 18: Without loss of generality, we may assume that A is a simple somewhererandom source. Let m = (1 − δ) · n · log2 q. We wish to show that fDW (A, B) is ǫ-close to having
+min-entropy m.
+ǫq n
+such that
+Suppose not. Then there is a set K ⊆ Fnq with |K| ≤ 2m = q (1−δ)·n ≤ 2Λ
+Pr [f (A, B) ∈ K] ≥ ǫ.
+
+A,B
+
+Suppose Ai0 is uniformly distributed over Fnq . Let A−i0 denote the random variable
+(A1 , . . . , Ai0 −1 , Ai0 +1 , . . . , AΛ ).
+By an averaging argument, with probability at least λ = ǫ/2 over the choice of Ai0 , we have
+Pr [f (A, B) ∈ K] ≥ η,
+
+A−i0 ,B
+
+16
+
+where η = ǫ/2. Since Ai0 is uniformly distributed over Fnq , we conclude that there is a set S of
+cardinality at least λq n such that for any x ∈ S,
+Pr [f (A, B) ∈ K | Ai0 = x] ≥ η.
+
+A,B
+
+Fixing the values of A−i0 , we conclude that for each x ∈ S, there is a y = y(x) = (y1 , . . . , yΛ ) with
+y
+Pi0Λ = x such that PrB [f (y, B) ∈ K] ≥ η. Define the degree Λ −
+P1Λ curve Cx (T ) = f (y(x), T ) =
+j=1 yj cj (T ). Then Cx passes through x, since Cx (γi0 ) =
+j=1 yj cj (γi0 ) = yi0 = x, and
+PrB∈Fq [Cx (B) ∈ K] ≥ η by definition of Cx .
+Thus S and K satisfy the hypothesis of Theorem 13. We now conclude that
+
+n
+n  
+
+ǫq n
+λq
+ǫq/2
+ =
+
+
+.
+|K| ≥ 
+>
+Λ − (Λ − 1)/ηq
+2Λ
+(Λ − 1) λq−1 + 1
+ηq
+
+This is a contradiction, and the proof of the theorem is complete.
+
+The Somewhere-High-Entropy case: It is possible to extend the merger analysis given above
+also to the case of somewhere-high-entropy sources. In this scenario the source is comprised of
+blocks, one of which has min entropy at least r. One can then prove an analog of Theorem 18
+saying that the output of fDW will be close to having min entropy (1 − δ) · r under essentially the
+same conditions on q. The proof is done by hashing the source using a random linear function into
+a smaller dimensional space and then applying Theorem 18 (in a black box manner). The reason
+why this works is that the merger commutes with the linear map (for details see [DW08]).
+
+6
+
+Extractors with sub-linear entropy loss
+
+In this section we use our improved analysis of the Curve Merger to show the existence of an explicit
+extractor with logarithmic seed and sub linear entropy loss.
+We will call a random variable X distributed over {0, 1}n with min-entropy k an (n, k)-source.
+Definition 19 (Extractor) A function E : {0, 1}n × {0, 1}d 7→ {0, 1}m is a (k, ǫ)-extractor if
+for every (n, k)-source X, the distribution of E(X, Ud ) is ǫ-close to uniform, where Ud is a random
+variable distributed uniformly over {0, 1}d , and X, Ud are independent. An extractor is called explicit
+if it can be computed in polynomial time.
+It is common to refer to the quantity k − m in the above definition as the entropy loss of the
+extractor. The next theorem asserts the existence of an explicit extractor with logarithmic seed
+and sub-linear entropy loss.
+Theorem 20 (Basic extractor with sub-linear entropy loss) For every c1 ≥ 1, for all positive integers k < n with k ≥ log2 (n), there exists an explicit (k, ǫ)-extractor E : {0, 1}n × {0, 1}d 7→
+{0, 1}m with
+d = O(c1 · log(n)),
+17
+
+
+
+k · log log(n)
+log(n)
+
+
+1
+ǫ=O
+.
+logc1 (n)
+
+k−m=O
+
+
+
+,
+
+The extractor of this theorem is constructed by composing several known explicit constructions of
+pseudorandom objects with the merger of Theorem 17. In Section 6.1 we describe the construction
+of our basic extractor. We then show, in Section 6.2 how to use the ’repeated extraction’ technique
+of Wigderson and Zuckerman [WZ99] to boost this extractor and reduce the entropy loss to k −m =
+O(k/ logc n) for any constant c (while keeping the seed logarithmic). The end result is the following
+theorem:
+Theorem 21 (Final extractor with sub-linear entropy loss) For every c1 , c2 ≥ 1, for all
+positive integers k < n, there exists an explicit (k, ǫ)-extractor E : {0, 1}n × {0, 1}d 7→ {0, 1}m
+with
+d = O(c1 c2 · log(n)),
+
+
+k
+,
+k−m=O
+logc2 (n)
+
+
+1
+ǫ=O
+.
+logc1 (n)
+
+6.1
+
+Proof of Theorem 20
+
+Note that we may equivalently view an extractor E : {0, 1}n × {0, 1}d → {0, 1}m as a randomized
+algorithm E : {0, 1}n → {0, 1}m which is allowed to use d uniformly random bits. We will present
+the extractor E as such an algorithm which takes 5 major steps.
+Before giving the formal proof we give a high level description of our extractor. Our first step is to
+apply the lossless condenser of [GUV07] to output a string of length 2k with min entropy k (thus
+reducing our problem to the case k = Ω(n)). The construction continues along the lines of [DW08].
+In the second step, we partition our source (now of length n′ = 2k) into Λ = log(n) consecutive
+′
+blocks X1 , . . . , XΛ ∈ {0, 1}n /Λ of equal length. We then consider the Λ possible divisions of the
+source into a prefix of j blocks and suffix of Λ − j blocks for j between 1 and Λ. By a result
+of Ta-Shma [TS96b], after passing to a convex combination, one of these divisions is a (k′ , k2 )
+block source with k′ being at least k − O(k/Λ) and k2 being at least poly-logarithmic in k. In the
+third step we use a block source extractor (from [RSW00]) on each one of the possible Λ divisions
+(using the same seed for each division) to obtain a somewhere random source with block length
+k′ . The fourth step is to merge this somewhere random source into a single block of length k′ and
+entropy k′ · (1 − δ) with δ sub-constant. In view of our new merger parameters, and the fact that Λ
+(the number of blocks) is small enough, we can get away with choosing δ = log log(n)/ log(n) and
+keeping the seed logarithmic and the error poly-logarithmic. To finish the construction (the fifth
+step) we need to extract almost all the entropy from a source of length k′ and entropy k′ · (1 − δ).
+This can be done (using known techniques) with logarithmic seed and an additional entropy loss
+of O(δ · k′ ).
+18
+
+We now formally prove Theorem 20. We begin by reducing to the case where n = O(k) using the
+lossless condensers of [GUV07].
+Theorem 22 (Lossless condenser [GUV07]) For all integers positive k < n with k = ω(log(n)),
+′
+′
+there exists an explicit function CGUV : {0, 1}n × {0, 1}d 7→ {0, 1}n with n′ = 2k, d′ = O(log(n)),
+such that for every (n, k)-source X, C(X, Ud′ ) is (1/n)-close to an (n′ , k)-source, where Ud′ is dis′
+tributed uniformly over {0, 1}d , and X, Ud′ are independent.
+′
+
+Step 1: Pick Ud′ uniformly from {0, 1}d . Compute X′ = CGUV (X, Ud′ ).
+By the above theorem, X′ is (1/n)-close to an (n′ , k)-source, where n′ = 2k. Our next goal is to
+produce a somewhere-block source. We now define these formally.
+Definition 23 (Block Source) Let X = (X1 , X2 ) be a random source over {0, 1}n1 × {0, 1}n2 .
+We say that X is a (k1 , k2 )-block source if X1 is an (n1 , k1 )-source and for each x1 ∈ {0, 1}n1 the
+conditional random variable X2 |X1 = x1 is an (n2 , k2 )-source.
+Definition 24 (Somewhere-block source) Let X = (X1 , . . . , XΛ ) be a random variable such that
+each Xi is distributed over {0, 1}ni,1 × {0, 1}ni,2 . We say that X is a simple (k1 , k2 )-somewhere-block
+source if there exists i ∈ [Λ] such that Xi is a (k1 , k2 )-block source. We say that X is a somewhere(k1 , k2 )-block source if X is a convex combination of simple somewhere random sources.
+We now state a result of Ta-Shma [TS96b] which converts an arbitrary source into a somewhereblock source. This is the first step in the proof of Theorem 1 on Page 44 of [TS96b] (Theorem
+1 shows how convert any arbitrary source to a somewhere-block source, and then does more by
+showing how one could extract from such a source).
+Let Λ be an integer and assume for simplicity of notation that n′ is divisible by Λ. Let
+
+Λ
+′
+X′ = (X′1 , . . . , X′Λ ) ∈ {0, 1}n /Λ
+denote the partition of X′ into Λ blocks. For every 1 ≤ j < Λ we denote
+Yj = (X′1 , . . . , X′j ),
+Zj = (X′j+1 , . . . , X′Λ ),
+′
+
+′
+
+Λ : {0, 1}n → ({0, 1}n )Λ , where
+Consider the function BTS
+Λ
+BTS
+(X ′ ) = ((Y1 , Z1 ), (Y2 , Z2 ), . . . , (YΛ , ZΛ )).
+
+The next theorem shows that the source ((Yj , Zj ))j∈[Λ] is close to a somewhere-block source.
+Λ :
+Theorem 25 ([TS96b]) Let Λ be an integer. Let k = k1 + k2 + s. Then the function BTS
+′
+′
+Λ (X′ ), we have that X′′
+{0, 1}n → ({0, 1}n )Λ is such that for any (n′ , k)-source X′ , letting X′′ = BTS
+−s
+′
+is O(n · 2 )-close to a somewhere-(k1 − O(n /Λ), k2 )-block source.
+
+19
+
+Λ (X′ ).
+Step 2: Set Λ = log(n). Compute X ′′ = (X′′1 , X′′2 , . . . , X′′Λ ) = BTS
+
+Plugging k2 = O(log4 (n′ )) = O(log4 (k)), s = O(log n) and k1 = k − k2 − s in the above theorem,
+we conclude that X′′ is n−Ω(1) -close to a somewhere-(k′ , k2 )-block source, where
+k′ = k1 − O(n′ / log(n)) = k − k2 − s − O(k/ log(n)) = k − O(k/ log(n)),
+where for the last inequality we use the fact that k > log2 (n) and so both s and k2 are bounded
+by O(k/ log(n)).
+We next use the block source extractor from [RSW00] to convert the above somewhere-block source
+to a somewhere-random source.
+Theorem 26 ([RSW00]) Let n′ = n1 + n2 and let k′ , k2 be such that k2 > log4 (n1 ). Then
+′′
+′′
+there exists an explicit function ERSW : {0, 1}n1 × {0, 1}n2 × {0, 1}d 7→ {0, 1}m with m′′ = k′ ,
+d′′ = O(log(n′ )), such that for any (k′ , k2 )-block source X, ERSW (X, Ud′′ ) is (n1 )−Ω(1) -close to the
+′′
+′′
+uniform distribution over {0, 1}m , where Ud′′ is distributed uniformly over {0, 1}d , and X, Ud′′ are
+independent.
+Set d′′ = O(log(n′ )) as in Theorem 26.
+′′
+
+′′
+Step 3: Pick Ud′′ uniformly from {0, 1}d . For each j ∈ [Λ], compute X′′′
+j = ERSW (Xj , Ud′′ ).
+
+By the above theorem, X′′′ is n′ −Ω(1) -close to a somewhere-random source. We are now ready to use
+the merger M from Theorem 17. We invoke that theorem with entropy-loss δ = log log(n)/ log(n)
+and error ǫ = logc11 (n) , and hence M has a seed length of
+Λ
+1
+d′′′ = O( log ) = O(c1 log(n)).
+δ
+ǫ
+′′′
+
+Step 4: Pick Ud′′′ uniformly from {0, 1}d . Compute X′′′′ = M (X′′′ , Ud′′′ ).
+By Theorem 17, X′′′′ is O( logc11 (n) )-close to a (k′ , (1 − δ)k′ )-source. Note that δ = o(1), and thus
+X′′′′ has nearly full entropy. We now apply an extractor for sources with extremely-high entropy
+rate, given by the following lemma.
+Lemma 27 For any k′ and δ > 0, there exists an explicit (k′ (1 − δ), k′−Ω(1) )-extractor EHIGH :
+′
+′′′′
+′
+{0, 1}k × {0, 1}d 7→ {0, 1}(1−3δ)k with d′′′′ = O(log(k′ )).
+The proof of this lemma follows easily from Theorem 26. Roughly speaking, the input is partitioned
+into blocks of length k′ − δk − log4 k′ and δk′ + log4 k′ . It follows that this partition is close to a
+(k′ (1 − 2δ) − log 4 k′ , log4 k′ )-block source. This block source is then passed through the block-source
+extractor of Theorem 26.
+′′′′
+
+Step 5: Pick Ud′′′′ uniformly from {0, 1}d . Compute X′′′′′ = EHIGH (X′′′′ , Ud′′′′ ). Output X′′′′′ .
+
+20
+
+This completes the description of the extractor E. It remains to note that d, the total number
+of random bits used, is at most d′ + d′′ + d′′′ + d′′′′ = O(c1 log n), and that the output X′′′′′ is
+O( log1c1 n )-close to uniformly distributed over
+log n
+k−O(k· log
+)
+log n
+
+′
+
+{0, 1}(1−3δ)k = {0, 1}
+
+.
+
+This completes the proof of Theorem 20.
+We summarize the transformations in the following table:
+
+Function
+CGUV
+Λ
+BTS
+ERSW
+M
+EHIGH
+
+6.2
+
+Seed length
+O(log(n))
+0
+O(log(k))
+O(log(n))
+O(log(k))
+
+Input-type
+(n, k)-source
+(2k, k)-source
+somewhere-(k′ , log4 (k))-block
+′
+(k , O(log(n)))-somewhere-random
+(k′ , k′ − o(k))-source
+
+Output-type
+(2k, k)-source
+somewhere-(k′ , log4 (k))-block
+(k′ , O(log(n)))-somewhere-random
+(k′ , k′ − o(k))-source
+Uk′ −o(k)
+
+Improving the output length by repeated extraction
+
+We now use some ideas from [RSW00] and [WZ99] to extract an even larger fraction of the minentropy out of the source. This will prove Theorem 21. We first prove a variant of the theorem with
+a restriction on k. This restriction will be later removed using known constructions of extractors
+for low min-entropy.
+Theorem 28 (Explicit extractor with improved sub-linear entropy loss) For every c1 , c2 ≥
+1, for all positive integers k < n with k = logω(1) (n), there exists an explicit (k, ǫ)-extractor
+E : {0, 1}n × {0, 1}d 7→ {0, 1}m with
+d = O(c1 c2 · log(n)),
+
+
+k
+k−m=O
+,
+logc2 (n)
+
+
+1
+.
+ǫ=O
+logc1 (n)
+We first transform the extractor given in Theorem 20 into a strong extractor (defined below) via
+[RSW00, Theorem 8.2] (which gives a generic way of getting a strong extractor from any extractor).
+We then use a trick from [WZ99] that repeatedy uses the same extractor with independent seeds
+to extract the ‘remaining entropy’ from the source, thus improving the entropy loss.
+Definition 29 A (k, ǫ)-extractor E : {0, 1}n × {0, 1}d 7→ {0, 1}m is strong if for every (n, k)-source
+X, the distribution of (E(X, Ud ), Ud ) is ǫ-close to the uniform distribution over {0, 1}m+d , where Ud
+is distributed uniformly over {0, 1}d , and X, Ud are independent.
+21
+
+Theorem 30 ([RSW00, Theorem 8.2]) Any explicit (k, ǫ)-extractor E : {0, 1}n × {0, 1}d 7→
+√
+{0, 1}m can be transformed into an explicit strong (k, O( ǫ))-extractor E ′ : {0, 1}n × {0, 1}O(d) 7→
+{0, 1}m−d−2 log(1/ǫ)−O(1) .
+Theorem 31 ([WZ99, Lemma 2.4]) Let E1 : {0, 1}n × {0, 1}d1 7→ {0, 1}m1 be an explicit strong
+(k, ǫ1 )-extractor, and let E2 : {0, 1}n × {0, 1}d2 7→ {0, 1}m2 be an explicit strong (k − (m1 + r), ǫ2 )extractor. Then the function
+
+
+E3 : {0, 1}n × {0, 1}d1 × {0, 1}d2 7→ {0, 1}m1 +m2
+defined by
+E3 (x, y1 , y2 ) = E1 (x, y1 ) ◦ E2 (x, y2 )
+
+is a strong (k, ǫ1 + ǫ2
+
++ 2−r )-extractor.
+
+We can now prove Theorem 28. Let E be the (k, ǫ)-extractor with seed O(c1 log n) of Theorem 20.
+√
+By Theorem 30, we get an explicit strong (k, ǫ)-extractor E ′ with entropy loss O(k logloglogn n ).
+We now iteratively apply Theorem 31 as follows. Let E (0) = E ′ . For each 1 < i ≤ O(c2 ), let
+E (i) : {0, 1}n × {0, 1}di → {0, 1}mi be the strong (k, ǫi )-extractor produced by Theorem 31 when
+we take E1 = E (i−1) and E2 to be the strong (k − mi−1 − c1 log n, 1/ logc1 (n))-extractor with seed
+length O(c1 log n) given by Theorem 20 and Theorem 30. Thus,
+di = O(ic1 log n).
+
+
+i
+.
+ǫi = O
+logc1 (n)
+
+
+
+log log n
+mi = mi−1 + (k − mi−1 − c1 log n) 1 − O
+.
+log n
+Thus the entropy loss of E (i) is given by:
+
+
+
+
+
+
+k
+log log n
+.
++ O(c1 log n) = O
+k − mi = (k − mi−1 ) 1 − 1 − O
+log n
+logi (n)
+E (O(c2 )) is the desired extractor.
+Remark In fact [GUV07] and [RRV99] show how to extract all the minentropy with polylogarithmic seed length. Combined with the lossless condenser of [GUV07] this gives an extractor that
+uses√ logarithmic seed to extract all the minentropy from sources that have minetropy rate at most
+2O( log n) .
+Theorem 32
+√ (Corollary of [GUV07, Theorem 4.21]) For all positive integers n ≥ k such
+that k = 2O( log n) , and for all ǫ > 0 there exists an explicit (k, ǫ)-extractor E : {0, 1}n × {0, 1}d 7→
+{0, 1}m with d = O(log(n)) and m = k + d − 2 log(1/ǫ) − O(1).
+This result combined with Theorem 28 gives an extractor with improved sub-linear entropy loss
+that works for sources of all entropy rates, thus completing the proof of Theorem 21.
+
+22
+
+7
+
+Bounds on the list size for list-decoding Reed-Solomon codes
+
+In this section, we give a simple algebraic proof of an upper bound on the list size for list-decoding
+Reed-Solomon codes within the Johnson radius.
+Before stating and proving the theorem, we need some definitions. For a bivariate polynomial
+P (X, Y ) ∈ F[X, Y ], we define its (a, b)-degree to be the maximum of ai + bj over all (i, j) such that
+the monomial X i Y j appears in P (X, Y ) with a nonzero coefficient. Let N (k, d, θ) be the number
+of monomials X i Y j which have (1, k)-degree at most d and j ≤ θd/k. We have the following simple
+fact.
+2
+
+d
+.
+Fact 33 For any k < d and θ ∈ [0, 1], N (k, d, θ) > θ · (2 − θ) · 2k
+
+Now we prove the main theorem of this section. The proof is an enhancement of the original
+analysis of the Guruswami-Sudan algorithm using the extended method of multiplicities.
+Theorem 34 (List size bound for Reed-Solomon codes) Let (α1 , β1 ), . . . , (αn , βn ) ∈ F2 . Let
+R, γ ∈ [0, 1] with γ 2 > R. Let k = Rn. Let f1 (X), . . . , fL (X) ∈ F[X] be polynomials of degree at
+most k, such that for each j ∈ [L] we have |{i ∈ [n] : fj (αi ) = βi }| > γn. Then L ≤ γ 22γ
+−R .
+Let ǫ > 0 be a parameter. Let θ = “ 2γ2 ” . Let m be a large integer (to be chosen later),
+1+ R
+q
+nk
+. We first interpolate a nonzero polynomial P (X, Y ) ∈ F[X, Y ]
+and let d = (1 + ǫ) · m · θ·(2−θ)
+Proof
+
+of (1, k)-degree at most d and Y -degree at most θd/k, that vanishes with multiplicity at least m
+at each of the points (αi , βi ). Such a polynomial exists if N (k, d, θ), the number of monomials
+available, is larger than the number of homogeneous linear constraints imposed by the vanishing
+conditions:
+m(m + 1)
+· n < N (k, d, θ).
+(3)
+2
+This can be made to hold by picking m sufficiently large, since by Fact 33,
+N (k, d, θ) > θ · (2 − θ)
+
+(1 + ǫ)2 m2
+d2
+=
+· n.
+2k
+2
+
+Having obtained the polynomial P (X, Y ), we also view it as a univariate polynomial Q(Y ) ∈
+F(X)[Y ] with coefficients in, F(X), the field of rational functions in X.
+Now let f (X) be any polynomial of degree at most k such that, letting I = {i ∈ [n] : f (αi ) = βi },
+|I| ≥ A. We claim that the polynomial Q(Y ) vanishes at f (X) with multiplicity at least m − d/A.
+Indeed, fix an integer j < m − d/A, and let Rj (X) = Q(j) (f (X)) = P (0,j) (X, f (X)). Notice the
+degree of Rj (X) is at most d. By Proposition 6 and Lemma 5,
+mult(Rj , αi ) ≥ mult(P (0,j) , (αi , βi )) ≥ mult(P, (αi , βi )) − j.
+Thus
+
+X
+i∈I
+
+mult(Rj , αi ) ≥ |I| · (m − j) ≥ A · (m − j) > d.
+23
+
+By Lemma 8, we conclude that Rj (X) = 0. Since this holds for every j < m − d/A, we conclude
+that mult(Q, f (X)) ≥ m − d/A.
+We now complete the proof of the theorem. By the above discussion, for each j ∈ [L], we know that
+d
+. Thus, by Lemma 8 (applied to the nonzero polynomial Q(Y ) ∈ F(X)[Y ]
+mult(Q, fj (X)) ≥ m − γn
+and the set of evaluation points S = {fj (X) : j ∈ [L]})
+
+
+X
+d
+· L.
+deg(Q) ≥
+mult(Q, f (X)) ≥ m −
+γn
+j∈[L]
+
+Since deg(Q) ≤ θd/k, we get,
+θd/k ≥
+Using d = (1 + ǫ) · m ·
+L≤
+
+θ
+k
+k· m
+d − γn
+
+q
+
+=
+
+
+
+d
+m−
+γn
+
+
+
+· L.
+
+2
+nk
+θ·(2−θ) and θ = 1+ γ 2 , we get,
+R
+
+θ
+1
+1+ǫ
+
+q
+
+k
+k
+n · θ · (2 − θ) − γn
+
+=
+
+Letting ǫ → 0, we get L ≤ γ 22γ
+−R , as desired.
+
+24
+
+1
+.
+
+=
+
+γ
+γ
+R
+2
+R
+−
++
+−
+1
+−
+1+ǫ
+2
+2γ
+θ
+θγ
+1
+
+q
+1
+R
+1+ǫ
+
+References
+[CB04]
+
+Yuval Cassuto and Jehoshua Bruck. A combinatorial bound on the list size. Paradise
+Laboratory Technical report, California Institute of Technology, 2004.
+
+[DS07]
+
+Z. Dvir and A. Shpilka. An improved analysis of linear mergers. Comput. Complex.,
+16(1):34–59, 2007. (Extended abstract appeared in RANDOM 2005).
+
+[Dvi08]
+
+Z. Dvir. On the size of Kakeya sets in finite fields. J. AMS (to appear), 2008.
+
+[DW08]
+
+Zeev Dvir and Avi Wigderson. Kakeya sets, new mergers and old extractors. In FOCS,
+pages 625–633. IEEE Computer Society, 2008.
+
+[GR06]
+
+Venkatesan Guruswami and Atri Rudra. Explicit capacity-achieving list-decodable
+codes. In Jon M. Kleinberg, editor, STOC, pages 1–10. ACM, 2006.
+
+[GS99]
+
+Venkatesan Guruswami and Madhu Sudan. Improved decoding of Reed-Solomon and
+algebraic-geometric codes. IEEE Transactions on Information Theory, 45:1757–1767,
+1999.
+
+[GUV07]
+
+Venkatesan Guruswami, Christopher Umans, and Salil P. Vadhan. Unbalanced expanders and randomness extractors from parvaresh-vardy codes. In IEEE Conference
+on Computational Complexity, pages 96–108. IEEE Computer Society, 2007.
+
+[HKT08]
+
+J. W. P. Hirschfeld, G. Korchmaros, and F. Torres. Algebraic Curves over a Finite
+Field (Princeton Series in Applied Mathematics). Princeton University Press, 2008.
+
+[LRVW03] Chi-Jen Lu, Omer Reingold, Salil Vadhan, and Avi Wigderson. Extractors: Optimal
+up to constant factors. In Proceedings of the 35th Annual ACM Symposium on Theory
+of Computing”, 2003.
+[PV05]
+
+Farzad Parvaresh and Alexander Vardy. Correcting errors beyond the GuruswamiSudan radius in polynomial time. In FOCS, pages 285–294. IEEE Computer Society,
+2005.
+
+[RRV99]
+
+Ran Raz, Omer Reingold, and Salil Vadhan. Extracting all the Randomness and Reducing the Error in Trevisan’s Extractors. In Proceedings of the 35th Annual ACM
+Symposium on Theory of Computing”, 1999.
+
+[RSW00]
+
+O. Reingold, R. Shaltiel, and A. Wigderson. Extracting randomness via repeated condensing. In Proceedings of the 41st Annual IEEE Symposium on Foundations of Computer Science, 2000.
+
+[Sha02]
+
+Ronen Shaltiel. Recent developments in extractors. Bulletin of the European Association
+for Theoretical Computer Science, 77:67–95, 2002.
+
+[SS08]
+
+Shubhangi Saraf and Madhu Sudan. Improved lower bound on the size of kakeya sets
+over finite fields. Analysis and PDE (to appear), 2008.
+
+[Sud97]
+
+Madhu Sudan. Decoding of Reed-Solomon codes beyond the error-correction bound.
+Journal of Complexity, 13(1):180–193, 1997.
+25
+
+[TS96a]
+
+A. Ta-Shma. On extracting randomness from weak random sources. In Proceedings of
+the Twenty-Eighth Annual ACM Symposium on the Theory of Computing, Philadelphia,
+Pennsylvania, USA, pages 276–285, 1996.
+
+[TS96b]
+
+A. Ta-Shma. Refining Randomness. PhD Thesis, The Hebrew University, Jerusalem,
+Israel, 1996.
+
+[WZ99]
+
+Avi Wigderson and David Zuckerman. Expanders that beat the eigenvalue bound:
+explicit construction and applications. Combinatorica, 19(1):125–138, 1999.
+
+[Wol99]
+
+T. Wolff. Recent work connected with the Kakeya problem. In Prospects in Mathematics, pages 129–162. Princeton, NJ, 1999.
+
+[Zuc07]
+
+David Zuckerman. Linear degree extractors and the inapproximability of max clique
+and chromatic number. Theory of Computing, 3(1):103–128, 2007.
+
+26
+
+

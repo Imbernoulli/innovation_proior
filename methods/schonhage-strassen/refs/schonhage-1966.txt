@@ -1,0 +1,718 @@
+                        Multiplikation groBer Zahlen
+                                            ~(on
+                         A. SchSnhage, K S l n - L i n d e n t h a l
+                          (Eingegangen am 7. September 1965)
+
+     Zusammenfassung. Das bier bcschriebenc ~r                          bcrub~ auf
+einem ]~echnen in simultanen Kongruenzen. Die nofvwendigen ~bersetztmgen zwi-
+schen der Bin~irdarstelhing der Zahlen und ihrer Darstellung durch Rcste kSnnen
+fib" einen Modul der Form 17 (2qi- 1) hinreichend schnell ausgefiihrt werden. Eine
+rekursive Schachtelung dieses Prinzips und zus~tzliche zahlentheoretische Uber-
+legungen fiihren zu der Absch~tzung 0 (n 1+(l/2+ ~)/V~) fiir den Aufwand bei Multi-
+plikation n-stelliger Zahlen. In diesem Zusammenhang wird der Arbeitsaufwand
+gemessen durch die Zabl der ]~lementarschritte einer das Verfahren darstellenden
+Turingmaschine mit mehreren B~ndern. Diescs Ergebnis ist allerdings vorwiegend
+yon theoretischer Bedeutung, weft eine praktische Verbesserung gegeniiber der
+trivialen Schranke 0 (n 2) erst fiir n ~ no mit sehr gro~em no mSglich wird.
+    Summary. The following method of multiplication is based upon computations
+with simultaneous congruences. The translations needed between the binary form
+of numbers and their representation by residues can be performed sufficiently fast
+by use of a modul of the form H (2qi -- 1). A recursive iteration of this principle and
+additional numbertheoretical arguments lead to the estimate 0 (nl+(1/2+ s)/lgY~n) for
+the work involved in the multiplication of numbers with n bits. In this context the
+amount of work is measured by the number of elementary steps of a multitape Turing
+machine representing this method. This result however is mainly of theoretical
+importance, for a practical improvement of the trivial bound 0 (n 2) becomes possible
+only for n _-> no with a very large no.
+
+                                       Einleitung
+    I n dieser Arbeit wird ein Verfahren zur ~Ultiplikation n-stelliger Zahlen
+beschrieben, dessen A u f w a n d fiir groBes n nicht wie n ~, sondern schwi~cher
+Ms n 1+~ (fiir jedes 5 > 0) w~chst. I n der Praxis elektronischer l~echen-
+anlagen ergibt sich allerdings erst bai F a k t o r e n y o n einigen t a u s e n 4 Bin~r-
+ste]]en eine spiirbare Ersparnis. U n s e r Hauptinteresse gilt der theoretischen
+Aussage f i i r n --> ~ . U n t e r Pr~zisierung des Begriffs Aufwand als A n z a h l
+der E l e m e n t a r s c h r i t t e einer Turingmaschine mit endlich vielen B~ndern
+beweisen wit genauer, dab sich die Multiplikation zweier beliebiger Zahlen
+v o n je n Bin~rsteHen in 0 (n 9 2 V~. ~lg~ . lg~/~n) Schritten ausfiihren l~Bt.
+     Wesentliche Grundlage des Verfahrens ist eine u n t e r der Bezeichnung
+modular arithmetic schon m e h r f a c h beschriebene )/~ethode zur beschleu-
+nigten Multiplikation [1], [3]. D u r c h zusatzliche zahlentheoretische U b e r -
+legungen u n d eine rekursive Schachtelung dieses R e c h n e n s in simu]tancn
+K o n g r u e n z e n ergibt sich das g e n a n n t e t~esultat.
+                  A. SCH6NHACE: Multiplikation grol3er Zahlen                183
+
+    Erste Ansatze zu diesem Fragenkreis finden sieh in Arbeiter[ von
+OF~A~ und KA~ACUBA [4], [5]. Dort wird der Aufwand durch die Anzahl
+zweistelliger logischer Operationen gemessen. Auf elementare Weise wird
+ffir die Multiplikation die nichttriviale Schranke 0 (n ~1~8) gewonnen.
+    l~eben solchen oberen Sehranken interessiert natiirlieh auch die Frage
+naeh einem dureh Multiplikation bedingten Mindestaufwand. Wir werden
+dieses vermutlieh sehwierige Problem genau formulieren, aber nicht welter
+untersuehen.
+                             1. Problemstellung
+    In der Praxis lal~t sich der Aufwand eines Verfahrens einfach durch
+den Zeitbedarf einer speziellen Reehenanlage messen. Bei unserer theo-
+retischen Frage mit n--~ ~ benStigen wit jedoch ein hinreiehend ideali-
+siertes Modell, wie es durch das generelle Konzept einer Turingmaschine
+mR endlieh vielen Zust~nden und einem Band als unbegrenztem Speicher
+gegeben ist (man vgl. z. B. HERMES [2]). Bei Verwendung yon nur einem
+Band treten aber unserer Fragestellung wesensfremde Rangierprobleme
+auf, die sich bei Benutzung mehrerer (hinreichend vieler) Bander vermeiden
+lassen. Wesentlich ist lediglich, da$ die Zahl der Bander fest bleibt, endlieh,
+insbesondere unabhangig yon n.
+    Als Alphabet benutzen wit * (leer), 0 und 1. Bei jedem Band befindet
+sieh genau eine solche Stelle in Lese-Sehreib-Position. Das Verhalten
+einer Maschine wird durch ihre ~bergangsmatrix besehrieben, mit je einer
+Zeile pro Zustand und 3 b Spalten bei b Bandern, entspreehend den mSg-
+lichen gelesenen Informationskombinationen. Als elementare Schritte sind
+abhangig yon Zustand und Information in dieser ~ a t r i x eingetragen:
+    Eines der Bander mit *, 0 oder 1 besehreiben oder
+    bei einem der Bander das Arbeitsfeld um eine Stelle rechts oder links
+    bewegen und ~bergang in einen Folgezustand.
+    Die Maschine startet mit Zustand 1, und ein spezieller Zustand s be-
+deutet Stopp.
+    Bei unveranderten Arbeitsfeldern kann nut eine besehrankte Zahl yon
+Zustandsanderungen erfolgen, oder aber die 1V[asehine arbeitet in einem
+stets wiederkehrenden Zyklus, ohne je zu stoppen. Da es im folgenden
+um die Abschatzung yon GrSf3enordnungen geht, zahlen wit vereinfachend
+als Elementarsehritte nut die Arbeitsfeldverschiebungen. Die Benutzung
+eines anderen Alphabets wiirde ebenfaUs bei geeigneter Vereodung der
+Information den Aufwand hSchstens um einen festen Faktor vergrSI~ern.
+    Eine ganze Zahl x > 0 kann einfach dureh x ~- 1 benaehbarte Stellen 1
+mit begrenzendem * an Anfang und Ende gespeichert werden. Wir nennen
+diese Darstellung die Zahlform yon x. Wesentlieh 5konomischer bei unserer
+                                                                   m--1
+quantitativen   Betrachtungsweise     ist die Binarform         x = ~ $,2"   mit
+                                                                   ~=0
+gespeicherten Werten 0 oder 1 fiir die ~,. Zur Abgrenzung eines solehen
+Zahlwortes dient wieder *. Wir denken uns ~0 am linken Ende und nennen
+x in Anfangsstellung, wenn sieh ~0 im Arbeitsfeld befindet. Eine Maschine
+184                              A. ScK6N~AGE:
+
+
+(mit mindestens 3 Bgndern) sei Multiplikationsmasclfine genannt, wenn
+                                      n--i                              m--I
+sie zu beliebigen Binirzahlen x =      ~ ~v 2~ auf Band 1 und y =        ~ % 2s
+                                      v=O                               /~=0
+                                                                      ~+m--i
+auf Band 2 (x und y in Anfangsstellung) das Produkt x y ~- z =           ~     ~ 2~
+                                                                        X=0
+auf Band 3 speichert und mit z in Anfangsstellung stoppt. Eine fes~
+betrachtete Multiplikationsmaschine ben5tigt dann in Abh~ngigkeit yon
+den obigen Parametern A (n, m, x, y) Schritte. Wir betrachten vorl~ufig
+nur den SpezialfM1 m = n und erhalten A (n) = max A (n, n, x, y) Ms
+                                                          X, y
+Maximalaufwand bei festem n. Soleh eine Funktion in n erh~lt man zu
+jeder Multiplikationsmaschine. Jegzt formulieren wir unser Hauptergebnis
+Ms
+      Satz 1.
+      Es gibt eine Multiplilcationsmaschine mit
+                         A (n) < c n 2 V ~   lg3/~ n.
+
+      Etwas vereinfaeht hat man also 0 (n l + ~ ) mit ~ n -
+                                                          V2+ 8. Es mag
+                                                          Vqg n
+sein, dab diese Absehiitzung bei einem anderen Verfahren noch unterboten
+wird. Ganz prinzipiell stellt sieh hier die Frage:
+     WeIche Mindestgr6fienordnung hat A (n) fi~r eine beliebige Multiplilcations-
+maschine ?
+    Es ist wenig sinnvoll, bei festem n das Minimum beziiglich a]ler Ma-
+schinen zu bilden, denn zu jedem n gibt es eine Maschine mit A (n) ~ c n,
+abet mR unbegrenzt wachsender GrSl3e der jeweiligen ~bergangsmatrix.
+Weiter ist often, ob es fiberhaupt eine ,,minimale" Multiplikationsmaschine
+gibt, denn in asymptotischer Betrachtung kSnnte ja zu jeder eine noch
+wesentlich sehnellere existieren.
+    Die Addition ist bei analoger Betrachtung vSllig unproblematisch. Die
+fibliehe 3/[ethode der Addition zweier n-stelliger Zahlen in Serie erfordert
+O (n) Sehritte, und jede Additionsmasehine benStigt sehon mindestens
+n Sehritte zur Speicherung der Summe. Fiir die Division erhalten wir
+ebenfalls die in Satz 1 genannte Absch~tzung, denn die Bildung eines
+Reziprokwertes ls      sich mittels NnWTO~itera~ion auf 3/[ultiplikationen
+zurtiekftihren. Somit ist die Frage naeh dem Aufwand bei Multiplikation
+ftir alle weiteren Untersuchungen in dieser Richtung yon entscheidender
+Bedeutung.
+
+                      2. ])as Multiplikationsverfahren
+   Wit werden in diesem Abschnitt die theoretischen Grundztige des Ver-
+fahrens darstellen. Die Beschreibung einer zugeh5rigen Turingmaschine
+und eine Abschatzung des ftir die einzelnen TeilMgorithmen erforderlichen
+Aufwands geben wir in Abschnitt 3.
+                          ]Vfultiplikation grol3er Zahlen                           185
+
+                                                                  n--1      n--I
+   Zur Bestimmung yon z = x y < 22~ ~us x = .~. ~ 2 ~ und y = ~ W 2~
+                                                                  9 =0      v=O
+werden k paarweise teilerfremde Zahlen QI . . . . , @~ mit Q~ >__ 2 und
+                                              k
+                                   Q = ]-[Q~ > 2 2*'                               (2.1)
+                                             i=1
+benutzt. Aus den Resten
+                  x~x(Q~),               o=<x~=<Q~
+                  yi~y     (Q~),         0 ~y~ <Q~              (l_<i_<k)          (2.2)
+
+ergeben sich dutch Multiplikation uncl crneute Restbildung
+                         Zi ~ Xi Yi (Qi),             o <: z i <: Qi.              (2.3)
+   Aus technischen Griinden lassen wir auch Qi als l~est zu. Ob bei Teil-
+barkeit durch Qi der R e s t 0 oder Q~ b e s t i m m t wird, h~ngt v o m Verfahren
+zur l%estbildung ab (vgl. 3.). Die simultanen Kongruenzen
+                               ~ Zi (Qi)            (1 <_ i <_ k)                  (2.4)
+legen z bis auf Vielfache yon Q lest, eindeutig durch die Bedingung
+0 < z < 22~ g Q. Fiir ] :~ i haben Qj und Qi den grSSten gemeinsamen
+Teller
+                                         (Qj, Q~) = 1;                             (2.5)
+deshalb gibt es S~, j mit
+                                  Si,~ Q j ~ I     (Qi),                           (2.6)
+                                   k
+                               zi ]-[ si,~ Q~ - - ~ (Q~).                          (2.7)
+                                  ~'=1
+                                  3"*i
+
+
+Durch Restklassenmultiplikationen                  berechnete
+
+                                                                                   (2.s)
+                                 ].i
+erffillen dann
+
+                               j.~ ~ " -      [0 (Qj) ftir i # i,
+und
+                           k
+                    W = ~ wi]-[ Q j - ~ z , (O,) (1 ~< v ~< k)                     (2.9)
+                        i=1 ]:vi
+ist eine L6sung -con (2.4:); damit gilt
+                                           w - : - z (Q)                       (2.10)
+und wegen w i < Qi u n d (2.9) auSerdem
+                                           w<kQ.                               (2.11)
+186                                                A. SCH6NHAGE:
+
+   Als wiehtigste Sehritte h a b e n wir also die I{estbildung (2.2), die k
+5lultiplikationen (2.3), die B e s t i m m u n g der wi naeh (2.8) u n d die Berech-
+nung v o n w gem~B (2.9). Mittels Q aus (2.1) ergibt sich z als Rest bei der
+Division y o n w durch Q.
+   Die wesentliche Idee unseres scheinbar so aufwendigen Verfahrens liegt
+in einer geeigneten W a h l der Q~. Wir setzen
+                                                                         qi--1
+                                           Qi-~ 2q~- 1 = ~                       2~;                                 (2.12)
+                                                                           ~=0
+
+die Bin/irform y o n Q~ besteht also aus gi Ziffern 1.
+    Mi$ solchen Qi lassen sich die v o r s t e h e n d g e n a n n t e n Schritte besonders
+5konomisch ausffihren. Die Beschr/~nkung xi, Yi . . . . < Q~ geht fiber in
+                                               xi, Yi . . . .         < 2 qi,                                        (2.13)
+die Reste h a b e n also q~-stellige Binarform. Den zahlentheoretisehen Z u - .
+s a m m e n h a n g zwisehen den qi uncI den Qi besehreibt
+      IIilfssatz 1. E s s e i p           > 1, q >       1, ( p , q ) =          1, P - - - - 2 v - - 1, Q = 2       q-   1;
+r u n d s bezeichne die                     tleste     mit        p~--_r(q),           1 < r<          q,   s p~      1 (q),
+1 <= s < q. D a n n gilt
+                                                          8--1
+                      (P, Q) = 1, u n d S = ~ 2 ~ erf~llt S P ~                                1 (Q).
+                                                         a=0
+
+   Z u m Beweise benutzen wir die auch sp/s         noeh a n z u w e n d e n d e K o n -
+gruenz
+                         2 ~ q + e ~ 2 ~ (2 q - 1),                              (2.14)
+die aus 2 aq+~ - - 2 ~ -= 20` (2 q~ - - 1) = ~ (2 q - - 1) f o l g t .       Mit p = ~ q ~- r
+und ps=/?q~-       1 gilt a p - - - - - a ~ q ~ - ~ r , also 2 " p - ~ - 2 ~     und
+                                            s--1                s~l
+                                      A
+                                                                                       (Q),
+                                           ~r=O                 ~=0
+                      s-1
+           A
+          SP=          ~    2~        ~-     1) = 2 8 " -             1=       2~ q + l - 1 ~ 2   i-        1 (Q),
+
+d a m i t aueh S P ~ 1 (Q) u n d ( P , Q) = 1.
+     W e r d e n d e m n a e h 1 < qt < q2 < 9 9 9 < qk paarweise teilerfremd ge-
+w~hlt, d a n n gilt auch (2.5). t'fir (2.1) ist
+                                               k
+                                                         __> 2 n + 1                                                  (2.15)
+                                              i=1
+
+hinreichend, denn wegen q~ >__ v -{- 1 folgt
+                                                                           k
+            1                     1            2                                 1--          >
+   1 - - ~2 q    > 1        2,+i -- 1 --            2~+1-- 1 '                         2~-              2 e+~ -- 1        2
+                 k
+
+u n d Q = I I (2q~ -             1) > 2 ~ -1 > 22~ mittels (2.15).
+                i=1
+                                     Multiplikation gro2er Zahlen                                 187
+
+    Zu vorgegebenem k, dessen o]?timale Wahl wir erst sparer treffen wollen,
+finde~ man passende qi nach folgender Vorschrift:
+
+                                              qi = [ ~ - ] - t - 1 ,                           (2.16)
+               q i + ~ = m i n { q ]q >q~ und (q, qj)~- 1 ftir ?" < i } .
+Damit ist (2.15) erftill~. DaB sich andererseits auch hinreichend dicht
+beieinander genfigen4 vide qi finden lassen, dab also X q~ nicht unnStig
+groB wird, l~Bt sich aus den Sitzen fiber die Verteilung der Primzahlen
+                                                 2n
+erschliel3en. Denn mindestens die Primzahlen > ~ sind als qi geeignet.
+Da die Primzahllticken his q~ sich mit c~ q% absch~tzen lassen, folgt
+q~ < _ 2 ~ + k c      -~I~ un4 ftir ~ - -                 q~       die Schranke
+
+                                               1
+                           o: <= 1--c~k'VsIn% <= 1 @Cak"l~/n %
+
+bei hinreichend kleinem k, also etwa
+
+                                          q~ _<_~ -             1 ~-                           (2.17)
+fiir
+                                 C31C'V8 =< 4Vn- und                   n => n o.               (2.18)
+An einer Stelle werden wir spiter (2.17) in dieser seharfen Form benutzen.
+Sons~ werden wir nur qr = 0 ( ~ ) und Z qi = 0 (n) verwenden. Die Ein-
+schri~nkung (2.18) ist unwesentlich, weft wir k = n~ w~hlen werden.
+    Restbildung and Multiplika~ion mit 2 " - - 1 erfolgen naeh einfaehen
+Algorithmen (vgt. 3.). Besondere Sorgfalt ist auf die Bereehnung der wi
+gemitg (2.8) zu verwenden. Yassende Si, j mit der Eigensehaft (2.6) ]assen
+sieh naeh Hflfssatz 1 aus q~ und qj bestimmen:
+
+                                     ri,~qj        (qi), 1 <~_ri,j < qi,                       (2.19)
+                                  S~,~qj~I          (qi), 1 <Si, j < ql,                       (2.20)
+                                                    si,~--I
+                                         Si, ~ =         ~ 2"'~,~.                             (2.21)
+                                                         6=(}
+
+In (2.8) sind somit k (k -- 1) Restklassenmultiplikationen
+                          8--1
+                   v ~ - ~ u ~ 2 ~ (2 q -          1),      0 ~u<          2 q, 0 ~ v <   2q   (2.22)
+                          a=0
+
+erforderlich. Dafiir benutzen wit einen Algorithmus, (ter yon der Bini~rform
+                                 g
+
+                       s = ~:~27              (g <=clgs <__clgq ~ c l g n )                    (2.23)
+                            y=0
+188                                       A. 8CH6Nt-rAGE:
+
+ausgeht. Die besondere S t r u k t u r in (2.21) wird mit der Identit/~t
+                                                        V-1
+
+                                   :                                     u            2 '~r          (2.24)
+                       ~=0              y=O                                  ~=0
+
+ausgenutzt. Ftir die HilfsgrSBen
+                         2 ~' 1
+                             -
+
+
+
+
+                       u ~        2~r      (2 q -       1),     0 ~u~<                2 q,
+                         a=0
+
+               a~27r              (q), 0 < % < q ,
+                        ~'--1                                                                        (2.2~)
+               b r ~ r ~, ~ 2"             (q), 0 =< b:, < q,
+                        p=0
+
+
+               vr ~    y'g~2b~ U~              (2 q -     1),     0 <vy<                2q
+
+
+erhi~lt m a n mitgels (2.14) das Rekursionsschema
+
+                                 a o - = r , aT+l ~ 2 a            r     (q),                        (2.26)
+
+                      u s=u,        ur+ l ~ u ~ @             2%u r          (2 q -      1),         (2.27)
+
+                             b o = O, b,z+~ =~- br @ ~ a r                      (q),                 (2.28)
+
+                  Vo=%Uo, vv~v~_ 1-{-~2bru~                                        (2 q -      1),   (2.29)
+
+u n d aus (2.24) u n d (2.25) folgt mit (2.14) schlieBlich
+
+                                                 vg = v.                                             (2.30)
+
+    Diese Anordnung der Resbklassenmultiplikation mit den F a k t o r e n aus
+(2:21) wird sich als ~uBerst 5konomisch erweisen.
+      Die Berechnung y o n w in der F o r m (2.9) erfordert k ( k - 1) ~ u l t i -
+lolikationen mi~ Qj = 2ej _ 1. Deren Zahl 1~13~ sich durch gesehicktes Aus-
+k l a m m e r n erheblich reduzieren. Besonders tibersich~lich wir4 das fiir
+k = 2 ~. Fiir k = 8 z . B . ist
+
+  w = { ( w 1Q~+w2Q1) Q3Q4-I-(w3Q~+w4QS) Q1Q2}Q~Q6 QTQs-k
+    + { (w~ Q~ + we Q~) Q7 Q8 + (w, Q8 + w~ Q,) Q5 Q~ } Q1 Q~ Q~ Q~.
+Allgemein bilden wit
+                                        (/z 4-1) 2 ~      (/~ 4-1) 2 ~
+                      w(~,~)=              ~           w~ 1-[ (2~;-1)
+                                        4=/~2v 4-1        ]=/~2~ + 1
+                                                             ]*r
+
+u n d erhMten w =- W (0, ~) aus der Rekursion
+                          Multiplikation grol3er ZahlerL                             189
+
+                               W (/~, 0) = w , + ,
+                                                   /z2~+l
+                       + 1)=                         ]I               - 1) +   (2.31)
+                                             ] = (2tt + 1} 2~+ 1
+                                            (2/~+ 1) 2~
+                      + W (2,u ~- 1,~)         H              (2qJ - 1).
+                                         ] = / ~ 2 ~-F1 + 1
+
+So benStigt man nur noch /~ 9 z = / c 9 21g/c ~ultiplikationen.
+     Die iibrigen Schritte des Verfahrens erfordern keinen groBen Aufwand.
+Weitere Einzelheiten werden wir in 3. darstellen. Zu diskutieren bleiben
+die /c Multiplikationen (2.3). Diese werden nun ihrerseits wieder nach dem
+gleichen Verfahren ausgefiihrt, wobei die Stellenzahl qi jgweils die l~olle
+y o n n tibernimmt, usw. rekursiv schachtelnd, bis nur noch ]Kultiplikationen
+yon einer lest besehr~nkten Stellenzahl < n~ vorkommen. Diese lassen sich
+naeh der iiblichen Methode erledigen. Einzuhalten ist ftir n > n~ natiirlieh
+die Bedingung qk ~ n: Wit werden stets /~ __> 32 w~hlen und qk ~ 2 q~
+verlangen. Wird letzteres bei der Bestimmung der qi gem~iB (2.16) nicht
+eingehalten, dann wird naoh der Sehulmethode multipliziert. Mit dieser
+l~egelung ist wegen (2.17) ein n~ implizit festgelegt.
+                                                              k
+     Die Multiplikationen x i y~ verursachen den Aufwand ~ A (qi), alles
+                                                             i=1
+iibrige werden wir mit 0 (~/~ lg n) absch~tzen. Eine griindliche Analyse
+von
+                                                        k
+                        A (n) =<    n        n +              A
+                                                      i=1
+ftihrt in Verbindung mit (2.17) zu einer optimalen Wahl yon k = 2~ durch
+                             - = [V2 [21g n~] + 5.                             (2.32)
+   Darin ist ~- 5 unwcsentlich fiir die Optimalit~t yon ]c~ erleichtert aber
+sp~tere Absch/~tzungen (vgl. 4.). Mit ~ -- o (lg n ) i s t auch (2.18) gesiehert.
+
+                      3. Der Aufwand des Verfahrens
+    Die in Satz 1 genannte Multiplikationsmaschine werden wir nioht in
+allen Einzelheiten darstellen, sondern ihre Arbeitsweise durch einen algo-
+rithmischen Plan beschreiben. Dabei beschr/~nken wir uns auf die wichtig-
+s~en Hinweise; unser ttauptinteresse gilt der Abschi~tzung des Aufwands.
+Es sei hier an die bekannte Technik erinnert, eine Masehine aus einfacheren
+Teilmaschinen zusammenzusetzen. Neben gemeinsamen B~ndern kSnnen
+solche Teilmaschinen noch Hilfsb~nder fiir Zwischenrechnungen benutzen.
+Das erfordert beim Zusammenffigen zur Gesamtmaschine eine geeignete
+Erweiterung der Ubergangsmatrix in ihrer Spaltenzahl. Den wich~igsten
+B~ndern geben wir Namen Bx, By usw. In Bini~rform werden gespeichert:
+x auf Bx, bei Start in Anfangssteilung, y auf By, bei Start in Anfangs-
+stellung, z ~ x y auf Bz, bei Stopp in Anfangsstellung, 1~ auf Bit,
+      Computing 1/3                                                             13
+190                                   A. S e ~ 5 ~ e ~ :
+
+*ql *q') * - . . *q~* auf Bq, die w i und W (#, ~) auf Bw. Fiir Z~hlzwecke
+werden Indizes i, ~. . . . auf Bi . . . . in Z~hlform gespeiehert. Ein besonderes
+Band Br dient der Steuerung des Verfahrens bei rekursiver Schachtelung.
+   Zun~ehst beweisen wit einige Hilfss~tze, dis sieh auf h~ufig wieder-
+kehrende Teilaufgaben beziehen.
+   ltilfssatz 2. Die Ubersetzung von m aus Z~thlform in Binarform und um-
+gekehrt ist mit einem Aufwand 0 ( m ) m6glich.
+   Die Bins         yon m entsteht aus * 0 * durch m-fache Addition yon
+1, wobei dis Z~hfform einmal gelesen wird. Das erfordert m-fach dis Jkn-
+               9   .      ~b      .        ..              $Yb
+
+derung der Emerstelle, ~- oft elnen Ubertrag, -~ oft zus~tzlich einen zweiten
+~bertrag usw. a n d ~lg m oft eine ErhShung der Ste]lenzah], also insgesamt
+0 (m) Schritte. Dabei ist unwesentlich, dab die Zs          yon m nur aus
+Ziffern 1 besteht. A1]gemein kann so dis Li~nge eines Wortes bestimmt
+werden.
+    Dureh sukzessive Subtraktion yon 1 l~Bt sieh aus der Bingrform um-
+gekehrt aueh die Zghlform yon m in O(m) Sehritten herstellen, s t a r t
+m -t- 1 Ziffern 1 k5nnen ebenso m Ziffern 0 gesehrieben werden. Aueh dies
+werden wh~ einige Male benutzen.
+
+      IIilfssatz 3. A u s der Binarform yon q und b = ~ fis 2~ (m >=q) li~/3t
+                                                                 tt=O
+sich b o ~ b (2 ~ - 1) mit 0 <=bo < 2 q in O ( m ) Schritten bestimmen.
+    Zuerst wird das Wort b0 mit q Ziffern 0 hergestellt, naeh Itilfssatz 2 in
+0 (q) Schritten. Mit # = ~q -b p, 0 ~ ~ < q und wegen (2.14) ha~ man
+/~ in Stelle ~ yon b 0 zu addieren. Das erfolgt fiir ,u = O, 1, . . . mit Bertick-
+sichtigung der ~bertr~ge. Ein Ubertrag yon Stelle q - 1 nach Stelle q
+wird gemgB (2.14) in Stelle 0 iibernommen. Insgesamt ist b einm~l zu
+lesen und b o parallel zu bearbeiten, mit einem Riicklauf naeh jeweils q
+Sehritten. Wit nennen diese Methode zylclisehe Addition. Der Aufwand ist
+o (m) + o (q) = o (m).
+    IIilfssatz 4. Die Multiplikation einer m-stelligen Bin(~rzahl b m i t 2 q - 1
+ist in 0 ( m ) Nchritten m6glieh (m > q).
+    Auf einem Hilfsband wird 2q b gespeiehert. Dis Erzeugung yon q Nullen
+und das Absehreiben yon b erfordern 0 (m @ q). Mit gleiehem Aufwand
+wird dis Subtraktion 2 ~ b -- b ausgeftihrt.
+    Dis qj belegen auf Bq nur k - 0 (lg q ~ ) = 0 (/c ]g n) Speieherstellen.
+Damit ergibt sieh sofort
+
+    Hilfssatz 5. i <=lc sei auf Bi gegeben; das Arbeitsfeld yon Bq befinde
+sieh zwisehen * vor q~ und * naeh qk. Dann li~/3t sich gi in 0 (k lg n) Sehritten
+aufsuchen.
+    Naehstehend geben wir jetzt den algorithmisehen Plan, mit Erli~ute-
+rungen zu den einzelnen Teilen und einer Abseh~tzung des Aufwands. Die
+Maschine beginnt mit
+            * 1 auf Br sehreiben, das Arbeitsfeld bIeibt bei dieser 1.       (3.1)
+                           Multiplikatior~ grol3er Zahlen                191
+
+    D u t c h diese einmalige Vorbereitung wird spgter das Ende der Multi-
+plikation erkannt. Alle weiteren Tefle werden rekursiv benutzt.
+
+Aus der LOunge des Wortes x die Bini~rform von n auf Bz schreiben;
+u = 2 [21g n] in Zi~hlform herstdlen dutch Verdopplung der Stellen-    (3.2)
+                 zahl von n und Subtraktion von 1.
+
+      Nach Ililfssatz 2 ist der Aufwand 0 (n).
+
+         Dutch Abz~thlen t = [V~ ] als minimales t m i t
+1 @ 3 @ . .. @ (2 t + 1) > u bestimmen; mit • ~-- t @ 5die Bini~r-     (3.3)
+                 form yon lc auf Bk schreiben.
+
+      Man vergleiche (2.32). Der Aufwand ist 0 (lg n).
+
+ql = [ - ~ ] @ 1 = [ n . 21-~] + 1   a u s n und ~ bestimmen und in
+                                                                        (3.4)
+                     Bingrform auf Bq schreiben.
+    Diese Operation erfordert die Abschrift von n unter Auslassung der
+  -- 1 unteren Stellen, also den Aufwand O (lg n). Hier kann auch n ge-
+16scht und Bz in die Ausgangslage gebracht werden.
+
+Bestimmung der ~brigen q~ naeh (2.16) mit EulzIidschem Algorithmus.     (3.5)
+
+     Die Berechnung des gr6Bten gemeinsamen Tellers (q, qj) erfordert
+h6chstens 0 (lg q) Divisionen mit Rest bei einer Stellenzahl 0 (lg q). Der
+Aufwand w~chst bei der fiblichen Division quadratisch mit der Stellenzahl.
+Wegcn q __ qk < n (hier interessiert nut n > nl) hat man also O (lg ~ n)
+ftir einen gr613ten gemeinsamen Tefler n6tig, auBerdem zum Auffinden yon
+q~. nach I-Iflfssa~z 5 h6chstens O (/c lg n).
+     Es sind qk -- ql viele q jeweils mi~ weniger als /c schon berechneten q~
+auf Teilerfremdheit zu priifen. Mi~ (2.17) und (2.32) ergibt sich ein Aufwand
+(qe      q~)k(O(klgn)+O(lgSn))~--O           ~V~k21gn       -- O(n).
+   Die mitlaufenden Z/~hlvorggnge kSnnen demgegeniiber quantitativ ver-
+nachl~tssigt werden. Analoges gilt aueh im folgenden.
+Palls qk > 2 q~, dann Multiplilcation z = x y nach Schulmethode und
+                       Fortsetzung bei (3.16).                      (3.6)
+
+      Hier brauchen wir den Aufwand nicht zu untersuchen, weft n < n~.
+
+               lc in Zghlform auf Bi schreiben, * auf B w schreiben.    (3.7)
+    Dieses Setzen yon i bereitet die Schleife zur Berechnung der xi, Yl, zi
+vor. Der Aufwand ist O (k) nach Hflfssatz 2. Auf Bw werden sukzessive
+die z~ gespeichert.
+
+          q~ aufsuchen; x~ und Yi durch zyklische Addition bestimmen
+                        und auf ein Hilfsband schreiben.                (3.8)
+                                                                       13"
+192                                      A. S c ~ O ~ A G E :
+
+      Der Aufwand ist O (n) naeh Hilfssatz 3 und Hilfssatz 5.
+x~ hinter x* a u f B x , y~ hinter y * a u f B y schreiben u n d beide in A n f a n g s -
+stellung bringen. Beg B k , Bq, B i , B w das ArbeitsfeId a u f * recht8 von                  (3.9)
+allen bisher gespeicherten I n f o r m a t i o n versehieben. A u f B r eine weitere
+                  Z i ~ e r 1 sehreiben. Fortsetzung bei (3.2).
+
+   Die Zahl der be]egten Speicherpl~tze ist O (n). Damit ist auch diese
+ZaM yon Verschiebungen abgesch~tzt. Die weitere 1 auf B r entspricht der
+ErhShung der Rekursionsstufe. Es li~uft nun eine qi-stellige Mu]tiplikation
+ab~ mit dem Ergebnis x~ Yi auf B z in Anfangsstellung. Der Aufwand ist
+mit den Vorbereitungen hSchstens 0 (n) + A (qi).
+   Die Maschine mu• ab (3.2) im einze]nen so arbeiten, da~ die Ausgangs-
+position der Arbeitsfelder nie nach links iiberschritten und nach Beendi-
+gung der Multiplikation wieder eingenommen wird. Die Anwendung dieses
+Kellerungsprinzips ist notwendig, damit die B~nderzaM trotz unbegrenzter
+Rekursivit~t beschr~nkt bleibt.
+   Nach der ~iickkehr aus der Multip]ikation x~ Yi erfolgt
+          qi suchen; aus x i y~ durch zyklisehe A d d i t i o n z t bilden u n d
+                              zl * a u f B w sehreiben.                                      (3.10)
+      Nach Hilfssatz 3 und Hilfssatz 5 hat man den Aufwand
+                               O (klgn) + O(qi):                O(;-).
+
+            i u m 1 verlcleinern;falls i 4= O, d a n n Fortsetzung beg (3.8).                (3.11)
+      Die Schleife (3.8) bis (3.11) wird /c-fach durchlaufen und liefer~
+
+9 zl~ * z~-i * 9 9 9 * zl * auf B w , mit einem Aufwand O (/~ n) + ~ A (qi).
+                                                                                     i=1
+      Die z i belegen 0 (n) Speicherplgtze.
+
+                          9 zl * z2 * 9 9 9 * z~ * a u f B z schreiben.
+                   B e r e e h n u n g yon * w 1 * w 2 * . . . * w E * a u f B w .           (3.12)
+
+    Die Umspeicherung der z i kostet O (n) Schritte. Die wi werden durch
+Multiplikationen der Form (2.22) gebi]det. Fiir 1 ~ i _~ It, 1 ~ j ~ k,
+i ~- ] i s t bei Benutzung ges0nderter Hflfsb~nder auszufiihren:
+           qi suchen u n d al8 q a u f ein H i l f s b a n d 8chreiben; qi suchen;         (3.12.1)
+                    r -~ qj fi~r ] < i, r : qj -- q f ~ r j > i.
+   Diese Art der Berechnung des Restes r ist wegen q~ ~ qk ~ 2 q~ ~ 2 q~
+mSglich (vgl. (3.6)) ; der Aufwand ist O (]c lg n).
+                                s auz r u n d      q bestimmen.                            (3.12.2)
+    Beginnend mit r~ ~- r werden durch wiederholte Addition yon r nebst
+Restbildung nach q die ro ~ ~ r (q) (0 ~ r, < q) berechnet und mit 1 ver-
+glichen. So wird s Ms minimaler Index mit r~ ~- 1 gefunden. Der Aufwand
+                                 Multiplika~ion grol~er Zahlen                    193
+
+                  (~ )
+s 0 (lg q) ~ 0 ~- lg n kSnnte dureh Anwendung des EuKLIDschen Algorith-
+mus wesentlich verkleinert werden. I n der n~ehsten Position ergibt sich
+aber unvermeidlich ein gleicher Term, so d a b sich hier eine Versch~rfung
+nicht lohnt. Mit s in Bin~rform sind auoh g u n d die 77 bekannt.
+       Multiplikation (2.22) durch Ausf~hrung yon (2.26) bis (2.29). (3.12.3)
+g Additionen u n d Restbfldung n a c h q in (2.26) u n d in (2.28) erfordern
+0 (g lg n) = 0 (lg 2 n) Schritte. I n (2.27) u n d (2.29) wird g-fach zyklisehe
+Addition m i t Stellenversetzung a~ bzw. b7 angewandt. Hier h a t m a n un-
+vermeidlioh 0 (q g) = 0 ( ~ lg n) Sehritte.
+                                 k
+
+
+
+    Zusammenfassend ergibt sieh ffir (3.12) der A u f w a n d k 2 0 ~-lg n =
+= 0 (nklgn).
+                   Berechnung von w aus den w i gema/3 (2.31).                 (3.13)
+   Aus * w l * w 2 * . . . * w k * a u f B w entstehen die P r o d u k t e * w 1 Q 2 .
+w2 Q1 * 9 9 * wk Q~,-1 * a u f B z (die z~ werden dabei gelSscht). Die ~-  k vielen
+Summen W (#, 1) = w2s§ Q2s+~ + w2,+~ Q2,+1 werden wieder a u f B w
+gespeichert (dabei w~ gel5scht). N a c h ~ -- 1 weiteren solchen Durchg~ngen
+gem~l~ (2.31) steht w a u f Bw.
+     Es gilt W (/~, 0) = W,+l < 2q~, u n d induktiv zeigt m a n W (,u, ~) <
+< 2~ 9 22" q~ (0 g # < 2"-~). Bei festem ~ belegen die W (#, ~) also hSch-
+stens 2~-~ (1 ~- u ~- 2" qk) ---- O (n) Speicherpl~tze. Ftir die Additionen am
+Ende des u-ten Durchgangs sind d e m n a c h 0 (n) Schritte ausreichend.
+Bei jedem W (#, r) sind aul~erdem 2~ Mu]tiplikationen mit 2 q~ -- 1 aus-
+zuftihren, wobei die Stellenzah] m d e r Zwischenergebnisse durch die Li~nge
+y o n W (/~, u) beschr~nkt ist, d . h . m < ~ + 2~ qk. So ergibt sich fib- die
+2~-~ vielen W (#, ~) bei festem u naeh ttiffssatz 4 der A u f w a n d 0 (n) -~
++ 2~-~ 9 2 ~ 9 0 (~ § 2~qk) = 0 (2 ~n).
+Alle q~. werden dabei gerade einmal aufgesueht, in hSchstens k 9 0 (k lg n)
+Schritten. Zusammenfassend ergibt sich f~" (3.13) der Aufwand
+
+                                       ~0    (2~ n) = 0 (/~ n).
+                         k
+                 Q = H        (2qi -    1)    auf ein Hilfsband schreiben.     (3.14)
+                        i=1
+   Beginnend mit * 1 * erhi~lt m a n nach k Multiplikationen das P r o d u k t
+Q mit 0 (n) Stellen. Al]e Zwischenergebnisse haben d a n n ebenfalls eine
+Stellenzahl m = 0 (n). Der A u f w a n d ist also 0 (n k) nach I-Iilfssatz 4.
+         Q so oft yon w subtrahieren, bis Rest z < Q erreicht ist;
+                           z auf B z schreiben.                                (3.15)
+    Nach (2.11) sind das hSchstens k Subtraktionen in 0 (n) Stellen mit
+einem A u f w a n d O (nk).
+194                                   A. Sc~5~AGE:
+
+z auf Bz in Anfangsstellung bringen; auf Bx, By, Blc, Bq, Bi, Bw
+das Arbeitsfeld auf * am fin]ten Rand der Information verschieben.                    (3.16)
+   Man vergleiche die B e m e r k u n g e n zu (3.9). Der Aufwand ist mit der
+Zahl der belegten Speicherpl~tze n u r 0 (n).
+      A u f Br das Arbeitsfeld um eine Stelle nach linlcs verschieben;
+                 falls dort 1, damn Fortsetzung bei (3.10);                           (3. I7)
+                         fails dort *, dann Stopp.
+   Z u s a m m e n mit (3.1) u n d (3.9) steuert das die rekursive Arbeitsweise
+des Verfahrens.
+
+
+                 4. Beweis yon Satz 1 und Anwendungen
+      Aus den Einzelabsch~tzungen in 3. folgt
+                                                            k
+                             A (n) < c 4 n k ~lg n -~ ~ A (qi)                         (4.1)
+                                                          i-1
+
+fiir alle hinreichend grogen n, bei denen qk < 2 ql erftillt ist (vgl. (3.6)).
+Mit einem geeigneten n2 gilt auBerdem fiir a l l e n > n~ auch
+
+
+
+und
+                                                    1
+
+
+
+
+    F a r n < n2 sind nur endlich viele versehiedene Abl~ufe des Multi-
+lolikationsverfahrens mSglieh, also gibt es ein c0 mit
+
+                                 A (n) <= Co f u r n <= n~.                            (4.4)
+      W i t schreiben
+                                f (n) = c5 n 2 V ~        21gO/~n                      (4.5)
+
+und beweisen Satz 1 durch den Nachweis y o n
+                                   A (n) < Co + f (n),                                 (4.6)
+wobei c a noch geeignet zu w~hlen ist.
+   F a r n _-< n2 folgt (4.6) aus (4.4). J e t z t sei n > n 2 u n d (4.6) fiir q < n
+u                Aus (4.2) u n d der )/[onotonie y o n f folg~ d a n n
+
+                   A (qi) < Co + f (qi) < Co+              ~-       1-4-V~    ,
+
+mit (4.1) u n d /c = 2 ~ < 32 9 2 g 2 ~ - n a c h       (2.32), also
+
+                        e~ V~lg-~ + 3 2 "               co + k - f           1@   1
+                                   Multiplika~ion grol~er Zahlen                             195
+
+und
+
+                  A(n)--%   32(c,+Co)   k / { ~ n ( 1 + s--~))
+                          <           §                                                     (4.7)
+                    / (n) =  ~Vqg n               / (~)
+
+      Aus ~lg k = z > V2 2]g n + 3 u n d 21g                +          < 1 ergibt sieh
+
+                      ~lg           l§           =~lgn--        --
+und
+
+                                                <'I '§
+mit
+              = V~g         n --   Y 2 ~lg n - - 2 - - 2 V 2 21g n > 1 +     V2 ~il g ~ "
+
+
+      Wegen (4.3) ist 2 ( s1~-t-)           2 ~ < 1 u n d u _< 1            1n
+                                                                         ]/~lg
+
+I n (4.7) h a t m a n also
+                   A ( n ) - co < 1 - - ( 1        32 (% 4 - % ) ] / ] / ~ n__<l
+                      / (n)     =           [           e~      .
+fiir c 5 > 32 (ca-[-Co). D a m i t ist Satz 1 bewiesen.
+     Wir wollen eine kurze Diskussion der F u n k t i o n f (n) geben. I m F a k t o r
+21gS/2n ist unwichtig, dal~ gerade der Logarithmus zur Basis 2 gew~hlt
+wurde; m a n h~tte sonst nur ein anderes c 5 bekommen. Die Tiefe tier
+rekursiven Sehaehtelung ist y o n der GrSftenordnung Y~gn. Auf jeder StUfe
+h a t m a n ann~hernd den gleiehen Aufwand. Der weitere F a k t o r lg n riihrt
+y o n (3.12) her. Daft in 2 V2'I~ der Logarithmus zur Basis 2 auftritt, liegt
+Megt an der Bin~rdarstellung y o n x, y, z, wie m a n v e r m u t e n kSnnte,
+sondern an der 2 in                . Wesentlieh ist also die Tatsaehe, daft sieh bei
+Multiplikation gleieh langer Zahlen die Steltenzahl mit 2 multipliziert.
+Bei grSBerem k wtirde der erste S u m m a n d in (4.1) zu groB, bei kleinerem
+/c bek~me m a n diesen F a k t o r 2 zu oft.
+    Als Nebenresultat h a t sieh in 3. auBerdem ergeben, dab bei diesem
+Verfagren nur O (~) viele SpeieherplS~tze b e n u t z t werden, denn der zusS~tz-
+liege Speieherbedarf bei den gesehaehtelten Multilolikationen 15~ftt sieh
+dureh eine geometrisehe g e i h e abseh~tzen (wegen k > 32).
+    Ankntipfend an 1. b e t r a e h t e n wit jetzt F a k t o r e n x u n d y untersehied-
+lieher Stellenzahl n > m. Ftir n < 2 m wird y u m n - m Ziffern 0 ver-
+ls       Sonst zerlegt m a n x in Absehnitte tier L~nge m u n d h a t 0 ( ~ )
+Multiplikationen mit einem A u f w a n d 0 (f (m)) durehzuftihren. Die stellen-
+gereehte Addition dieser Teillorodukte erfordert noch 0 (n) Sehritte. D a m i t
+gilt
+196                         A. SC~6~ACE : Multiplikation grol~er Z~hlen
+
+      Satz l a .
+      E s gibt eine M u l t i p l i k a t i o n s m a s c h i n e   mit
+
+                       A (n, m, x, y) < c n 2 V ~                   lg~ m        (m ~ n).
+      Schliel~lich b e w e i s e n wir n o c h
+
+      Satz 2.
+                              Tt
+
+      Zu     a~      1-~ ~           ~ 2 -~ l~l~t sich b m i t            I- ]    b < 2 -~ in
+
+                                   0 (n 2 V ~ -    lg3/~n) Schritten berechnen.
+
+      A n g e n ~ h e r t w i r d die Nullste]le y o n 1 _                   a mittels      NEWTO~-Iteration
+                                                                    X
+
+xr+ 1 ---- (2 - - a xr) x r in q u a d r a t i s c h e r K o n v e r g e n z . Die I-Ierste]lung e i n e r
+e t w ~ a u f 10 Stellen g e n a u e n A n f a n g s n ~ h e r u n g xl erfolgt in 0 (1) S e h r i t t e n .
+Bei d e r r - t e n I t e r a t i o n w e r d e n die M u l t i p l i k a t i o n e n in ( 1 0 . 2 ~ ) - s t e l l i g e r
+l ~ e e h n u n g m i t e i n e m A u f w a n d gem~l~ S a t z 1 ~usgefiihrt. Mit r 0 ~- [~lg n]
+e r h ~ l t m a n b - ~ xr0. D e r A u f w a n d l~l~t sieh d u r c h
+   A, 0 ( f (10 9 2~)) = 0 ( f (n)) absch~ttzen.
+r ~ 21g n
+
+                                       Literatur
+[1] FRAE~KnL, A. S. : The Use of Index Calculus and Mersenne Primes for the Design
+    of a High Speed Digital Multiplier. JACM 8~ 87--96 (1961).
+[2] ~ E ~ E S , It. : Aufz~hlbarkeit, Entscheidbarkeib, Berechenbarkeit. Springer,
+    Berlin 1961.
+[3] MA~N, H. B.: On Modular Computation. Math. Comp. 15~ 190--192 (1961).
+[4] O ~ A ~ , J. : Algorithmische Kompliziertheit diskreter Ftmktionen. Dokl. Akad.
+    Nauk SSSR 145, 48--51 (1962) (russisch).
+[5] KA~ACUBA, A. trod OF~AN, J. : Multiplikation vielstelliger Zahlen mit Rechen-
+    automaten. Ibid. 145, 293--294 (1962) (russiseh).
+
+                                                                                Doz. Dr. A. Sch6nhage,
+                                                                        71fathematisches Institut der Universiti~t,
+                                                                           5 KSlrt-Zindenthal, Weyerthal 86
+

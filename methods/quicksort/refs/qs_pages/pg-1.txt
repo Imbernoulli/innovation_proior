@@ -1,0 +1,57 @@
+Quicksort
+By C. A. R. Hoare
+
+A description is given of a new method of sorting in the random-access store of a computer. The
+method compares very favourably with other known methods in speed, in economy of storage, and
+in ease of programming. Certain refinements of the method, which may be useful in the optimiz-
+ation of inner loops, are described in the second part of the paper.
+
+Part One: Theory highest address and moves downward. The lower
+The sorting method described in this paper is based on pointer starts first. If the item to which it refers has a
+the principle of resolving a problem into two simpler key which is equal to or less than the bound, it moves
+subproblems. Each of these subproblems may be up to point to the item in the next higher group of
+resolved to produce yet simpler problems. The process locations. It continues to move up until it finds an
+is repeated until all the resulting problems are found to item with key value greater than the bound. In this
+be trivial. These trivial problems may then be solved case the lower pointer stops, and the upper pointer
+by known methods, thus obtaining a solution of the starts its scan. If the item to which it refers has a key
+original more complex problem. which is equal to or greater than the bound, it moves
+down to point to the item in the next lower locations.
+Partition It continues to move down until it finds an item with
+The problem of sorting a mass of items, occupying key value less than the bound. Now the two items to
+consecutive locations in the store of a computer, may be which the pointers refer are obviously in the wrong
+reduced to that of sorting two lesser segments of data, positions, and they must be exchanged. After the
+provided that it is known that the keys of each of the exchange, each pointer is stepped one item in its appro-
+items held in locations lower than a certain dividing line priate direction, and the lower pointer resumes its
+are less than the keys of all the items held in locations upward scan of the data. The process continues until
+above this dividing line. In this case the two segments the pointers cross each other, so that the lower pointer
+may be sorted separately, and as a result the whole mass refers to an item in higher-addressed locations than the
+of data will be sorted. item referred to by the upper pointer. In this case the
+In practice, the existence of such a dividing line will exchange of items is suppressed, the dividing line is
+be rare, and even if it did exist its position would be drawn between the two pointers, and the partition
+unknown. It is, however, quite easy to rearrange the process is at an end.
+items in such a way that a dividing line is brought into An awkward situation is liable to arise if the value of
+existence, and its position is known. The method of the bound is the greatest or the least of all the key values
+doing this has been given the name partition. The in the segment, or if all the key values are equal. The
+description given below is adapted for a computer danger is that the dividing line, according to the rule
+which has an exchange instruction; a method more given above, will have to be placed outside the segment
+suited for computers without such an instruction will be which was supposed to be partitioned, and therefore the
+given in the second part of this paper. whole segment has to be partitioned again. An infinite
+The first step of the partition process is to choose a cycle may result unless special measures are taken.
+particular key value which is known to be within the This may be prevented by the use of a method which
+range of the keys of the items in the segment which is ensures that at least one item is placed in its correct
+to be sorted. A simple method of ensuring this is to position as a result of each application of the partitioning
+choose the actual key value of one of the items in the process. If the item from which the value of the bound
+segment. The chosen key value will be called the has been taken turns out to be in the lower of the two
+bound. The aim is now to produce a situation in which resulting segments, it is known to have a key value which
+the keys of all items below a certain dividing line are is equal to or greater than that of all the other items of
+equal to or less than the bound, while the keys of all this segment. It may therefore be exchanged with the
+items above the dividing line are equal to or greater item which occupies the highest-addressed locations in
+than the bound. Fortunately, we do not need to know the segment, and the size of the lower resulting segment
+the position of the dividing line in advance; its position may be reduced by one. The same applies, jmuratis
+is determined only at the end of the partition process. mutandis, in the case where the item which gave the
+The items to be sorted are scanned by two pointers; bound is in the upper segment. Thus the sum of the
+one of them, the /ower pointer, starts at the item with numbers of items in the two segments, resulting from
+lowest address, and moves upward in the store, while the partitioning process, is always one less than the
+the other, the upper pointer, starts at the item with the number of items in the original segment. so that it is
+
+10

@@ -6,9 +6,9 @@ Estimate the number of distinct elements n in a read-once stream of arbitrary si
 
 ## Key idea
 
-Hash every element to uniform bits, so any summary computed from the hashes depends only on the *set* of values (repeats land on themselves) and supplies the randomness the analysis needs. The observable is the **leading-zero run**: for a hashed string, ρ = position of the leftmost 1-bit = 1 + length of the run of leading zeros. Among n uniform strings the largest ρ sits within an additive constant of log₂ n, so a long leading-zero run is a thermometer for cardinality.
+Hash every element to uniform bits, so any summary computed from the hashes depends only on the *set* of values (repeats land on themselves) and supplies the randomness the analysis needs. The observable is the **leading-zero run**: for a hashed string, ρ = position of the leftmost 1-bit = 1 + length of the run of leading zeros. With a finite K-bit suffix, ρ ranges over 1..K+1 and the all-zero suffix is assigned K+1. Among n uniform strings the largest ρ sits within an additive constant of log₂ n, so a long leading-zero run is a thermometer for cardinality.
 
-A single observable has standard deviation over a full bit, so combine m of them by **stochastic averaging**: use the first p bits of the hash to send each element to one of m = 2^p buckets, and the remaining bits to compute ρ. Each bucket keeps only the **maximum ρ** it has seen, a register M[j] ≈ log₂(n/m) needing only ~log₂ log₂ n bits (5-bit "short bytes").
+A single observable has standard deviation over a full bit, so combine m of them by **stochastic averaging**: use the first p bits of the hash to send each element to one of m = 2^p buckets, and the remaining K = L - p bits to compute ρ. Each bucket starts at 0 and then keeps only the **maximum ρ** it has seen, a register M[j] ≈ log₂(n/m) needing only ~log₂ log₂ n bits (5-bit "short bytes").
 
 Combine the registers with the **harmonic mean** of the 2^{M[j]} (not the arithmetic or geometric mean). The 2^{M[j]} have a slowly decaying right tail — an occasional freak-long leading-zero run doubles or quadruples a bucket's value — and the harmonic mean weights each term by its reciprocal, so those freak-large buckets contribute almost nothing and cannot inflate the estimate. This is the single change from LogLog (which uses the geometric mean) and it drops the standard error from 1.30/√m to 1.04/√m, close to the ~1/√m benchmark set by the order-statistics family.
 
@@ -21,11 +21,13 @@ Estimate, with indicator Z = (Σ_{j=1}^m 2^{-M[j]})^{-1}:
 
   E = α_m · m² · Z = α_m · m² / Σ_{j=1}^m 2^{-M[j]},
 
-where the bias-correction constant is
+where the bias-correction constant comes from the Poissonized mean of Z. With x = n/m and f(u) = log₂((2+u)/(1+u)), the analysis gives E[Z] ≈ xJ_0(m), J_0(m) = ∫_0^∞ f(u)^m du, so unbiasedness requires
 
   α_m = ( m ∫_0^∞ (log₂((2+u)/(1+u)))^m du )^{-1},  α_∞ = 1/(2 ln 2) ≈ 0.72134,
 
 evaluated for small m as α_16 = 0.673, α_32 = 0.697, α_64 = 0.709, and α_m = 0.7213/(1 + 1.079/m) for m ≥ 128.
+
+The same Poissonized calculation with 1/a² = ∫_0^∞ t e^{-at}dt gives J_1(m) = ∫_0^∞ u f(u)^m du. The relative standard deviation is sqrt(J_1(m)/J_0(m)^2 − 1) = β_m/√m, where β_m = sqrt(m(J_1(m)/J_0(m)^2 − 1)) and β_∞ = √(3 ln 2 − 1) ≈ 1.03896.
 
 Range corrections (32-bit hash):
 - **Small range**, E ≤ 5m/2: let V = number of registers equal to 0. If V ≠ 0, return linear counting E* = m·log(m/V) (empty bins ≈ m·e^{−n/m}); otherwise return E.
@@ -48,8 +50,9 @@ def hash32(value):
     return int.from_bytes(sha1(data).digest()[:4], byteorder="big")
 
 def rho(w, max_width):
-    # leftmost 1-bit position = 1 + leading-zero run within max_width bits
-    # rho(all zero bits) = max_width + 1
+    # finite-suffix rank: 1 + leading-zero run; all-zero suffix maps to max_width + 1
+    if not (0 <= w < (1 << max_width)):
+        raise ValueError("w does not fit in max_width bits")
     return max_width - w.bit_length() + 1
 
 def alpha(m):

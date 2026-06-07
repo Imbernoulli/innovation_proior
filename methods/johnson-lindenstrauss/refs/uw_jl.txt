@@ -1,0 +1,230 @@
+Stat 991: Multivariate Analysis, Dimensionality Reduction, and Spectral Methods
+
+Lecture: 3
+
+The Johnson-Lindenstrauss lemma
+Instructor: Sham Kakade
+
+1
+
+The Johnson-Lindenstrauss lemma
+
+n
+. There
+Theorem 1.1. (Johnson-Lindenstrauss) Let  ∈ (0, 1/2). Let Q ⊂ Rd be a set of n points and k = 20 log
+2
+d
+k
+exists a Lipshcitz mapping f : R → R such that for all u, v ∈ Q:
+
+(1 − )ku − vk2 ≤ kf (u) − f (v)k2 ≤ (1 + )ku − vk2
+To prove JL, we appeal to the following lemma:
+Theorem 1.2. (Norm preservation) Let x ∈ Rd . Assume that the entries in A ⊂ Rk×d are sampled independently
+from N (0, 1). Then,
+2
+3
+1
+Pr((1 − )kxk2 ≤ k √ Axk2 ≤ (1 + )kxk2 ) ≥ 1 − 2e−( − )k/4
+k
+
+The proof of the JL just appeals to the union bound:
+Proof. The proof is constructive and is an example of the probabilistic method. Choose an f which is a random
+projection. Let f = √1k Ax where A is a k × d matrix, where each entry is sampled i.i.d from a Gaussian N (0, 1).
+Note there are O(n2 ) pairs of u, v ∈ Q. By the union bound,
+1
+Pr(∃u, v s.t. the following event fails: (1 − )ku − vk2 ≤ k √ A(u − v)k2 ≤ (1 + )ku − vk2 )
+k
+X
+1
+2
+≤
+Pr( s.t. the following event fails: (1 − )ku − vk ≤ k √ A(u − v)k2 ≤ (1 + )ku − vk2 )
+k
+u,v∈Q
+2
+
+3
+
+≤ 2n2 e−( − )k/4
+< 1
+the last step follows if we choose k = 20
+2 log n).
+Note that that the probability of finding a map f which satisfies the desired conditions is strictly greater than 0, so
+such a map must exist. (Aside: this proof technique is known as ‘the probabilistic method’ — note that the theorem is
+a deterministic statement while the proof is via a probabilistic argument.)
+Now let us prove the norm preservation lemma:
+Proof. First let us show that for any x ∈ Rd , we have that:
+1
+E[k √ Axk2 ] = E[kxk2 ] .
+k
+
+1
+
+To see this, let us examine the expected value of the entry [Ax]2j
+E[[Ax]2j ]
+
+d
+X
+= E[(
+Ai,j xi )2 ]
+i=1
+
+= E[
+
+X
+
+Ai,j Ai0 ,j xi0 xi ]
+
+i,i0
+
+= E[
+
+X
+
+A2i,j x2i ]
+
+i
+
+=
+
+X
+
+x2i
+
+i
+
+= kxk2
+and note that:
+
+k
+1X
+1
+[Ax]2j
+k √ Axk2 =
+k j=1
+k
+
+which proves the first claim (note that all we require for this proof is independence and unit variance in constructing
+A).
+Note that above shows that Z̃j = [Ax]j /kxk is distributed as N (0, 1), and Z̃j are independent. We now bound the
+failure probability of one side. By the union bound,
+1
+Pr(k √ Axk2 > (1 + )kxk2 )
+k
+
+=
+
+k
+X
+Z̃i2 > (1 + )k)
+Pr(
+
+=
+
+i=1
+Pr(χ2k > (1 + )k)
+
+(where χ2k is the chi-squared distribution with k degrees of freedom). Now we appeal to a concentration result below,
+which bounds this probability by:
+≤
+
+k
+exp(− (2 − 3 ))
+4
+
+A similar argument handles the other side (and the factor of 2 in the bound).
+The following lemma for χ2 - distributions was used in the above proof.
+Lemma 1.3. We have that:
+k
+Pr(χ2k ≥ (1 + )k) ≤ exp(− (2 − 3 ))
+4
+k 2
+2
+Pr(χk ≤ (1 − )k) ≤ exp(− ( − 3 ))
+4
+
+2
+
+Proof. Let Z1 , Z2 , . . . Zk be i.i.d. N (0, 1) random variables. By Markov’s inequality,
+Pr(χ2k ≥ (1 + )k)
+
+=
+=
+
+k
+X
+Pr(
+Zi2 > (1 + )k)
+i=1
+P
+2
+λ k
+i=1 Zi
+
+Pr(e
+
+> e(1+)kλ )
+
+Pk
+
+≤
+=
+=
+
+2
+i=1 Zi
+
+E[eλ
+]
+e(1+)kλ
+2
+(E[eλZ1 ])k
+e(1+)kλ
+
+k/2
+1
+−(1+)kλ
+e
+1 − 2λ
+
+where the last step follows from evaluating the expectation, which holds for 0 < λ ≤ 1/2 (this expectation is just the
+
+which minimizes the above expression (and is less than 1/2 as
+moment generating function). Choosing λ = 2(1+)
+required), we have:
+Pr(χ2k ≥ (1 + )k)
+
+=
+≤
+
+k
+
+((1 + )e− ) 2 )
+k
+exp(− (2 − 3 ))
+4
+
+using the upper bound 1 +  ≤ exp( − (2 − 3 )/2). The other bound is proved in a similar manner.
+The following lemma shows that nothing is fundamental about using Gaussian in particular. Many distributions
+with unit variance and certain boundedness properties (or higher order moment conditions) suffice.
+Lemma 1.4. Assume for A ∈ R× k × d that each Ai , j is uniform on {−1, 1}. Then for any vector x ∈ Rd :
+k
+1
+Pr(k √ Axk2 ≥ (1 + )kxk2 ) ≤ exp(− (2 − 3 ))
+4
+k
+1
+k
+Pr(k √ Axk2 ≤ (1 − )kxk2 ) ≤ exp(− (2 − 3 ))
+4
+k
+
+2
+
+References
+
+Material used was from Santosh Vempala’s monograph on random projections.
+
+3
+
+

@@ -1,0 +1,383 @@
+        V. Position Space Renormalization Group
+
+V.A Lattice Models
+    While Wilson’s perturbative RG provides a systematic approach to probing critical
+properties, carrying out the ǫ-expansion to high orders is quite cumbersome. Models de­
+ﬁned on a discrete lattice provide a number of alternative computational routes that can
+complement the perturbative RG approach. Because of universality, we expect that all
+models with appropriate microscopic symmetries and range of interactions, no matter how
+simpliﬁed, lead to the same critical exponents. Lattice models are convenient for visualiza­
+tion, computer simulation, and series expansion purposes. We shall thus describe models
+in which an appropriate “spin” degree of freedom is placed on each site of a lattice, and
+the spins are subject to simple interaction energies. While such models are formulated in
+terms of explicit ‘microscopic’ degrees of freedom, depending on their degree of complexity,
+they may or may not provide a more accurate description of a speciﬁc material than the
+Landau–Ginzburg model. The point is that universality dictates that both descriptions
+describe the same macroscopic physics, and the choice of continuum or discrete models is
+a matter of computational convenience. Some commonly used lattice models are described
+here:
+1. The Ising Model is the simplest and most widely applied paradigm in statistical me­
+chanics. At each site i of a lattice, there is a spin σi which takes the two values of +1 or
+−1. Each state may correspond to one of two species in a binary mixture, or to empty
+and occupied cells in a lattice approximation to an interacting gas. The simplest possible
+short range interaction involves only neighboring spins, and is described by a Hamiltonian
+                                              �
+                                      H=              B̂(σi , σj ),                      (V.1)
+                                              <i,j>
+
+where the notation < i, j > is commonly used to indicate the sum over all nearest neighbor
+pairs on the lattice. Since σi2 = 1, the most general interaction between two spins is
+
+                                                    ĥ
+                              B̂(σ, σ ′ ) = −ĝ −      (σ + σ ′ ) − Jσσ ′ .              (V.2)
+                                                    z
+For N spins, there are 2N possible micro-states, and the (Gibbs) partition function is
+                                                                      
+
+                         e−β H =
+                      �           �            �              �
+                Z=                    exp K       σ i σj + h   σi + g  ,          (V.3)
+                      {σi }           {σi }              <i,j>            i
+
+
+                                                    75
+where we have set K = βJ, h = βĥ, and g = βĝ (β = 1/kB T , and z is the number of bonds
+per site, i.e. the coordination number of the lattice). For h = 0 at T = 0, the ground
+state has a two fold degeneracy with all spins pointing up or down (K > 0). This order
+is destroyed at a critical Kc = J/kB Tc with a phase transition to a disordered state. The
+ﬁeld h breaks the up–down symmetry and removes the phase transition. The parameter g
+merely shifts the origin of energy, and has no eﬀect on the relative weights of microstates,
+or the macroscopic properties.
+    All the following models can be regarded as generalizations of the Ising model.
+2. The O(n) model: Each lattice site is now occupied by an n-component unit vector, i.e
+                                                                         n
+                                                                         �
+                          Si ≡ (Si1 , Si2 , · · · , Sin ),        with           (Siα )2 = 1.       (V.4)
+                                                                         α=1
+
+A nearest–neighbor interaction can be written as
+
+                                                                     ˆ �~
+                                                        S~i · S~j − ~h ·
+                                                 �
+                                   H = −J                                Si .                       (V.5)
+                                                <i,j>                        i
+
+
+In fact, the most general interaction consistent with spherical symmetry is f (S~i · S~j ) for
+an arbitrary function f . Similarly, the rotational symmetry can be broken by a number of
+                � ~
+“ﬁelds” such as     (hp · S~i )p . Speciﬁc cases are the Ising model (n = 1), the XY model
+                    i
+(n = 2), and the Heisenberg model (n = 3).
+3. The Potts model: Each site of the lattice is occupied by a q-valued spin Si ≡ 1, 2, · · · , q.
+The interactions between the spins are described by the Hamiltonian
+                                                 �                       �
+                                   H = −J               δSi ,Sj − ĥ         δSi ,1 .               (V.6)
+                                                <i,j>                    i
+
+The ﬁeld h now breaks the permutation symmetry amongst the q-states. The Ising model
+is recovered for q = 2, since δσ,σ′ = (1 + σσ ′ )/2. The 3 state Potts model can for example
+describe the distortion of a cube along one of its faces. Potts models with q > 2 represent
+new universality classes not covered by the O(n) model. Actually, the transitions for q ≥ 4
+in d = 2, and q > 3 in d = 3 are discontinuous.
+4. Spin s-models: The spin at each site takes the 2s + 1 values, si = −s, −s + 1, · · · , +s.
+A general nearest–neighbor Hamiltonian is
+                        � �                                                           �
+                                J1 si sj + J2 (si sj )2 + · · · + J2s (si sj )2s − ĥ
+                                                                                �
+                H=                                                                      si .        (V.7)
+                        <i,j>                                                                   i
+
+
+                                                             76
+The Ising model corresponds to s = 1/2, while s = 1 is known as the Blume–Emery–Griﬃth
+(BEG) model. It describes a mixture of non-magnetic (s = 0), and magnetic (s = ±1)
+elements. This model exhibits a tricritical point separating continuous and discontinuous
+transitions. However, since the ordered phase breaks an up–down symmetry, the phase
+transition belongs to the Ising universality class for all values of s.
+
+    Some of the computational tools employed in the study of discrete models are:
+
+1. Position space renormalizations: These are implementations of Kadanoﬀ’s RG scheme
+on lattice models. Some approximation is usually necessary to keep the space of inter­
+actions tractable. Most such approximations are uncontrolled; a number of them will be
+discussed here.
+
+2. Series expansions: Low-temperature expansions start with the ordered ground state and
+examine the lowest energy excitations around it. High temperatures expansions begin with
+the collection of non-interacting spins at inﬁnite temperature and include the interactions
+between spins perturbatively. Critical behavior is then extracted from the singularities of
+such series.
+
+3. Exact solutions can be obtained for a very limited subset of lattice models. These
+include one dimensional chains which will be solved by the transfer matrix method in
+recitations, and the two dimensional Ising model as described later in the course.
+
+4. Monte-Carlo simulations: The aim of such methods is to generate conﬁgurations of spins
+that are distributed with the correct Boltzmann weight exp(−βH). There are a number of
+methods, most notably the Metropolis algorithm, for achieving this aim. Various expecta­
+tion values and correlation functions are then directly computed from these conﬁgurations.
+With the continuing increase of computer power, numerical simulations have become in­
+creasingly popular. Limitations of the method are due to the size of systems that can be
+studied, and the amount of time needed to ensure that the correctly weighted conﬁgura­
+tions are generated. There is an extensive literature on numerical simulations which will
+not be further discussed in this course.
+
+                                              77
+V.B Exact treatment in d = 1
+      An exact RG treatment can be carried out for the Ising model with nearest neighbor
+interactions (eq.(V.1)) in one dimension. The basic idea is to ﬁnd a transformation that
+reduces the number of degrees of freedom by a factor b, while preserving the partition
+function, i.e.
+                                                        e−β H[σi ] =                                    e−β H [σi′ ] .
+                                          �                                             �                      ′   ′
+                           Z=                                                                                               (V.8)
+                                     {σi |i=1,···,N}                            {σi′′ |i′ =1,···,N/b}
+There are many mappings {σi } 7→ {σi′′ }, that satisfy this condition. The choice of the
+transformation is therefore guided by the simplicity of the resulting RG. With b = 2,
+for example, one possible choice is to group pairs of neighboring spins and deﬁne the
+renormalized spin as their average. This majority rule, σi′ = (σ2i−1 + σ2i )/2, is in fact not
+very convenient as the new spin has three possible values (0, ±1) while the original spins
+are two valued. We can remove the ambiguity by assigning one of the two spins, e.g. σ2i−1 ,
+the role of tie–breaker whenever the sum is zero. In this case the transformation is simply
+σi′ = σ2i−1 . Such an RG procedure eﬀectively removes the even numbered spins, si = σ2i
+and is usually called a decimation. Note that since σ ′ = ±1 as in the original model, no
+renormalization factor ζ, is necessary in this case. Since the interaction is over adjacent
+neighbors, the partition function can be written as
+                                                                                                                    
+         N                                                  N/2 N/2                   N/2
+                       �N                          �
+         �              �                                   ��                       ��
+                                                                                       B(σi′ , si ) + B(si , σi′+1 )  .
+                                                                                                                    �
+   Z=            exp                B(σi , σi+1 ) =                            exp                                         (V.9)
+         {σi }            i=1                              {   σi′   } {si }           i=1
+
+
+Summing over the decimated spins, {si }, leads to
+
+                                    N/2
+                                          �                                             �
+                                                                                            �N/2
+            −β H
+                   ′
+                       [σi′ ]
+                                                   e[   B(σi′ ,si )+B(si ,σi′+1 )      ] ≡ e i=1 B′ (σi′ ,σi′+1 ) ,
+                                    �         �
+          e                     ≡                                                                                          (V.10)
+                                    i=1   si =±1
+
+
+where following eq.(V.2),
+
+                                                                         h
+                                          B(σ1 , σ2 ) = g +                (σ1 + σ2 ) + Kσ1 σ2 ,                           (V.11)
+                                                                         2
+
+and
+                                                                         h′ ′
+                                       B ′ (σ1′ , σ2′ ) = g ′ +            (σ + σ2′ ) + K ′ σ1′ σ2′ ,                      (V.12)
+                                                                         2 1
+are the most general interaction forms for Ising spins.
+
+                                                                          78
+     Following eq.(V.10), the renormalized interactions are obtained from
+
+                                      h′ ′
+                           �                           �
+              ′   ′            ′ ′ ′             ′   ′
+          R(σ1 , σ2 ) ≡ exp K σ1 σ2 + (σ1 + σ2 ) + g
+                                       2
+                                  �                                     �            (V.13)
+                         �
+                                         ′   ′     h ′     ′
+                      =       exp Ks1 (σ1 + σ2 ) + (σ1 + σ2 ) + hs1 + 2g .
+                        s =±1
+                                                   2
+                          1
+
+
+To solve for the renormalized interactions it is convenient to set
+                            x = eK ,     y = eh ,     z = eg
+                         �
+                                    ′              ′              ′
+                                                                    .                (V.14)
+                            x′ = eK ,     y ′ = eh ,     z ′ = eg
+
+The four possible conﬁgurations of the bond are
+
+                       R(+, +) =x′ y ′ z ′ = z 2 y(x2 y + x−2 y −1 )
+                     
+                     
+                     
+                     
+                      R(−, −) =x′ y ′−1 z ′ = z 2 y −1 (x−2 y + x2 y −1 )
+                     
+                     
+                                                                             .       (V.15)
+                         
+                         
+                          R(+, −) =x′−1 z ′ = z 2 (y + y −1 )
+                         
+                         
+                           R(−, +) =x′−1 z ′ = z 2 (y + y −1 )
+                         
+
+The last two equations are identical, resulting in three equations in three unknowns, with
+the solutions,        ′4
+                     
+                      z =z 8 (x2 y + x−2 y −1 )(x−2 y + x2 y −1 )(y + y −1 )2
+                               x2 y + x−2 y −1
+                     
+                     
+                      ′2
+                       y =y 2 −2
+                     
+                               x y + x2 y −1                                   .     (V.16)
+                     
+                               2      −2 −1     −2      2 −1
+                             (x y + x y )(x y + x y )
+                     
+                     
+                      x′4 =
+                     
+                     
+                                       (y + y −1 )2
+Taking the logarithms, we ﬁnd recursion relations of the form
+                               ′
+                              
+                                g =2g + δg(K, h)
+                              
+                                 h′ =h + δh(K, h)        .                           (V.17)
+                              
+                              
+                               ′
+                                K =K ′ (K, h)
+
+The parameter g is just an additive constant to the Hamiltonian. It does not eﬀect the
+probabilities and hence does not appear in the recursion relations for K and h. δg(K, h)
+is the contribution of the decimated spins to the overall free energy.
+1. Fixed points: The h = 0 subspace is closed by symmetry, and it can be checked that
+for y = 1 eqs.(V.16) imply y ′ = 1, and
+                           � 2K      �2
+                  4K ′      e + e−2K                                 1
+                 e       =              ,             =⇒      K′ =     ln cosh 2K.   (V.18)
+                                2                                    2
+
+                                                 79
+The recursion relation for K has the following ﬁxed points:
+(a) An inﬁnite temperature ﬁxed point at K ∗ = 0, which is the sink for the disordered
+    phase. If K is small, K ′ ≈ ln(1 + 4K 2 /2)/2 ≈ K 2 , is even smaller, indicating that
+    this is a stable ﬁxed point with zero correlation length.
+(b) A zero temperature ﬁxed point at K ∗ → ∞, describing the ordered phase. For a
+    large but ﬁnite K, the renormalized interaction K ′ ≈ ln e2K /2 /2 ≈ K − ln 2/2,
+                                                            �      �
+
+    is somewhat smaller. This ﬁxed point is thus unstable with an inﬁnite correlation
+    length.
+Clearly any ﬁnite interaction renormalizes to zero, indicating that the one dimensional
+chain is always disordered at suﬃciently long length scales. The absence of any other
+ﬁxed point is apparent by noting that the recursion relation eq.(V.18) can alternatively be
+written as tanh K ′ = (tanh K)2 .
+2. Flow diagrams indicate that in the presence of a ﬁeld h, all ﬂows terminate on a line
+of ﬁxed points with K ∗ = 0 and arbitrary h∗ . These ﬁxed points describe independent
+spins and all have zero correlation length. The ﬂows originate from the ﬁxed point at
+K ∗ = h∗ = 0 which has two unstable directions in the (K, h) parameter space.
+3. Linearizing the recursion relations around this ﬁxed point (x → ∞) yields,
+                                                      � −K ′ √ −K
+                        x′4 ≈ x4 /4
+                    �
+                                                       e    = 2e
+                                       ,    =⇒                         .            (V.19)
+                        y ′2 ≈ y 4                       h′ = 2h
+
+We can thus regard e−K and h as scaling ﬁelds. Since ξ ′ = ξ/2, the correlation length in
+the vicinity of the ﬁxed point satisﬁes the homogeneous form (b = 2)
+                                                �√           �
+                               ξ e−K , h = 2ξ      2e−K , 2h
+                                �       �
+                                                 �              �                   (V.20)
+                                          = 2ℓ ξ 2ℓ/2 e−K , 2ℓ h .
+
+The second equation is obtained by repeating the RG procedure ℓ times. Choosing ℓ such
+that 2ℓ/2 e−K ≈ 1, we obtain the scaling form
+
+                                     ξ e−K , h = e2K gξ he2K .
+                                      �       �        �    �
+                                                                                    (V.21)
+
+The correlation length diverges on approaching T = 0 for h = 0. However, its divergence
+is not a power law of temperature. There is thus an ambiguity in identifying the exponent
+ν related to the choice of the measure of vicinity to T = 0 (1/K or e−K ).
+
+                                                 80
+    The hyperscaling assumption states that the singular part of the free energy in d
+dimensions is proportional to ξ −d . Hence we expect
+
+                           fsing. (K, h) ∝ ξ −1 = e−2K gf he2K .
+                                                         �    �
+                                                                                              (V.22)
+
+At zero ﬁeld, the magnetization is always zero, while the susceptibility behaves as
+
+                                         ∂ 2 f ��
+                                                �
+                                χ(K) ∼ 2 �        ∼ e2K .                           (V.23)
+                                         ∂ h h=0
+
+On approaching zero temperature, the divergence of the susceptibility is proportional to
+that of the correlation length. Using the general forms, hsi , si+x i ∼ e−x/ξ /xd−2+η , and
+χ ∼ dd x < s0 sx >c ∼ ξ 2−η , we conclude that η = 1.
+    �
+
+    The one dimensional Ising model can be solved exactly by a transfer matrix method
+which will be described in more detail in the recitations. The results of the direct solution
+are in full agreement with those of the RG. The transfer matrix approach can be applied to
+any one dimensional chain with nearest neighbor interactions, since the partition function
+can be written as
+                                       �N                 �      N
+                         �              �                       ��
+                    Z=           exp         B(si , si+1 ) =                eB(si ,si+1 ) .   (V.24)
+                         {si }         i=1                      {si } i=1
+
+Deﬁning a transfer matrix,
+                                        hsi |T |sj i = eB(si ,sj ) ,                          (V.25)
+
+and with periodic boundary conditions, we obtain
+
+                                       Z = tr T N ≈ λN
+                                             � �
+                                                     max .                                    (V.26)
+
+Note that for N → ∞, the trace is dominated by the largest eigenvalue λmax . Frobenius’s
+theorem states that for any ﬁnite matrix with ﬁnite positive elements, the largest eigenvalue
+is always non-degenerate. This implies that λmax and Z are analytic functions of the
+parameters appearing in B, and that one dimensional models can exhibit singularities
+(and hence a phase transition) only at zero temperature (when some matrix elements
+become inﬁnite). The transfer matrix method also provides an alternative RG scheme
+                                                                                �� � for�
+                                                                                     N/b
+all such one dimensional chains. For decimation by a factor b, we can use Z = tr T b
+to construct the rescaled bond energy as
+                                 ′ ′
+                             eB(si ,sj ) ≡ s′i |T ′ |s′j = s′i |T b |s′j .
+                                          �             � �             �
+                                                                                              (V.27)
+
+
+                                                    81
+MIT OpenCourseWare
+http://ocw.mit.edu
+
+
+
+
+8.334 Statistical Mechanics II: Statistical Physics of Fields
+Spring 2014
+
+
+
+
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.
+

@@ -1,0 +1,2062 @@
+COMBINATORICA
+
+COMBINATORICA
+
+15 (2) (1995) 215-245
+
+Akad~miai Kiad6 - Springer-Verlag
+
+THE
+
+GEOMETRY
+
+OF GRAPHS
+AND SOME
+APPLICATIONS
+
+OF ITS ALGORITHMIC
+
+NATHAN LINIAL*, ERAN LONDON and YURI RABINOVICH
+Received February 4, 1994
+Revised September 9, 1994
+
+In this p a p e r we explore some implications of viewing graphs as geometric objects. This
+approach offers a new perspective on a number of graph-theoretic and algorithmic problems.
+T h e r e are several ways to model graphs geometrically and our main concern here is with geometric
+representations t h a t respect t h e metric of the (possibly weighted) graph. Given a graph G we
+m a p its vertices to a normed space in an a t t e m p t to (i) keep down the dimension of the host
+space, and (ii) guarantee a small distortion, i.e., make sure t h a t distances between vertices in G
+closely m a t c h t h e distances between their geometric images.
+In this p a p e r we develop efficient algorithms for embedding graphs low-dimensionally with
+a small distortion. Further algorithmic applications include:
+9 A simple, unified approach to a number of problems on m u l t i c o m m o d i t y flows, including the
+L e i g h t o n - R a o T h e o r e m [37] and some of its extensions. We solve an open question in this
+area, showing t h a t the max-flow vs. rain-cut gap in the k-commodities problem is O(logk).
+Our new deterministic polynomial-time algorithm finds a (nearly tight) cut meeting this
+bound.
+9 For graphs e m b e d d a b l e in low-dimensional spaces with a small distortion, we can find lowd i a m e t e r decompositions (in the sense of [7] and [43]). The parameters of t h e decomposition
+d e p e n d only on the dimension and t h e distortion and not on the size of the graph.
+9 In graphs e m b e d d e d this way, small balanced separators can be found efficiently.
+Given faithful low-dimensional representations of statistical data, it is possible to obtain
+meaningful and efficient clustering. This is one of the most basic tasks in pattern-recognition.
+For the (mostly heuristic) m e t h o d s used in the practice of pattern-recognition, see [20], especially
+c h a p t e r 6.
+Our studies of m u l t i c o m m o d i t y flows also imply that every embedding of (the metric of)
+an n-vertex, constant-degree e x p a n d e r into a Euclidean space (of any dimension) has distortion
+~ ( I o g n ) . This result is tight, and closes a gap left open by Bourgain [12].
+
+1. Introduction
+Many combinatorial and algorithmic problems concern either directly or implicitly the distance, or metric on the vertices of a possibly weighted graph. It is,
+therefore, natural to look for connections between such questions and classical geometric structures. The approach taken here is to model graph metrics by mapping
+the vertices to a real normed spaces in such a way that the distance between any
+M a t h e m a t i c s Subject Classification (1991): 05C, 46B, 52B, 68Q
+A preliminary version of this paper appered in FOCS '94 ([40]).
+* S u p p o r t e d in part by grants from the Israeli Academy of Sciences, the Binational Science
+Foundation Israel-USA and the Niedersachsen-Israel Research Program.
+
+216
+
+NATHAN
+
+LINIAL,
+
+ERAN
+
+LONDON,
+
+YURI
+
+RABINOVICH
+
+two vertices is close to the distance between their geometric images. Embeddings
+are sought so as to minimize (i) the dimension of the host space, and (ii) the distortion, i.e., the extent to which the combinatorial and geometric metrics disagree.
+Specifically, we ask:
+1. How small can the dimension and the distortion be for given graphs? Is it
+computationally feasible to find good embeddings?
+2. Which graph-algorithmic problems are easier for graphs with favorable (lowdimensional, small distortion) embeddings? What are the combinatorial iraplications of such embeddings?
+3. The above discussion extends to embeddings of general finite metric spaces.
+What are the algorithmic and combinatorial implications in this more general
+context?
+Here are some of the answers provided in this paper:
+1. We develop a randomized polynomial-time algorithm that embeds every finite
+metric space in a Euclidean space with minimum distortion. Bourgain [12] had
+shown that every n-point metric can be embedded in an O(logn)-dimensional
+Euclidean space with a logarithmic distortion, and our algorithm finds embeddings which are at least as good. Better embeddings are provided for particular
+families of graphs.
+2. The geometry of graphs offers an excellent framework for studying multicommodity flow problems. In particular, our methods yield a very short and conceptual proof for several theorems that relate the value of the multicommodity
+flow in a network to the minimum cut in it (e.g., the Leighton-Rao Theorem
+[37]). An open question in this area is solved by the very same argument.
+A low-diameter decomposition of a graph G is a (not necessarily proper)
+coloring of the vertices with few colors, so that all monochromatic connected
+subgraphs have small diameters. In [43] the precise tradeoff between the
+number of colors and the diameter was found for general graphs. In particular,
+both parameters can be made logarithmic in the order of the graph, which is,
+in general, essentially tight. Here we establish a better tradeoff that depends
+only on the dimension and the distortion at which the graph is embeddable, not
+on the number of vertices. For many algorithmic applications of low-diameter
+decompositions, see [7] and [16].
+Graphs embeddable in a d-dimensional normed space with a small distortion have balanced separators of only O(d.n 1 - !d) vertices. If the embedding
+is given, such separators can be found in random polynomial time. For closely
+related work see [49].
+3. Clustering of statistical data calls for grouping sample points in sets (clusters),
+so that distances between members of the same cluster are significantly smaller
+than between points from distinct clusters. If data points reside in a highdimensional Euclidean space, or even worse, if distances between points do
+not conform with any norm, then clustering is notoriously problematic. Our
+algorithms provide one of the few non-heuristic approaches to this fundamental
+problem in pattern-recognition.
+Many problems in this area remain open, some of which appear in Section 8.
+
+THE GEOMETRY
+
+O F G R A P H S A N D S O M E O F ITS A L G O R I T H M I C
+
+APPLICATIONS
+
+217
+
+A preliminary version of this paper appeared in [40]. The present detailed and
+considerably expanded version includes a number of new results (see especially
+Sections 4 and 8). In the version of this article submitted January 1994 we
+conjectured that the present methods are applicable to the study of multicommodity
+flow problems. This plan materialized in July 1994 and lead to the revised version
+of September 1994. The following results were added in the final version of February
+1995: A deterministic version to one of the embeddings algorithms, as well as to the
+multicommodity flow algorithm; A new characterization of the least distortion for
+embeddings into Euclidean space (Corollary 3.5); A new covering theorem (Claims
+3 and 4 of Theorem 7.1).
+
+2. Related work and overview of results
+During the past few years a new area of research has been emerging, an area
+which may be aptly called the geometry of graphs. This is the study of graphs
+from a geometric perspective. A comprehensive survey of this fascinating area
+is well beyond our scope, so we restrict ourselves to a few brief remarks and
+examples. Geometric models of graphs can be classified as either (i) topological
+
+models, (ii) adjacency models, or (iii) metric models. The topological approach
+is mainly concerned with graph planarity and embeddability of graphs on other 2dimensional manifolds (see [34] for a recent survey). It also deals with 3-dimensional
+embeddings of a graph, mostly in the context of knot theory. (See Welsh's book
+[611 for some of these developments.)
+Particularly fascinating is the way in which geometric/topological considerations come up in the theory of forbidden minors [56]. The double cycle cover
+conjecture (surveyed in [30]) says that in every bridgeless graph there is a collection of cycles which cover every edge exactly twice. It is not hard to see that this is
+equivalent to the statement that for every graph G there is a 2-dimensional manifold on which G can be embedded so that every edge is incident with two distinct
+cells (2-dimensional faces) of the embedding.
+In an adjacency model, the geometry respects only the relation of adjacency/nonadjacency of vertices, but not necessarily the actual distance. A prime
+example for this approach is the Koebe-Andreev-Thurston Theorem (see [36], [3],
+[4], and [60]) that every planar graph is the contact graph of openly disjoint planar
+discs. Higher-dimensional results in the same vein appear in [21], [22], [49], and [5].
+Another noteworthy adjacency model calls for mapping the vertices of a graph
+to a Euclidean unit sphere where adjacent vertices are to be mapped to remote
+points on the sphere. This approach, initiated in [45], has recently found further
+interesting algorithmic applications (see [26] and [33]).
+Let X be a set of k vertices in a graph G. An embedding ~ of G in ]Rk-1 is
+X-convex if the vertices of X are mapped to the vertices of a ( k - 1)-dimensional
+simplex and ~o(x)e conv{~o(y)ly is a neighbor of x} for every x ~gX. It is shown in
+[41] that G is k-connected iff for every such X there is an X-convex ~o under which
+all points are in general position. This result can be put together with orthogonal
+embeddings (see [45]), an adjacency model where adjacent vertices are mapped to
+
+218
+
+N A T H A N L I N I A L , E R A N L O N D O N , YUI~I R A B I N O V I C H
+
+perpendicular vectors. The combination of these two approaches is discussed in
+[46].
+We now turn to problems where graph metrics have a role. A low-diameter
+decomposition of a graph (see [43], [7], [16]) is a (not necessarily proper) coloring of
+the vertices with < k colors, so that every connected monochromatic subgraph has
+diameter < D. In [43] it is shown that an n-vertex graph has such a decomposition
+whenever k D > n and D k > n, the conditions being essentially tight. The first
+condition is necessary, e.g., in decomposing triangulations of Euclidean spaces.
+The second condition is necessary for expander graphs. The similarity between
+this dichotomy and that of positive/negative curvature in geometry still awaits a
+satisfactory explanation.
+Low-dimensional models for finite metric spaces have previously been studied
+mostly by functional analysts (see [5], [9], [12], [19], [28], [31], [32], and [48]). Study
+of graph metrics has also led to the notion of spanners (see [2], [51], and [58]) and
+hop-sets [15]. LocM-global considerations, which are commonplace in geometry,
+arose for graphs as well (see [39] and the references therein, [42], and the recent
+
+[54]).
+
+All the referenced work notwithstanding, this short discussion leaves out large
+amounts of relevant work, for example, on embedding graphs in particular families
+of graphs such as g-dimensional lattices, cubes, squashed cubes etc. (see [27], [62]).
+Particularly relevant are notions of dimension that emerge from such considerations,
+see, e.g., chapter 5 in [8]. The possibility of embedding graphs in spaces other than
+Euclidean and spheric geometry is very appeMing, and hardly anything has been
+done in this direction (but see [59]). We have also said nothing about modeling
+geometric objects with graphs, which is a related vast area.
+To initiate our technical discussion, recall that a norm ]Ill associates
+a real number IIxN with every point x in real d-space, where (i) ]lxll>0,
+with equality only if x = 0 , (ii)IIAxtl=l)~l Ilzll, for every x e R d and every real
+A, and (iii) for every x , y e R d, IIx+yll~_llxll+liyll.
+The metric associated
+with the norm II'll is d ( x , y ) = N x - y H. Particularly important are lp norms:
+II(Xl,...,Xn)llp=(~lxilP) 1/p. We denote Nn equipped with Ip norm by 1B. Euclidean norm is, of course, 12.
+An isometry is a mapping p from a metric s space (X,d) to a metric space
+(Y,p) which preserves distances, i.e., p(~(x), ~(y)) = d(x, y) for all x, y e Z . Given a
+connected graph G = (t7, E), we often denote by G also the metric space induced on
+V by distances in the graph. Isometrics are often too restricted and much flexibility
+is gained by allowing the embedding to distort the metric somewhat. This leads to
+the main definition in this article:
+Definition 2.1. Metric Dimension: For a finite metric space (X, d) and e > 1, define
+
+dimc(X) to be the least dimension of a real normed space (!I, ]l" 11), such that there
+is an embedding ~ of X into Y where every two points Xl,X 2 E X satisfy
+
+d(xl,x2) > II~fl(Xl)- ~(x2)ll >__! . d(xl,x2).
+C
+
+1 T e c h n i c a l l y , w e a r e d i s c u s s i n g s e m i - m e t r i c s , as w e a l l o w t w o d i s t i n c t p o i n t s t o h a v e d i s t a n c e
+zero.
+
+THE GEOMETRYOF GRAPHS AND SOME OF ITS ALGORITHMICAPPLICATIONS 219
+Such an embedding is said to have distortion < c. The (isometric)
+is defined as d i m ( X ) = d i m l ( X ) .
+
+dimension of X
+|
+
+We recall (Lemma 5.1) that d i m ( X ) < n for every n-point metric space (X, d),
+whence this definition makes sense.
+We list some of the main findings on isometric and near-isometric embeddings.
+Unless stated otherwise, n is always the number of vertices in the graph G or the
+number of points in a finite metric space (X, d). The least distortion with which X
+may be embedded in lp (of any dimension) is denoted by cp(X).
+
+Finding good embeddings
+1. In Theorem 3.2 we show:
+There is a deterministic polynomial time algorithm that embeds every n-point
+metric space (X,d) in a Euclidean space with distortion arbitrarily close to the
+optimum c2(X). By [12], c2(X)=O(logn).
+In random polynomial time X may be embedded in lO(logn) with distortion
+_ < ( l + s ) . c 2 ( X ) (for any r
+
+lO(logn)
+
+For every 1_<p_<2, X may be embedded in op
+with distortion O(c2(X)).
+Such an embedding may be found in random polynomial time. The same distortion
+can also be attained in deterministic polynomial time, but the dimension is O(n2).
+
+,O(log2n)
+
+In random polynomial time X may be also embedded in tp
+for every
+p > 2 with distortion O(logn).
+If X is the metric of a constant-degree expander graph, then cp(X)=f~(logn)
+for every 2 ~ p ~ 1.
+2. For every metric space (X, d) on n points there is a V > 0 such that the metric v'd
+can be embedded in a Hamming metric with an O(logn) distortion (Corollary
+3.8). The bound is tight.
+Structural consequences
+1. The gap between the maximum flow and the minimum cut in a multicommodity
+flow problem is majorized by the least distortion with which a particular metric
+can be embedded in 11. This metric is defined via the Linear Programming dual
+of a program for the maximum flow. This is the basis for a unified and simple
+proof to a number of old and new results on multicommodity flows (Section 4).
+2. Low-dimensionM graphs have small separators: A d-dimensional graph G has
+1 1
+a set S of O(d. n -'d) vertices which separates the graph, so that no component
+of G \ S has more than ( 1 - ~ 1 + o ( 1 ) ) n vertices (Theorem 6.1).
+3. The vertices of any d-dimensional graph can be ( d + 1)-colored so that each
+monochromatic connected component has diameter < 2d 2 (compare with [43]).
+They can also be covered by "patches" so that each r-sphere (r - - any positive
+integer) in the graph is contained in at least one patch, while no vertex is
+covered more than d + l times. The diameter of each such patch is ~ (6d+2)dr
+(compare with [7]). Moreover, the patches may be ( d + 1)-colored so that
+equally colored patches are at distance _>2. That is, there exist low-diameter
+
+220
+
+NATHAN
+
+LINIAL, ERAN LONDON,
+
+YURI RABINOVICH
+
+decompositions with parameters depending on the dimension alone (Theorem
+7.1).
+4. Low-dimensional graphs have large diameter, diam(G) >_ n ~
+
+) (Lemma
+
+5.6).
+Algorithmic consequences
+1. Near-tight cuts for multicommodity flow problems can be found in deterministic polynomial time (Section 4).
+2. Given an isometric embedding of G in d dimensions, a balanced separator of
+1_K
+size O(d.n d) can be found in random polynomial time (Theorem 6.1).
+3. Low-dimensional, small-distortion representation of statistical data offers a new
+approach to clustering which is a key problem in pattern-recognition (Section
+3.2).
+Isometric dimensions
+9 All trees have dimension O(logn). The bound is tight (Theorem 5.3).
+9 dim(Kn) = [log2n 7 (Proposition 5.4). (This result essentially goes back to
+
+[17].)
+k
+
+k
+
+9 E [log2n 7 >dim(Knl,...,nD___ E [log2
+
+]-1, where Knl .....
+
+is the complete
+
+i--1
+i=1
+k-partite graph, and ni ~ 2 (Theorem 5.8).
+9 For cycles: dim(2m-Cycle) = rn, and m + 1_> dim((2m+ 1)-Cycle)_> 7m Consequently, dim(G) >__~ ( G )
+sition 5.10 and Remark 5.11).
+9 dim(d~Cube)=d (Corollary 5.12).
+
+1.
+
+1. However, dim~ (n-Cycle) = 2 (Propo-
+
+3. Low-distortion low-dimensional embeddings
+
+3.1 Good embeddings
+We start by quoting:
+Theorem 3.1. (Johnson-Lindenstrauss [31], see also [21]) Any set o f n points in a
+Euclidean space can be mapped to ~t where t--o(l~176 with distortion ~ l + c in
+the distances. Such a mapping may be found in random polynomial time.
+
+Proof. (Rough sketch) Although the original paper does not consider computational
+issues, the proof is algorithmic. Namely, it is shown that an orthogonal projection
+of the original space (which can be assumed to be n-dimensional) on a random tdimensional subspace, almost surely produces the desired mapping. This is because
+the length of the image of a unit vector under a random projection is strongly
+concentrated
+
+around X/~.
+
+Our general results on near-isometric embeddings
+lowing theorem:
+
+|
+are summarized
+
+in the fol-
+
+THE
+
+GEOMETRY
+
+OF
+
+GRAPHS
+
+AND
+
+SOME
+
+OF
+
+ITS ALGORITHMIC
+
+APPLICATIONS
+
+221
+
+Theorem 3.2.
+1. (Bourgain [12], see also [32], [4S]). Every n-point metric space (X, d) can
+be embedded in an O(logn)-dimensional Euclidean space with an O(logn)
+distortion.
+2. There is a deterministic polynomial-time algorithm that for every r > 0 embeds
+(X, d) in a Euclidean space with distortion < c2 (X)+e. In random polynomiallO(logn)
+time (X,d) may be embedded in ~2
+with distortion O(e2(X)) (By Claim
+
+1, c2(x)--O(logn)).
+(for any
+3. In random polynomiM-time (X,d) may be embedded in IO(l~
+op
+1 <_p < 2), with distortion O(c2(X)).
+'O(n2) (for any
+4. In deterministic polynomial time (X, d) may be embedded in tp
+1 < p < 2), with distortion O(e2(X)).
+"O(l~
+(for any
+5. In random polynomial-time (X,d) may be embedded in tp
+p > 2), with distortion O(logn).
+6. Every embedding of an n-vertex constant-degree expander into an Ip space,
+2 >p > 1, of any dimension, has distortion f~(logn).
+Proof. Claim 1 appears mostly for future reference, but is seen to be an immediate
+corollary of Claims 3 and 5 and Theorem 3.1.
+To prove Claim 2, let the rows of the matrix M be the images of the points of
+X under a distortion-c embedding in some Euclidean space. Let further A = M M t.
+Clearly, A is positive semidefinite, and for every i r
+
+~ d 2 j < ai,i + aj,j - 2ai,j < d?.
+As in [45], [26], and [33] the ellipsoid algorithm can be invoked to find an
+e-approximation of c in polynomial time.
+The dimension is reduced to O(logn) by applying Theorem 3.1.
+To prove Claim 3, use Claim 2 and recall that for any m, l~n may be embedded
+in l2m, for every 1 < p < 2, with" constant distortion (see [52], chapter 6). This
+embedding may be found-in random polynomial-time. In fact, it is enough to map
+t~n isometrically into a random m-dimensional snbspace of 12pm.
+It is not hard to see, and is well known (see [18]) that any n points in Euclidean
+space can be isometrically embedded into l~(n2).- In particular, for any finite metric
+space X, c l ( X ) ~ e 2 ( X ) .
+For the deterministic algorithm in Claim 4, start with the algorithm in Claim
+2. Once an optimal embedding into Euclidean space (of dimension at most n) is
+"O(m2) (see [10]):
+found, proceed with the following explicit embedding of l~ to lp
+Lemma 3.3. Let F C { - 1 , + 1 } m be a 4-wise independent family of vectors, let
+X E ]~m and l_<p<2. Then,
+1
+
+11112 -<
+
+N
+
+Ip
+
+_< V511xll2.
+
+222
+
+NATHAN
+
+LINIALI ERAN
+
+LONDON,
+
+YURI RABINOVICH
+
+There are explicit constructions of such families F with O(m 2) vectors.
+
+|
+
+Therefore, having embedded X into n-dimensional Euclidean space, map this
+.O(n 2)
+space to lp
+via
+x
+
+e
+
+e
+
+,O(n 2)
+
+.
+
+By L e m m a 3.3 this embedding adds only a constant distortion.
+We now turn to Claim 5.
+The overall structure of the algorithm follows the general scheme of Bourgain's
+proof: For each eardinality k < n which is a power of 2, randomly pick O(logn)
+sets A C V(G) of cardinality k. Map every vertex x to the vector (d(x,A)) (where
+d(x, A)= min{d(x,y)[y E A}) with one coordinate for each A selected. It is shown
+tO(log 2 n)
+that this mapping to ~
+has almost surely an O(logn) distortion.
+We now turn to the actual proof. Let B(x,p) -= {y E X]d(x,y) < p} and
+o
+
+B(x, p)= {y 9 X]d(x,y)< p} denote the closed and open balls of radius p centered
+at x. Consider two points x C y 9
+Let p 0 = 0 , and let Pt be the least radius p for
+which b o t h IB(x,p)] > 2 t and IB(y,p)] >_ 2 t. We define Pt as long as Pt < ld(x,y),
+and let t be the largest such index. Also let P~+I = d ( ~ .
+Observe that B(y, pj)
+and B(x, Pi) are always disjoint.
+Notice t h a t
+o
+
+A N B(x, pt) = ~ ~
+
+d(x, A) > Pt, and A Q B(y, Pt-1) r O ~
+d(y, A) <_Pt-1.
+Therefore if b o t h conditions hold, then ]d(y, A) - d(x, A)] __Pt - Pt-1.
+Let us assume that [B(x, pt)] < 2 t (otherwise we argue for y). On the other hand
+]B (y, Pt- 1)1 >-2t- 1. Therefore, a random set of size O ( ~ ) has a constant probability
+o
+
+to b o t h intersect B(y, pt_l) and miss B(x,pt).
+We randomly select q = O(logn) sets of cardinality 2 l, the least nonnegative
+power of two that is _> n
+2t--r~. Then, with high probability, for each pair x,y, at least
+o
+
+q10 of the sets chosen will intersect B(y, Pt-1) and miss B(x, Pt).
+Note that the same applies to P ~ + I - P~, since again we wish to miss a set of
+size < 2 ~+l, and to intersect a set of size > 2 ~.
+Therefore for almost every choice of AI,...,Aq:
+q
+
+E I d ( x , A i ) - d ( y , Ai)[ >_
+
+logn. (pt -- P t - 1 )
+10
+
+i=1
+We do this now for every l = 1,2,..., [lognJ and obtain Q = O(log 2 n) sets for
+which:
+
+EQI d ( x ' A i ) - d ( y ' A i ) l
+i~l
+
+t+l
+logn
+d(x, y)
+>- logn
+10 . E ( p i _ Pi-1) = 10 'P~+I >
+- l o g n . - 40
+i=l
+
+THE GEOMETRY OF GRAPHS AND SOME OF ITS ALGORITHMICAPPLICATIONS 223
+The reverse inequality is obtained by observing that Id(x, Ai)-d(y, Ai)]< d(x, y)
+for every Ai, whence:
+Q
+
+E
+
+ld(x' Ai) - d(y, Ai)] <_ C. log2n 9d(x, y).
+
+i=1
+Thus, the mapping which sends every vertex x to the vector
+
+embeds G in an O(log 2 n)-dimensional space endowed with t h e / l - n o r m and has distortion O(logn). In fact, for every p > 1, a proper normalization of this embedding
+satisfies the same statement with respect to the Ip norm.
+
+[d(x,Ai)
+
+The only modification is that now x gets mapped to ~--~TV- ] i = 1,2,... ,Q):
+Let 7(x,y) denote the lp distance between the image of x and the image of y, i.e.,
+1__
+
+But for every i, Id(x,Ai)-d(g, Ai)l <_d(x,y) whence ~-(x,g)<d(x,y). On the other
+hand:
+40- E Id( x, Ai) - d(y, Ai)l
+i=1
+=O
+
+d(x,y) <
+-
+
+E td( x, Ai) - d(y, Ai)l
+logn.i=l
+
+log n
+
+<
+Q
+
+<
+
+-
+
+O ( l o g n . ~-(x, y)),
+
+by the monotonicity of p-th moment averages.
+
+The proof of Claim 6 is deferred to Proposition 4.2.
+
+|
+
+The following technical corollary will be needed in Section 4.
+Corollary
+
+3.4.
+
+1. Let (X, d) be a finite metric space and let Y C X. There exists a randomized
+IYt) , so that
+polynomial-time algoiqthm that finds an embedding ~ :X--* tO0og2
+~
+d(x,y) > [[~(x)-~(Y)I[ for every x, y E X , and if x,y are both in Y, then also
+ll (x) -
+
+(y)fl >-
+
+) "d(x,y).
+
+2. Let (X,H) be a finite metric space and {(si,ti) [ i = 1 , 2 , . . . , h } e X • X.
+There exists a deterministic polynomial time algorithm that finds an embedding T:X--+I01 (n2), so that d(x,y) > I]~(x) - 7~(y)[I for every x,y e X , and
+11 (si)- (ti)ll >
+e,ery i = 1,2,..., k.
+Proof. The proof of Claim 1 follows the proof of Claim 5 of Theorem 3.2:
+
+224
+
+NATHAN
+
+LINIAL,
+
+ERAN
+
+LONDON,
+
+YURI
+
+RABINOVICH
+
+Map x to (d(x, Ai) l i = l , 2 , . . . , O ( l o g 2 IYI)), where the sets Ai are randomly
+chosen subsets of Y.
+The second part of the Corollary follows the proof of Claim 2 in Theorem 3.2.
+Next, apply the embedding to ll(n2)- mentioned in proving Claim 4.
+
+I
+
+Claim 2 of Theorem 3.2 leads to a characterization of c2 ( X ) , the least distortion
+with which (X, d) may be embedded in a Euclidean space of any dimension.
+The acronym P S D = P S D n denotes the cone of real symmetric n x n positive
+semidefinite matrices.
+
+Corollary 3.5. A n n-point metric space ( X , d ) m a y be e m b e d d e d in a Euclidean
+space with distortion < c i f f for every m a t r i x Q E P S D which satisfies Q. 1 = 0 the
+s
+inequality holds:
+2 +c 2 ~
+qi,j " di,j
+qi,j ~0
+
+q i , j ' d ?~,3
+" <
+- 0.
+
+qi,j "~0
+
+In particular, this inequality holds for any metric d and any Q E P S D that satisfies
+Q. 1 = 0 with c = O ( l o g n ) .
+Proof. We retain the notation used in the proof of Claim 2. As observed in t h a t
+proof, X has such an embedding iff there is matrix A E P S D n with
+d 2. . < ai, i + aj,j - 2ai, j ~ c2d 2. .
+for all i and j. The consistency of such a system of Conditions can be decided using
+convex programming duality. The analysis is facilitated since we know a complete
+(infinite) list of linear inequalities that define the cone P S D , namely:
+Proposition 3.6. A m a t r i x P belongs to P S D n iff it satisfies .~Pi,j'Yi,j >-0 [or every
+z~3
+
+Y E PSDn.
+Proof. If Y has rank one, say Yi,j = ( v i , v j ) for some vector v, then
+~-~Pi,j " Yi,j ~-- v P v t .
+Therefore, the condition that
+
+.~.Pi,j'Yi,j ~ 0 for every Y E P S D
+
+implies that
+
+%3
+
+P E PSD.
+
+On the other hand, if P E P S D , then for the same reason, ~.Pi,j "Yi,j >- 0
+%3
+
+whenever Y has rank one. The generM case follows, since every Y E P S D
+nonnegative combination of matrices of rank one.
+
+is a
+I
+
+We return to the proof of Corollary 3.5. By convex programming duality and
+the fact t h a t a nonnegative combination of P S D matrices is again in P S D , it follows
+t h a t the conclusion of the Corollary is incorrect, i.e., no such matrix A exists, iff
+there is a matrix Q E P S D such that the inequality ~. a i,j.qi,j >--0 contradicts some
+%3
+
+nonnegative combination of the inequalities
+Ji,j :
+
+c2d 9.2,3. ~ ai, i + aj,j -- 2ai,j >
+2" 9
+- d z,3"
+
+THE
+
+GEOMETRY
+
+OF
+
+GRAPHS
+
+AND
+
+SOME
+
+OF
+
+ITS ALGORITHMIC
+
+APPLICATIONS
+
+225
+
+For the combination in question to be a contradiction, all terms ai, j have to be
+eliminated. In particular, inequality Ji,j must be multiplied by qi,j/2. More
+accurately, if qi,j >- O, the right inequality in Ji,j is taken, and otherwise we take
+the left part of Yi,j multiplied by -qi,j/2. The term involving ai, i disappears only
+if its coefficient ~-~qi,j vanishes, i.e., only if Q. i"=0 holds. The Corollary follows. |
+J
+R e m a r k 3.7.
+The case c -- 1, i.e., the characterization of metric spaces that
+isometrically embed in Euclidean space is classical (see [11]).
+|
+
+A Hamming space is a metric space which consists of {0,1} vectors of the same
+length, equipped with the H a m m i n g metric.
+Corollary 3.8. For every n-point metric space (X, d) there is a Hamming space (Y, p)
+and a ~ > 0 such that (X,d) can be embedded in (Y,~/.p) with distortion O(logn).
+
+The bound is tight.
+Proof. It suffices to find a constant-distortion embedding for every finite subset
+of l~n into a H a m m i n g space. Nothing is changed by adding the same number to
+all values at some coordinate. Also recall that multiplication b y a fixed factor is
+allowed. Therefore, at the cost of an arbitrarily small distortion the entries of the
+i-th coordinate may be assumed to be integers, the smallest of which is 0. If the
+largest i-th coordinate is r, this coordinate is replaced by r new ones, where xi = s
+is replaced by s new coordinates of I followed by r - s coordinates of 0. This latter
+step adds no distortion, being an isometry into a H a m m i n g space.
+Again, the tightness result follows from Proposition 4.2.
+|
+
+3.2 Applications to clustering
+It is a recurring situation in pattern-recognition, where one is given a large
+number of sample points, which are believed to fall into a small number of categories. It is therefore desired to partition the points into a fe~v clusters so that
+points in the same cluster tend to be much closer than points in distinct clusters. When sampling takes place in a low-dimensional Euclidean space, clustering
+is reasonably easy, but when the dimension is high, or worse still, if the metric is
+non-Euclidean, reliable clustering is a notoriously difficult problem. See Duda and
+Hart [20], in particular chapter 6, for a standard reference in this area.
+The algorithms we have just described offer a new approach to clustering.
+These algorithms are currently being practically tested [38] in a project to search
+for patterns among protein sequences. One pleasing aspect that already emerges is
+this - - the second algorithm in Theorem 3.2 assumes that the distance between any
+pair of points in the space can be evaluated in a single time unit. In this particular
+application, the metric space consists of all presently known proteins. Molecular biologists have developed a number of measures to estimate the (functional,
+structural, evolutionary etc.) distance between protein sequences, and some widely
+available software packages (e.g., FASTA, BLAST) calculate them. At this writing a b o u t 40,000 proteins of average length ca. 350 have already been sequenced.
+
+226
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+For our purposes, a protein is a word in an alphabet of 20 letters (amino-acids)
+and it takes a b o u t a quarter of a second to c o m p u t e a single distance according to
+any of the c o m m o n metrics, using s t a n d a r d software on a typical workstation. A
+straightforward implementation of the algorithm is therefore infeasible. The difficulty stems from having to c o m p u t e d(x,A) for large A's. A closer observation of
+the proof shows t h a t if we fail to include the coordinates which correspond to large
+A's, the effect is t h a t the distance between close pairs of points (protein sequences)
+is reduced in the mapping. This is definitely a welcome effect in a clustering algorithm, so w h a t seems to be a problem turns out as a kind of a blessing.
+
+4. Multieommodity flows via low-distortion embeddings
+We briefly recall some definitions a b o u t m u l t i c o m m o d i t y network flows. G is
+an undirected n-vertex graph, with a capacity Ce >_0 associated with every edge e.
+There are k pairs of (source-sink) nodes (s#,t#), and for each such pair a distinct
+commodity and a demand D~ >_0 are associated. For simplicity of n o t a t i o n we
+let Ci,j = 0 for all non-edges (i,j). As usual, flows have to satisfy conservation of
+matter, and the total flow t h r o u g h an edge must not exceed the capacity of the
+edge. Maximal m u l t i c o m m o d i t y flow problems come in a n u m b e r of flavors, and
+we concentrate on the following version: Find maxflow - - the largest A for which
+it is possible to simultaneously flow ADu between s~ and t~ for all #.
+A trivial upper b o u n d on ik is attained by considering cuts in G. For S C V
+let Cap(S) be the sum of the capacities of the edges connecting S and S. Also let
+Dem(S) be the sum of the demands between source-sink pairs separated by S (i.e.,
+
+ISn{s~,t#} I=1). Obviously, ~ < Dem(S)
+Cap(S) for every S.
+-
+
+-
+
+In the case of a single c o m m o d i t y (k = 1), the max-flow min-cut theorem is
+
+Cap(S) over S C V.
+
+easily seen to say t h a t A equals the m i n i m u m of ~
+
+It came as a pleasant surprise when Leighton and Rao showed t h a t in some
+cases the gap between the max-flow and the min-cut cannot be too big. We
+show t h a t this gap is b o u n d e d by the least distortion with which a certain metric
+associated with the network can be embedded in ll. This fact yields a unified
+approach to L e i g h t o n - R a o ' s [37], and the subsequent [35], [24], and [53]. The result
+for non-unit demands is new.
+
+Theorem 4.1. 2 There is a deterministic polynomial-time algorithm which given
+a network G = (V, E, C) and the demands for k source-sink pairs, finds an S C V for
+which
+
+Cap(S-------2)<_ O(]og k). maxflow.
+Dem(S)
+2 A randomized version of this Theorem appeared in the preliminary version of this paper and
+in the paper of Yonatan Aumann and Yuval Rabani [6]. We were recently informed by Naveen
+Garg [23] that he, too, managed to derandomize a variant of the algorithm that appears in our
+FOCS '94 paper.
+
+THE GEOMETRY OF GRAPHS AND SOME OF ITS ALGORITHMIC APPLICATIONS
+
+227
+
+Proof. The optimal ), is the m a x i m u m of a certain linear program. By LF duality
+(e.g., [24]):
+
+E c ,j. &,j
+= min i#j
+k
+
+D# "ds,,t,
+tt=l
+where the minimum is over all metrics d on G. We first apply Claim 2 of
+Corollary 3.4 to the minimizing metric with X = V(G). The vertices of G are
+thus m a p p e d to points {Xl,...,xn } in R m where Ilxi-xjll1<di,j for all i,j and
+I]xs, - xt, ]]1 -> f~(ds,,t, ~log k) for # = 1,..., k. Therefore,
+
+E Ci,j" Ilxi - xjlll
+iCj
+k
+
+D•
+
+. Ipxs, -
+
+< O(A. log k).
+
+at. [11
+
+#=1
+
+Since we are dealing with the l~n metric we may conclude:
+
+E Ci,j" I]xi - xjtll
+
+k
+
+E D
+
+'llxs.-xt. lll
+
+tt=l
+m
+
+E
+=
+
+m
+
+E Ci,j" IXi,r - Xj,rl
+iT~j
+k
+
+2
+
+2 D# "lxs,,r - xt,,rl
+
+r=l
+
+>
+
+rain
+-- l<r<m
+
+r=l #=1
+
+E Ci,j" lxi,r -- Xj,r I
+ir
+k
+
+Y~ D•'lzs,,r
+
+- xt,,rl
+
+tt=l
+
+Let ~ be an index where the minimum is achieved. We claim that no generality is
+lost in assuming that all xi,~ are in {0,1}, whence
+
+Cap(S)
+k
+
+E D.'lxs.,e - xt,,~.l
+
+Dem(S)'
+
+,u,=l
+
+where S={i[xi, ~ = 1}.
+To justify the assumption xi,e E {0,1} for every i, we argue that for any real
+
+aiylz~-zyl
+aij=aji , bij=bji , l < i # j _ _<n the minimum of ~S~b~j~Iz~-zj] (over real z's) can be
+iCj
+
+attained with all zi E {0,1}. This is shown by a variational argument: If the z's take
+exactly two values, one value can be replaced by zero and the other by one without
+affecting the expression. Otherwise, let s > t > u be three values taken by z's. Fixing
+all other values, and letting t vary over the interval [u, s], the expression is the ratio
+
+228
+
+NATHAN LINIAL, EB.AN LONDON, YURI RAB]~NOVICH
+
+of two linear functions in t. Therefore~ all z's which equal t can be changed to either
+s or u without increasing the expression. This procedure is applied repeatedly until
+only two values remain.
+The algorithm is a straight implementation of the proofs. First solve the linear
+k
+program I = min # y~ Ci,j 9di,j under the condition ~ D~ "ds,,t, = 1, where d
+"i#j
+~= 1
+is a metric on G~.
+
+Approximate the optimizing metric in /1 as in the second
+
+part of Corollary 3.4. Consider the index ~ which minimizes
+
+i~j
+
+Finally optimize this expression using the above variational procedure to find a
+near-optimal cut. Note that instead of this last step it suffices to consider only the
+cuts to an initial segment and a final segment of the one-dimensional embedding. |
+The proof shows that the max-flow min-cut gap is accounted for by the distortion in approximating a certain metric by 11 norm. In those cases where distortion
+smaller than log k will do, better bounds follow for the multicornmodity flow problem, For example - - suppose the n-point metric space defined by the optimal d is
+isometrically embeddable in N s for some small s. Then (as mentioned in the proof
+of Theorem 7.1) d may be approximated by l~ with distortion s, yielding a better
+bound than in the general case.
+A cut metric on n points is defined by picking S C [n] and defining d(x, y) = 1
+if [SN {x,y}[ = 1, and as zero otherwise. A simple but useful fact is that a metric
+on In] is realizable in 11 iff it is a nonnegative combination of cut metrics. This fact
+explains much of what happens in the proof of Theorem 4.1.
+Proposition 4.2. Every embedding of an n-vertex constant-degree expander into an
+lp space, 2 > p > 1, of any dimension, has distortion f~(logn). The metric space of
+such a graph cannot be embedded with constant distortion in any normed space of
+dimension o(log 2 n).
+Proof. As observed in [37] the max-flow rain-cut gap is f~(logn) for the all-pairs,
+unit-demand flow problem on a constant-degree expander, where all capacities are
+d~j
+
+one. Consider the corresponding expression ~ 9 - I~JleE
+
+for certain metrics d.
+
+When d is the expander's own metric ~5 = O(nl-]5-~).
+1
+
+On the other hand, the
+
+E di,j
+
+minimum of 9 over one-dimensional metrics d is the expander's rain-cut, i.e., f~(l).
+Consequently min (I) over d in 11 is also f~(1). This gap implies that every embedding
+of the expander's metric in Iz (of any dimension) has distortion fl(logn).
+The same conclusion holds also for embeddings into Ip for 2 >p_> 1, because in
+this range, every finite dimensional lp space can be embedded in 11 with a constant
+distortion ([52], chapter 6).
+Every d-dimensional norm may be approximated with distortion V~ by an
+affine image of the Euclidean norm (e.g., [52]). Therefore, an embedding of constant
+
+THE
+
+GEOMETRY
+
+OF
+
+GRAPHS
+
+AND
+
+SOME
+
+OF
+
+ITS ALGORITHMIC
+
+APPLICATIONS
+
+229
+
+distortion into any o(log 2 n)-dimensional normed space translates into an o(logn)distortion embedding into 12, which is impossible.
+|
+Two commodities
+T h a t max-flow = min-cut for two commodities ([29] and [57]) can be shown as
+Ci,j.di,d
+
+follows: Let d be the metric for which A -
+
+k~r
+
+. Map every vertex x to
+
+/~=1
+
+the point (dx,sl,dz,s2) and let D be the loo metric among these points. If we
+replace d by D, the numerator can only decrease, while the denominator stays
+unchanged, whence there is no loss in assuming d to be (a restriction of) the 12
+metric. It is not hard to see that the linear mapping q-(Zl,Z2) ---- {\ z l q -2z 2 ' zl-z2"
+~
+2 /
+satisfies I[~-(Zl, z2) - r ( v 3 1 , w2)H1 ~-- t1( Z l , z2) -- ( W l , W2)II cx~. An application of ,- thus
+allows us to assume that the metric d is, in fact (a restriction of) ll. From here on,
+the proof of Theorem 4.1 can be followed to derive our claim.
+
+5. Isometrics
+5.1 General results
+
+All logarithms are to base 2. G = (V, E) is always a connected graph and n is
+the number of its vertices. Unless otherwise stated, embeddings are into ]~d.3 No
+distinction is made between a vertex x and its image under the embedding. If G
+can be embedded in (X, I1" II) we also say that X realizes G.
+The unit ball of a d-dimensional real normed space is: ~ = {x E N d with
+IIxll < 1}. This is a convex b o d y which is centrally symmetric around the origin.
+Every centrally symmetric convex body Q induces a norm, called the Minkowski
+norm: [Ix [[Q = inf{ A > 0 such that ~ e Q}. Thus, normed spaces are denoted either
+as (]Rd,N. [[) or as (Nd,Q). The boundary of ]~ is O B = { x 6 N d with [[x[[=l}.
+In an isometric embedding of G in N d the set { ~ t x # y e Y }
+is contained
+in 0]~.
+= c~
+
+It is not hard to see t h a t there is no loss of generality in assuming
+~x,-Z-7~, I x # y E V}. T h a t is, we m a y assume ~ is a centrally sym- aG~x,y ]
+
+metric convex polytope. A copy of B centered at x is denoted B(x).
+The following well-known l e m m a shows that the notion of dimension is welldefined.
+L e m m a 5.1. A metric space (X, d) with n points can be isometrically embedded
+n
+into loo.
+
+Proof. Let X = { x l , . . .
+th coordinate is 4=d
+
+, i n } with dij = d ( x i , x j ) . Map xi to a point z i E R n whose ki j
+k. Then jlz
+-zJll;o=maxk z k - z jk ->lzj-zr
+
+On the other hand, for all k,
+
+z ik - z jk = Id i k - dJkl <-dij by the triangle inequality. |
+
+3 However, d may also denote a metric, and so will be paid extra, [13] page 223.
+
+230
+
+NATHAN
+
+LINIAL,
+
+ERAN
+
+LONDON,
+
+YURI
+
+RABINOVICH
+
+We show later some examples of graphs with isometric dimension ~. The
+highest isometric dimension among n-vertex graphs is currently unknown (but see
+[9] and [63]).
+The l ~ norm is universal in that, as L e m m a 5.1 shows, it realizes all graphs (in
+fact, all finite metric spaces). In some sense, it is the only universal norm, as the l ~
+norm defines a graph on Z d, which must be realized by any other universal norm.
+Therefore any universal norm must contain a copy of lcc. (Lest the reader suspects
+that l: is universal as well, we remark that K2,3 is not embeddable in this norm,
+viz. [18].) It is therefore of interest to also study dim(G) (and dime(G)), tile least
+k such t h a t G can be isometrically embedded in l ~ (with distortion c). Clearly
+dim(G) _> dim(G), and this gap can be exponential (e.g., dim(d-Cube) -- d while
+dim(d-Cube) = 2d-1; see Corollary 5.12 and comments following Theorem 5.15).
+One simplification in studying isometric embeddings into l d is that all vertices
+may be assumed to m a p to zd: Given any embedding, round all coordinates up
+and isometry is preserved.
+Geodetic paths in G and the face lattice of the unit sphere B are related via
+
+Let P = ( X l , . . . , X k )
+be a geodetic path in G. In an isometric
+x j --xi
+embedding of G in (Rd,]~), all vectors ---j-s k >_j > i >_ 1, lie on the same/:ace
+orB.
+|
+
+Proposition 5.2.
+
+J is an isometric subgraph of G if distances within Y are the same as in
+the whole graph G. The dimension of such a subgraph provides a lower bound
+on dim(G). Examples of isometric subgraphs of G include cliques, induced subgraphs of diameter 2, geodetic paths and irreducible cycles. In particular, since
+dim(Cn) > ~ - 1 (Proposition 5.10 and Remark 5.11), if G has finite girth, then
+dim(G) _> girth(G)4 - 1 .
+To get the reader initiated on methods for estimating isometric dimensions, we
+present a bound on the dimension of trees:
+T h e o r e m 5.3. For every n-vertex tree T, dim(T)--O(logn). Moreover, if T has l
+leaves, then dim(T)=O(logl). The bounds are tight.
+Proof.
+
+/c-logn
+
+The proof shows that T can be isometrically embedded in ooo
+with
+1
+It
+is
+well-known
+that
+every
+n-vertex
+tree
+T
+has
+a
+"central"
+vertex
+O,
+e~ log3-1 '
+such t h a t each component of T \ {O} has at most ~ vertices. Let R , L be two
+snbtrees of T of size < -~ whose union is T, sharing only the vertex O. Find
+.logn-1
+Such an embedding
+isometric embeddings, one for L and one for R in l c
+ooo
+remains an isometry if all points are translated the same amount. We may thus
+assume that in the embeddings of L and R the vertex O is m a p p e d to the origin
+in ]Rc'l~
+The whole tree is isometrically embedded in a space of one more
+dimension. The coordinates used to embed R and L are maintained, and the value
+of the new coordinate is set as follows: For O it is zero, for x E V(L) this new
+coordinate is - d T ( O , x ) and for x 9 V(R) it is dT(O,x ). It is not hard to verify
+t h a t this is an isometric embedding, as claimed.
+
+T H E G E O M E T R Y OF G R A P H S AND SOME OF ITS A L G O R I T H M I C A P P L I C A T I O N S
+
+231
+
+The upper bound in terms of the number of leaves is obtained by splitting T
+into two subtrees with a single common vertex, neither of which contains more than
+23 of the leaves of T (see [14] Theorem 2.1').
+Both bounds are tight for stars, dim(Kl,n_l)=~2(logn) by Proposition 5.5. |
+
+5.2 Estimating the dimension - - volume considerations
+Although stated in a different context, [17] shows that dim(Kn)_> glog2n ].
+Here is a sketch of an argument based on the original ideas and translated to our
+language:
+Proposition 5.4. dim(Kn) = flog2n 1 .
+Proof. (Sketch) Let Kn be isometrically mapped to {Xl,... ,Xn} in (]Rd,]B). Let
+D = c o n v { x l , . . . ,xn}. We claim that the sets D + x i ( i = 1,... ,n) have disjoint interiors. Assuming this for a moment, notice that since D is convex, D + x i C 2D for
+all i. Hence n. vol(D) = vol (Ui (D + xi)) < vol (2D) = 2 d. vol(D) and the conclusion
+follows. To complete the proof, suppose for contradiction that (D + xi)n (D + x j)
+has a nonempty interior. This implies that x i - xj is an internal point of D - D.
+But D - D = c o n v { x a - x ~
+I n>-a7~/3>- 1} which are all vectors of norm 1, whence
+D - D C ] ~ . It follows that Xi--xj, a vector of norm 1, is in int(]~), a contradiction.
+On the other hand dim(Kn) < [log 2 n 1 follows by mapping the vertices of Kn
+to the vertices of the Flog2 n 1-dimensional cube, under l ~ norm.
+|
+Volume considerations yield upper bounds on degrees and a lower bound on
+the diameter:
+Proposition 5.5. All vertex degrees in a d-dimensional graph do not exceed 3 d - 1.
+
+This bound is tight.
+Proof. Place a copy of 1~ around a vertex v, and around each of its neighbors. The
+interiors of all these balls are disjoint, and their union is contained in -321~(v): If w
+is a neighbor of v and z E 89
+then IIz-wll <_89since zE 89
+and IIw-vll = 1
+by the isometry. Hence IIz- vtl< IIz- wll + IIw- vii _< 3. Comparing volumes we get
+the desired result. Equality is attained by the grid points under l ~ norm.
+|
+
+Lemma 5.6. d i a m ( G ) >_ g1( n d! - 1 ) .
+Proof. Surround each vertex of G by lIB. These balls have disjoint interiors
+and are contained in ( d i a m ( G ) + 1)1~, centered at an arbitrary vertex of G. The
+conclusion follows as before. The bound is nearly tight, as we know of graphs with
+1
+1
+diam(G) ~ ~ (n~ - 1).
+|
+
+232
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+5.3 E s t i m a t i n g t h e d i m e n s i o n - - ranks
+
+Isometric dimensions are related to linear algebra via an alternative definition
+of a norm: Recall that we are only concerned with normed spaces (X,B) where
+B is a centrally symmetric polytope. Associate with each pair of opposite facets
+{ F , - F } of B, a linear functional l F which is identically 1 on F, and - 1 on - F .
+Then
+
+VxeX, Hxll= m a x F
+
+IlF(x)l.
+
+An n x r matrix M implements a graph G if for all i, j
+
+max
+k
+
+-
+
+mjkl = dG(v , v j )
+
+The following result offers a characterization of dim(G) in terms of matrix ranks:
+T h e o r e m 5.7. d i m ( G ) - - m i n r a n k ( M ) , where the minimum is over all matrices M
+that implement G.
+Proof. If G is isometrically embeddable in (Nd,B), define M via: miF = lF(vi),
+where l F is the functional corresponding to the pair of opposite facets { F , - F } of
+B. Clearly, M implements G, and its rank is < dim(G).
+On the other hand, suppose that Mn•
+implements G and d = r a n k ( M ) .
+Mapping the vertices of G to the rows of M is an embedding of G to the ddimensional space L, spanned by the rows of M. The norm is induced by the
+unit sphere B = LN [-1,1] s , the intersection of L with the unit cube in R s. The fact
+that M implements G implies that the above mapping is an isometry of G into the
+normed space (L,B).
+|
+Here are some applications of the theorem:
+k
+T h e o r e m 5.8. I f n l , n2, ..., nk>_2, then dim(Knl,n2 .....n~) >_ ~ [logni] - 1.
+i=1
+
+Proof. Let Ai be the i-th part of V and M be a matrix implementing G. For
+a, b E Ai, consider a column j where Imaj -- mbj I = 2. If x ~ Ai, then d(x,a) =
+d(x,b) = 1, whence mxj = 1. (maj +mbj). It follows that if 1. (maj +mbj)" ~ is
+subtracted from the j - t h column, all entries not in the rows of Ai become zero.
+Repeat this step for all columns j that implement the distance between two points
+from the same part. Next, eliminate all other columns. The resulting matrix Q has
+rank(Q) _< rank(M) + 1 (elementary operations with a single column can increase
+the rank by < 1 and eliminating columns can only decrease it). Q is a direct sum
+Q = oQi, where 1
+~Qi implements Kn~, whence rank(Q/) 2 [logni]. The theorem
+follows.
+|
+k
+The upper bound dim(Knl,n2 .....nk) <- ~ [logni] is shown easily, using l ~
+i=1
+
+norm, as suggested by the proof of the lower bound.
+Corollary 5.9. Let G be a clique K2n minus a perfect matching. Then dim(G) = n.
+Proof. Here, it is obvious t h a t the the elementary operations on the columns do
+not cause a loss of one in the dimension.
+|
+
+T H E G E O M E T R Y OF G R A P H S AND SOME OF ITS A L G O R I T H M I C A P P L I C A T I O N S
+
+233
+
+Proposition 5.10. d i m ( C 2 m ) : m .
+Proof. The following construction gives an upper bound, with ll norm: The vertices
+are mapped to the following 2m points:
+i
+for i : l , . . . , m : x i = ~ et;
+$:1
+m
+
+fori:m+l,...,2m-l:
+
+xi:
+
+~
+et;
+t=i-m+l
+
+X2m : O,
+where et is the t-th unit vector.
+For the lower bound, let the matrix A implement C2m, and let Vl,... ,V2m be
+the vertices in cyclic order. All indices are taken modulo 2m. Consider a column
+t where d G ( v j , v m + j ) = m is realized. It has the form aj,t = 5; aj+l, t = aj_l, t =
+(~+c; a j + 2 , t : a j - 2 , t : ~ + 2 ~ ; . . . , a j + m , t : 6 + m c , for some real 5 and ~E {-1,1}.
+By elementary operations with the column vector i" it can be transformed so that
+aj_ i t = a j + i , t = i for i - - 0 , . . . ,m. We thus obtain an m •
+minor whose (r,s)-entry
+is lr-s[. This matrix is non-singular, being the distance matrix of a path, which is
+known to be non-singular (e.g., [44] pp. 64-65). This implies rank(A) _>m - 1. A
+more careful analysis shows that the elementary operations with the all-one vector
+can be avoided, yielding rank(A) > m.
+|
+Remark 5.11. For cycles of odd length: m + l > d i m ( C 2 m + l ) > m 1. The upper bound is achieved with loc norm: Let {Wl,W2,...,Wrn_bl } be m + 1 consecutive vertices in the cycle. Map each vertex x to an (m + 1)-vector, whose ith coordinate is d(x, wi). As for a lower bound, the above argument yields only
+dim(C2m+l) > ~ - 1, though probably d i m ( C a ) = [-~] for all n.
+Consequently:
+Corollary 5.12. dim(m-Cube) = m .
+Proof. The m-Cube embeds isometrically in l~n. The lower bound follows from the
+fact that the m-Cube contains a 2m-Cycle as an isometric subgraph.
+|
+Consequently, the infinite cubic grid in ~m has dimension m. Moreover, for
+the part of the grid G - - [ 1 , . . . , n] m, not only does d i m ( G ) = m, but also d i m c ( G ) = m
+1
+
+for any c ~ n - ~ . This bound can be obtained using volume arguments as described
+in a previous section.
+The stabbing dimension of a finite family of convex bodies X in R d is the least
+dimension of a linear space L which intersects every K C~f.
+Associate with a connected graph G on n vertices, the polyhedron
+P = PG = {x E l~n with [xi - xj[ ~ d(vi,vj) for all 1 < i,j <_ n} C ]~n.
+Alternatively, P = {x e ]~n with [xi - xj[ < 1,V[vi,vj] e E(G)}. Clearly, P is a
+centrally symmetric prism. For each i,j the facets F~-.w and F/',j are determined by
+the equation x i - xj = • d(vi,vj). Let ~ = :~G consist of all such faces. (In fact,
+because of the central symmetry, it would suffice to consider F.+ alone.)
+
+234
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+T h e o r e m 5.13. The stabbing dimension of ~ G coincides with the isometric dimension of G.
+Proof. Suppose that L "stabs" all the faces in ~G, and choose for each pair i , j
+a vector in L N Fid. Let the matrix M have these vectors as columns. Clearly M
+implements G; by Theorem 5.7, dim(G)<_ dim(L).
+On the other hand, given a matrix of minimum rank implementing G, define
+L to be the span of its columns. Clearly L meets all the required facets, and
+dim(L) = d i m ( G ) .
+|
+The case when G is a clique has an interesting geometric implication:
+T h e o r e m 5.14. Let C be the cube [- 89 89 The stabbing dimension of any family
+of n pairwise disjoint faces { E l , . . . , F n } of C is at least [log 2 n].
+Proof. Let L be a linear space that meets all Fi. Choose points vi E L A F i , and
+form an n • m matrix M whose rows are the vi's. Since the faces are disjoint, for
+each two rows i r j there is a column l where vij -- - 1 and vj,l -- 1 or vice versa.
+Since all entries of M are in [ _ 1 89 M implements the n-Clique.
+By Theorem 5.7 and Proposition 5.4 rank(M) _ [log2nl, whence d i m L =
+r a n k M ~ [log 2 n] as claimed.
+|
+The remaining part of the section concerns dim(G).
+T h e o r e m 5.15.
+9 dim(G) is the least number of columns in a matrix implementing G.
+9 dim(G) equals half the least number of faces of the unit ball of a normed
+space in which G can be isometrically embedded.
+|
+
+Here are some examples demonstrating the convenience of working with
+dim(G):
+(i) dim(Kn) = [log2n ]. Let M realize Kn, and recall that M may be assumed
+to have integer entries. Hence, each column in M realizes the distance between
+every x E A and y ~ A for some A C V. Namely, an isometric embedding of
+K n into Id is equivalent to covering E ( K n ) by d complete bipartite graphs and
+it is well known that d ~ flog 2 n], as claimed. A similar argument shows t h a t
+dim (linegraph(Kn)) = e (log n).
+(ii) d i m ( d - C u b e ) = 2 d-1. Let M implement the d-Cube and let column t realize
+d(x,y) = d for some antipodal pair x,y. Without loss of generality mtz = d(x,z).
+Hence every antipodal pair requires a separate column. At the same time this is
+just a description of a matrix implementing the d-Cube with 2 d-1 columns.
+
+THE
+
+GEOMETRY
+
+OF
+
+GRAPHS
+
+AND
+
+SOME
+
+OF
+
+ITS ALGORITHMIC
+
+APPLICATIONS
+
+235
+
+6. Separators
+
+Theorem 6.1. Let d i m c ( G ) = d and assume that e . d = o ( n ~ ) .
+1
+
+Then G has a set S
+
+1
+
+of 0 (c. d. n - ~ ) vertices which separates the graph, so that no component of G \ S
+has m o r e than (ivertices
+
+Proof. Given a distortion-c embedding of G in (Rd,B), our approach is this: Find
+two parallel hyperplanes H1,//2 in R d at distance 1 (distance is taken in the ~norm). S is the set of vertices which are embedded in the closed slab between the
+two hyperplanes. V1 is the set of vertices embedded strictly above H i and in 1/2 are
+those embedded strictly below//2. That S separates V1 and V2 is obvious. What
+we need is to construct H1 and H2, so that,
+ISl = O ( c . d . n
+
+and
+IVll, Ir21 ~_
+
+1
+
+1
+
+( 1-d+-----~+o(1
+1 )) n.
+
+The proof uses a beautiful idea from [50] which starts from the following well known
+consequence of Helly's Theorem [64]:
+Proposition 6.2. For any set V of n points in ]~d there exists a centroid 0 such
+that every dosed hMfspace determined by a hyperplane passing through 0 contains
+at least n points of V.
+|
+By translation, O may be assumed to be the origin.
+Partition the points in V according to their distance from O. First we will show
+that no slab contains "too many" points of V, that are "near" the origin. Then
+we show that on a random choice of H1, and H 2 = - H 1 , the expected number of
+points in V which are "far" from the origin and fall in the slab is small.
+It is a well known fact (e.g., [52]) that every d-dimensional norm may be
+approximated with distortion v/d by an affine image of the Euclidean norm. That
+is, we may assume that C is embedded in 12
+d with distortion cx/~.
+So we should look for a closed slab I4 of (Euclidean) width cx/d containing
+"not too many" points of V. Let n l = # { x : x E V n H ,
+llx[[2 <Ro}.
+Lemma 6.3.
+
+Let Ro = O(c. v/-d). Then nl <_O(c. d. (2R0 + 1)d-l).
+
+Proof. All distances in G are > 1, so the same holds also for the Euclidean distance
+of the images. Therefore, if we locate a 1B around each point in V A H we get n 1
+spheres with disjoint interiors. Since R0--@(c.v~), they all reside inside a cylinder
+of height 8(c.v/-d) and base a (d-1)-dimensional ball of radius ( R 0 + I ) . Comparing
+volumes we obtain:
+nl "Vd"
+
+<_ Vd_ 1 9 RO +
+
+9O ( c . V~).
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+236
+
+Where vt is the volume of the unit ball in N t.
+
+7r t
+
+Recall that v2t = -fit.- and
+
+2 t + l .Trt
+
+v 2 t + l = 1.3.-.(2t+1)' and in particular, ~ v t =O(~/~).
+Consequently: n 1 < O(c. d. (2R 0 + 1)d-l).
+
+l
+
+Now, we wish to estimate the probability for a remote point x (i.e., llxll2 >
+R0) to belong to a randomly chosen slab. A slab is determined by the unit vector
+perpendicular to its boundary and our choice is by the uniform distribution on
+sd-1.
+L e m m a 6.4.
+
+Let z E R d, [{xI[2>_Ro. Then P r ( x e H ) < _ O
+
+(-) .
+~
+
+Proof. Associate with each slab H the two points on sd-1 in the directions of the
+two unit vectors perpendicular to the hyperplanes of H. Slabs have width cv~, so
+the points associated to slabs containing x form a symmetric stripe of width 2c v~
+Ilzl12'
+on gd-1. Therefore, the desired probability is the ratio between the surface area of
+this stripe and the surface area of the whole sphere. We recall the following fact:
+R e m a r k 6.5. Let C be a measurable subset of S d - l , and let c~ be the ( ( d - 1)dimensional) measure of C. Let a ( C ) = {y [ Y = Ax for some x E C and 1 > A > 0},
+the cone with base C and apex at the origin. Then the (d-dimensional) measure of
+a ( C ) is 3 ' In particular, the surface area of S d-1 is d.v d.
+|
+We need to evaluate the surface area of C, the part of the stripe of width 2c v~
+
+I-r '
+
+t h a t is on s d - 1 . By the previous remark, this surface area equals d . v o l ( a ( C ) ) .
+Assume that C is symmetric with respect to the hyperplane zd=O. Then
+a(C') C_
+
+( Z l , . . . , Z d ) with Z z/2 -< 1 and Izdl <_
+1
+
+and as the volume of this cylinder is oc.~/~
+~'~Vd-l' .
+
+P r ( x E H) < 2 c" d3/2
+
+vg-1 - - 0
+
+c.d
+
+Thus n2, the expected number of remote points x E V which belong to N,
+satisfies n2 = O ( ~ ) .
+We optimize, by selecting Ro so that 7~1 ~.~r~2. Then
+
+n.c.d
+R0
+
+-
+
+,~
+
+c.
+
+d.
+
+R0 d-1
+
+or
+
+Ro = e(n-l).
+1 1
+This yields nl + n2 = O(c. d. n - ~ ) , for the expected number of points in the slab.
+
+THE G E O M E T R Y OF GRAPHS AND SOME OF ITS ALGORITHMIC APPLICATIONS
+
+237
+
+The requirements R0 = O(c. x/~) and R0 = O(n~) are consistent, since
+c" d = o(n ~ ) was assumed.
+
+|
+
+The centroid can be found in time linear in n and d d (see [47]). Therefore,
+given an embedding of G, the proof translates to a randomized polynomial time
+algorithm to find such a separator, provided that d = O ( ~ ) .
+It is interesting
+to observe that in [49] an essentially similar separation is obtained, although both
+the setting and the methods are different.
+It is not difficult to see that for G that is a product of d paths of length n I _ A~,
+the theorem is essentially tight.
+
+7. Low-diameter decompositions of graphs
+Following [43] a decomposition of a graph G = (V, E) is a partition of the vertex
+set into subsets (called blocks). The diameter of the decomposition is the least 5
+such that any two vertices belonging to the same connected component of a block
+are at distance < 5 in the graph. Modifying this definition in the spirit of [7], we
+consider coverings of G wherein distinct blocks may have nonempty intersections.
+Diameters of coverings are defined as for decompositions. The degree of a covering
+is the largest number of blocks to which any vertex may belong. A covering is
+r-subsuming if every r-ball in G is contained in some block of the covering.
+Theorem 7.1. Let G be a graph with d=dimc(G), d = dime(G), and let r be a
+positive integer. Then
+I. G can be decomposed to d + l bIocks, each of diameter ~ 2e-d.
+2. G can be decomposed to d + l blocks, each of diameter _ 2cd 2.
+3. G has a covering b y - d + 1 blocks, each of diameter < ( 6 d + 2)cr, that is rsubsuming, and the cover has degree ~ ( 2 + 1).
+4. G has a covering by d + 1 blocks, each of diameter ~ (6d + 2)dcr, that is rsubsuming, and the cover has degree <_( d + l ) .
+Remark 7.2. Combined with Theorem 3.2 we obtain a decomposition to O(logn)
+blocks of diameter O(log3n), and a covering of diameter O(log3n) with degree
+O(logn), results slightly inferior to the optimal (O(logn),O(logn)) from [43] and
+
+[7].
+
+Proof. We prove the case c----1, the general case then follows easily. Throughout
+the proof we use l ~ norm. The key to the proof is the following universal tiling of
+Rd: Consider Z~, and define Ki, i--O,... , 2 - 1 as the 2d-(2/+1) neighborhood of the
+4d
+
+i-dimensional faces of its cubes (i.e., K0 consists of radius 22_--1 cubes centered at
+4d
+
+the grid points,/(1 is the 2d-3 neighborhood of the edges of the grid, etc.). Define
+T0 = K0, Ti = K i - U i - I
+j=0 K ~' for i = 1, .. . , d - 1. Finally, T~ is the remaining part of
+
+238
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+]~d. It is not hard to check now that each Ti is a union of disjoint "bricks", each of
+diameter < 1, and that the distance between any two such bricks is > 1
+-
+
+2d"
+
+Claim 1 is now immediate: embed the graph in ~ , and consider the tiling as
+above, magnified by factor 2d+~. Each GNTi is a proper block.
+The proof of Claim 2 is slightly more complicated, since one has to correlate
+between the d-dimensional grid and an arbitrary d-dimensional norm. We need a
+small distortion approximation of B (or a linear transformation thereof) by a cube.
+Distortion d is attainable: first approximate ~ by a Euclidean unit ball (actually, by
+its LSwner-John ellipsoid, see [52]), then approximate the unit ball by a unit cube,
+b o t h distortions being < vQ. By recent work of Giannopoulos [25] an O(d ~
+distortion is attainable.
+As before, we embed G in R d, and superimpose on it the (unit) lattice t h a t
+approximates ]3 to a factor of d, magnified by 2 d 2 + s . It is easy to check that,
+again, each Ti defines a proper block.
+If c > 1, the only change is that the diameter of sets covered by a single brick
+may be multiplied by c.
+To prove Claim 3: Magnify the tiling by a factor of 6d+c. Turn the tiling into
+a covering by defining new blocks as the 1-neighborhoods of the old blocks. Since
+different blocks of Ti were at least 3 apart, no point in R 2 is covered more than
+d + 1 times. Furthermore - - each 1-neighborhood in IR2 is covered by at least one
+new block, since R 2 is tiled by the old blocks (identify each 1-neighborhood with
+its center). The diameter of each new block is < 6d + 2, since any two connected
+components of the same block are at least one unit apart.
+In order to finish the proof - - given r > 0 - - magnify the covering by a factor of r,
+and embed G in R ~.
+The proof of Claim 4 follows easily from the same arguments.
+|
+R e m a r k 7.3.
+We have covered R d with {To,... ,Td}, where each Ti is a union
+of compact sets of diameter < 1, any two of which are at least 1 apart. The
+construction is nearly optimal in two respects:
+It is impossible to cover ~d with fewer than d + 1 sets each of which is the disjoint
+union of compact sets whose diameters are bounded from above and whose mutual
+distances are bounded away from zero. This follows, e.g., from L e m m a 3.4 in [43].
+We next show that for any cover {Ti}/d=0 as above, there are two sets in the same
+family whose distance does not exceed O ( ~ ) .
+Indeed, there must be a Ti with
+upper density at least 3-~1" Let T * = Ti + m~ (Minkowski Sum), where 2m is
+the least distance between two connected components of Ti. I f / ( a is a typical
+connected component of Ti, then the sets Ka+m]~ have disjoint interiors. Also Ti
+has upper density at least ~
+in ]Rd, and therefore also in K * = U ( / ( a + r n ] ~ ) . By
+the Brunn-Minkowski inequality (see [52]):
+
+vol(K +
+vol(Ka)
+
+->
+
+(vol(K )l/d + vol(m )l/d)
+
+[
+
+vol(K~)
+
+= \1+
+
+\vol(K~)/
+
+]
+
+"
+
+T H E G E O M E T R Y OF G R A P H S AND SOME OF ITS A L G O R I T H M I C A P P L I C A T I O N S
+
+239
+
+We used the fact that in any norm vol(lB)>vol(K) whenever d i a m ( K ) _< 2,
+which can be shown as follows: Consider the symmetrization Q = ( K - K ) / 2
+(Minkowski sum). Clearly, Q is centrally symmetric with respect to the origin, and
+diam(Q) < d i a m ( K ) _< 2. Also, by Brunn-Minkowski vol(Q) > vol(K). But the
+s y m m e t r y of Q and the bound on its diameter imply that Q c ~ and the conclusion follows. By the density properties of Ti, there is an index c~ for which
+vol (Ks +rag)
+d + 1_> vol(K~) _> (1 + m ) d which implies m = O ( ~ ) ,
+as claimed.
+We do not know what the bound on m is for various norms. A plausible guess
+would be that r n = O ( 1 / d ) for every norm, and t h a t this is tight for lee.
+|
+
+8. Further problems
+Many of the questions addressed in this paper can be considered for directed
+graphs as well as for undirected ones. To get started in this direction, let us define
+a directed metric on X as a nonnegative real function d on X • X, which satisfies
+the directed triangle inequality: d(x,y) + d(y,z) >_d(x,z) for every x , y , z E X. A
+directed norm in R n satisfies the same set of requirements as does a norm, except
+t h a t IIAxll = AIIxll is to hold only for nonnegative A. The "unit ball" in such
+a space, i.e., the set of those vectors whose directed norm does not exceed one
+is a convex set which contains the origin in its interior (central s y m m e t r y is no
+longer required) and any such set I~ defines a directed norm in the obvious way:
+Ilxll = inf{A > 0 such t h a t ~ E ]~}.
+It is pleasing to observe that an analogue of L e m m a 5.1 holds in this more
+general context:
+Proposition 8.1. Every n-point directed metric space (X, d) can be isometrically
+embedded into R n equipped with an appropriate directed norm.
+Proof.
+
+Let X = {xz,...,Xn} with di, j = d(xi,xj).
+
+vectors {Zl,...,Zn}.
+
+Pick n linearly independent
+
+Z i -- Z "
+Let the unit ball be ]~ -- conv{~L~--zzli
+~ j}, and m a p xi to
+ai,j
+
+zi. (According to this definition ]B is not full dimensional. This may be overcome
+by using ]B~, a small height bi-pyramid over l~. Alternatively, project all zi to the
+subspace spanned by ]~.) The only way the claim could fail is that for some pair,
+Z i --Z "
+say {1,n}, the point ~
+is in the interior of conv{"~.-~=zli~j
+}.
+dl,n
+ai,j
+If this is the case, then
+
+z 1 -- z n
+tz '
+
+dl,n
+
+Zi -- Zj
+-- E
+
+i,j
+
+~
+
+di,j
+
+for some # > 1 and some nonnegative ~i,j whose sum is 1. Pick such an equality
+with # as large as possible. Let H be the directed graph on vertex set In] where
+(i,j) is an edge iff ai,j >0, and observe that:
+9 H is acyclic: Associated with every directed cycle C in H is a linear dependency
+with positive coefficients:
+~
+5i,j~
+= 0 (with 6i,j > 0). It is possible
+(i,j)EE(C)
+
+240
+
+NATHAN
+
+LINIAL,
+
+ERAN
+
+LONDON,
+
+YURI
+
+RABINOVICH
+
+to replace ai,j by c~i,j-t.6i,j for all (i,j) e E(C) for some t > 0 and renormalize
+the sum, so as to retain O~i,j ~_ 0 while increasing #, contrary to our assumption.
+9 By linear independence of the zi, the only source in H is 1, and the only sink
+is n.
+
+9 Without loss of generality no two directed paths in H have the same starting
+vertex and the same final vertex. Otherwise, it is possible to shift weight from
+one to the other without decreasing #.
+Consequently, H is a single directed p a t h from 1 to n and the above equality
+has the form:
+n-1
+
+z] - z n
+"
+
+~
+z i - zi+ 1
+2-d cq,i+l
+i:1
+di'i+l
+
+dl'n
+
+n-1
+with
+
+~i,i+l
+
+>0 and ~
+
+c~i,i+l:l.
+
+i=1
+
+The linear independence of the zi's implies that:
+_
+
+dl,n
+
+_
+
+5~1,2 __ 0~2,3
+dl,2
+
+d2,3
+
+_
+
+__ g ~ n - - l , n
+
+_
+
+". .
+
+dn_l,n
+
+"
+
+So
+
+l = E ai, i + 1 -
+
+/z E di, i+l > ~
+dl,n
+
+by the directed triangle inequality, a contradiction.
+
+|
+
+It is an intriguing idea that large diameters in graphs can be essentially attributed
+to low-dimensionality. The easy converse is our L e m m a 5.6. Attempts to make
+this statement precise were, in fact, the initial motivation for this research. A
+plausible conjecture along these lines was formulated with the help of L. Levin. We
+are grateful for his permission to include it here. Let Z d denote the graph of the
+d-dimensional lattice with loc metric. Define the growth rate p(G) of a graph G as
+the m a x i m u m (over all choices of r and x) of l~l o g ( r - I - l ) (where B(x,r) is the r-ball
+around x).
+
+Let G have growth rate p = p(G). Then Z O(p) contains a (not
+necessarily induced) subgraph isomorphic to G.
+|
+Conjecture 8.2.
+
+By a standard counting argument, fewer than p(G) dimensions will not suffice.
+The conjecture is true for G = d-Cube and here is a sketch of a proof: First
+one checks t h a t p = p(d-Cube) = @( ~ )d.
+Let Yl,...,YO(p) be randomly selected
+d-dimensional (-1,1)-vectors. Each vertex x of the d-Cube, (considered as a
+d-dimensional (0,1)-vector) gets m a p p e d to the vector of (real) inner products
+((x, Yi> Ii= 1,..., O(p)). Neighboring vertices in the d-Cube are m a p p e d to adjacent
+vertices in Z O(p) , since the yi's are (-1,1)-vectors. Also, with high probability
+this mapping is one-to-one: Let x,z be two vertices of the cube, at H a m m i n g
+distance t = ~ ( v ~ ) . Their images agree in the i-th coordinate iff (x,yi} = <z,yi}.
+
+THE
+
+GEOMETRY
+
+OF
+
+GRAPHS
+
+AND
+
+SOME
+
+OF
+
+ITS ALGORITHMIC
+
+APPLICATIONS
+
+241
+
+The probability of this event is exactly the chance for a one-dimensional random
+walk to be in the origin at time t, i.e., 0(t-1/2). Therefore, the probability that
+x and z have the same image is t-f~(P) = o(2-d). Consequently, almost surely no
+collision occurs among points of Hamming distance f~(x/d). On the other hand,
+if the Hamming distance between x and z is O ( v ~ ) , their probability of collision
+is < 2 -f~(p), but 2 -a(p)
+E
+(d) = o(1). Therefore with high probability this
+~=o(vq)
+mapping is one-to-one, as claimed. The proof for regular trees follows by similar
+arguments.
+Note that p(G) may be much smaller than any dimension in which G may be
+embedded nearly isometrically:
+Example 8.3.
+Construct a tree of depth 2m as follows: For m > i > 1 level i
+contains exactly (i + 1) 2 vertices. Each vertex in level i has at least one child and
+the 2i + 3 vertices in a randomly selected set have two children. Vertices in the
+last m levels have exactly one child each. The number of vertices in this tree is
+n-- O(m3). Now, while p(G) is a constant, a near isometric embedding of G requires
+dimension f~(logn), since the distance between any two of the (m + 1) 2 leaves is
+between 2m and 4rn. The conclusion follows from the standard volume argument. |
+A related notion is the bandwidth, bw(G), of a graph G: It is the least w such
+that there is a bijection f : V(G) --+[n] for which If ( u ) - f (v)l< w whenever [u, v] e E.
+Conjecture 8.4.
+
+Ifdim(G)=d, then b w ( G ) < O ( k ( d ) . n 1 _ 1~ .polylog(n)).
+
+|
+
+1d
+This bound is tight as exhibited by the discrete cube ( [ 1 , n T ] ) . The case d--2
+can be solved using [1].
+A question raised in [12] and [5] is to estimate the least r = r
+so that
+every n-point metric space can be embedded in a ~-dimensional normed space
+with distortion c. In particular - - what is the least dimension needed to embed
+a constant-degree expander graph with constant distortion? (We have shown that
+it is ~(log 2n).) It is not impossible that a constant-distortion embedding of such
+graphs requires ~(n) dimensions.
+An obvious general question is
+Problem 8.5.
+What is the computational complexity of deciding whether
+d i m ( G ) - - d ? Similarly for dim(G) and dimc(G).
+|
+
+It is not hard to see, e.g., by Proposition 5.5, that almost all n-vertex graphs
+have dimension at least ~(logn). We would like to know
+Problem 8.6.
+
+W h a t is the typical dimension of an n-vertex graph?
+
+|
+
+We suspect the answer to be linear or nearly linear. The situation for nearisometrics is quite different. Since almost all n-vertex graphs have diameter 2, and
+since d i m ( K n ) = [log2n], almost all graphs satisfy dim2(G)---O(logn). Furthermore, by the method of [5] diml+e(G) _< celogn for almost all graphs and every
+
+242
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+e > 0. On the other h a n d d i m ( G ) = f t ( n ) for most graphs, because almost surely no
+single coordinate can implement the distance between more t h a n n pairs x , y with
+d(x, y ) = 2 , but almost surely there are ft(n 2) such distances in a r a n d o m G.
+We are only starting to understand the role of girth in this field (but see [541),
+and offer:
+P r o b l e m 8.7. Let all vertices in G have degree >_ 3. Does every embedding of G
+in a Euclidean space (of any dimension) have distortion f~(girth(G))?
+|
+
+9. Acknowledgments
+T h e authors wish to t h a n k Mike Saks, Micha A. Perles, Gil Kalai, Yoav
+Benyamini, J o r a m Lindenstrauss, Alex Samorodnitsky, Leonard Schulman, and
+T o m e k Szankowski for stimulating discussions. We are particularly thankful to
+Leonid Levin for formulating Conjecture 8.2.
+
+References
+[i] N. ALON, M. KATCHALSKI,
+and W.R. PULLEYBLANK:
+Cutting disjoint disks by
+straight lines, Discrete and Computational Geometry 4 (1989), 239-243.
+[2] I. ALTHOFER~ G. DAS, D. DOBKIN, D. JOSEPH, and J. SOARES: On sparse spanners
+of weighted graphs, Discrete and Computational Geometry 9 (1993), 81-100.
+[3] E. M. ANDREEV: Convex polyhedra in LobahevskZ spaces, Mat. Sb. (N.S.) 81 (123)
+(1970), 445-478. English translation: Math. USSR Sb. 10 (1970), 413-440.
+[4] E. M. ANDREEV: Convex polyhedra of finite volume in LobahevskiY space, Mat. Sb.
+(N.S.) 83 (125) (1970), 256-260. English translation: Math. USSR Sb. 12
+(1970), 255-259.
+[5] J. ARIAS-DE-REYNA, and L. RODRiGUES-PIAZZA: Finite metric spaces needing high
+dimension for Lipschitz embeddings in Banach spaces, Israel J. Math. 79 (1992),
+103-111.
+[6] Y. AUMANN, and Y. RABANI: An O(logk) approximate rain-cut max-flow theorem
+and approximation algorithm, preprint, 1994.
+[7] B. AWERBUCH, and D. PELEG: Sparse partitions, FOCS 31 (1990), 503-513.
+[8] L. BABAI~ and P. FRANKL: Linear Algebra Methods in Combinatorics, Preliminary Version 2, Department of Computer Science, The University of Chicago,
+Chicago, 1992.
+[9] K. BALL: Isometric embedding in /p-spaces, Europ. J. Combinatories 11 (1990),
+305-311.
+[10] B. BERGER: The fourth moment method, SODA 2 (1991), 373-383.
+[11] L. M. BLUMENTHAL: Theory and Applications of Distance Geometry, Chelsea, New
+York, 1970.
+[12] J. BOURGAIN: On Lipschitz embedding of finite metric spaces in Hilbert space, Israel
+J. Math. 52 (1985), 46-52.
+
+THE GEOMETRY OF GRAPHS AND SOME OF ITS ALGORITHMIC APPLICATIONS
+
+243
+
+[13] L. CARROLL: Through the Looking-Glass and what Alice Found There, Chapter 6,
+Pan Books, London, 1947.
+[14] F. R. K. CHUNG: Separator theorems and their applications, in: Paths, Flows,
+and VLSI-Layout, (B. Korte, L. Lovs
+H. J. PrSmel, and A. Schrijver eds.)
+Springer, Berlin - - New York, 1990, 17-34.
+[15] E. COHEN: Polylog-time and near-linear work approximation scheme for undirected
+shortest paths, STOC 26 (1994), 16-26.
+[16] L. J. COWEN: On local representations of graphs and networks, PhD dissertation,
+M I T / L C S / T R ~ 5 7 3 , 1993.
+[17] L. DANZER, and B. GRTJNBAUM: i:lber zwei Probleme beziiglich konvexer KSrper yon
+P. ErdSs und yon V. L. Klee, Math. Zeitsehr. 79 (1962), 95-99.
+[18] M. DEZA, and M. LAURENT: Applications of cut polyhedra, Liens - 92 - 18, September 1992.
+[19] M. DEZA, and H. MAEHARA: Metric transforms and Euclidean embeddings, Trans.
+AMS 317 (1990), 661-671.
+[20] R. O. DUDA, and P.E. HART: Pattern Classification and Scene Analysis, John Wiley
+and Sons, New York, 1973.
+[21] P. FRANKL,and H. MAEHARA: The Johnson-Lindenstrauss lemma and the sphericity of some graphs, Y. Comb. Th. B 44 (1988), 355-362.
+[22] P. FRANKL, and H. MAEHARA: On the contact dimension of graphs, Discrete and
+Computational Geometry 3 (1988), 89-96.
+[23] N. GARG: A deterministic O(logk)-approximation algorithm for the sparsest cut,
+preprint, 1995.
+[24] N. GARG, V. V. VAZIRANI, and M. YANNAKAKIS: Approximate max-flow rain(multi)cut theorems and their applications, STOC 25 (1993), 698-707.
+[25] A. A. GIANNOPOULOS: On the Banach-Mazur distance to the cube, to appear in:
+
+Geometric Aspects of Functional Analysis.
+[26] M. X. GOEMANS,and D. P. WILLIAMSON: .878-Approximation algorithms for MAX
+CUT and MAX 2SAT, STOC 26 (1994), 422-431.
+[27] R. L. GRAHAM, and P. M. WINKLER: On isometric embeddings of graphs, Trans.
+AMS 288 (1985), 527-536.
+[28] W. HOLSZTYNSKI: ~n as a universal metric space, Abstract 78T-G56, Notices AMS
+25 (1978), A-367.
+[29] T. C. Hu: Multicommodity network flows, Operations Research 11 (1963), 344-360.
+[30] F. JAEGER: A survey of the cycle double cover conjecture, Annals of Discrete Math.
+27 (1985), 1-12.
+[311 W . B. JOHNSON, and J. LINDENSTRAUSS: Extensions of Lipschitz mappings into a
+Hilbert space, Contemporary Mathematics 26 (1984), 189-206.
+[32] W. B. JOHNSON, J. LINDENSTRAUSS, and G. SCHECHTMAN: On Lipschitz embedding
+of finite metric spaces in low dimensional normed spaces, in: Geometric Aspects
+of Functional Analysis, (J. Lindenstrauss and V. Milman eds.) LNM 1267,
+Springer, Berlin - - New York, 1987, 177-184.
+[33] D. KARGER,R. MOTWANI~and M. SUDAN: Approximate graph coloring by semidefinite programming, FOCS 35 (1994), 2-13.
+[34] A. K. KELMANS: Graph planarity and related topics, Contemporary Mathematics
+14~ (1993), 635-667.
+[35] P. KLEIN, A. AGRAWAL, R. RAVI, and S. RAO: Approximation through multicommodity flow, FOCS 31 (1990), 726-737.
+
+244
+
+NATHAN LINIAL, ERAN LONDON, YURI RABINOVICH
+
+[36] P. KOEBE: Kontaktprobleme der konformen Abbildung, Berichte Verhande. Ss
+Akad. Wiss. Leipzig, Math.-Phys. Klasse 88 (1936), 141-164.
+[37] W. LEIGHTON, and S. RAO: An approximate max-flow rain-cut theorem for uniform
+multicommodity flow problems with applications to approximation ~lgorithms,
+FOGS 29 (1988), 422-431.
+[381 M. LINIAL, N. LINIAL, N. TISHBY, and G. YONA: Work in progress, 1995.
+[391 N. LINIAL: Local-global phenomena in graphs, Combinatorics~ Probability and Computing 2 (1993), 491-503.
+[40] N. LINIAL, E. LONDON~ and Yu. RABINOVICH: The geometry of graphs and some
+of its algorithmic applications, FOCS 35 (1994), 577-591.
+[41] N. LINIAL, L. LOVASZ, and A. WIGDERSON: Rubber bands, convex embeddings and
+graph connectivity, Combinatoriea 8 (1988), 91-102.
+[42] N. LINIAL, D. PELEG, YU. RABINOVICH, and M. SAKS: Sphere packing and local
+majorities in graphs, The 2nd Israel Syrup. on Theory and Computing Systems
+(1993), 141-149.
+[43] N. LINIAL, and M. SAKS: Low diameter graph decompositions, SODA 2 (1991),
+320-330. Journal version: Combinatoriea 13 (1993), 441-454.
+[44] J. H. VAN LINT, and R. M. WILSON: A Course in Combinatorics, Cambridge
+University Press, Cambridge, 1992.
+[45] L. LovJ~sz: On the Shannon capacity of a graph, IEEE Trans. Inf. Th. 25 (1979),
+1-7.
+[46] L. LOV/~SZ, M. SAKS, and A. SCHRIJVER: Orthogonal representations and connectivity of graphs, Linear Algebra Appl. 114-115 (1989), 439-454.
+[47] J. MATOUSEK: Computing the center of planar point sets, in: Discrete and computational Geometry: papers from the DIMACS special year, (J. E. Goodman, R.
+Pollack, and W. Steiger eds.) AMS, Providence, 1991, 221-230.
+[48] J. MATOUSEK: Note on bi-Lipschitz embeddings into normed spaces, Comment.
+Math. Univ. CaroIinae 33 (1992), 51-55.
+[49] G. L. MILLER, S-H. TENG, and S. A. VAVASIS:A unified geometric approach to
+graph separators, FOCS 32 (1991), 538-547.
+[50] G. L. MILLER, and W. THURSTON: Separators in two and three dimensions, STOC
+22 (1990), 300-309.
+[51] D. PELEG, and A. SCH~FFER: Graph spanners, J. Graph Theory 13 (1989), 99-116.
+[52] G. PISIER: The Volume of Convex Bodies and Banach Space Geometry, Cambridge
+University Press, Cambridge, 1989.
+[53] S. A. PLOTKIN, and 1~. TARDOS: Improved bounds on the max-flow rain-cut ratio
+for multicommodity flows, STOC 25 (1993), 691-697.
+[54] YU. RABINOVICH, and R. RAZ: On embeddings of finite metric spaces in graphs
+with a bounded number of edges, in preparation.
+[551 J. REITERMAN, V. RSDL: and E. SII~AJOVJ~:Geometrical embeddings of graphs,
+Discrete Mathematics 74 (1989), 291-319.
+[56] N. ROBERTSON, and P. D. SEYMOUR: Graph Minors I-XX, J. Comb. Th. B (1985
+present).
+[57] B. ROTHSCHILD, and A. WHINSTON: Feasibility of two-commodity network flows,
+Operations Research 14 (1966), 1121-1129.
+[58] J. S. SALOWE: On Euclidean graphs with small degree, Proc. 8th ACM Syrup. Comp.
+Geom. (1992), 186-191.
+[59] D. D. SLEATOR, R. E. TARJAN, and W. P. THURSTON: Rotation distance, triangulations, and hyperbolic geometry, J. AMS 1 (1988), 647-681.
+-
+
+THE GEOMETRY OF GRAPHS AND SOME OF ITS ALGORITHMIC APPLICATIONS
+
+245
+
+[60] W. P. THURSTON: The finite Riemann mapping theorem, invited address, International Symposium in Celebration of the Proof of the Bieberbach Conjecture,
+Purdue University, 1985.
+[61] D. J. A. WELSH: Complexity: Knots, Colourings and Counting, LMS Lecture Note
+Series 186, Cambridge University Press, Cambridge, 1993.
+[62] P. M. WINKLER: Proof of the squashed cube conjecture, Combinatoriea 3 (1983),
+135-139.
+[63] H. S. WITSENHAUSEN: Minimum dimension embedding of finite metric spaces, J.
+Comb. Th. A 42 (1986), 184-199.
+[64] I. M. YAGLOM, and V. G. BOLTYANSKII: Convex Figures, Holt, Rinehart and
+Winston, New York, 1961.
+N a t h a n Linial
+
+Eran London
+
+Institute of Computer Science
+Hebrew University
+Jerusalem 91904, Israel
+
+Institute of Mathematics
+Hebrew University
+Jerusalem 91904, Israel
+
+nat i 9
+
+eran~math, huj i. ac. il
+
+huj i. ac. il
+
+Yuri R a b i n o v i c h
+Department of Computer Science
+University of Toronto
+Toronto, Ontario M5S 1A J, Canada
+yuri@cs, toronto, edu
+
+

@@ -1,0 +1,763 @@
+A note on iterated rounding for the Survivable
+Network Design Problem
+Chandra Chekuri∗1 and Thapanapong Rukkanchanunt†2
+1
+
+Dept. of Computer Science, University of Illinois, Urbana, 61801, USA
+chekuri@illinois.edu
+Chiang Mai University, 239 Huay Kaew Road, Chiang Mai 50200, Thailand
+thapanapong.r@cmu.ac.th
+
+2
+
+Abstract
+In this note we consider the survivable network design problem (SNDP) in undirected graphs.
+We make two contributions. The first is a new counting argument in the iterated rounding
+based 2-approximation for edge-connectivity SNDP (EC-SNDP) originally due to Jain [10].
+The second contribution is to make some connections between hypergraphic version of SNDP
+(Hypergraph-SNDP) introduced in [17] and edge and node-weighted versions of EC-SNDP and
+element-connectivity SNDP (Elem-SNDP). One useful consequence is a 2-approximation for
+Elem-SNDP that avoids the use of set-pair based relaxation and analysis.
+1998 ACM Subject Classification F.2.2 Nonnumerical Algorithms and Problems: Computations
+on Discrete Structures
+Keywords and phrases survivable network design, iterated rounding, approximation, element
+connectivity
+Digital Object Identifier 10.4230/OASIcs.SOSA.2018.2
+
+1
+
+Introduction
+
+The survivable network design problem (SNDP) is a fundamental problem in network design
+and has been instrumental in the development of several algorithmic techniques. The input
+to SNDP is a graph G = (V, E) and an integer requirement r(uv) between each unordered
+pair of nodes uv. The goal is to find a minimum-cost subgraph H of G such that for each
+pair uv, the connectivity in H between u and v is at least r(uv). We use rmax to denote
+maxuv r(uv), the maximum requirement. We restrict attention to undirected graphs in this
+paper. There are several variants depending on whether the costs are on edges or on nodes,
+and whether the connectivity requirement is edge, element or node connectivity. Unless
+otherwise specified we will assume that G has edge-weights c : E → R+ . We refer to the
+three variants of interest based on edge, element and vertex connectivity as EC-SNDP,
+Elem-SNDP and VC-SNDP. All of them are NP-Hard and APX-hard to approximate even
+in very special cases.
+The seminal work of Jain [10] obtained a 2-approximation for EC-SNDP via the technique of iterated rounding that was introduced in the same paper. A 2-approximation for
+Elem-SNDP was obtained, also via iterated rounding, in [7, 5]. For VC-SNDP the current
+3
+best approximation bound is O(rmax
+log |V |) [6]; it is also known from hardness results in
+∗
+†
+
+Work on this paper supported in part by NSF grants CCF-1016684, CCF-1319376 and CCF-1526799.
+The author was an undergraduate student in the Dept. of Computer Science at Univ. of Illinois when
+he worked on results of this paper.
+
+© Chandra Chekuri and Thapanapong Rukkanchanunt;
+licensed under Creative Commons License CC-BY
+1st Symposium on Simplicity in Algorithms (SOSA 2018).
+Editor: Raimund Seidel; Article No. 2; pp. 2:1–2:10
+Open Access Series in Informatics
+Schloss Dagstuhl – Leibniz-Zentrum für Informatik, Dagstuhl Publishing, Germany
+
+2:2
+
+On iterated rounding for SNDP
+
+[2] that the approximation bound for VC-SNDP must depend polynomially on rmax under
+standard hardness assumptions.
+Our contribution: In this note we revisit the iterated rounding framework that yields a
+2-approximation for EC-SNDP and Elem-SNDP. The framework is based on arguing that
+for a class of covering problems, a basic feasible solution to an LP relaxation for the covering
+problem has a variable of value at least 21 . This variable is then rounded up to 1 and the
+residual problem is solved inductively. A key fact needed to make this iterative approach
+work is that the residual problem lies in the same class of covering problems. This is
+ensured by working with the class of skew-supermodular (also called weakly-supermodular)
+requirement functions which capture EC-SNDP as a special case. The proof of existence of
+an edge with large value in a basic feasible solution for this class of requirement functions has
+two components. The first is to establish that a basic feasible solution is characterized by a
+laminar family of sets in the case of EC-SNDP (and set pairs in the case of Elem-SNDP).
+The second is a counting argument that uses this characterization to obtain a contradiction
+if no variable is at least 12 . The counting argument of Jain [10] has been simplified and
+streamlined in subsequent work via fractional token arguments [1, 13]. These arguments have
+been applied for several related problems for which iterated rounding has been shown to be
+a powerful technique; see [12]. The fractional token argument leads to short and slick proofs.
+At the same time we feel that it is hard to see the intuition behind the argument. Partly
+motivated by pedagogical reasons, in this note, we provide a different counting argument
+along with a longer explanation. The goal is to give a more combinatorial flavor to the
+argument. We give this argument in Section 2.
+The second part of the note is on Elem-SNDP. A 2-approximation for this problem has
+been derived by generalizing the iterated rounding framework to a set-pair based relaxation
+[7, 5]. The set-pair based relaxation and arguments add substantial notation to the proofs
+although one can see that there are strong similarities to the proofs used in EC-SNDP. The
+notational overhead limits the ability to teach and understand the proof for Elem-SNDP.
+Interestingly, in a little noticed paper, Zhao, Nagamochi and Ibaraki [17] defined a generalization of EC-SNDP to hypergraphs which we refer to as Hypergraph-SNDP. They observed
+that Elem-SNDP can be easily reduced to Hypergraph-SNDP in which the only non-zero
+weight hyperedges are of size 2 (regular edges in a graph). The advantage of this reduction
+is that one can derive a 2-approximation for Elem-SNDP by essentially appealing to the
+same argument as for EC-SNDP with a few minor details. We believe that this is a useful
+perspective. Second, there is a simple and well-known connection between node-weighted
+network design in graphs and network design problems on hypergraphs. We explicitly point
+these connections which allows us to derive some results for Hypergraph-SNDP. Section 3
+describes these connections and results.
+This note assumes that the reader has some basic familiarity with previous literature on
+SNDP and iterated rounding.
+
+2
+
+Iterated rounding for EC-SNDP
+
+The 2-approximation for EC-SNDP is based on casting it as a special case of covering a skewsupermodular requirement function by a graph. We set up the background now. Given a
+finite ground set V an integer valued set function f : 2V → Z is skew-supermodular if for
+all A, B ⊆ V one of the following holds:
+f (A) + f (B) ≤
+
+f (A ∩ B) + f (A ∪ B)
+
+f (A) + f (B) ≤
+
+f (A − B) + f (B − A)
+
+C. Chekuri and T. Rukkanchanunt
+
+2:3
+
+Given an edge-weighted graph G = (V, E) and a skew-supermodular requirement function
+f : 2V → Z, we can consider the problem of finding the minimum-cost subgraph H = (V, F )
+of G such that H covers f ; that is, for all S ⊆ V , |δF (S)| ≥ f (S). Here δF (S) is the
+set of all edges in F with one endpoint in S and the other outside. Given an instance of
+EC-SNDP with input graph G = (V, E) and edge-connectivity requirements r(uv) for each
+pair uv, we can model it by setting f (S) = maxu∈S,v6∈S r(uv). It can be verified that f is
+skew-supermodular. The important aspect of skew-supermodular functions that make them
+well-suited for the iterated rounding approach is the following.
+I Lemma 1 ([10]). Let G = (V, E) be a graph and f : 2V → Z be a skew-supermodular
+requirement function, and F ⊆ E be a subset of edges. The residual requirement function
+g : 2V → Z defined by g(S) = f (S) − |δF (S)| for each S ⊆ V is also skew-supermodular.
+Although the proof is standard by now we will state it in a more general way.
+I Lemma 2. Let f : 2V → Z be a skew-supermodular requirement function and let h : 2V →
+Z+ be a symmetric submodular function. Then g = f − h is a skew-supermodular function.
+Proof. Since h is submodular we have that for all A, B ⊆ V ,
+h(A) + h(B) ≥ h(A ∪ B) + h(A ∩ B).
+Since h is also symmetric it is posi-modular which means that for all A, B ⊆ V ,
+h(A) + h(B) ≥ h(A − B) + h(B − A).
+Note that h satisfies both properties for each A, B. It is now easy to check that f − h is
+skew-supermodular.
+J
+Lemma 1 follows from Lemma 2 by noting that the cut-capacity function |δF | : 2V → Z+
+is submodular and symmetric in undirected graphs. We also note that the same property
+holds for the more general setting when G is a hypergraph.
+The standard LP relaxation for covering a function by a graph is described below where
+there is variable xe ∈ [0, 1] for each edge e ∈ E.
+X
+min
+ce x e
+e∈E
+
+X
+
+xe
+
+≥ f (S)
+
+S⊂V
+
+xe
+
+∈
+
+e∈E
+
+e∈δ(S)
+
+[0, 1]
+
+The technical theorem that underlies the 2-approximation for EC-SNDP is the following.
+I Theorem 3 ([10]). Let f be a non-trivial1 skew-supermodular function. In any basic
+feasible solution x to the LP relaxation of covering f by a graph G there is an edge e such
+that xe ≥ 12 .
+To prove the preceding theorem it suffices to focus on basic feasible solutions x that are
+fully fractional; that is, xe ∈ (0, 1) for all e. For a set of edges F ⊆ E let χ(F ) ∈ {0, 1}|E|
+denote the characteristic vector of F ; that is, a |E|-dimensional vector that has a 1 in each
+position corresponding to an edge e ∈ F and a 0 in all other positions. Theorem 3 is built
+upon the following characterization of basic feasible solutions and is shown via uncrossing
+arguments.
+1
+
+We use the term non-trivial to indicate that there is at least one set S ⊂ V such that f (S) > 0.
+
+SOSA 2018
+
+2:4
+
+On iterated rounding for SNDP
+
+I Lemma 4 ([10]). Let x be a fully-fractional basic feasible solution to the the LP relaxation.
+Then there is a laminar family of vertex subsets L such that x is the unique solution to the
+system of equalities
+x(δ(S)) = f (S)
+S ∈ L.
+In particular this also implies that |L| = |E| and that the vectors χ(δ(S)), S ∈ L are linearly
+independent.
+The second part of the proof of Theorem 3 is a counting argument that relies on the
+characterization in Lemma 4. The rest of this section describes a counting argument which
+we believe is slightly different from the previous ones in terms of the main invariant. The
+goal is to derive it organically from simpler cases.
+With every laminar family we can associate a rooted forest. We use terminology for
+rooted forests such as leaves and roots as well as set terminology. We refer to a set C ∈ L
+as a child of a set S if C ⊂ S and there is no S 0 ∈ L such that C ⊂ S 0 ⊂ S; If C is the
+child of S then S is the parent of C. Maximal sets of L correspond to the roots of the forest
+associated with L.
+
+2.1
+
+Counting Argument
+
+The proof is via contradiction where we assume that 0 < xe < 12 for each e ∈ E. We call
+the two nodes incident to an edge as the endpoints of the edges. We say that an endpoint
+u belongs to a set S ∈ L if u is the minimal set from L that contains u.
+We consider the simplest setting where L is a collection of disjoint sets, in other words,
+all sets are maximal. In this case the counting argument is easy. Let m = |E| = |L|. For
+each S ∈ L, f (S) ≥ 1 and x(δ(S)) = f (S). If we assume that xe < 12 for each e, we have
+|δ(S)| ≥ 3 which implies that each S contains at least 3 distinct endpoints. Thus, the m
+disjoint sets require a total of 3m endpoints. However the total number of endpoints is at
+most 2m since there are m edges, leading to a contradiction.
+Now we consider a second setting where the forest associated with L has k leaves and
+h internal nodes but each internal node has at least two children. In this case, following
+Jain, we can easily prove a weaker statement that xe ≥ 1/3 for some edge e. If not, then
+each leaf set S must have four edges leaving it and hence the total number of endpoints
+must be at least 4k. However, if each internal node has at least two children, we have h < k
+and since h + k = m we have k > m/2. This implies that there must be at least 4k > 2m
+endpoints since the leaf sets are disjoint. But m edges can have at most 2m endpoints. Our
+assumption on each internal node having at least two children is obviously a restriction. So
+far we have not used the fact that the vectors χ(δ(S)), S ∈ L are linearly independent. We
+can handle the general case to prove xe ≥ 1/3 by using the following lemma.
+I Lemma 5 ([10]). Suppose C is a unique child of S. Then there must be at least two
+endpoints in S that belong to S.
+Proof. If there is no endpoint that belongs to S then δ(S) = δ(C) but then χ(δ(S)) and
+χ(δ(C)) are linearly dependent. Suppose there is exactly one endpoint that belongs to S and
+let it be the endpoint of edge e. But then x(δ(S)) = x(δ(C)) + xe or x(δ(S)) = x(δ(C)) − xe .
+Both cases are not possible because x(δ(S)) = f (S) and x(δ(C)) = f (C) where f (S) and
+f (C) are positive integers while xe ∈ (0, 1). Thus there are at least two end points that
+belong to S.
+J
+Using the preceding lemma we prove that xe ≥ 1/3 for some edge e. Let k be the number
+of leaves in L and h be the number of internal nodes with at least two children and let `
+
+C. Chekuri and T. Rukkanchanunt
+
+2:5
+
+be the number of internal nodes with exactly one child. We again have h < k and we also
+have k + h + ` = m. Each leaf has at least four endpoints. Each internal node with exactly
+one child has at least two end points which means the total number of endpoints is at least
+4k + 2`. But 4k + 2` = 2k + 2k + 2` > 2k + 2h + 2` > 2m and there are only 2m endpoints
+for m edges. In other words, we can ignore the internal nodes with exactly one child since
+there are two endpoints in such a node/set and we can effectively charge one edge to such
+a node.
+We now come to the more delicate argument to prove the tight bound that xe ≥ 12
+for some edge e. Our main contribution is to show an invariant that effectively reduces
+the argument to the case where we can assume that L is a collection of leaves. This is
+encapsulated in the claim below which requires some notation. Let α(S) be the number of
+sets of L contained in S including S itself. Let β(S) be the number of edges whose both
+endpoints lie inside S. Recall that f (S) is the requirement of S.
+I Claim. For all S ∈ L, f (S) ≥ α(S) − β(S).
+Assuming that the claim is true we can do an easy counting argument. Let R1 , R2 , . . . , Rh
+Ph
+be the maximal sets in L (the roots of the forest). Note that
+i=1 α(Ri ) = |L| = m.
+Applying the claim to each Ri and summing up,
+h
+X
+i=1
+
+f (Ri ) ≥
+
+h
+X
+i=1
+
+α(Ri ) −
+
+h
+X
+i=1
+
+β(Ri ) ≥ m −
+
+h
+X
+
+β(Ri ).
+
+i=1
+
+Ph
+Ph
+Note that i=1 f (Ri ) is the total requirement of the maximal sets. And m − i=1 β(Ri )
+is the total number of edges that cross the sets R1 , . . . , Rh . Let E 0 be the set of edges crossing
+these maximal sets. Now we are back to the setting with h disjoint sets and E 0 edges with
+Ph
+1
+0
+i=1 f (Ri ) ≥ |E |. This easily leads to a contradiction as before if we assume that xe < 2
+for all e ∈ E 0 . Formally, each set Ri requires > 2f (Ri ) edges crossing it from E 0 and
+therefore Ri contains at least 2f (Ri ) + 1 endpoints of edges from E 0 . Since R1 , . . . , Rh are
+P
+disjoint the total number of endpoints is at least 2 i f (Ri ) + h which is strictly more than
+2|E 0 |.
+Thus, it remains to prove the claim which we do by inductively starting at the leaves of
+the forest for L.
+
+Case 1: S is a leaf node. We have f (S) ≥ 1 while α(S) = 1 and β(S) = 0 which verifies
+the claim.
+
+Case 2: S is an internal nodes with k children C1 , C2 , . . . , Ck . See Fig 1 for the different
+types of edges that are relevant. Ecc is the set of edges with end points in two different
+children of S. Ecp be the set of edges that cross exactly one child but do not cross S. Epo
+be the set of edges that cross S but do not cross any of the children. Eco is the set of edges
+that cross both a child and S. This notation is borrowed from [15].
+Let γ(S) be the number of edges whose both endpoints belong to S but not to any child
+of S. Note that γ(S) = |Ecc | + |Ecp |.
+
+SOSA 2018
+
+2:6
+
+On iterated rounding for SNDP
+
+∈ Eco
+
+∈ Epo
+
+∈ Eco
+∈ Ecp
+
+S
+
+∈ Ecc
+
+∈ Ecc
+
+C3
+
+C1
+
+C2
+
+Figure 1 S is an internal node with several children. Different types of edges that play a role.
+p refers to parent set S, c refer to a child set and o refers to outside.
+
+Then,
+β(S)
+
+=
+
+γ(S) +
+
+k
+X
+
+β(Ci )
+
+i=1
+
+≥ γ(S) +
+
+k
+X
+
+α(Ci ) −
+
+f (Ci )
+
+(1)
+
+i=1
+
+i=1
+
+=
+
+k
+X
+
+γ(S) + α(S) − 1 −
+
+k
+X
+
+f (Ci )
+
+i=1
+
+(1) follows by applying the inductive hypothesis to each child. From the preceding inequality,
+to prove that β(S) ≥ α(S)−f (S) (the claim for S), it suffices to show the following inequality.
+γ(S) ≥
+
+k
+X
+
+f (Ci ) − f (S) + 1.
+
+(2)
+
+i=1
+
+The right hand side of the above inequality can be written as:
+k
+X
+
+f (Ci ) − f (S) + 1 =
+
+i=1
+
+X
+
+2xe +
+
+e∈Ecc
+
+X
+
+xe −
+
+e∈Ecp
+
+X
+
+xe + 1.
+
+(3)
+
+e∈Epo
+
+We consider two subcases.
+Case 2.1: γ(S) = 0. This implies that Ecc and Ecp are empty. Since χ(δ(S)) is linearly
+independent from χ(δ(C1 )), . . . , χ(δ(Ck )), we must have that Epo is not empty and hence
+P
+e∈Epo xe > 0. Therefore, in this case,
+k
+X
+i=1
+
+f (Ci ) − f (S) + 1 =
+
+X
+e∈Ecc
+
+2xe +
+
+X
+e∈Ecp
+
+X
+
+xe −
+
+e∈Epo
+
+Since the left hand side is an integer, it follows that
+
+Pk
+
+xe + 1 = −
+
+X
+
+xe + 1 < 1.
+
+e∈Epo
+
+i=1 f (Ci ) − f (S) + 1 ≤ 0 = γ(S).
+
+C. Chekuri and T. Rukkanchanunt
+
+2:7
+
+Case 2.2: γ(S) ≥ 1. Recall that γ(S) = |Ecc | + |Ecp |.
+k
+X
+
+f (Ci ) − f (S) + 1 =
+
+i=1
+
+X
+
+2xe +
+
+X
+
+xe −
+
+xe + 1 ≤
+
+e∈Epo
+
+e∈Ecp
+
+e∈Ecc
+
+X
+
+X
+e∈Ecc
+
+2xe +
+
+X
+
+xe + 1
+
+e∈Ecp
+
+P
+By our assumption that xe < 12 for each e, we have e∈Ecc 2xe < |Ecc | if |Ecc | > 0, and
+P
+similarly e∈Ecp xe < |Ecp |/2 if |Ecp | > 0. Since γ(S) = |Ecc | + |Ecp | ≥ 1 we conclude that
+X
+
+2xe +
+
+X
+
+xe < γ(S).
+
+e∈Ecp
+
+e∈Ecc
+
+Putting together we have
+k
+X
+i=1
+
+f (Ci ) − f (S) + 1 ≤
+
+X
+
+2xe +
+
+e∈Ecc
+
+X
+
+xe + 1 < γ(S) + 1 ≤ γ(S)
+
+e∈Ecp
+
+as desired.
+This completes the proof of the claim.
+
+3
+
+Connections between Hypergraph-SNDP, EC-SNDP and
+Elem-SNDP
+
+Zhao, Nagamochi and Ibaraki [17] considered the extension EC-SNDP to hypergraphs. In
+a hypergraph G = (V, E) each edge e ∈ E is a subset of V . The degree d of a hypergraph
+is maxe∈E |e|. Graphs are hypergraphs of degree 2. Given a set of hyperedges F ⊆ E and
+a vertex subset S ⊂ V , we use δF (S) to denote the set all of all hyperedges in F that
+have at least one endpoint in S and at least one endpoint in V \ S. It is well-known that
+|δF | : 2V → Z+ is a symmetric submodular function.
+Hypergraph-SNDP is defined as follows. The input consists of an edge-weighted hypergraph G = (V, E) and integer requirements r(uv) for each vertex pair uv. The goal is to
+find a minimum-cost hypergraph H = (V, E 0 ) with E 0 ⊆ E such that for all uv and all S
+that separate u, v (that is |S ∩ {u, v}| = 1), we have |δE 0 (S)| ≥ r(uv). Hypergraph-SNDP
+is a special case of covering a skew-supermodular requirement function by a hypergraph. It
+is clear that Hypergraph-SNDP generalizes EC-SNDP. Interestingly, [17] observed, via a
+simple reduction, that Hypergraph-SNDP generalizes Elem-SNDP as well. We now describe
+Elem-SNDP formally and briefly sketch the reduction from [17], and subsequently describe
+some implications of this connection.
+In Elem-SNDP the input consists of an undirected edge-weighted graph G = (V, E) with
+V partitioned into terminals T and non-terminals N . The “elements” are the edges and nonterimals, N ∪ E. For each pair uv of terminals there is an integer requirement r(uv), and
+the goal is to find a min-cost subgraph H of G such that for each pair uv of terminals there
+are r(uv) element-disjoint paths from u to v in H. Note that element-disjoint paths can
+intersect in terminals. The notion of element-connectivity and Elem-SNDP have been useful
+in several settings in generalizing edge-connectivity problems while having some features
+of vertex connectivity. In particular, the current approximation for VC-SNDP relies on
+Elem-SNDP [6].
+The reduction of [17] from Elem-SNDP to Hypergraph-SNDP is quite simple. It basically
+replaces each non-terminal u ∈ N by a hyperedge. The reduction is depicted in the figure
+below.
+
+SOSA 2018
+
+2:8
+
+On iterated rounding for SNDP
+
+v
+
+ev
+
+Figure 2 Reducing Elem-SNDP to Hypergraph-SNDP. Each non-terminal v is replaced by a
+hyperedge ev by introducing dummy vertices on each edge incident to v. The original edges retain
+their cost while the new hyperedges are assigned a cost of zero.
+
+The reduction shows that an instance of Elem-SNDP on G can be reduced to an instance
+of Hypergraph-SNDP on a hypergraph G0 where the only hyperedges with non-zero weights
+in G0 are the edges of the graph G. This motivates the definition of d+ (G) which is the
+maximum degree of a hyperedge in G that has non-zero cost. Thus Elem-SNDP reduces to
+instances of Hypergraph-SNDP with d+ = 2. In fact we can see that the same reduction
+proves the following.
+I Proposition 1. Node-weighted Elem-SNDP in which weights are only on non-terminals can
+be reduced in an approximation preserving fashion to Hypergraph-SNDP. In this reduction
+d+ of the resulting instance of Hypergraph-SNDP is equal to ∆, the maximum degree of a
+non-terminal with non-zero weight in the instance of node-weighted Elem-SNDP.
+
+3.1
+
+Reducing Elem-SNDP to problem of covering skew-supermodular
+functions by graphs
+
+We saw that an instance of Elem-SNDP on a graph H can be reduced to an instance of
+Hypergraph-SNDP on a graph G where d+ (G) = 2. Hypergraph-SNDP on G = (V, E)
+corresponds to covering a skew-supermodular function f : 2V → Z by G. Let E = F ] E 0
+where E 0 is the set of all hyperedges in G with degree more than 2; thus F is the set of
+all hyperedges of degree 2 and hence (V, F ) is a graph. Since each edge in E 0 has zero cost
+we can include all of them in our solution, and work with the residual requirement function
+g = f − |δE 0 |. From Lemma 2 and the fact that the cut-capacity function of a hypergraph
+is also symmetric and submodular, g is a skew-supermodular function. Thus covering f by
+a min-cost sub-hypergraph of G can be reduced to covering g by a min-cost sub-graph of
+G0 = (V, F ). We have already seen a 2-approximation for this in the context of EC-SNDP.
+The only issue is whether there is an efficient separation oracle for solving the LP for covering
+g by G0 . This is a relatively easy exercise using flow arguments and we omit them. The
+main point we wish to make is that this reduction avoids working with set-pairs that are
+typically used for Elem-SNDP. It is quite conceivable that the authors of [17] were aware of
+this simple connection but it does not seem to have been made explicitly in their paper or
+in [16].
+
+3.2
+
+Approximating Hypergraph-SNDP
+
+[17] derived a d+ Hrmax approximation for Hypergraph-SNDP where Hk = 1 + 1/2 + . . . + 1/k
+is the k’th harmonic number. They obtain this bound via the augmentation framework for
+network design [9] and a primal-dual algorithm in each stage. In [16] they also observe that
+Hypergraph-SNDP can be reduced to Elem-SNDP via the following simple reduction. Given
+a hypergraph G = (V, E) let H = (V ∪ N, E) be the standard bipartite graph representation
+of G where for each hyperedge e ∈ E there is a node ze ∈ N ; ze is connected by edges in H
+to each vertex a ∈ e. Let r(uv) be the hyperedge connectivity requirement between a pair of
+
+C. Chekuri and T. Rukkanchanunt
+
+2:9
+
+vertices uv in the original instance of Hypergraph-SNDP. In H we label V as terminals and
+N as non-terminals. For any pair of vertices uv with u, v ∈ V , it is not hard to verify that the
+element-connectivity betwee u and v in H is the same as the hyperedge connectivity in G.
+See [16] for details. It remains to model the costs such that an approximation algorithm for
+element-connectivity in H can be translated into an approximation algorithm for hyperedge
+connectivity in G. This is straightforward. We simply assign cost to non-terminals in H;
+that is each node ze ∈ N corresponding to a hyperedge e ∈ E is assigned a cost equal to ce .
+We obtain the following easy corollary.
+I Proposition 2. Hypergraph-SNDP can be reduced to node-weighted Elem-SNDP in an
+approximation preservation fashion.
+[16] do not explicitly mention the above but note that one can reduce Hypergraph-SNDP
+to (edge-weighted) Elem-SNDP as follows. Instead of placing a weight of ce on the node ze
+corresponding to the hyperedge e ∈ E, they place a weight of ce /2 on each edge incident to ze .
+This transformation loses an approximation ratio of d+ (G)/2. From this they conclude that a
+β-approximation for Elem-SNDP implies a d+ β/2-approximation for Hypergraph-SNDP; via
+the 2-approximation for Elem-SNDP we obtain a d+ approximation for Hypergraph-SNDP.
+One can view this as reducing a node-weighted problem to an edge-weighted problem by
+transferring the cost on the nodes to all the edges incident to the node. Since a non-terminal
+can only be useful if it has at least two edges incident to it, in this particular case, we can
+put a weight of half the node on the edges incident to the node. A natural question here
+is whether one can directly get a d+ approximation for Hypergraph-SNDP without the
+reduction to Elem-SNDP. We raise the following technical question.
+I Problem 1. Suppose f is a non-trivial skew-supermodular function on V and G = (V, E)
+be a hypergraph. Let x be a basic feasible solution to the LP for covering f by G. Is there
+an hyperedge e ∈ E such that xe ≥ d1 where d is the degree of G?
+The preceding propositions show that Hypergraph-SNDP is essentially equivalent to
+node-weighted Elem-SNDP where the node-weights are only on non-terminals. Node-weighted
+Steiner tree can be reduced to node-weighted Elem-SNDP and it is known that Set Cover reduces in an approximation preserving fashion to node-weighted Steiner tree [11]. Hence, unless P = N P , we do not expect a better than O(log n)-approximation for Hypergraph-SNDP
+where n = |V | is the number of nodes in the graph. Thus, the approximation ratio for
+Hypergraph-SNDP cannot be a constant independent of d+ . Node-weighted Elem-SNDP
+admits an O(rmax log |V |) approximation; see [14, 3, 4, 8]. For planar graphs, and more generally graphs from a proper minor-closed family, an improved bound of O(rmax ) is claimed
+in [3]. The O(rmax log |V |) bound can be better than the bound of d+ in some instances.
+Here we raise a question based on the fact that planar graphs have constant average degree
+which is used in the analysis for node-weighted network design.
+I Problem 2. Is there an O(1)-approximation for node-weighted EC-SNDP and Elem-SNDP
+in planar graphs, in particular when rmax is a fixed constant?
+Finally, we hope that the counting argument and the connections between Hypergraph-SNDP,
+EC-SNDP and Elem-SNDP will be useful for related problems including the problems involving degree constraints in network design.
+References
+1
+
+Nikhil Bansal, Rohit Khandekar, and Viswanath Nagarajan. Additive guarantees for
+degree-bounded directed network design. SIAM Journal on Computing, 39(4):1413–1431,
+2009.
+
+SOSA 2018
+
+2:10
+
+On iterated rounding for SNDP
+
+2
+
+3
+
+4
+
+5
+6
+
+7
+
+8
+
+9
+
+10
+11
+12
+13
+
+14
+
+15
+16
+
+17
+
+Tanmoy Chakraborty, Julia Chuzhoy, and Sanjeev Khanna. Network design for vertex connectivity. In Proceedings of the fortieth annual ACM symposium on Theory of computing,
+pages 167–176. ACM, 2008.
+Chandra Chekuri, Alina Ene, and Ali Vakilian. Node-weighted network design in planar
+and minor-closed families of graphs. In Automata, Languages, and Programming, pages
+206–217. Springer, 2012.
+Chandra Chekuri, Alina Ene, and Ali Vakilian. Prize-collecting survivable network design
+in node-weighted graphs. In Approximation, Randomization, and Combinatorial Optimization. Algorithms and Techniques, pages 98–109. Springer, 2012.
+J. Cheriyan, S. Vempala, and A. Vetta. Network design via iterative rounding of setpair
+relaxations. Combinatorica, 26(3):255–275, 2006.
+Julia Chuzhoy and Sanjeev Khanna. An O(k 3 log n)-approximation algorithm for vertexconnectivity survivable network design. Theory of Computing, 8:401–413, 2012. Preliminary
+version in Proc. of IEEE FOCS, 2009.
+L. Fleischer, K. Jain, and D.P. Williamson. Iterative rounding 2-approximation algorithms
+for minimum-cost vertex connectivity problems. Journal of Computer and System Sciences,
+72(5):838–867, 2006.
+Takuro Fukunaga. Spider covers for prize-collecting network activation problem. In Proceedings of the Twenty-Sixth Annual ACM-SIAM Symposium on Discrete Algorithms, SODA
+’15, pages 9–24. SIAM, 2015. URL: http://dl.acm.org/citation.cfm?id=2722129.
+2722131.
+M.X. Goemans, A.V. Goldberg, S. Plotkin, D.B. Shmoys, E. Tardos, and D.P. Williamson.
+Improved approximation algorithms for network design problems. In Proc. of ACM-SIAM
+SODA, pages 223–232, 1994.
+K. Jain. A factor 2 approximation algorithm for the generalized Steiner network problem.
+Combinatorica, 21(1):39–60, 2001. Preliminary version in FOCS 1998.
+P. Klein and R. Ravi. A nearly best-possible approximation algorithm for node-weighted
+Steiner trees. J. Algorithms, 19(1):104–115, 1995. Preliminary version in IPCO 1993.
+Lap Chi Lau, Ramamoorthi Ravi, and Mohit Singh. Iterative methods in combinatorial
+optimization, volume 46. Cambridge University Press, 2011.
+Viswanath Nagarajan, R Ravi, and Mohit Singh. Simpler analysis of lp extreme points for
+traveling salesman and survivable network design problems. Operations Research Letters,
+38(3):156–160, 2010.
+Z. Nutov. Approximating minimum cost connectivity problems via uncrossable bifamilies
+and spider-cover decompositions. In Proceedings of the 50th Annual IEEE Symposium on
+Foundations of Computer Science (FOCS), pages 417–426. IEEE, 2009.
+David P Williamson and David B Shmoys. The design of approximation algorithms. Cambridge university press, 2011.
+Liang Zhao, Hiroshi Nagamochi, and Toshihide Ibaraki. A note on approximating the survivable network design problem in hypergraphs. IEICE TRANSACTIONS on Information
+and Systems, 85(2):322–326, 2002.
+Liang Zhao, Hiroshi Nagamochi, and Toshihide Ibaraki. A primal–dual approximation
+algorithm for the survivable network design problem in hypergraphs. Discrete applied
+mathematics, 126(2):275–289, 2003. Preliminary version appeared in Proc. of STACS,
+2001.
+
+

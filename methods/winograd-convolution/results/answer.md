@@ -1,172 +1,206 @@
-# Winograd minimal filtering for convolutional networks
+# Winograd minimal-filtering fast convolution for convnets
 
 ## Problem
 
-A 3x3 convolution layer correlates K filters (C channels, r x r) against N images (C channels,
-H x W). Computed directly, each output is a length-r² dot product, so the layer costs
-r²·N·H·W·C·K multiplications. On networks built from small 3x3 filters this multiplication count
-dominates training and inference. FFT-based convolution reduces it but only with large tiles,
-complex arithmetic (~1.5–2 real multiplies/input), heavy workspace, and large batches — the
-wrong regime for small filters and small batches. The goal: compute the *exact* small
-convolution with the minimum number of multiplications, on small tiles, in real arithmetic,
-with overhead cheap enough that it pays off at any batch size.
+A convnet layer correlates K filters (C channels, R×S) against N images (C channels, H×W). Direct convolution spends R·S multiplications per output (9 for a 3×3 filter), so the layer costs about R·S·N·H'·W'·C·K multiplications — the bottleneck for both training and low-latency inference. FFT convolution helps only for large filters, large tiles, and large batches; the dominant 3×3 small-batch regime needs something else. The goal: compute the *exact* convolution with far fewer multiplications, keeping the heavy stage a dense matrix multiply that is efficient even at batch size 1, with a small memory workspace.
 
 ## Key idea
 
-A small convolution is generated from a polynomial product: multiply a length-m data polynomial
-by a length-r filter polynomial, evaluate/interpolate that degree-(m+r−2) product, then transpose
-the linear-convolution maps to get the FIR filtering maps. The product has m+r−1 coefficients,
-hence is determined by its values at m+r−1 distinct points, and the value of a product is the
-product of the values. So compute F(m,r) in three stages: **evaluate** the short data side and g
-at m+r−1 points (linear maps = additions and fixed constants), **multiply** the m+r−1 value pairs
-pointwise (the only data-dependent multiplications), **interpolate** y from its samples (a linear
-map, inverse Vandermonde), then transpose into filtering form. This is the minimal number of
-multiplications,
+Linear convolution is polynomial multiplication. Computing m outputs of an r-tap FIR filter, F(m,r), needs a minimum of µ(F(m,r)) = m+r−1 general multiplications (one per distinct input the m-window touches), versus m·r for direct. The minimum is reached by Cook–Toom: evaluate filter and data polynomials at m+r−1 points (small integers 0, ±1, ±2, … plus the point at infinity), multiply the values pointwise (the only general multiplies), and Lagrange-interpolate the product back. Filtering is the transpose of linear convolution, so by Winograd's matrix-exchange the filtering algorithm is
 
-    μ(F(m,r)) = m + r − 1,
+  Y = Aᵀ [ (G g) ⊙ (Bᵀ d) ]   (1D),
 
-one per input. In matrix form, with data transform B^T, filter transform G, inverse transform
-A^T:
+with data-independent transforms: filter transform G (r→α), data transform Bᵀ (α→α), elementwise multiply (⊙), inverse transform Aᵀ (α→m), α = m+r−1. Nesting a minimal 1D F(m,r) with F(n,s) gives a minimal 2D F(m×n, r×s) using (m+r−1)(n+s−1) multiplications:
 
-    Y = A^T [ (G g) ⊙ (B^T d) ]        (⊙ = elementwise product).
+  Y = Aᵀ [ (G g Gᵀ) ⊙ (Bᵀ d B) ] A   (2D).
 
-**Nesting to 2D.** The 1D algorithm nests with itself: F(m×m, r×r) uses
+For F(2×2, 3×3): 4×4 = 16 multiplies versus direct 36 → 2.25×, on a 4×4 tile. For F(4×4, 3×3): 6×6 = 36 versus 144 → 4×, on a 6×6 tile. The cost is paid in cheap additions and small constant-scalings, which grow quadratically with tile size, and the transform coefficients grow in magnitude with tile size (the F(4,3) filter transform already has 1/24 entries), degrading accuracy — so F(2×2,3×3) is the small, best-conditioned operating point, while F(4×4,3×3) is the larger speed/accuracy tradeoff when the precision budget allows it.
 
-    Y = A^T [ (G g G^T) ⊙ (B^T d B) ] A,
+The layer-level payoff: sum over channels *inside* the transform domain (amortizing the inverse transform over C), so for each transform-domain coordinate (ξ,ν) ∈ {0..α−1}²,
 
-with (m+r−1)² pointwise multiplies. F(2×2,3×3): 16 vs 36 direct = 2.25× fewer. F(4×4,3×3):
-36 vs 144 = 4× fewer. Tiles are (m+r−1)×(m+r−1) with r−1 overlap. Larger tiles raise the
-asymptotic reduction but the transform additions grow ~quadratically and the transform-entry
-magnitudes grow (eroding accuracy), so small tiles F(2,3)/F(4,3) are the sweet spot.
+  M^(ξ,ν) = Σ_c U^(ξ,ν)_{k,c} V^(ξ,ν)_{c,b} = U^(ξ,ν) V^(ξ,ν),
 
-**F(2,3), points {0,1,−1,∞}** — 4 multiplies:
+a (K×C)·(C×P) matrix multiply. The whole layer's heavy stage is α² independent dense GEMMs whose reduction dimension is channels, not batch — so it is efficient even at batch 1, and its multiply stage is exactly 1 real multiply per input, strictly beating FFT's ≥1.5 (with Hermitian symmetry + fast complex multiply).
 
-    m1=(d0−d2)g0,  m2=(d1+d2)(g0+g1+g2)/2,  m3=(d2−d1)(g0−g1+g2)/2,  m4=(−d1+d3)g2
-    y0 = m1+m2+m3 = d0g0+d1g1+d2g2,   y1 = m2−m3+m4 = d1g0+d2g1+d3g2
-    Equivalently, with m4'=(d1−d3)g2, y1=m2−m3−m4'.
+## Final algorithm (forward layer, F(m×m, r×r))
 
-    B^T=[[1,0,−1,0],[0,1,1,0],[0,−1,1,0],[0,−1,0,1]]
-    G =[[1,0,0],[1/2,1/2,1/2],[1/2,−1/2,1/2],[0,0,1]]
-    A^T=[[1,1,1,0],[0,1,−1,1]]
+1. Filter transform: U = G g Gᵀ for every filter/channel; scatter to α² matrices U^(ξ,ν) of shape K×C.
+2. Data transform: divide each channel into α×α tiles overlapping by r−1; V = Bᵀ d B; scatter to α² matrices V^(ξ,ν) of shape C×P.
+3. Multiply stage: α² batched GEMMs M^(ξ,ν) = U^(ξ,ν) V^(ξ,ν) (K×P).
+4. Inverse transform: gather M back to α×α per output tile; Y_tile = Aᵀ M A (m×m).
 
-**F(4,3), points {0,1,−1,2,−2,∞}** — 6 multiplies (via the Chinese-Remainder / Cook-Toom
-construction on m(x)=x(x−1)(x+1)(x−2)(x+2)):
-
-    B^T=[[4,0,−5,0,1,0],[0,−4,−4,1,1,0],[0,4,−4,−1,1,0],[0,−2,−1,2,1,0],[0,2,−1,−2,1,0],[0,4,0,−5,0,1]]
-    G =[[1/4,0,0],[−1/6,−1/6,−1/6],[−1/6,1/6,−1/6],[1/24,1/12,1/6],[1/24,−1/12,1/6],[0,0,1]]
-    A^T=[[1,1,1,1,1,0],[0,1,−1,2,−2,0],[0,1,1,4,4,0],[0,1,−1,8,−8,1]]
-
-## Layer algorithm (the GEMM reformulation)
-
-Pull the linear inverse transform outside the channel sum (amortizing it over C), and observe
-that the channel reduction at each fixed transform coordinate (ξ,ν) is a matrix multiply:
-
-    M^{(ξ,ν)}_{k,b} = Σ_c U^{(ξ,ν)}_{k,c} V^{(ξ,ν)}_{c,b},  i.e.  M^{(ξ,ν)} = U^{(ξ,ν)} V^{(ξ,ν)},
-
-with U^{(ξ,ν)} a K×C matrix and V^{(ξ,ν)} a C×P matrix (P = N⌈H/m⌉⌈W/m⌉ tiles). The elementwise
-stage becomes (m+r−1)² dense GEMMs over filters × channels × tiles — efficient even at N=1,
-because P is large.
-
-1. Filter transform (once per filter): u = G g_{k,c} G^T; scatter U^{(ξ,ν)}_{k,c} = u_{ξ,ν}.
-2. Data transform (per tile): v = B^T d_{c,b} B; scatter V^{(ξ,ν)}_{c,b} = v_{ξ,ν}.
-3. For each (ξ,ν): M^{(ξ,ν)} = U^{(ξ,ν)} V^{(ξ,ν)}.
-4. Gather m_{ξ,ν} = M^{(ξ,ν)}_{k,b}; inverse transform Y_{k,b} = A^T m A (once per tile).
-
-Direct convolution is the m=1 corner (F(1×1,R×S)). Backward pass: the input gradient is the
-same F(m,r) on the flipped filter; the weight gradient F(R×S,H×W) is decomposed into a direct
-sum of small tiles, e.g. F(3×3,2×2) (4×4 tiles, overlap 2), again 2.25×.
+Backprop reuses the same machinery: the input gradient is a convolution with flipped filters (same algorithm); the weight gradient F(R×S, H×W) is decomposed into a sum of small convolutions, e.g. F(3×3, 2×2) overlap-add.
 
 ## Code
 
-The transforms are *generated* from the interpolation points (symbolically, so the constants
-are exact), then applied numerically.
+Transform generator (Cook–Toom from interpolation points; builds and symbolically verifies G, Bᵀ, Aᵀ):
 
 ```python
 import operator
 from functools import reduce
-from sympy import IndexedBase, Matrix, Poly, simplify, symbols, zeros
+from sympy import IndexedBase, Matrix, Poly, Rational as Q, simplify, symbols, zeros
 
-def At(a, m, n):  return Matrix(m, n, lambda i, j: a[i] ** j)
-def A(a, m, n):   return At(a, m - 1, n).row_insert(
-                      m - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
-def Lx(a, n):
+def At(a, m, n):                      # Vandermonde: evaluate poly at points a[i]
+    return Matrix(m, n, lambda i, j: a[i] ** j)
+
+def A(a, m, n):                       # append the "infinity" row -> top coefficient
+    return At(a, m - 1, n).row_insert(m - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
+
+def T(a, n):                          # modified Cook-Toom degree-reduction column
+    return Matrix(Matrix.eye(n).col_insert(n, Matrix(n, 1, lambda i, j: -(a[i] ** n))))
+
+def Lx(a, n):                         # Lagrange numerators prod_{k!=i}(x - a[k])
     x = symbols("x")
     return Matrix(n, 1, lambda i, j: Poly(
-        reduce(operator.mul, ((x - a[k] if k != i else 1) for k in range(n)), 1
-              ).expand(basic=True), x).as_expr())
-def F(a, n):  return Matrix(n, 1, lambda i, j: reduce(
-                  operator.mul, ((a[i] - a[k] if k != i else 1) for k in range(n)), 1))
+        reduce(operator.mul, ((x - a[k] if k != i else 1) for k in range(n)), 1).expand(), x).as_expr())
+
+def F(a, n):                          # interpolation denominators -> the 1/4,1/6,1/24 scalings
+    return Matrix(n, 1, lambda i, j: reduce(
+        operator.mul, ((a[i] - a[k] if k != i else 1) for k in range(n)), 1))
+
+def Fdiag(a, n):
+    f = F(a, n); return Matrix(n, n, lambda i, j: (f[i, 0] if i == j else 0))
+
+def FdiagPlus1(a, n):
+    f = Fdiag(a, n - 1); f = f.col_insert(n - 1, zeros(n - 1, 1))
+    return f.row_insert(n - 1, Matrix(1, n, lambda i, j: (1 if j == n - 1 else 0)))
+
 def L(a, n):
     x = symbols("x"); lx, f = Lx(a, n), F(a, n)
     return Matrix(n, n, lambda i, j: lx[i, 0].coeff(x, j) / f[i]).T
-def T(a, n):  return Matrix(Matrix.eye(n).col_insert(
-                  n, Matrix(n, 1, lambda i, j: -(a[i] ** n))))
+
 def Bt(a, n): return L(a, n) * T(a, n)
-def B(a, n):  return Bt(a, n - 1).row_insert(
-                  n - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
-def Fdiag(a, n):
-    f = F(a, n); return Matrix(n, n, lambda i, j: (f[i, 0] if i == j else 0))
-def FdiagPlus1(a, n):
-    f = Fdiag(a, n - 1).col_insert(n - 1, zeros(n - 1, 1))
-    return f.row_insert(n - 1, Matrix(1, n, lambda i, j: (1 if j == n - 1 else 0)))
+def B(a, n):  return Bt(a, n - 1).row_insert(n - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
 
-def cookToomFilter(a, n, r):
-    """Transforms (AT, G, BT, f) for F(n=m, r). Constant fractions absorbed onto G."""
-    alpha = n + r - 1
-    f = FdiagPlus1(a, alpha)
-    if f[0, 0] < 0:
-        f[0, :] *= -1
-    AT = A(a, alpha, n).T
-    G  = (A(a, alpha, r).T * f ** (-1)).T
-    BT = f * B(a, alpha).T
-    return AT, G, BT, f
+def cook_toom_filter(points, n_out, r):
+    alpha = n_out + r - 1
+    f = FdiagPlus1(points, alpha)
+    if f[0, 0] < 0: f[0, :] *= -1
+    AT = A(points, alpha, n_out).T
+    G  = (A(points, alpha, r).T * f ** (-1)).T   # fractions land in the offline filter transform
+    BT = f * B(points, alpha).T
+    return AT, G, BT
 
-def filterVerify(n, r, AT, G, BT):
-    alpha = n + r - 1
-    di, gi = IndexedBase("d"), IndexedBase("g")
-    d = Matrix(alpha, 1, lambda i, j: di[i]); g = Matrix(r, 1, lambda i, j: gi[i])
+def filter_verify(n_out, r, AT, G, BT):
+    alpha = n_out + r - 1
+    d = Matrix(alpha, 1, lambda i, j: IndexedBase("d")[i])
+    g = Matrix(r, 1, lambda i, j: IndexedBase("g")[i])
     return simplify(AT * (G * g).multiply_elementwise(BT * d))
 
-# F(2,3): {0,1,-1}+inf -> 4 mults; F(4,3): {0,1,-1,2,-2}+inf -> 6 mults
-AT, G, BT, _ = cookToomFilter((0, 1, -1), 2, 3)
-AT4, G4, BT4, _ = cookToomFilter((0, 1, -1, 2, -2), 4, 3)
-
-di, gi = IndexedBase("d"), IndexedBase("g")
-assert filterVerify(2, 3, AT, G, BT) == Matrix(2, 1, lambda i, j:
-    di[i]*gi[0] + di[i+1]*gi[1] + di[i+2]*gi[2])
-assert filterVerify(4, 3, AT4, G4, BT4) == Matrix(4, 1, lambda i, j:
-    di[i]*gi[0] + di[i+1]*gi[1] + di[i+2]*gi[2])
+# F(2,3) -> 4 multiplies; F(4,3) -> 6 multiplies (G has 1/24-scale entries)
+AT, G, BT = cook_toom_filter((0, 1, -1), 2, 3)
+assert BT == Matrix([[1, 0, -1, 0],
+                     [0, 1,  1, 0],
+                     [0, -1, 1, 0],
+                     [0, -1, 0, 1]])
+assert G == Matrix([[1, 0, 0],
+                    [Q(1, 2), Q(1, 2), Q(1, 2)],
+                    [Q(1, 2), -Q(1, 2), Q(1, 2)],
+                    [0, 0, 1]])
+assert AT == Matrix([[1, 1, 1, 0],
+                     [0, 1, -1, 1]])
+assert list(filter_verify(2, 3, AT, G, BT)) == [
+    IndexedBase("d")[0]*IndexedBase("g")[0] + IndexedBase("d")[1]*IndexedBase("g")[1] + IndexedBase("d")[2]*IndexedBase("g")[2],
+    IndexedBase("d")[1]*IndexedBase("g")[0] + IndexedBase("d")[2]*IndexedBase("g")[1] + IndexedBase("d")[3]*IndexedBase("g")[2],
+]
+AT4, G4, BT4 = cook_toom_filter((0, 1, -1, 2, -2), 4, 3)
+assert G4 == Matrix([[Q(1, 4), 0, 0],
+                     [-Q(1, 6), -Q(1, 6), -Q(1, 6)],
+                     [-Q(1, 6),  Q(1, 6), -Q(1, 6)],
+                     [Q(1, 24),  Q(1, 12), Q(1, 6)],
+                     [Q(1, 24), -Q(1, 12), Q(1, 6)],
+                     [0, 0, 1]])
+assert BT4 == Matrix([[4, 0, -5, 0, 1, 0],
+                      [0, -4, -4, 1, 1, 0],
+                      [0, 4, -4, -1, 1, 0],
+                      [0, -2, -1, 2, 1, 0],
+                      [0, 2, -1, -2, 1, 0],
+                      [0, 4, 0, -5, 0, 1]])
+assert AT4 == Matrix([[1, 1, 1, 1, 1, 0],
+                      [0, 1, -1, 2, -2, 0],
+                      [0, 1, 1, 4, 4, 0],
+                      [0, 1, -1, 8, -8, 1]])
+AT32, G32, BT32 = cook_toom_filter((0, 1, -1), 3, 2)
+assert BT32 == Matrix([[1, 0, -1, 0],
+                       [0, 1,  1, 0],
+                       [0, -1, 1, 0],
+                       [0, -1, 0, 1]])
+assert G32 == Matrix([[1, 0],
+                      [Q(1, 2), Q(1, 2)],
+                      [Q(1, 2), -Q(1, 2)],
+                      [0, 1]])
+assert AT32 == Matrix([[1, 1, 1, 0],
+                       [0, 1, -1, 0],
+                       [0, 1, 1, 1]])
 ```
+
+Numeric F(2×2, 3×3) convolution layer (matches direct convolution to fp32 rounding):
 
 ```python
 import numpy as np
 
-def fast_conv_tile(d, g, AT, G, BT):
-    """F(m x m, r x r): Y = A^T [ (G g G^T) (elementwise) (B^T d B) ] A."""
-    U = G @ g @ G.T
-    V = BT @ d @ BT.T
-    return AT @ (U * V) @ AT.T
+BT = np.array([[1,0,-1,0],[0,1,1,0],[0,-1,1,0],[0,-1,0,1]], dtype=np.float32)
+G  = np.array([[1,0,0],[0.5,0.5,0.5],[0.5,-0.5,0.5],[0,0,1]], dtype=np.float32)
+AT = np.array([[1,1,1,0],[0,1,-1,1]], dtype=np.float32)
 
-def conv_layer(D, g, AT, G, BT, m, r):
-    """D: (N,C,H,W); g: (K,C,r,r). Channel reduction in transform space = alpha^2 GEMMs."""
-    N, C, H, W = D.shape
-    K, alpha = g.shape[0], m + r - 1
-    tiles = [(i, x, y)
-             for i in range(N)
-             for x in range(0, H - r + 1, m)
-             for y in range(0, W - r + 1, m)]
-    P = len(tiles)
-    U = np.zeros((alpha, alpha, K, C)); V = np.zeros((alpha, alpha, C, P))
+def direct_conv_valid(D, W):
+    D = np.asarray(D, dtype=np.float32)
+    W = np.asarray(W, dtype=np.float32)
+    N, C, H, Wd = D.shape
+    K, Cw, R, S = W.shape
+    assert C == Cw
+    Y = np.zeros((N, K, H - R + 1, Wd - S + 1), np.float32)
+    for n in range(N):
+        for k in range(K):
+            for c in range(C):
+                for i in range(H - R + 1):
+                    for j in range(Wd - S + 1):
+                        Y[n, k, i, j] += np.sum(D[n, c, i:i+R, j:j+S] * W[k, c])
+    return Y
+
+def conv_layer(D, W):
+    # D: (N,C,H,W)  W: (K,C,3,3)  ->  Y: (N,K,H-2,W-2)   (valid F(2x2,3x3))
+    D = np.asarray(D, dtype=np.float32)
+    W = np.asarray(W, dtype=np.float32)
+    N, C, H, Wd = D.shape
+    K, Cw, R, S = W.shape
+    assert (C, R, S) == (Cw, 3, 3)
+    m, r, alpha = 2, 3, 4
+    Ho, Wo = H - r + 1, Wd - r + 1
+    tH, tW = (Ho + m - 1)//m, (Wo + m - 1)//m
+    P = N*tH*tW
+    Dp = np.zeros((N, C, tH*m + r - 1, tW*m + r - 1), np.float32)
+    Dp[:, :, :H, :Wd] = D
+
+    U = np.zeros((alpha, alpha, K, C), np.float32)          # filter transform G g G^T
     for k in range(K):
         for c in range(C):
-            U[:, :, k, c] = G @ g[k, c] @ G.T          # filter transform (hoisted)
-    for c in range(C):
-        for b, (i, x, y) in enumerate(tiles):
-            V[:, :, c, b] = BT @ D[i, c, x:x+alpha, y:y+alpha] @ BT.T   # data transform
-    Mt = np.einsum('xykc,xycb->xykb', U, V)            # one GEMM per (xi,nu)
-    Y = np.zeros((K, P, m, m))
+            U[:, :, k, c] = G @ W[k, c] @ G.T
+
+    V = np.zeros((alpha, alpha, C, P), np.float32)          # data transform B^T d B
+    coords = []; b = 0
+    for n in range(N):
+        for ti in range(tH):
+            for tj in range(tW):
+                for c in range(C):
+                    tile = Dp[n, c, ti*m:ti*m+alpha, tj*m:tj*m+alpha]
+                    V[:, :, c, b] = BT @ tile @ BT.T
+                coords.append((n, ti, tj)); b += 1
+
+    M = np.zeros((alpha, alpha, K, P), np.float32)          # alpha^2 GEMMs, 1 real mult/input
+    for xi in range(alpha):
+        for nu in range(alpha):
+            M[xi, nu] = U[xi, nu] @ V[xi, nu]
+
+    Y = np.zeros((N, K, tH*m, tW*m), np.float32)            # single inverse transform A^T M A
     for k in range(K):
-        for b in range(P):
-            Y[k, b] = AT @ Mt[:, :, k, b] @ AT.T       # inverse transform, once/tile
-    return Y, tiles
+        for b, (n, ti, tj) in enumerate(coords):
+            Y[n, k, ti*m:ti*m+m, tj*m:tj*m+m] = AT @ M[:, :, k, b] @ AT.T
+    return Y[:, :, :Ho, :Wo]
+
+rng = np.random.default_rng(0)
+Dtest = rng.normal(size=(2, 3, 7, 8)).astype(np.float32)
+Wtest = rng.normal(size=(4, 3, 3, 3)).astype(np.float32)
+np.testing.assert_allclose(conv_layer(Dtest, Wtest), direct_conv_valid(Dtest, Wtest),
+                           rtol=1e-5, atol=2e-5)
 ```

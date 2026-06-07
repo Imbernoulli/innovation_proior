@@ -29,6 +29,14 @@ clean gradient at the very points that matter (the contacts); it stalls in the k
 their stochastic Langevin variant — gradient flow plus injected noise — did *better*. So the
 missing ingredient is something that smooths over the kinks and shakes free of local optima.
 
+The other tempting escape is brute force: put a fine grid in the square, try point subsets, maybe
+enumerate candidate contact graphs. That is exactly the wrong direction. The search space is
+continuous in `2n` variables, so a grid gets exponentially expensive before it is even accurate;
+the best packings often move by tiny symmetry-breaking offsets, so the optimum is not sitting on
+my grid; and the contact graph is the thing I am trying to discover, not something I can cheaply
+guess in advance. Brute force spends the budget on a discretization artifact and still leaves me
+with the original geometric question. I need a smooth continuous surrogate, not an enumeration.
+
 Let me think about what the "right" smoothing is. The pain is the hard `min`. Is there a soft
 version of `min` that becomes the hard one in a limit, and is differentiable along the way? Yes —
 the classic `L^p`/power-mean trick. For positive numbers `a_k`,
@@ -38,25 +46,25 @@ the one I need. If `a_* = min_k a_k` and there are `N` terms, then for `p < 0`,
 `a_* ≥ (Σ_k a_k^p)^{1/p} ≥ a_* N^{1/p}`, and `N^{1/p} → 1`. Thus
 `min_{i<j} ‖s_i−s_j‖ = lim_{p→−∞} ( Σ_{i<j} ‖s_i−s_j‖^p )^{1/p}.`
 The sign matters. For fixed negative `p`, the map `z ↦ z^{1/p}` is decreasing, so maximizing the
-soft minimum is the same as minimizing `Σ ‖s_i−s_j‖^p`. Put `m = −p > 0` and the same objective is
-`Σ 1/‖s_i−s_j‖^m`. So I should **minimize**
-`E = Σ_{i<j} 1 / ‖s_i − s_j‖^m`.
-Each term is huge when a pair is close and tiny when it's far. The whole sum is dominated, for
-large `m`, by the single closest pair. Pushing `E` down therefore pushes the *closest* pair apart
-— which is precisely maximizing `d_n`. And as a bonus the physical reading is immediate: this is a
-**repulsion potential** between like charges, `1/r^m`. The points are mutually repelling particles
-and I'm letting them relax to a low-energy configuration. That's the same instinct Clare and
-Kepert, and Kottwitz, used for spreading points on a sphere — minimize a repulsive energy rather
-than the raw min-distance. They used it as a fixed surrogate, though, and a fixed soft energy isn't
-the same as the max-min: for moderate `m` it cares about *all* the distances, not just the
-smallest, so its minimizer trades a slightly-too-close pair for many comfortably-far ones. The
-max-min only cares about the worst pair. So `m` can't stay moderate; I'll come back to that.
-
-Let me work in squared distances to keep everything polynomial and differentiable —
-`d_ij² = (x_i−x_j)² + (y_i−y_j)²` — and fold the square into the exponent, writing the energy as
-`E = Σ_{i<j} (λ / d_ij²)^m`. The `λ` in the numerator I'll explain in a moment; for now it's a
-positive scale. Minimizing `Σ (λ/d²)^m` is the same as minimizing `Σ 1/d^{2m}`, same idea, just a
-constant factor and a doubled exponent.
+soft minimum is the same as minimizing `Σ ‖s_i−s_j‖^p`. If I keep Euclidean distances, this is an
+inverse-power repulsion. For the optimizer, though, I want the algebra in squared distances. Write
+`q_ij = (x_i−x_j)² + (y_i−y_j)² = ‖s_i−s_j‖²`. Choosing `p = −2m` with `m > 0` gives
+`‖s_i−s_j‖^p = q_ij^{-m}`. So the positive sharpness parameter I optimize with is not `−p`; it is
+`−p/2`, because the square has been folded into the exponent. Multiplying every term by the fixed
+positive constant `λ^m` cannot change the minimizer for a stage, so the energy I should minimize is
+`E = Σ_{i<j} (λ / q_ij)^m`.
+Each term is huge when a pair is close and tiny when it's far. As `m` grows, the whole sum becomes
+dominated by the single closest pair, so pushing `E` down increasingly pushes the *closest* pair
+apart; in the limit, that is exactly the max-min objective for `d_n`. And as a bonus the physical
+reading is immediate: this is a steep repulsion potential, `1/ρ^{2m}` in the Euclidean distance
+`ρ`. The points are mutually
+repelling particles and I'm letting them relax to a low-energy configuration. That's the same
+instinct Clare and Kepert, and Kottwitz, used for spreading points on a sphere — minimize a
+repulsive energy rather than the raw min-distance. They used it as a fixed surrogate, though, and a
+fixed soft energy isn't the same as the max-min: for moderate `m` it cares about *all* the
+distances, not just the smallest, so its minimizer trades a slightly-too-close pair for many
+comfortably-far ones. The max-min only cares about the worst pair. So `m` can't stay moderate; I'll
+come back to that.
 
 Before optimizing I still have the box constraint `0 ≤ x_i, y_i ≤ 1`. I could add penalty walls or
 project, but penalties reintroduce kinks at the boundary and projection makes points *stick* to
@@ -70,28 +78,31 @@ the box. The constraint hasn't been penalized, it's been *parameterized away*. T
 chain-rule factor `∂x_i/∂x̃_i = cos(x̃_i)`, which is mild and only vanishes at the box edges where
 a point is hard against a wall anyway.
 
-Now the `λ`. With large `m`, `(λ/d²)^m` is catastrophic numerically: if `λ/d²` is far above 1,
-raising to `m = 10⁶` overflows; if far below 1, it underflows to 0 and the gradient dies. The base
-needs to sit right around 1 for the dominant terms. The dominant term is the closest pair, whose
-`d²` is the current minimum squared distance. So after each optimization stage I set
-**`λ = d²_min`**, the square of the current shortest distance. Then the worst term starts at `1`,
-all other terms start below `1`, and the comfortable pairs contribute negligibly. During the next
-smooth minimization I hold this `λ` fixed; it is a numerical conditioner, not another coordinate of
-the objective I'm differentiating.
+Now the `λ`. With large `m`, the raw power `(λ/d²)^m` is catastrophic numerically: if `λ/d²` is far
+above 1, raising it to a large exponent overflows; if far below 1, it underflows to 0 and the
+gradient dies. The base needs to sit right around 1 for the dominant terms. The dominant term is
+the closest pair, whose `d²` is the current minimum squared distance. So after each optimization
+stage I set **`λ = d²_min`**, the square of the current shortest distance. Then the worst term
+starts at `1`, all other terms start below `1`, and the comfortable pairs contribute negligibly.
+During the next smooth minimization I hold this `λ` fixed; it is a numerical conditioner, not
+another coordinate of the objective I'm differentiating.
 
-Let me get the gradient with `λ` held fixed, because I want a real optimizer, not finite
-differences over `2n` vars. Write `T_ij = (λ/d_ij²)^m`. Then
-`∂T_ij/∂(d_ij²) = m·(λ/d_ij²)^{m−1}·(−λ/d_ij⁴) = −m·T_ij/d_ij²`.
-And `∂(d_ij²)/∂x_i = 2(x_i − x_j)`. The unordered pair `{i,j}` contributes to both point `i` and
-point `j`; collecting everything that lands on point `i`,
-`∂E/∂x_i = Σ_{j≠i} (−m·T_ij / d_ij²)·2(x_i − x_j)`,
-and the same with `y`. Finally chain through the sine: `∂E/∂x̃_i = (∂E/∂x_i)·cos(x̃_i)`. (I
-checked this against a central finite-difference — they agree to a relative `~5×10⁻⁹`, so the
-sign and the factor of `2m` are right.) The repulsion reading is reassuring: `−2m·T_ij/d_ij²·
-(x_i−x_j)` is a force pushing `i` directly away from `j`, strong when they're close (small `d²`,
-big `T`), negligible when far — a steep pairwise repulsion whose sharpness is controlled by `m`.
+Even with that centering, a trial step inside a line search can temporarily make a pair closer than
+the stage-start minimum, and then a raw power sum can still overflow. I do not actually need the
+raw value of `E`; I only need an objective with the same minimizers. Since `log` is increasing,
+minimizing `E` and minimizing `log E = log Σ exp(m(log λ − log d_ij²))` are equivalent for fixed
+`m` and fixed `λ`. Computing that with `logsumexp` removes the overflow path entirely. It also
+gives the right scaled gradient: write `T_ij = (λ/d_ij²)^m`, `Z = Σ_{a<b} T_ab`, and
+`w_ij = T_ij/Z` for each unordered pair. Then
+`∂log Z = (1/Z)∂Z`, so
+`∂logE/∂x_i = Σ_{j≠i} (−m·w_ij / d_ij²)·2(x_i − x_j)`,
+and the same with `y`. Finally chain through the sine:
+`∂logE/∂x̃_i = (∂logE/∂x_i)·cos(x̃_i)`. The repulsion reading is still exactly the same, except
+the pair forces are normalized by the total energy: close pairs get almost all the weight, distant
+pairs get almost none, and the exponent controls how hard that soft selection becomes.
 
-So I can run conjugate gradients or a Newton method to a local minimum of `E` for a fixed `m`.
+So I can run conjugate gradients or a Newton method to a local minimum of this energy for a fixed
+`m`, using `log E` in floating point so the arithmetic stays finite.
 If `m` is small, the energy is gentle and almost convex-ish — easy to minimize, few bad local
 minima — but it's a poor proxy: it rewards spreading
 *all* the points evenly, not maximizing the single worst gap, so its minimizer is a smeared-out
@@ -109,11 +120,13 @@ doubling sharpens the energy a little — the focus narrows from "all distances"
 smallest distances" — and because I start each stage from the previous stage's solution, I'm
 tracking the minimizer continuously as the objective morphs from the easy soft version toward the
 true max-min. This is a homotopy / continuation: deform a problem I can solve into the problem I
-want, following the solution along the way. Keep doubling — `m` runs up through `10³`, `10⁴`, and
-out to `~10⁶`, occasionally far beyond (`10⁵⁰`) for stubborn cases — until only the genuine
-minimum distances feel the energy and the configuration stops moving. At that point the smooth
-surrogate has become the hard `min` for all practical purposes, and I'm sitting at a local maximum
-of `d_n`.
+want, following the solution along the way. In a high-precision production search I can keep
+doubling toward `m ≈ 10⁶` once the contact pattern is nearly stable, and in stubborn cases the same
+continuation can be pushed as far as about `10⁵⁰`. In a compact double-precision implementation I
+stop much earlier, at `1280` by default, because the log objective is already sharp enough for the
+small sanity checks and pushing farther mostly makes the local optimizer stiffer. At that point the
+smooth surrogate is close enough to the hard `min` for this compact double-precision
+implementation, and I have a candidate local maximum of `d_n`.
 
 "Local" is the operative word, and it's the second wall. Even with annealing, a single run lands in
 *a* good basin, not necessarily the best one — the landscape of rigid packings is genuinely
@@ -127,8 +140,10 @@ There's also a specific, recurring failure mode worth a targeted patch. Sometime
 with a circle pressed against a wall that *could* slide inward without touching anyone — it's a
 local optimum of `E` only because the boundary parameterization happens to pin it there, not
 because the packing is rigid. When I see a point hard against a wall whose interior neighbourhood is
-empty, I nudge it off the wall by hand and re-minimize with a large `m`; it then settles into the
-genuinely better arrangement. Small thing, but it rescues otherwise-wasted runs.
+empty, I try a tiny inward move and accept it only if the current minimum distance does not get
+smaller. Then I re-minimize at the same large `m`. That keeps the repair honest: it cannot improve
+the score by allowing an overlap, and it only breaks a boundary pin that was not part of the real
+contact structure.
 
 Now, the configuration coming out of the optimizer is good to maybe 6–8 digits, but the answer I
 want — `d_n` — needs far higher precision if two candidates are close or if the structure is going
@@ -148,7 +163,12 @@ high-precision numerical solution. The detection is automatic given two threshol
 distance must be to the shortest to count as a contact, how close a point must be to a wall to
 count as on it); only in a few awkward cases — where gaps are so narrow the system is over- or
 under-determined — do I have to add or drop an equation by hand until I get a solvable system
-describing a genuinely non-overlapping packing.
+describing a genuinely non-overlapping packing. In a compact SciPy version I cannot pretend that
+`least_squares` is a proof engine, so I add a guard: after polishing, recompute the actual minimum
+pairwise distance and accept the polished coordinates only if the contact residual is small, the
+solved contact distance is finite and agrees with the actual minimum, and the actual minimum has not
+dropped. If the detected contact system was wrong, the code falls back to the unpolished optimizer
+output.
 
 Let me also sanity-check this against the physical alternative I know works, to make sure I trust
 the energy route. The billiard picture — Graham and Lubachevsky's growing-disk molecular dynamics,
@@ -164,55 +184,108 @@ differentiable objective I can ride from soft to sharp, an exact gradient, and a
 contact-equation polish. That's why I'll build on the energy route. The billiard simulation is the
 cross-check: when both land on the same rigid configuration, I believe it.
 
-Let me write it. The variables are `u = (x̃, ỹ) ∈ R^{2n}`; `to_box` is the sine map; the objective
-and its gradient are the inverse-power energy and the force I derived with `λ` fixed during a
-stage; `solve` does the restart loop, and inside each restart the `m`-annealing loop resets
-`λ = d²_min`; and `polish_contacts` reads off the contact structure and solves the resulting
-equations numerically.
+The variables are `u = (x̃, ỹ) ∈ R^{2n}`; `to_box` is the sine map; the objective and its gradient
+are the log inverse-power energy and the normalized force I derived with `λ` fixed during a stage;
+`solve` does the restart loop, and inside each restart the `m`-annealing loop resets
+`λ = d²_min`; `maybe_release_wall_points` performs the controlled inward nudge; and
+`polish_contacts` reads off the contact structure, solves the resulting equations numerically, and
+validates the result against the actual minimum distance. The first value returned by `solve` is
+`d_n` in the unit square, not the circle radius; `radius_from_unit_distance` performs the final
+conversion to `r_n`.
 
 ```python
 import numpy as np
 from scipy.optimize import minimize, least_squares
+from scipy.special import logsumexp
 
 # x_i = sin(x_tilde_i), y_i = sin(y_tilde_i): the box constraint |x|,|y| <= 1 is automatic,
-# so the search over u = [x_tilde; y_tilde] in R^{2n} is fully unconstrained.
+# so the search over u = [x_tilde; y_tilde] in R^{2n} is unconstrained.
 def to_box(u, n):
     ut = u.reshape(2, n)
-    return np.sin(ut[0]), np.sin(ut[1])          # coords in [-1,1] (a box of side 2)
+    return np.sin(ut[0]), np.sin(ut[1])              # coords in [-1, 1] (a side-2 box)
+
+def points_to_u(points):
+    points = np.clip(points, -1.0, 1.0)
+    return np.concatenate([np.arcsin(points[:, 0]), np.arcsin(points[:, 1])])
 
 def pairwise_sq_dists(x, y):
     dx = x[:, None] - x[None, :]
     dy = y[:, None] - y[None, :]
     return dx*dx + dy*dy
 
-def min_pair_distance(u, n):
-    x, y = to_box(u, n)
-    d2 = pairwise_sq_dists(x, y)
+def min_pair_distance_from_points(points):
+    if len(points) < 2:
+        return np.inf
+    d2 = pairwise_sq_dists(points[:, 0], points[:, 1])
     np.fill_diagonal(d2, np.inf)
     return np.sqrt(d2.min())
 
-# E = sum_{i<j} (lambda / d_ij^2)^m : a 1/r^(2m) repulsion. As m grows it is dominated by the
-# single closest pair, so minimizing E maximizes the minimum pairwise distance.
+def min_pair_distance(u, n):
+    x, y = to_box(u, n)
+    return min_pair_distance_from_points(np.column_stack([x, y]))
+
+def radius_from_unit_distance(d_unit):
+    if np.isinf(d_unit):
+        return 0.5
+    return d_unit / (2.0 * (1.0 + d_unit))
+
+# Minimize log(E), E = sum_{i<j} (lambda / d_ij^2)^m. log is monotone, so the
+# minimizers are unchanged, and logsumexp avoids overflow at large m.
 def objective(u, n, sharpness, scale):
     x, y = to_box(u, n)
     d2 = pairwise_sq_dists(x, y)
     iu = np.triu_indices(n, 1)
-    return np.sum((scale / d2[iu])**sharpness)
+    tiny = np.finfo(float).tiny
+    log_scale = np.log(max(scale, tiny))
+    log_terms = sharpness * (log_scale - np.log(np.maximum(d2[iu], tiny)))
+    return logsumexp(log_terms)
 
-# dE/dx_i = sum_{j!=i} (-m T_ij / d_ij^2) * 2(x_i - x_j),  T_ij = (lam/d_ij^2)^m,
-# then chain through the sine: dE/dx_tilde_i = (dE/dx_i) * cos(x_tilde_i).
+# d log(E)/dx_i = sum_{j!=i} (-m w_ij / d_ij^2) * 2(x_i - x_j),
+# w_ij = T_ij / sum_{a<b} T_ab. Chain through the sine map.
 def objective_grad(u, n, sharpness, scale):
     ut = u.reshape(2, n)
     x, y = np.sin(ut[0]), np.sin(ut[1])
-    dx = x[:, None] - x[None, :]
-    dy = y[:, None] - y[None, :]
+    dx = x[:, None] - x[None, :]; dy = y[:, None] - y[None, :]
     d2 = dx*dx + dy*dy
     np.fill_diagonal(d2, np.inf)
-    T = (scale / d2)**sharpness
-    coef = -sharpness * T / d2                    # = dT/d(d2), with scale held fixed
-    gx = np.sum(coef * 2*dx, axis=1)              # force on point i in x
-    gy = np.sum(coef * 2*dy, axis=1)
+    tiny = np.finfo(float).tiny
+    iu = np.triu_indices(n, 1)
+    safe_pair_d2 = np.maximum(d2[iu], tiny)
+    log_scale = np.log(max(scale, tiny))
+    log_terms = sharpness * (log_scale - np.log(safe_pair_d2))
+    log_z = logsumexp(log_terms)
+    weights = np.exp(log_terms - log_z)             # one normalized weight per unordered pair
+    coef = -sharpness * weights / safe_pair_d2
+    fx = coef * 2*dx[iu]
+    fy = coef * 2*dy[iu]
+    gx = np.zeros(n)
+    gy = np.zeros(n)
+    np.add.at(gx, iu[0], fx)
+    np.add.at(gx, iu[1], -fx)
+    np.add.at(gy, iu[0], fy)
+    np.add.at(gy, iu[1], -fy)
     return np.concatenate([gx * np.cos(ut[0]), gy * np.cos(ut[1])])
+
+def maybe_release_wall_points(u, n, wall_tol=1e-6, inward_step=1e-3, keep_tol=1e-10):
+    """Move a non-rigid wall point slightly inward if that does not reduce the current gap."""
+    x, y = to_box(u, n)
+    points = np.column_stack([x, y])
+    current = min_pair_distance_from_points(points)
+    changed = False
+    for i in range(n):
+        for axis in (0, 1):
+            value = points[i, axis]
+            if 1.0 - abs(value) > wall_tol:
+                continue
+            trial = points.copy()
+            trial[i, axis] = value - np.sign(value) * inward_step
+            trial[i, axis] = np.clip(trial[i, axis], -1.0, 1.0)
+            trial_d = min_pair_distance_from_points(trial)
+            if trial_d >= current * (1.0 - keep_tol):
+                points = trial
+                current = trial_d
+                changed = True
+    return (points_to_u(points), True) if changed else (u, False)
 
 def detect_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
     x, y = points[:, 0], points[:, 1]
@@ -253,41 +326,77 @@ def polish_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
     res = least_squares(residual, z0, bounds=(lo, hi),
                         xtol=1e-12, ftol=1e-12, gtol=1e-12, max_nfev=2000)
     z = res.x
-    return np.column_stack([z[:n], z[n:2*n]]), z[-1]
+    solved_d = z[-1]
+    polished = np.column_stack([z[:n], z[n:2*n]])
+    actual_d = min_pair_distance_from_points(polished)
+    residual_norm = np.linalg.norm(residual(z), ord=2)
+    residual_tol = max(1e-8, 1e-6*d0*d0)
+    distance_tol = max(1e-7, 1e-6*max(1.0, d0))
+    if (
+        (not res.success)
+        or (not np.isfinite(actual_d))
+        or (not np.isfinite(solved_d))
+        or residual_norm > residual_tol
+    ):
+        return points, d0
+    if actual_d < d0 * (1.0 - 1e-8):
+        return points, d0
+    if abs(actual_d - solved_d) > distance_tol:
+        return points, d0
+    return polished, actual_d
 
 def optimize_one_start(u, n, schedule=None):
     if schedule is None:
         schedule = (10, 20, 40, 80, 160, 320, 640, 1280)
-    for sharpness in schedule:                     # homotopy: soft energy -> sharp max-min
+    for sharpness in schedule:                         # homotopy: soft energy -> sharp max-min
         d = min_pair_distance(u, n)
-        scale = d*d if d > 0 else 1.0             # lambda = d_min^2, fixed during this stage
+        scale = d*d if d > 0 else 1.0                 # lambda = d_min^2, fixed in this stage
         res = minimize(objective, u, args=(n, sharpness, scale), jac=objective_grad,
                        method='CG', options={'maxiter': 500, 'gtol': 1e-10})
         u = res.x
+        u, released = maybe_release_wall_points(u, n)
+        if released:
+            d = min_pair_distance(u, n)
+            scale = d*d if d > 0 else 1.0
+            res = minimize(objective, u, args=(n, sharpness, scale), jac=objective_grad,
+                           method='CG', options={'maxiter': 500, 'gtol': 1e-10})
+            u = res.x
     return u
 
 def solve(n, restarts=50, rng=None, schedule=None):
+    """Return (d_unit, points_unit, raw_variables).
+
+    d_unit is the minimum pairwise distance after mapping the side-2 optimizer
+    box to the unit square. Convert it to circle radius with
+    radius_from_unit_distance(d_unit).
+    """
+    if n == 1:
+        return np.inf, np.array([[0.5, 0.5]]), np.zeros(2)
     rng = rng or np.random.default_rng(0)
     best_u, best_d_side2 = None, -1.0
-    for _ in range(restarts):                     # many random starts cover the basins
-        u = rng.uniform(-np.pi/2, np.pi/2, 2*n)   # random points spread over the whole box
+    for _ in range(restarts):                         # cover the basins
+        u = rng.uniform(-np.pi/2, np.pi/2, 2*n)
         u = optimize_one_start(u, n, schedule)
         d_side2 = min_pair_distance(u, n)
         if d_side2 > best_d_side2:
             best_d_side2, best_u = d_side2, u.copy()
     x, y = to_box(best_u, n)
     polished, polished_d_side2 = polish_contacts(np.column_stack([x, y]))
-    return polished_d_side2 / 2.0, (polished + 1.0) / 2.0, best_u
+    d_unit = polished_d_side2 / 2.0
+    points_unit = (polished + 1.0) / 2.0
+    return d_unit, points_unit, points_to_u(polished)
 ```
 
 The causal chain, start to finish: packing fat circles is, after absorbing the wall offset and a
 rescale (`r = d/(2(1+d))`), nothing but spreading points to maximize their minimum pairwise
 distance; that minimum is a non-smooth `min`-over-pairs that defeats smooth optimizers, so I
 replace it by the power-mean soft-min and minimize the inverse-power repulsion energy
-`Σ(λ/d_ij²)^m`, which a large positive `m` makes faithful to the true minimum; I parameterize the
+`Σ(λ/q_ij)^m` with `q_ij = ‖s_i−s_j‖²`, which a large positive `m` makes faithful to the true
+minimum; I parameterize the
 box away with `x=sin(x̃)` so the search is unconstrained, condition the arithmetic with
 `λ=d²_min` while holding `λ` fixed inside each gradient calculation, and use the exact gradient to
 run a real optimizer; I get faithfulness *and* tractability by annealing `m` from soft to sharp as a
-homotopy, warm-starting each stage; I beat the multimodality with many random restarts (and an
-off-the-wall nudge for pinned points); and I sharpen the reported `d_n` by detecting the contact
-structure and Newton-polishing it to high precision.
+homotopy, warm-starting each stage; I beat the multimodality with many random restarts and a
+controlled inward nudge for non-rigid wall pins; and I sharpen the reported `d_n` by detecting the
+contact structure, with the compact code accepting only non-worsening contact polish and the full
+search using high-precision Newton refinement.

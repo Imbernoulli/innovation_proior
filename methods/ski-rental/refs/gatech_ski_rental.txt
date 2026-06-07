@@ -1,0 +1,414 @@
+                             Generalizations of Ski-Rental
+                                     Hisham Harik, Joe Chung
+
+                                          October 23, 2005
+
+
+1     The Ski Rental Problem
+Suppose you want to start a new hobby: skiing. In the ski shop, they give you the options to either
+rent skis or buy skis. If you know a priori how many days you will be skiing, then you can easily
+compute whether you should rent or buy right from the first day. This is an example of offline
+problems—all information is given at once, even future information. In the real world, you would
+not know beforehand how many days you will be skiing. So, you need to decide on whether to rent
+or buy skis based on past information only. This is an example of online problems—you are only
+given past information. You have no knowledge of the future, and you have to decide in the present.
+Algorithms that solve online problems are called online algorithms. A reasonable question to ask
+is: how does an online algorithm compare to its offline counterpart? One way to assess this is by
+solving the ratio of the cost of the online algorithm to the cost of the offline algorithm—smaller
+ratio means better online algorithm. This ratio is called the competitive ratio. Mathematically, an
+algorithm is c-competitive if there exists a constant α such that:
+
+                                   E(CA (I)) ≤ c × CostOP T (I) + α
+
+1.1    Offline Algorithm
+Here is an example of an offline algorithm. Suppose that the ski shop charges $20/day to rent
+a pair of skis and $300 to buy a pair. Since we are working in an offline setting, the number of
+days you will ski is known beforehand. Here is an algorithm that determines the action to take to
+minimize the total cost:
+
+    • if 20 × d ≤ 300, then always rent
+    • else, buy on the first day
+
+d stands for the number of days you will ski. Let the instance be the number of days you ski. Then,
+given this algorithm and an instance Id , the optimal cost is
+
+                                   CostOP T (Id ) = min(20 × d, 300)
+So, say that you will ski for exactly 10 days, then you should rent, since
+                    CostOP T (I10 ) = min(20 × 10, 300) = min(200, 300) = 200.
+If you will ski for exactly 20 days, then you should buy, since
+                    CostOP T (I20 ) = min(20 × 20, 300) = min(400, 300) = 300.
+
+                                                  1
+1.2    Deterministic Online Algorithm
+The offline algorithm can be considered as a lower bound of the online algorithm since the offline
+algorithm is given all information while the online algorithm is given partial information. So, an
+online algorithm cannot do better than CostOP T (Id ). Later, we will see that there are better lower
+bounds.
+    A set of all deterministic online algorithms that solve the ski-rental problem can be defined as
+{Ax |x ≥ 0} where x is the number of days to rent skis before buying. In other words, Ax rents skis
+up to x days then buy. Here is the function that calculates the cost given the number of days, d,
+of skiing:                                    (
+                                                20 × d        if d < x
+                             Cost(Ax , Id ) =
+                                                20 × x + 300 otherwise
+Justapose this function with
+
+                                  CostOP T (Id ) = min(20 × d, 300).
+
+Notice that if d is less than x, then both the online algorithm and the optimal solution have the cost
+of 20 × d. This is the best case for our online algorithms where the competitive ratio is 1. However,
+it is more meaningful to consider the worst case of the online algorithm. More specifically, we want
+to determine the algorithm that gives the best worst case. For that, we use
+
+                                      C(Ax , Id ) = 20 × x + 300
+
+where d ≥ x.
+     Lets look at an example of a deterministic online algorithm. Suppose we choose A5 for our
+algorithm. What is the worst case that can happen? In other words, what is the competitive ratio
+of this algorithm? It is intuitive to choose d = 6 as the worst case for A5 . A5 tells you to rent for
+5 days, buy on the 6th day, and then you will never go back to ski again after the 6th day. The
+offline solution is
+                               CostOP T (I6 ) = min(6 × 20, 300) = 120.
+A5 ’s solution is
+                                 Cost(A5 , I6 ) = 20 × 5 + 300 = 400.
+The competitive ratio for A5 is at least 400/120 or approximately 3.33. That means that we paid
+about 3.33 times the optimal amount.
+    So, what is the smallest competitive ratio for any deterministic online algorithm? If the skis
+cost p dollars per day to rent and q dollars to buy, then it is optimal to rent for q/p days, then buy.
+Substituting p and q into the equations, we get
+                                                        q
+                               Cost(Aq/p , Iq/p+1 ) =     × p + q = 2 × q.
+                                                        p
+And
+                                                      q
+                            CostOP T (Iq/p+1 ) = min(( + 1) × p, q) = q.
+                                                      p
+So, the competitive ratio is 2 × q/q = 2. And, if we let c(Ax ) be the competitive ratio of algorithm
+Ax . Then Aq/p gives the best competitive ratio out of all deterministic algorithm because
+
+                                                 (p × x + q)
+                                     c(Ax ) =                 ≥ 2.
+                                                min(p × x, q)
+
+                                                    2
+1.3   Randomized Online Algorithm
+We showed that there is a deterministic algorithm for the ski-rental problem that gives a competitive
+ratio of 2. However, it is possible to get a competitive ratio better than 2 by using a randomized
+algorithm. Lets see a simple example of a randomized algorithm that gives a competitive ratio
+less than 2. Suppose you use A10 with probability 0.5 and A15 with probability of 0.5, then the
+expected cost is:
+
+                    E(Cost(A, Id )) = 0.5 × Cost(A10 , Id ) + 0.5 × Cost(A15 , Id )
+Expanding this equation gives us
+                                      
+                                       20 × d
+                                                             if 0 ≤ d ≤ 10
+                   E(Cost(A, Id )) =   0.5(500) + 0.5(20 × d) if 10 < d ≤ 15
+                                      0.5(500) + 0.5(600)
+                                     
+                                                              if d > 15
+
+To solve for the competitive ratio c(A), plug in all possible integer solution for d ≤ 15 into the
+equation and use d = 16 for all d > 15 since that maximizes c(A). In this example, the expected
+cost is maximized when d = 16. So, we get the following:
+
+                                                  E(Cost(A, Id ))
+                                   c(A) = max(                    )
+                                                   CostOP T (Id )
+                                                E(Cost(A, I16 ))
+                                      c(A) =
+                                                 CostOP T (I16 )
+                                        c(A) = 550/300 < 2
+Here, we choose a deterministic algorithm randomly based on a probability distribution. The
+probability distribution is P rob(A10 ) = 0.5, P rob(A15 ) = 0.5, and everything else = 0. Since the
+instance I must be fixed before the algorithm can run, the adversary must choose the worst instance
+for the randomized algorithm without any knowledge of the realization of the random variables used
+by the algorithm. The adversary wants to find the largest competitive ratio c such that
+
+                                E(Cost(A, IA )) ≥ c × CostOP T (IA )
+
+for all randomized algorithm A. There are two perspectives to the ski-rental problem. One is from
+the adversary’s point of view. The adversary wants to choose an instance I that maximizes the
+competitive ratio. Another perspective is from the skier’s point of view. The skier wants to select
+an algorithm that minimizes the competitive ratio. These two players have exact opposite interests.
+Lets say the skier found the best algorithm that minimizes the competitive ratio. We will call this
+algorithm Abest . The adversary will choose the best instance I with the following formula:
+
+                                                    Cost(Abest , I)
+                                    c∗ = sup Ep (                   )
+                                          I∈I       CostOP T (I)
+If the skier does not know the best algorithm that solves for the minimal competitive ratio c∗ , then
+the skier would use the following:
+
+                                                        Cost(Az ), I
+                                   c∗ = inf sup Ep (                 )
+                                          z I∈I         CostOP T (I)
+
+
+                                                    3
+Given an arbitrary algorithm Az and an arbitrary instance Id , calculating the competitive ratio is
+simple. Lets first scale the cost of the ski set to 1 unit and the number of days where the cost of
+renting the skis equals the cost of buying the skis to 1 unit. Then,
+                                              z+1
+                                                 if 0 ≤ z ≤ d ≤ 1
+                                              d
+                                             
+                                             
+                        Cost(Az , Id )
+                                             
+                                           z + 1 if 0 ≤ z ≤ d and d > 1
+                                       =
+                        CostOP T (Id )   d     if z > d > 1
+                                         
+                                         
+                                           1     (otherwise)
+The first scenario is when you rent for z days and then buy the skis, but it’s cheaper to rent them
+everytime. The second scenario is when you rent for z days and then buy them, but it’s cheaper
+to just buy them in the beginning. The third scenario is when you rent them everytime but it’s
+cheaper to buy them from the beginning. The fourth scenario is when your action is optimal.
+Notice that it is not economical for the skier to buy skis after 1 unit, since the competitive ratio
+will only increase after 1 unit. Also, it is not economical for the adversary to pick the number of
+days you ski to be less than 1 unit. The competitive will always decrease when the number of days
+the adversary chooses go pass 1 unit. So, scenario 2 and 3 (where d ≥ 1) are not considered in the
+probability distribution.
+    The adversary, using scenario 1 and 2 above, can maximize the lower bound of the the compet-
+itive ratio with the following system of differential equations:
+                               Z z                    Z 1
+                                                            1+z
+                                     q(u) du +                  × q(u) du ≥ c
+                                0                      z     u
+                                                 Z 1
+                                                       q(u) du = 1
+                                                  0
+                                                       q(u) ≥ 0
+The adversary wants to maximize c. Solving the equations gives:
+                                             e
+                                      c=         ≈ 1.58
+                                           e−1
+                                                            1−u
+                                            (
+                                                 u × ee−1            if 0 ≤ u < 1
+                                q(u) =
+                                                 0                   if u > 1
+On the other hand, the skier, using scenario 1 and 2, can minimize the upper bound of the com-
+petitive ratio with the following system of differential equations:
+                                 Z u                               Z 1
+                                         1+z
+                                             p(z) dz +                   p(z) dz ≤ c
+                                    0     u                          u
+                                                 Z 1
+                                                       p(z) dz = 1
+                                                  0
+                                                       p(z) ≥ 0
+The skier wants to minimize c. Solving the equations gives:
+                                              e
+                                        c=        ≈ 1.58
+                                            e−1
+                                                       e( z)
+                                                 (
+                                        p(z) =         e−1         if 0 ≤ z ≤ 1
+                                                       0           if z > 1
+Note that the maximum lower bound of the adversary’s competitive ratio is equal to the minimum
+                                                                                e
+upper bound of the skier’s competitive ratio. We just found the tight bound of e−1 .
+
+                                                               4
+2    Background material for TCP acknowledgement
+Another interesting online problem is TCP acknowledgement problem. The TCP acknowledgement
+is known to be a generalization of the ski-rental problem, though it was always thought to be
+harder. We will start by discussing the result from the Seiden paper that put a lower bound on the
+TCP acknowledgment problem. We then move to explain the algorithm presented in the Karlin-
+Kenyon-Randall paper that has a competitive ratio of e/(e − 1), and demonstrate that the TCP
+acknowledgment problem is no more complex than ski-rental.
+     According to the Von Neumann / Yao princinple, the best possible randomized algorithm has
+as a lower bound the value incurred by all deterministic alogithms over a distribution of problem
+instances. Seiden argues that a general framework for finding the right distribution is needed and
+he goes on to devise one. Without going into the details, Seiden devises a general solution form,
+then ”plugging parameters” into the solution would give you the right distribution. He proves a
+new result, namely the TCP acknowledgment problem, using his method. Seiden proves a lower
+bound for the TCP acknowledgment problem of e/(e − 1).
+     What is interesting about the solution is that Seiden describes the problem as ”not-so-simple”.
+Shortly after that Karlin-Kenyon-Randall paper presents the first optimal randomized online algo-
+rithm for the TCP acknowledgment problem, that is an algorithm that reaches the lower bound
+limit proves in the Seiden paper. Furthermore it demonstrates that the problem is not as hard as
+first thought, specifically not more so than the ski-rental problem.
+     In the remainder of this paper we will go on to explain the TCP acknowledgment problem,
+describe the algorithm devised by the authors, and then present an analysis of the algorithm that
+proves the competitive ratio of e/(e − 1).
+
+
+3    TCP acknowledgment (please use figure one for clarifications)
+In lame man’s terms, the TCP acknowledgement problem is that of trying to minimize the number
+of packets send across a network in order to help with relieving congestion. In case of no lost or
+otherwise damaged packets, the minimum required packets sent are exactly twice the number of
+packets needed for transferring the data, since every packet sent has to be acknowledged by the
+receiver. Trying to reduce the total number of packets sent is through trying to minimize the
+number of acknowledgements sent through acknowledging several data packets received by a single
+packet. However, due to the congestion control mechanism of TCP, if the sender does not receive an
+acknowledgement for his packet within a specified period of time, the sender will resend his packet,
+and the effort to reduce the number of total packets would have been foiled. Dooly, Goldman
+and Scott combined both restrictions into a single equation that captures both the number of
+acknowledgment packets sent and the latency in sending the acknowledgment packets. The latency
+actually captures the risk of having the data packet sent again by the sender.
+    Thus the cost incurred over a sequence of n arrival times a1 , a2 , ..., an , with k acknowledgement
+times t1 , t2 , ..., tk , is stated as the following:
+
+                              Cost = acknowledgement cost + latency cost
+                                                     X
+                                             =k+             latency(j)
+                                                    1≤j≤k
+                     P
+where latency(j) =       tj −1<ai ≤tj (tj − ai ).
+
+
+
+
+                                                         5
+    Another variant of this problem is through having weights for the packets, but for all practical
+purposes that formulation is equivalent to the current one, since the arrival of a packet with weight
+two is equivalent to the arrival of two separate packets with unit weight.
+    One could easily imagine a dynamic programming solution, in case the sequence of packet
+arrivals is known to the algorithm, which would calculate the optimal cost for this problem. It
+would be through calculating the minimal total cost incurred for acknowledging a packet directly
+after arrival by building the solution over the costs calculated for the previous packets. This proof is
+not central to proving the Az algorithm but serves as a practice run for proving the competitiveness
+of the Az algorithm. However, the online problem is not as easy to solve. The online algorithm
+does not know the sequence of packets arrivals. Thus has the ’dilemma’ faced by the algorithm is
+whether to wait for a new packet to arrive before acknowledging or will that wait prove to be too
+long and latency time would be wasted (maybe even that was the last packet sent).
+    As we pointed out earlier, Seiden obtained a lower bound of e/(e − 1) for the competitive ratio
+of randomized online algorithms, and in the next section we will present the algorithm that achieves
+that ratio from the Karlin-Kenyon-Randall paper.
+
+
+4    A and Az algorithms (please use figure two for clarifications)
+Previously proposed algorithms probabilistically vary the amount of time they tolerate before send-
+ing an acknowledgment. However, these algorithms were proven not to achieve the optimal com-
+petitive ratio of e/(e − 1).
+    The algorithm A that will be presented in this section will use a family of algorithms called Az ,
+where 0 ≤ z ≤ 1. First we will define Az : Considering the last acknowledgement happened at time
+ti (with t0 starting at time 0), Az would acknowledge at a time ti+1 that respects the following
+equation:
+
+                                      P (ti , t∗i+1 )(ti+1 − t∗i+1 ) = z.
+Where P (t′ , t′′ ) is the set of packets arriving between time t′ and time t′′ , and t∗i+1 is between ti
+and ti+1 (ti ≤ t∗i+1 ≤ ti+1 ). Thus, considering the last acknowledgement happened at time ti (with
+t0 starting at time 0), the algorithm Az would chose to acknowledge at the first time ti+1 available
+that would ensure at least z units of latency have passed since the last acknowledgement.
+    Notice one thing about this algorithm, the algorithm considers only the packets arriving since
+the last acknoledgement till the hypothetical time t∗i+1 .
+    Randomized algorithm A chooses a value for z between zero and one, according to the prob-
+                                     ez
+ability density function p(z) = e−1     , and then runs Az on it. The main dificulty is to analyze the
+algorithm, so as a practice run the authors decided to analyze the A1 algorithm.
+
+
+5    Practice run on A1 (please use figure three for clarifications)
+The authors go about proving the 2-competitiveness of the A1 algorithm in two steps. The first
+step is through proving that there is at least an optimal algorithm that sends an acknowledgement
+between any pair of successive A1 acknowledgement. The second step relies on the first step for
+proving that the A1 algorithm has a 2-competitive ratio. The proof for the first step is through
+contradiction. Consider there is no optimal solution with acknowledgement between every pair of A1
+algorithm acknowledgment. Take any sequence for the optimal solution that does not acknowledge
+
+
+                                                      6
+between a pair of A1 acknowledgement, without loss of generality let us call them ti and ti+1 .
+Add an acknowledgement to the proposed optimal sequence between ti and ti+1 , and specifically
+at t∗i+1 . Calculating the cost for the modified optimal sequence we discover that we have added
+a cost of one, by adding an additional acknowledgement, and we have removed a cost of at least
+1, since z = 1. Thus the new sequence is at least as good as the optimal solution, if not better.
+Thus we have proven that there is an optimal solution that has an acknowledgement between every
+pair of A1 acknowledgement. Using this result we will go on to prove that the A1 algorithm has a
+2-competitiveness ratio.
+    The cost of the A1 algorithm can be bounded in the following manner: it includes the cost of
+the optimal solution plus the latency that is incurred by the A1 algorithm and not the optimal
+solution. Thus we can write the following equation:
+
+                      Cost(A1 ) ≤ nOP T + latency(OP T ) + latency(A1 |OP T )
+where latency(A1 |OP T ) is the latency incurred by A1 and not the optimal solution. The number
+of acknowledgements done by the optimal solution since each optimal acknowledgement can remove
+at most z, which in this case is equal to one, binds that extra latency. Thus,
+
+
+     Cost(A1 ) ≤ nOP T + latency(OP T ) + nOP T ≤ Cost(OP T ) + nOP T ≤ 2 ∗ Cost(OP T )
+
+   This proof is not central to proving the Az algorithm but serves as a practice run for proving
+the competitiveness of the Az algorithm.
+
+
+6    Analysis of Az Algorithm
+The objective of the Az algorithm is to show that the competitive ratio of the TCP acknowledgement
+                                        e
+problem is equal to its lower bound, e−1  . We learned from before that any deterministic algorithm
+must have a competitive ratio of at least 2. So, Az must be a randomized algorithm.
+    Lets analyze the cost of the Az algorithm with respect to the optimal algorithm OP T . Assume
+that OP T is given. After plotting OP T and Az on the same graph, we see that the area made by Az
+between the line of packet arrival and Az is precisely the area created by OP T (CostOP T ), minus
+the area in OP T but not in Az , plus the area in Az but not in OP T . The area in Az not in OP T
+is at most z per acknowledgement in OP T by the definition of Az . This gives an area of at most
+z × nOP T (I). Let Ez be the area in OP T but not in Az . And, let the number of acknowledgement
+packets sent by Az be nz . Then the cost of Az given any instance I is:
+
+                 CostAz (I) ≤ nz (I) + CostOP T − nOP T (I) + z × nOP T (I) − Ez (I)
+Now, lets calculate the lower bound for Ez . It is difficult to calculate a lower bound of Ez geomet-
+rically since the shape of the graph may vary based on I and z. Instead, we attack this problem by
+calculating the area gained by Ez when we increase z by an infinitesimal amount. Then, we will
+scale z up to 1 using integration.
+    Let L(n, z) be the minimum area in OP T but not in Az given the number of acknowledgements
+n. We find that if u > v ≥ z, then
+
+                                L(nu , z) ≥ (v − z)(nv − nu ) + L(nv , z)
+The proof of this is given in [1].
+
+                                                   7
+   Moving L(nv , z) to the left, and write it in integration form where u = v + dv, we get for any
+z < t ≤ 1,
+                                     Z t                           Z t
+                                           dL(nv , z) ≥                   −(v − z)dnv
+                                      z                               z
+Solving this gives
+                                                         Z 1
+                                     L(nt , z) ≥                  nv dv − (1 − z)nt
+                                                          z
+Ez is precisely L(nOP T , z), so
+                                                    Z 1
+                                          Ez ≥            nv dv − (1 − z)nt
+                                                     z
+With Ez , we can now substitute this to the cost equation and find then find the best competitive
+ratio. Let p(z) be the probability density function for Az . Then,
+
+                                           Z 1                                             Z 1
+        CostA ≤ CostOP T − nOP T +               p(z)(nz + z × nOP T −                           nw dw + (1 − z)nOP T )dz
+                                            0                                               z
+                                            Z 1                            Z 1        Z w
+                          = CostOP T +              p(z)nz dz −                  nw         p(z)dzdw
+                                                0                           0          0
+                                                          Z 1
+                                   = CostOP T +                   (p(z) − P (z))nz dz
+                                                              0
+                  e  z
+If we let p(z) = e−1 , then
+                                                              R1
+                                    CostA                         0 (p(z) − P (z))nz dz
+                                            ≤1+                         R1
+                                   CostOP T                              0 nz dz
+                                                                   e
+                                                          =
+                                                                  e−1
+                                                  e               e                               z
+So, the competitive ratio of the Az algorithm is e−1 when p(z) = e−1 .
+
+
+References
+ [1] Karlin, Kenyon, Randall, “Dynamic TCP Acknowledgement and Other Stories about e/(e-1),”
+     Algorithmica, 36(3), (New York: Springer-Verlag, 2003): 209–224.
+
+ [2] Seiden, Steven S., “A Guessing Game and Randomized Online Algorithms,” Proceedings of the
+     32nd Annual ACM Symposium on Theory of Computing, (Portland: STOC, 2000): 592–601.
+
+
+
+
+                                                                  8
+

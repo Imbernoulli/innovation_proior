@@ -1,168 +1,163 @@
-# The Held-Karp 1-tree lower bound for the symmetric TSP
+# The Held-Karp 1-tree lower bound
 
 ## Problem
 
-Branch-and-bound for the symmetric travelling-salesman problem needs, at every node of the
-search tree, a lower bound on the optimal tour cost that is both cheap to recompute and tight.
-The plain minimum spanning tree and the sum-of-two-cheapest-edges bounds are far too loose; the
-tour itself is intractable. The Held-Karp bound fills the gap.
+For the symmetric TSP, exact branch-and-bound needs a cheap lower bound at every node. This is the
+Held-Karp 1-tree Lagrangian lower bound computed by subgradient, or relaxation, ascent. It is not
+the `O(2^n n^2)` Held-Karp exact dynamic program; the dynamic program solves the whole TSP
+exponentially, while this routine supplies a fast bound for pruning.
 
-## Key idea
+## Bound
 
-A **1-tree** is a spanning tree on all but one distinguished node, with that node hung back on
-by its two cheapest edges. It has `n` edges, one cycle, and average degree 2. A tour is exactly
-a 1-tree in which *every* node has degree 2, so tours are a subset of 1-trees and
+A 1-tree is a spanning tree on vertices `{2,...,n}` plus two distinct edges incident to vertex 1.
+A tour is exactly a 1-tree whose every vertex has degree 2, so the minimum 1-tree cost is a lower
+bound on the optimum tour cost `C*`.
 
-  min-cost 1-tree  <=  min-cost tour  =  OPT.
+Introduce node potentials `π` and compute 1-trees under perturbed edge weights
+`c_ij + π_i + π_j`. Every tour gains the same constant `2Σ_i π_i`, while a 1-tree with degrees
+`d_ik` gains `Σ_i π_i d_ik`. Therefore
 
-To tighten this, attach a potential `pi_i` to each node and perturb edge costs to
-`c'(i,j) = c(i,j) + pi_i + pi_j`. For any structure `t`, the perturbed cost equals
-`cost(t) + sum_i pi_i * deg_t(i)`. Every tour has all degrees 2, so its perturbed cost is
-`cost(tour) + 2 * sum_i pi_i` — a constant shift independent of which tour — hence the optimal
-tour is invariant to the perturbation. Repeating the subset argument under perturbed costs and
-subtracting the constant gives, for the minimum 1-tree with raw cost `L` and degree vector
-`deg`,
+  `C* + 2Σ_i π_i ≥ min_k [c_k + Σ_i π_i d_ik]`,
 
-  w(pi) = L + sum_i pi_i * (deg_i - 2)  <=  OPT,  for every pi.
+so
 
-The **Held-Karp bound** is `max_pi w(pi)`: the Lagrangian dual obtained by relaxing the
-degree-2 equality at every node and pricing its violation with `pi`. Maximizing over `pi`
-drives the minimum 1-tree's degrees toward 2 — toward a tour — and tightens the bound. If the
-prices ever make the minimum 1-tree all-degrees-2, it is a tour and the bound equals OPT.
+  `C* ≥ min_k [c_k + Σ_i π_i(d_ik − 2)] = w(π)`.
 
-## The algorithm
+With `v_k = (d_ik − 2)_i`, this is `w(π) = min_k [c_k + π·v_k]`. The best bound is
+`max_π w(π)`. The function is concave and piecewise linear because it is the minimum of affine
+functions.
 
-`w(pi)` is a pointwise minimum of affine functions of `pi`, hence concave and piecewise-linear.
-At a price vector `pi` with minimizing 1-tree of degrees `deg`, the vector `g_i = deg_i - 2` is
-a supergradient. Maximize by subgradient ascent:
+## Ascent
 
-  pi_i  <-  pi_i + step * (deg_i - 2).
+If `k(π)` is an active minimum 1-tree at `π`, then for every `τ`,
 
-A node of degree 3 has its price raised (its edges get costlier, the next 1-tree drops one); a
-degree-1 node has its price lowered. Two step-size schedules:
+  `w(τ) − w(π) ≤ (τ − π)·v_{k(π)}`.
 
-- **Volgenant-Jonker** (default): a prescribed positive step decreasing to exactly 0 at a final
-  iteration `M`,
-  `step(m) = [ (m-1)(2M-5)/(2(M-1)) - (m-2) + (1/2)(m-1)(m-2)/((M-1)(M-2)) ] * step1`,
-  with `step1 = L / (2n)` refreshed on each new best `w`, and `M ~ 28 n^0.62`. Needs no upper
-  bound.
-- **Held-Wolfe-Crowder**: a Polyak step `step = lambda * (UB - w) / sum_i (deg_i - 2)^2`, where
-  `UB` is any upper bound on OPT (a complete heuristic tour cost is enough) and `lambda` starts
-  at 2 and is halved together with the iteration budget in successive passes until the budget is
-  tiny.
+For a maximizer `π*`, this gives
+`(π* − π)·v_{k(π)} ≥ w(π*) − w(π) ≥ 0`, so the degree residual points toward the optimal set in
+the relaxation-method sense. The update is
 
-For speed, the per-iteration MST is computed on a sparse nearest-neighbour graph; because a
-1-tree on a restricted graph can only cost more than the complete-graph minimum for the same
-prices, the sparse values are only used to choose prices. The final bound is recomputed once on
-the complete graph with the best prices to guarantee validity.
+  `π_{m+1} = π_m + t_m(d_m − 2)`.
 
-## Working code
+The safe distance-decrease condition is
+
+  `0 < t < 2(w(π*) − w(π)) / ‖d−2‖²`.
+
+For a constant step `t`,
+
+  `sup_m w(π_m) ≥ max_π w(π) − (t/2) limsup_m ‖d_m−2‖²`.
+
+For a target level `ℓ < max w`, the relaxation step is
+`t = λ(ℓ − w(π))/‖d−2‖²` with `ε ≤ λ ≤ 2`. Practical HWC-style code often substitutes a tour
+upper bound `UB ≥ C* ≥ max w` and uses `t = λ(UB − w(π))/‖d−2‖²`, while halving `λ` so the steps
+eventually vanish. The OR-Tools-style default schedule is Volgenant-Jonker, a positive decreasing
+step sequence whose first step is based on the unweighted 1-tree cost.
+
+## Code
 
 ```python
 import math
 import numpy as np
 
-
-def _prim_mst_edges(weight, allowed=None):
-    """Prim MST on a dense matrix, optionally restricted to a connected edge mask."""
-    k = weight.shape[0]
-    if k <= 1:
-        return []
+def _prim_mst(weighed):
+    """Minimum spanning tree on a dense perturbed-cost matrix."""
+    k = weighed.shape[0]
     in_tree = np.zeros(k, dtype=bool)
-    best = np.full(k, np.inf)
-    parent = np.full(k, -1, dtype=int)
+    best = weighed[0].copy()
+    parent = np.zeros(k, dtype=int)
     in_tree[0] = True
-    if allowed is None:
-        best[:] = weight[0]
-        parent[:] = 0
-    else:
-        best[allowed[0]] = weight[0, allowed[0]]
-        parent[allowed[0]] = 0
     best[0] = np.inf
-    parent[0] = -1
     edges = []
     for _ in range(k - 1):
-        masked = np.where(in_tree, np.inf, best)
-        v = int(np.argmin(masked))
-        if not np.isfinite(masked[v]):
-            raise ValueError("candidate graph must be connected")
-        u = int(parent[v])
-        edges.append((u, v))
+        v = int(np.argmin(np.where(in_tree, np.inf, best)))
+        edges.append((parent[v], v))
         in_tree[v] = True
-        candidates = ~in_tree if allowed is None else ((~in_tree) & allowed[v])
-        upd = candidates & (weight[v] < best)
-        best[upd] = weight[v, upd]
+        upd = (~in_tree) & (weighed[v] < best)
+        best[upd] = weighed[v][upd]
         parent[upd] = v
     return edges
 
-
-def _candidate_edges(cost, width):
-    """Nearest-neighbour edge mask plus MST edges for connectivity."""
-    k = cost.shape[0]
-    if k <= 1 or width is None or width <= 0 or width >= k - 1:
-        return None
-    allowed = np.zeros((k, k), dtype=bool)
-    for i in range(k):
-        added = 0
-        for j in np.argsort(cost[i]):
-            if i == j:
-                continue
-            allowed[i, j] = True
-            allowed[j, i] = True
-            added += 1
-            if added == width:
-                break
-    for u, v in _prim_mst_edges(cost):
-        allowed[u, v] = True
-        allowed[v, u] = True
-    np.fill_diagonal(allowed, False)
-    return allowed
-
-
-def _tour_upper_bound(cost):
-    """Any complete tour cost is a valid UB for the Polyak target."""
+def compute_one_tree(cost, pi):
+    """Minimum 1-tree under node potentials pi. Returns raw cost and degrees."""
     n = cost.shape[0]
-    unseen = set(range(1, n))
-    cur = 0
-    total = 0.0
-    while unseen:
-        nxt = min(unseen, key=lambda j: cost[cur, j])
-        total += cost[cur, nxt]
-        unseen.remove(nxt)
-        cur = nxt
-    return total + cost[cur, 0]
+    extra = n - 1
+    weighed = cost + pi[:, None] + pi[None, :]
+    sub_edges = _prim_mst(weighed[:extra, :extra])
 
-
-def compute_one_tree(cost, pi, allowed=None):
-    """Minimum 1-tree under node potentials pi. Returns (raw 1-tree cost, degrees)."""
-    n = cost.shape[0]
-    extra = n - 1                                   # left-out special node
-    weighed = cost + pi[:, None] + pi[None, :]      # c'(i,j) = c + pi_i + pi_j
-    sub_edges = _prim_mst_edges(weighed[:extra, :extra], allowed)
     degrees = np.zeros(n, dtype=int)
-    one_tree_cost = 0.0                             # accumulate RAW cost
+    one_tree_cost = 0.0
     for u, v in sub_edges:
         degrees[u] += 1
         degrees[v] += 1
         one_tree_cost += cost[u, v]
-    to_extra = weighed[extra, :extra]               # two cheapest edges for the special node
-    a, b = np.argsort(to_extra)[:2]
-    for v in (int(a), int(b)):
+
+    order = np.argsort(weighed[extra, :extra])
+    for v in (int(order[0]), int(order[1])):
         degrees[extra] += 1
         degrees[v] += 1
         one_tree_cost += cost[extra, v]
     return one_tree_cost, degrees
 
+class VolgenantJonker:
+    """Vanishing step schedule reaching zero at iteration M."""
+    def __init__(self, n, max_iterations=0):
+        self.n = n
+        self.M = max_iterations if max_iterations > 0 else int(28 * n ** 0.62)
+        self.step1 = 0.0
+        self.m = 0
+        self._init = False
 
-def _bound_value(cost, pi, allowed=None):
-    one_tree_cost, degrees = compute_one_tree(cost, pi, allowed)
-    return one_tree_cost + float(np.dot(pi, degrees - 2)), one_tree_cost, degrees
+    def cont(self):
+        self.m += 1
+        return self.m <= self.M
 
+    def step(self):
+        m, M = self.m, self.M
+        return ((m - 1) * (2 * M - 5) / (2 * (M - 1)) * self.step1
+                - (m - 2) * self.step1
+                + 0.5 * (m - 1) * (m - 2) / ((M - 1) * (M - 2)) * self.step1)
 
-def held_karp_lower_bound(cost, algorithm="VJ", upper_bound=None,
-                          max_iterations=0, nearest_neighbors=40):
-    """Held-Karp lower bound on the optimal symmetric-TSP tour for matrix `cost`.
-    algorithm: "VJ" (Volgenant-Jonker) or "HWC" (Held-Wolfe-Crowder)."""
+    def on_one_tree(self, one_tree_cost):
+        if not self._init:
+            self._init = True
+            self.step1 = one_tree_cost / (2 * self.n)
+
+    def on_new_wmax(self, one_tree_cost):
+        self.step1 = one_tree_cost / (2 * self.n)
+
+class HeldWolfeCrowder:
+    """Upper-bound Polyak-style evaluator with lambda halving."""
+    def __init__(self, n, upper_bound):
+        self.n = n
+        self.UB = upper_bound
+        self.num_iter = 2 * n
+        self.lam = 2.0
+        self.it = 0
+        self._step = 0.0
+
+    def cont(self):
+        if self.it >= self.num_iter:
+            self.num_iter //= 2
+            if self.num_iter < 2:
+                return False
+            self.it = 0
+            self.lam /= 2
+        else:
+            self.it += 1
+        return True
+
+    def step(self):
+        return self._step
+
+    def on_one_tree(self, one_tree_cost, w, degrees):
+        norm = float(np.sum((degrees - 2) ** 2))
+        self._step = self.lam * (self.UB - w) / norm if norm > 0 else 0.0
+
+    def on_new_wmax(self, one_tree_cost):
+        pass
+
+def held_karp_lower_bound(cost, algorithm="VJ", upper_bound=None, max_iterations=0):
+    """Return the Held-Karp 1-tree lower bound."""
     cost = np.asarray(cost, dtype=float)
     n = cost.shape[0]
     if n < 2:
@@ -170,64 +165,41 @@ def held_karp_lower_bound(cost, algorithm="VJ", upper_bound=None,
     if n == 2:
         return cost[0, 1] + cost[1, 0]
 
-    algorithm = algorithm.upper()
-    search_edges = _candidate_edges(cost[:n - 1, :n - 1], nearest_neighbors)
-
     if algorithm == "HWC":
         if upper_bound is None:
-            upper_bound = _tour_upper_bound(cost)
-        num_iter = 2 * n
-        lam = 2.0
-        it = 0
-    elif algorithm == "VJ":
-        M = max(3, max_iterations if max_iterations > 0 else int(28 * n ** 0.62))
-        step1 = 0.0
+            raise ValueError("HWC needs an upper_bound on OPT")
+        alg = HeldWolfeCrowder(n, upper_bound)
     else:
-        raise ValueError("algorithm must be 'VJ' or 'HWC'")
+        alg = VolgenantJonker(n, max_iterations)
 
     pi = np.zeros(n)
     best_pi = pi.copy()
-    best_search_w = -math.inf
-    m = 0
-    while True:
-        if algorithm == "HWC":
-            if it >= num_iter:
-                num_iter //= 2
-                if num_iter < 2:
-                    break
-                it = 0
-                lam /= 2
-            else:
-                it += 1
+    max_w = -math.inf
+    w = 0.0
+    while alg.cont():
+        one_tree_cost, degrees = compute_one_tree(cost, pi)
+        if isinstance(alg, HeldWolfeCrowder):
+            alg.on_one_tree(one_tree_cost, w, degrees)
         else:
-            m += 1
-            if m > M:
-                break
-
-        w, one_tree_cost, degrees = _bound_value(cost, pi, search_edges)
-        if w > best_search_w:
-            best_search_w = w
+            alg.on_one_tree(one_tree_cost)
+        g = degrees - 2
+        w = one_tree_cost + float(np.dot(pi, g))
+        if w > max_w:
+            max_w = w
             best_pi = pi.copy()
-            if algorithm == "VJ":
-                step1 = one_tree_cost / (2 * n)     # refresh step scale on improvement
+            alg.on_new_wmax(one_tree_cost)
+        pi = pi + alg.step() * g
 
-        if algorithm == "HWC":
-            norm = float(np.sum((degrees - 2) ** 2))
-            step = lam * (upper_bound - w) / norm if norm > 0 else 0.0
-        else:
-            if m == 1:
-                step1 = one_tree_cost / (2 * n)
-            step = (((m - 1) * (2 * M - 5) / (2 * (M - 1))) - (m - 2)
-                    + 0.5 * (m - 1) * (m - 2) / ((M - 1) * (M - 2))) * step1
+    one_tree_cost, degrees = compute_one_tree(cost, best_pi)
+    return one_tree_cost + float(np.dot(best_pi, degrees - 2))
 
-        pi = pi + step * (degrees - 2)              # subgradient ascent: g_i = deg_i - 2
-
-    final_w, _, _ = _bound_value(cost, best_pi, None)      # complete-graph certificate
-    plain_w, _, _ = _bound_value(cost, np.zeros(n), None)  # never worse than plain 1-tree
-    return max(plain_w, final_w)
+if __name__ == "__main__":
+    rng = np.random.default_rng(0)
+    pts = rng.random((5, 2))
+    d = np.linalg.norm(pts[:, None, :] - pts[None, :, :], axis=-1)
+    print("plain min-1-tree   :", compute_one_tree(d, np.zeros(5))[0])
+    print("Held-Karp bound (VJ):", held_karp_lower_bound(d, "VJ"))
 ```
 
-Every complete-graph value returned by the code satisfies `<= OPT`. If the complete-graph
-minimum 1-tree has all degrees equal to 2 at the chosen prices, it is a tour and the bound
-equals OPT; otherwise the returned value is the best certified value among the unweighted
-1-tree and the final complete-graph recomputation with the optimized prices.
+The returned value is always evaluated as raw 1-tree cost plus `π·(d−2)` at the best potentials
+found, so it remains a lower bound on `C*`; the ascent only chooses better potentials.

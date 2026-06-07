@@ -1,0 +1,74 @@
+
+For any $f\in L^{1}(\R)\cap L^2(\R)$ the following inequality hods: 
+\begin{equation*}
+     \|f\ast f\|_{2} \le 
+     \|f\ast f\|_{1}
+     \|f\ast f\|_{\infty}.
+\end{equation*}
+Motivated by the regularizing effect of the autoconvolutions it was conjectured by Martin and O’Bryant [\cite{MOB3}, Conjecture 5.2.] that there is a
+universal constant $0<c<1$ such that for all nonnegative $f\in L^{1}(\R)\cap L^2(\R)$ the following improved inequality hods: 
+\begin{equation*}\label{ineq thm 2}
+     \|f\ast f\|_{2} \le c
+     \|f\ast f\|_{1}
+     \|f\ast f\|_{\infty}.
+\end{equation*}
+In fact, they proposed $c=\frac{\log 16}{\pi}\sim 1-0.1174$. This was disproved by Matolcsi and Vinuesa \cite{MV}, they observed that a necessary condition is $c\geq 1-0.1107$.
+
+In this section we show that 
+
+\begin{theorem}\label{otro teorema de autoconvolutions}
+The best constant $c$ such that for any $f\in L^{1}(\R)\cap L^2(\R)$ the inequality 
+\begin{equation}
+    \|f\ast f\|_{2} \le c
+     \|f\ast f\|_{1}
+     \|f\ast f\|_{\infty}
+\end{equation}
+holds is $1$.
+\end{theorem}
+
+We start with two results about cut-off functions in $\mathbb R$.
+
+\begin{prop}
+There exists a smooth real function $\eta \in L^1(\mathbb R) \cap L^\infty(\mathbb R)$ and some $n>100$ such that the following hold:
+
+\begin{itemize}
+	\item $\eta$ is symmetric nonnegative
+	\item $\hat \eta$ is $\mathcal C^{n-1}$, symmetric nonnegative, supported on $[-1,1]$ and positive on $(-1,1)$
+	\item $\|\eta\|_1=1$
+	\item $\hat\eta(1-x) = c x^n(1+o(1))$, for $x \in [0,\frac 1 {10}]$, where the $o(1)$ term is smooth.
+\end{itemize}
+\end{prop}
+
+\begin{proof}
+	Let $f = (\frac 1 4-x^2)^m \chi_{[-1/2,1/2]}$ for $m>100$. Let $\hat \eta = c f\ast f$, for $c$ that makes  $\|\eta\|_1=1$ hold.
+\end{proof}
+
+\begin{prop}
+\label{can-take-sqrt}With $\eta$ as given in the previous lemma, if $\phi:\mathbb R\to \mathbb R$ is a smooth function such that $\phi(x) = \bar \phi(-x)$ for all $x\in\mathbb{R}$, $\phi(1)=1+o(1)$, and it does not vanish on $[-1,1]$, then $\phi \hat \eta$ admits a $\mathcal C^{50}$ (complex) square root on $\mathbb R$.
+\end{prop}
+
+\begin{proof}
+By elementary complex analysis, we know there exists a unique $C^{0}_c$ complex square root  $f$ of $\phi \hat \eta $. Moreover it is smooth in $(-1,1)\cup [-1,1]^c$. It suffices to show that this square root is $\mathcal C^{50}$ near $1$. By hypothesis, $\phi = (1+o(1))$ near $1$, where the $o(1)$ is a smooth term. Therefore $\phi \hat \eta (1-x)$ is $cx^{n}(1+o(1))$, where the $o(1)$ is a smooth term, and therefore admits a $\mathcal C^{50}$ square root.
+\end{proof}
+
+\begin{proof}[Proof of Theorem \ref{otro teorema de autoconvolutions}]
+Throughout the proof, let $\eta$ as given in the theorem above. Let $\eta_c(x) = c^{-1}\eta(c x)$. Let {$g = \chi_{[-1/2,1/2]}\ast \eta_c$} for $c$ large enough. 
+
+We have that $|g|$ is a real-valued Schwartz function, and that 
+
+\begin{equation}
+    \|g\|_{2} \ge (1-\epsilon)
+     \|g\|_{1}
+     \|g\|_{\infty}
+\end{equation}
+for $\epsilon=\epsilon(c)$ as small as we want. We will show that there exists a test function $f$ such that the following inequality holds
+$$
+\|f\ast f- g\|_*<\epsilon
+$$
+for $*=1,2,\infty$. This will finish the proof. Note that we can  get $*=2$ by interpolation. Let $z_1,\dots z_n$ be the positive zeros of $\hat g$. Note that sincce $\hat g(-x) = \overline{\hat g}(x)$, the negative zeros are $-z_1,\dots -z_n$. Let $\delta$ sufficiently small, %to be chosen later, 
+and let 
+$$
+\hat {\tilde g}(w):= \hat \eta_c \left(\hat \chi_{[-1/2,1/2]} +i\delta  \sum_{j=1}^n  \hat \eta(\delta^{-1}(w-z_j))-\hat \eta(\delta^{-1}(w+z_j))\right).
+$$
+Now we can take a square-root of $\hat {\tilde g}(w)$ by Proposition \ref{can-take-sqrt} and the result follows.
+\end{proof}

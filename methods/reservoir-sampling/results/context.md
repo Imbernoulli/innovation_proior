@@ -93,10 +93,9 @@ enough that `N >> k`.
 ## Code framework
 
 A streaming harness already exists: items arrive one at a time, we hold a small buffer, and we
-emit the buffer at end-of-stream. The uniform RNG, the array, and (for the weighted case) a
-binary heap are all standard primitives. What is missing is the *selection rule* — which
-arriving items enter the buffer and which buffered item they displace — and the *acceptance
-schedule* that decides this without knowing `N`. The stubs below mark exactly those holes.
+emit the buffer at end-of-stream. The uniform RNG, arrays, iterators, and binary heaps are all
+standard primitives. What is missing is the selection rule, the schedule for deciding when an
+item should enter without knowing `N`, and the weighted analogue of that rule.
 
 ```python
 import math, random, heapq
@@ -105,20 +104,19 @@ class StreamSampler:
     """One pass, O(k) memory. Feed items with add(); read sample() at the end."""
     def __init__(self, k):
         self.k = k
-        self.reservoir = []   # the O(k) buffer
-        self.i = 0            # items seen so far (we never assume we know the final N)
+        self.buffer = []
+        self.i = 0
 
     def add(self, item):
         self.i += 1
-        if len(self.reservoir) < self.k:
-            self.reservoir.append(item)        # seed phase: the first k are a valid size-k sample of themselves
+        if len(self.buffer) < self.k:
+            self.buffer.append(item)
         else:
-            # TODO: decide whether this item enters, and which slot it displaces,
-            #       so that the buffer stays a uniform size-k sample of all i items.
+            # TODO: decide whether this item enters and which buffered slot it displaces.
             pass
 
     def sample(self):
-        return self.reservoir
+        return self.buffer
 
 def sample_stream(stream, k):
     s = StreamSampler(k)
@@ -126,14 +124,47 @@ def sample_stream(stream, k):
         s.add(x)
     return s.sample()
 
+class FastStreamSampler:
+    """Same contract as StreamSampler, but admissions are generated in gaps."""
+    def __init__(self, k):
+        self.k = k
+        self.buffer = []
+        self.i = 0
+        self.schedule_state = None
+        self.next_i = None
+
+    def _schedule_next(self):
+        # TODO: draw the next accepted position from the current schedule state.
+        pass
+
+    def add(self, item):
+        self.i += 1
+        if len(self.buffer) < self.k:
+            self.buffer.append(item)
+            if len(self.buffer) == self.k:
+                # TODO: initialize the schedule state and first accepted position.
+                pass
+        elif self.i == self.next_i:
+            # TODO: replace one buffered item, update the schedule state, and schedule the next entry.
+            pass
+
+    def sample(self):
+        return self.buffer
+
 def sample_stream_fast(stream, k):
-    # TODO: same output as sample_stream, but skip whole runs of rejected items
-    #       with a single random draw instead of one draw per item.
-    pass
+    s = FastStreamSampler(k)
+    for x in stream:
+        s.add(x)
+    return s.sample()
 
 def sample_stream_weighted(stream, k):
-    # stream yields (item, weight). Want each item kept with probability tied to its weight,
-    # without replacement, in one pass and O(k) memory.
-    # TODO: a per-item key built from weight + a min-heap threshold rule.
+    heap = []
+    for item, weight in stream:
+        # TODO: compute a weight-dependent score and keep the best k scores in heap.
+        pass
+    return [item for _score, item in heap]
+
+def sample_stream_weighted_fast(stream, k):
+    # TODO: same weighted output, but jump by accumulated weight rather than by item count.
     pass
 ```

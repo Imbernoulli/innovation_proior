@@ -1,4 +1,4 @@
-# The cap set bound via the polynomial / slice-rank method
+# The cap set bound via the Croot–Lev–Pach polynomial method
 
 ## Problem
 
@@ -7,32 +7,48 @@ equivalently no three distinct points x, y, z with x + y + z = 0 (no nontrivial
 line). The question is the growth rate of r_3(F_3^n) = max |A|. For fifteen years
 the best upper bound (Meshulam; Bateman–Katz) was 3^n / poly(n) — only a
 polynomial saving off the trivial 3^n, by Fourier analysis. The breakthrough is
-an *exponential-rate* saving with an explicit c < 3, obtained by a rank
-(polynomial-method) certificate with no Fourier analysis.
+an *exponential-rate* saving with an explicit c < 3, obtained by adapting the
+Croot–Lev–Pach polynomial method (originally for (Z/4Z)^n) to F_3^n. No harmonic
+analysis: a rank certificate in the fixed-field, growing-dimension regime.
 
 ## Key idea
 
-Over F_3, 1 − t^2 is the indicator of t = 0 (Fermat: t^2 ∈ {0,1}). So
-δ_0(w) = ∏_{i=1}^n (1 − w_i^2) is a polynomial of total degree 2n equal to the
-Kronecker delta at 0. Set w = x + y + z. On A^3, the cap property forces
-x + y + z = 0 to mean x = y = z, so
+The AP condition over F_3 is a − 2b + c = 0, i.e. a + b + c = 0 — three nonzero
+coefficients summing to 0 over an honest field (no ring/coset bookkeeping, unlike
+the 2 in the Z/4Z case). The engine is the CLP rank lemma, generalized to handle
+three nonzero coefficients. On F_q^n only *reduced* monomials matter (each
+variable degree ≤ q−1); write m_d for the number of reduced monomials of total
+degree ≤ d. Point-indicators are reduced polynomials, so evaluation
+S_n^d → functions is the natural pairing.
 
-    δ_0(x + y + z) = Σ_{a ∈ A} δ_a(x) δ_a(y) δ_a(z)   on A × A × A,
+**Rank lemma (Proposition).** Let α, β, γ ∈ F_q with α + β + γ = 0, A ⊆ F_q^n, and
+P a reduced polynomial of degree ≤ d with P(αa + βb) = 0 for all distinct
+a, b ∈ A. Then #{a ∈ A : P(−γa) ≠ 0} ≤ 2·m_{d/2}.
 
-a **diagonal tensor** with |A| nonzero entries. Two opposing bounds on its
-**slice rank** (the min number of terms h(x_i)·g(rest)) squeeze |A|:
+*Proof.* Expand P(αx + βy) = Σ c_{m,m'} m(x) m'(y) over reduced monomial pairs with
+deg(mm') ≤ d. In each term one of m, m' has degree ≤ d/2, so
 
-- **Lower:** a diagonal tensor Σ_{a} c_a δ_a(x_1)…δ_a(x_k) with c_a ≠ 0 has slice
-  rank exactly |{a : c_a ≠ 0}| (induction on k; base case = matrix rank of a
-  diagonal matrix; inductive step contracts against a vector orthogonal to one
-  coordinate's p slices and chosen with at least |A|−p nonzero coordinates, then
-  drops to k−1). Hence slice-rank = |A|.
-- **Upper:** δ_0(x+y+z) has total degree 2n, so in each monomial one of the three
-  variable-blocks x, y, z has degree ≤ 2n/3 (pigeonhole). Grouping by which block
-  is low gives 3 families of slices, so slice-rank ≤ 3·m_{2n/3}, where m_d is the
-  number of reduced F_3-monomials (exponents in {0,1,2}) of degree ≤ d.
+    P(αx + βy) = Σ_{deg m ≤ d/2} m(x)F_m(y) + Σ_{deg m ≤ d/2} m(y)G_m(x).
 
-Therefore **|A| ≤ 3·m_{2n/3}**.
+The matrix B_{ab} = P(αa + βb) is therefore a sum of 2·m_{d/2} rank-one matrices,
+so rank(B) ≤ 2·m_{d/2}. The hypothesis makes B *diagonal*; a diagonal matrix's
+rank is its number of nonzero diagonal entries, and B_{aa} = P((α+β)a) = P(−γa).
+∎  (CLP's original lemma is the case (α, β, γ) = (1, −1, 0), where P(−γa) = P(0).)
+
+**From lemma to bound (Theorem).** For caps take α = β = γ = 1 (1+1+1 = 0 in F_3).
+S(A) = {αa_1 + βa_2 : a_1 ≠ a_2} is disjoint from −γA (else a nontrivial AP). Let V
+be the reduced polynomials of degree ≤ d vanishing off −γA; dim V ≥ m_d − (q^n − |A|).
+Each P ∈ V vanishes on S(A), so by the lemma is nonzero at ≤ 2·m_{d/2} of the −γa.
+A P ∈ V of maximal support Σ has |Σ| ≥ dim V (else a Q ∈ V vanishing on Σ enlarges
+the support) and Σ ⊆ −γA, so |Σ| ≤ 2·m_{d/2}. Hence
+
+    m_d − (q^n − |A|) ≤ 2·m_{d/2},  i.e.  |A| ≤ 2·m_{d/2} + (q^n − m_d).
+
+Since q^n − m_d ≤ m_{(q−1)n − d} (exponent complement e ↦ q−1−e) and the degree
+distribution is symmetric about (q−1)n/2, balancing at d = 2(q−1)n/3 gives both
+thresholds equal to (q−1)n/3:
+
+Therefore **|A| ≤ 3·m_{(q−1)n/3}**, and for q = 3, **|A| ≤ 3·m_{2n/3}**.
 
 ## The explicit constant
 
@@ -48,23 +64,17 @@ The finite bound remains **|A| ≤ 3·m_{2n/3}**; its nth-root limit is c.
 Equivalently, for every ε > 0 and all large n, |A| ≤ (c+ε)^n, so
 |A| = o(2.756^n).
 
-## Asymmetric form (generalizes to all odd q)
+## Generalization
 
-The asymmetric matrix-rank lemma: for nonzero α, β, γ ∈ F_q with
-α + β + γ = 0, and a reduced P of degree
-≤ d that vanishes at αa + βb for all distinct a, b ∈ A, the matrix
-B_{ab} = P(αa + βb) is diagonal; writing P(αx+βy) = Σ_{deg m ≤ d/2} m(x)F_m(y) +
-Σ_{deg m ≤ d/2} m(y)G_m(x) expresses B as 2·m_{d/2} rank-one matrices, so
+The lemma and theorem run over any finite field for equations
+αa_1 + βa_2 + γa_3 = 0 with α, β, γ nonzero and α + β + γ = 0, assuming the only
+solutions in A^3 are diagonal. Balancing at d = 2(q−1)n/3 gives
+|A| ≤ 3·m_{(q−1)n/3} with exponential rate c_q < q for each fixed q. For ordinary
+3-term progressions in odd characteristic, take (α, β, γ) = (1, −2, 1); for
+q = 3 this is (1, 1, 1).
 
-    #{a : P(−γa) ≠ 0} = rank(B) ≤ 2·m_{d/2}.
-
-A dimension count (P of maximal support in the space vanishing off −γA, which has
-dim ≥ m_d − (q^n − |A|), and S(A) = {αa+βb : a≠b} is disjoint from −γA under the
-no-nontrivial-solution hypothesis)
-yields |A| ≤ 2·m_{d/2} + (q^n − m_d). Since q^n − m_d ≤ m_{(q−1)n − d}
-(complement exponents e ↦ q−1−e), and the degree distribution is symmetric about
-(q−1)n/2, balancing at d = 2(q−1)n/3 gives **|A| ≤ 3·m_{(q−1)n/3}** — exponential
-rate c < q for every odd prime power q (q = 3 is the cap set case).
+Tao's later slice-rank language repackages the same diagonal rank phenomenon, but
+the derivation here is the CLP matrix-rank lemma plus the dimension count.
 
 ## Lower bound (principled constructions, for contrast)
 

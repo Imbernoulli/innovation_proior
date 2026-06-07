@@ -1,0 +1,231 @@
+Chapter 9
+Lagrangian Relaxation for Integer
+Programming
+
+Arthur M. Geoffrion
+
+
+
+
+Introduction by Arthur M. Geoffrion
+
+   It is a pleasure to write this commentary because it offers an opportunity to ex-
+press my gratitude to several people who helped me in ways that turned out to be
+essential to the birth of [8]. They also had a good deal to do with shaping my early
+career and, consequently, much of what followed.
+   The immediate event that triggered my interest in this topic occurred early in
+1971 in connection with a consulting project I was doing for Hunt-Wesson Foods
+(now part of ConAgra Foods) with my colleague Glenn Graves. It was a distribution
+system design problem: how many distribution centers should there be and where,
+how should plant outputs flow through the DCs to customers, and related questions.
+We had figured out how to solve this large-scale MILP problem optimally via Ben-
+ders Decomposition, a method that had been known for about a decade but had not
+yet seen practical application to our knowledge. This involved repeatedly solving a
+large 0-1 integer linear programming master problem in alternation with as many
+pure classical transportation subproblems as there were commodity classes. The
+master problem was challenging, and one day Glenn, who did all the implementa-
+tion, came up with a new way to calculate conditional “penalties” to help decide
+which variable to branch on in our LP-based branch-and-bound approach.
+   I regularly taught a doctoral course in those days that covered, inter alia, the
+main types of penalties used by branch-and-bound algorithms. But after studying the
+math that Glenn used to justify his, I didn’t see a connection to any of the penalties
+I knew about. I did, however, notice that Glenn made use of a Lagrangean term,
+and I was very familiar with Lagrangeans owing to my earlier work on solving
+discrete optimization problems via Lagrange multipliers [2] and on duality theory
+in nonlinear programming [6]. It often happens that a mathematical result can be
+
+Arthur M. Geoffrion
+UCLA Anderson School of Management, Los Angeles, USA
+e-mail: ageoffri@anderson.ucla.edu
+
+
+M. Jünger et al. (eds.), 50 Years of Integer Programming 1958-2008,               243
+DOI 10.1007/978-3-540-68279-0_9, © Springer-Verlag Berlin Heidelberg 2010
+244                                                                   Arthur M. Geoffrion
+
+derived in quite distinct ways, and so it was in this case: I found that not only Glenn’s
+penalties, but several other kinds of penalties could be derived in a unified way
+as shown in Sec. 4 of [8], and that numerous special problem structures could be
+exploited to produce additional penalties. This pleased me greatly, because I had a
+passion for trying to unify and simplify results that others had derived from disparate
+viewpoints, especially in the context of exploiting special problem structure. At that
+point, I knew that I had to write this up.
+    Shortly it became clear that what I later dubbed Lagrangean relaxation was use-
+ful for exploiting various kinds of special structures of integer programming prob-
+lems in other ways besides penalties. In particular, it can be used to tailor most of
+the main operations found in branch-and-bound algorithms as explained in Sec. 3
+of [8]. It also rendered obsolete the need for so-called surrogate constraints as ex-
+plained in Sec. 5, and it can be used to derive new cutting planes as explained in
+Sec. 6. Some basic theory of Lagrangean relaxation had to be filled in, the subject
+of Sec. 3, and this drew importantly on my earlier work on nonlinear duality. I had
+a working paper version of [8] by late 1971, and in late 1972 presented the main
+results at a symposium in Germany. When Glenn and I wrote up the work surround-
+ing the Hunt-Wesson Foods project, we included a comment in Sec. 3.1 of [7] on
+the branching penalties used in our implementation.
+    To explain more fully where [8] came from, I should also explain how the trig-
+gering Hunt-Wesson project came about, especially since this was my first indus-
+trial consulting engagement since obtaining my Ph.D. 5 years earlier (how does one
+boot a consulting practice?), and I should comment on the prior research that sup-
+ported [8] and the novel solution method used for the Hunt-Wesson problem. First
+a few words about the origin of the project.
+    A very senior UCLA colleague of mine, Professor Elwood Buffa, opened a door
+in 1970 that would change my life in unforeseen ways. A former doctoral student of
+his, Dr. William Taubert, was then a vice president of Hunt-Wesson Foods, which
+had been struggling for years to rationalize its network of distribution centers. El
+knew that I was working on large-scale optimization methods that might conceiv-
+ably apply to such problems, but he couldn’t have known whether I could adapt
+those methods successfully. Neither did I. With no prompting whatever, he decided
+to recommend me to Bill Taubert as a consultant. El didn’t have to take that risk,
+nor did Bill in hiring me. If I failed—which my inexperience as a consultant and
+unfamiliarity with distribution systems should have made the safest bet—it would
+have been an embarrassment to El, Bill, and UCLA.
+    But a streak of good luck ensued, leading to a successful project at Hunt-Wesson
+Foods, to many more consulting engagements in what is now called supply chain
+management, to the founding of a consulting and software firm that celebrates its
+30th anniversary this year (2008), to the discovery of several important research
+problems that would occupy most of the rest of my career, and to an appreciation
+for the synergies of research, practice, and teaching that has shaped my professional
+life, including my service to TIMS and INFORMS.
+    If fortune favors the prepared mind, mine must have been prepared by my previ-
+ous work on topics that proved useful not only for the Hunt-Wesson Foods project
+9 Lagrangian Relaxation for Integer Programming                                     245
+
+and what followed from it, but also for the paper which this commentary introduces.
+Especially my work on integer programming (especially [3, 4]), nonlinear duality
+theory [6], and large-scale optimization methods (especially [5]). Most of that work
+came about because of another door opened for me by my dissertation advisor at
+Stanford University, Professor Harvey Wagner.
+   When I accepted a job at UCLA’s business school in 1964, just prior to finishing
+my thesis, Harvey suggested that I would benefit from being a day-a-week con-
+sultant at RAND Corporation, just a few miles from UCLA. He arranged it with
+Dr. Murray Geisler, head of RAND’s Logistics Department. At that time, RAND
+was not far past its prime as the greatest think tank in the world, including its aston-
+ishing role as the fertile spawning ground or incubator of such important OR meth-
+ods as discrete event and Monte Carlo simulation, dynamic programming, game the-
+ory, parts of inventory and logistics theory, network flow theory, and mathematical
+programming—linear, quadratic, stochastic, and integer. RAND was also a major
+contributor to the very early history of artificial intelligence, digital computing, the
+Internet, both systems analysis and policy analysis, the U.S. space program, and
+much more besides. That day a week, which lasted fairly steadily until the early
+1970s, was disproportionately important to my early research life.
+   I had fine operations research colleagues at UCLA, but none did research in op-
+timization, whereas at RAND I could interact with many staff members and A-list
+consultants who did, including Robin Brooks, Eric Denardo, Ben Fox, Ray Fulker-
+son, Glenn Graves, Al Madansky, Harry Markowitz, Bob Thrall, and Philip Wolfe.
+Moreover, at RAND I had excellent computer programming and clerical/data ser-
+vices (they had an IBM 7044 when I arrived), a full-service publication department
+that professionally edited and widely disseminated most of my research papers on
+optimization, and a good library that would even translate Russian-language articles
+at my request. I was in heaven there, and could not overstate the advantages gained
+from RAND’s infrastructure and my second set of colleagues there as I launched
+my career.
+   It was at RAND that, very early in 1965, Murray handed me a somewhat beat
+up copy of Egon Balas’ additive algorithm paper prior to its publication [1] (written
+while Egon was still in Rumania), and asked me to take a look at it since it was
+creating a stir. Thus commenced my enduring interest in integer programming. I re-
+cast this work as LP-based implicit enumeration in a limited-circulation manuscript
+dated August 23, 1965, published internally at RAND in September 1967 and ex-
+ternally about two years later [4]. Murray quickly arranged for Richard Clasen—an
+important early figure in mathematical programming in his own right—to be as-
+signed to me to implement my first 0-1 integer programming code, the RIP30C
+incarnation of which RAND distributed externally starting mid-1968. Murray also
+arranged for others to assist me with the extensive numerical experiments.
+   My debt to RAND goes beyond even what is mentioned above: as a hotbed of
+OR for many years, RAND’s influence on nearby UCLA for more than a decade
+prior to my arrival helped to build and shape an OR group with a vitality and local
+culture that provided a comfortable home for my entire career. The group’s found-
+ing in the early 1950s originated independently of RAND, but its frequent interac-
+246                                                                          Arthur M. Geoffrion
+
+tions with RAND staff and consultants in its early days were of incalculable value;
+there are records of visits in the 1950s by Kenneth Arrow, Richard Bellman, Abe
+Charnes, Bill Cooper, George Dantzig, Merrill Flood, Ray Fulkerson, Alan Manne,
+Harry Markowitz, Oscar Morgenstern, Lloyd Shapley, Andy Vaszonyi, and dozens
+of others. (As an aside, the phrase “management sciences” was coined during a
+conversation between Melvin Salveson, the former Tjalling Koopmans student who
+founded UCLA’s OR group, and Merrill Flood of RAND in September, 1953, the
+same month when Mel hosted on campus the first pre-founding meeting—attended
+by many RAND OR people—of what became The Institute of Management Sci-
+ences (TIMS) three months later.) Some taught courses as lecturers, and some even
+joined the faculty. By the time of my arrival, these interactions had largely tailed
+off, but they left a palpable tradition of creativity and excellence in my group that
+inspired my best efforts as an impressionable young faculty member.
+    Let me summarize. The paper following this commentary did not appear out of
+nowhere. It was enabled by multiple gifts of wisdom and kindness toward me by
+Harvey Wagner, who taught me how to do research and arranged for me to con-
+sult at RAND; by Elwood Buffa, who dropped my first and all-important consulting
+job in my lap; by Murray Geisler, who turned my attention to integer program-
+ming and arranged generous assistance in support of my research; and by my early
+colleague/mentors at UCLA, Jim Jackson (an OR pioneer whose contributions in-
+cluded “Jackson networks”) and Jacob Marschak (a world-class economist), who
+helped shape my understanding of what it means to be a professor, arranged for me
+to be supported from the outset on their research grants, and then helped me obtain
+my own grants (from NSF starting in 1970 and ONR starting in 1972). I will always
+be grateful to these people for the important roles they played in my professional
+life.
+
+
+
+References
+
+1. E. Balas, An additive algorithm for solving linear programs with zero-one variables, Operations
+   Research 13 (1965) 517–546.
+2. R. Brooks and A.M. Geoffrion, Finding Everett’s Lagrange multipliers by linear programming,
+   Operations Research 14 (1966) 1149–1153.
+3. A.M. Geoffrion, Integer programming by implicit enumeration and Balas’ method, Review of
+   the Society for Industrial and Applied Mathematics 9 (1967) 178–190.
+4. A.M. Geoffrion, An improved implicit enumeration approach for integer programming, Opera-
+   tions Research 17 (1969) 437–454.
+5. A.M. Geoffrion, Elements of large-scale mathematical programming, Management Science 16
+   (1970) 652–691.
+6. A.M. Geoffrion, Duality in nonlinear programming, SIAM Review 13 (1971) 1–37.
+7. A.M. Geoffrion and G.W. Graves, Multicommodity distribution system design by Benders de-
+   composition, Management Science 20 (1974) 822–844.
+8. A.M. Geoffrion, Lagrangean relaxation for integer programming, Mathematical Programming
+   Study 2 (1974) 82–114.
+9 Lagrangian Relaxation for Integer Programming   247
+248                                                        Arthur M. Geoffrion
+
+
+
+
+The following article originally appeared as:
+A.M. Geoffrion, Lagrangian Relaxation for Integer Programming, Mathematical
+Programming Study 2 (1974) 82–114.
+Copyright °
+          c 1974 The Mathematical Programming Society.
+Reprinted by permission from Springer.
+9 Lagrangian Relaxation for Integer Programming   249
+250   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   251
+252   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   253
+254   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   255
+256   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   257
+258   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   259
+260   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   261
+262   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   263
+264   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   265
+266   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   267
+268   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   269
+270   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   271
+272   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   273
+274   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   275
+276   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   277
+278   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   279
+280   Arthur M. Geoffrion
+9 Lagrangian Relaxation for Integer Programming   281
+

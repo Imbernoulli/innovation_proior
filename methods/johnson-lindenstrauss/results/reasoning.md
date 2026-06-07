@@ -1,6 +1,6 @@
 OK, let me think this through from scratch. I have $n$ points sitting in $\mathbb{R}^d$, $d$ enormous, and I want to push them down into $\mathbb{R}^k$ with $k$ as small as I can get, while keeping every pairwise distance to within $(1\pm\varepsilon)$. Everything distance-based I'd do afterward — nearest neighbors, clustering, regression — pays for the ambient dimension, so the prize is a $k$ that depends only on how hard the *point set* is, not on the accidental $d$ the data happens to arrive in. The question I actually care about: how small can $k$ be, and does it have to grow with $d$ at all?
 
-First, is this even possible? My gut says "to keep distances you need the dimension the data really lives in, and that can be huge." Take the worst case for *exactness*: $n$ mutually equidistant points, a regular simplex. To realize $n$ equal distances exactly I need $n-1$ dimensions — no squeezing that into fewer without breaking a distance. So if I demand zero error, $k$ is forced up near $n$ and there's nothing to do. The whole hope lives in the $\varepsilon$ of slack. I should keep my eye on the fact that it's *squared* distances with a *multiplicative* band $(1\pm\varepsilon)$ that I'm allowed to be sloppy about.
+Is this even possible? My gut says "to keep distances you need the dimension the data really lives in, and that can be huge." Take the worst case for *exactness*: $n$ mutually equidistant points, a regular simplex. To realize $n$ equal distances exactly I need $n-1$ dimensions — no squeezing that into fewer without breaking a distance. So if I demand zero error, $k$ is forced up near $n$ and there's nothing to do. The whole hope lives in the $\varepsilon$ of slack. I should keep my eye on the fact that it's *squared* distances with a *multiplicative* band $(1\pm\varepsilon)$ that I'm allowed to be sloppy about.
 
 Now what kind of map? The instinct from data analysis is to fit the data: take the top-$k$ principal directions, the SVD, project there. That minimizes a sum of squared residuals — the best rank-$k$ approximation $A_k$ beats every rank-$k$ matrix $D$ in Frobenius norm, $\|A-A_k\|\le\|A-D\|$. But stare at what that objective actually controls: it's the *total* displacement summed over points. A global optimum can sacrifice one pair completely — shrink one inter-point distance to nearly zero — if that buys a bigger reduction elsewhere in the sum. There's no floor under any individual distance. And the $k$ it needs is dictated by the spectrum of *this* data; nothing promises it's free of $d$. So the data-fitting instinct is exactly wrong for an all-pairs, $d$-independent guarantee. I want the opposite: a map that doesn't look at the data at all and treats every direction even-handedly.
 
@@ -66,7 +66,11 @@ $$\Pr[L\ge(1+\varepsilon)\mu] \le \exp\!\Big(-\tfrac k2\big(\tfrac{\varepsilon^2
 
 Stare at the two exponents. Lower tail: $-k\varepsilon^2/4$. Upper tail: $-\tfrac k2(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3}) = -k(\tfrac{\varepsilon^2}{4}-\tfrac{\varepsilon^3}{6})$. For $\varepsilon\in(0,1)$ the upper-tail exponent is the *smaller in magnitude* — it has that extra positive $\tfrac{\varepsilon^3}{6}$ chipping away at it — so the upper tail is the **binding** one. It dictates how big $k$ must be, and the $\varepsilon^3/3$ correction I kept is precisely what sharpens the final constant; if I'd been lazy and used the two-term log bound, I'd have paid for it in $k$. So the controlling tail is $\exp\!\big(-\tfrac k2(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3})\big)$.
 
-Now wire in the union bound. I want each difference vector's *two-sided* failure probability below $2/n^2$, so that summed over $\binom{n}{2}<n^2/2$ pairs the total failure is below $1$. Each tail below $1/n^2 = \exp(-2\ln n)$ suffices. Setting the binding (upper) tail to $\exp(-2\ln n)$:
+Now wire in the union bound. The one-vector statement has the form
+
+$$\Pr\!\left[\left|\|f(x)\|^2-\|x\|^2\right|>\varepsilon\|x\|^2\right]\le 2\exp\!\Big(-\tfrac k2\big(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3}\big)\Big),$$
+
+which is the distributional version I need: for a fixed vector, the norm is preserved with probability at least $1-e^{-\Omega(k\varepsilon^2)}$. I want each difference vector's *two-sided* failure probability below $2/n^2$, so that summed over $\binom{n}{2}<n^2/2$ pairs the total failure is below $1$. Each tail below $1/n^2 = \exp(-2\ln n)$ suffices. Setting the binding (upper) tail to $\exp(-2\ln n)$:
 
 $$\tfrac k2\big(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3}\big) \ge 2\ln n \;\;\Longleftrightarrow\;\; k \ge \frac{4\ln n}{\varepsilon^2/2 - \varepsilon^3/3}.$$
 
@@ -78,15 +82,41 @@ Let me reframe what's really happening, because it suggests how to make the map 
 
 So can I replace the Gaussian entries with something dumber and faster? What if each $r_{ij}$ is just $\pm1$ with probability $\tfrac12$ each? Mean zero, variance one — the expectation calculation above goes through unchanged, so $\mathbb{E}\|f(x)\|^2=\|x\|^2$ still holds exactly. The map becomes: pick a random $\pm1$ matrix, and computing $\langle r,x\rangle$ is just additions and subtractions of the coordinates of $x$ — no floating-point multiplies, far fewer random bits, and in a database it's literally "add up a random half of the attributes, subtract the other half." That's a huge practical win *if* the concentration survives. And here's the worry: without spherical symmetry, the distribution of $\|f(x)\|^2$ now *depends on $x$*. For a Gaussian $R$ every $x$ gave the same $\chi^2$; for a $\pm1$ matrix, some adversarial $x$ might make $\langle r,x\rangle$ much more variable than others. I can't just wave the chi-square argument anymore.
 
-Let me look at the concentration directly. The binding event was the upper tail, and the Chernoff bound there came down to controlling $\mathbb{E}[\exp(h Q^2)]$ where $Q = \langle r, x\rangle$ for a single row $r$ (then raised to the $k$-th power by independence across rows). So the whole question reduces to: for which entry-distributions is $\mathbb{E}[\exp(hQ^2)]$ — or equivalently all the even moments $\mathbb{E}[Q^{2\ell}]$ — no larger than in the Gaussian case? If I can show the $\pm1$ moments are dominated by the Gaussian moments for *every* $x$, then the Chernoff bound, and hence $k$, is no worse.
+Let me look at the concentration directly. The upper Chernoff bound comes down to controlling $\mathbb{E}[\exp(h Q^2)]$ where $Q = \langle r, x\rangle$ for one row $r$ and a fixed unit vector $x$. I don't actually have to guess which $x$ is worst if I expand the even moments. For independent symmetric entries,
 
-Which $x$ is worst? Intuitively the adversary wants $x$ aligned so that $\langle r,x\rangle$ swings as wildly as possible. A spike like $x=(1,0,\dots,0)$ is actually *tame*: then $\langle r,x\rangle = r_1 = \pm1$, perfectly bounded, no tail at all. The dangerous $x$ is the *spread-out* one, $w=\tfrac{1}{\sqrt d}(1,1,\dots,1)$, where $\langle w,r\rangle = \tfrac{1}{\sqrt d}\sum_i r_i$ is a sum of $d$ independent signs — the configuration with the fattest fluctuations. So I'd conjecture the all-ones vector (and its sign-flips) is the worst case, and a convexity/balancing argument confirms it: among unit vectors, the even moments $\mathbb{E}[Q(x)^{2\ell}]$ are maximized when the squared coordinates are all equal. Concretely, take any $x$ with two unequal squared coordinates $x_1^2\ne x_2^2$ and replace both by their average $\gamma=\sqrt{(x_1^2+x_2^2)/2}$; one shows $\mathbb{E}[Q(x)^{2\ell}]\le \mathbb{E}[Q(\tilde x)^{2\ell}]$ for the more balanced $\tilde x$, and iterating drives $x$ to $w$. The key lemma behind one balancing step: writing $Q$ as $T + a r_1 + b r_2$ (the contribution of the other coordinates lumped into $T$), one checks $\mathbb{E}[(T+ar_1+br_2)^{2\ell}] \le \mathbb{E}[(T+\gamma r_1 + \gamma r_2)^{2\ell}]$ with $\gamma=\sqrt{(a^2+b^2)/2}$, because the relevant difference expands, via the binomial theorem, into a sum of terms $\binom{2k}{2j}T^{2(k-j)}D_{2j}$ with each $D_{2j}\ge0$ — using $(a+b)^2+(a-b)^2 = 2a^2+2b^2$ and $(x+y)^j\ge x^j+y^j$ for $x,y\ge0$, $j\ge1$. Balancing only ever raises the even moments, so $w$ is extremal.
+$$\mathbb{E}[Q^{2m}] = \sum_{\substack{\alpha_1+\cdots+\alpha_d=2m\\ \alpha_i\ \mathrm{even}\ \forall i}} {2m\choose \alpha_1,\dots,\alpha_d}\prod_i x_i^{\alpha_i}\,\mathbb{E}[r_i^{\alpha_i}],$$
 
-Now I just need: at the worst case $w$, are the $\pm1$ even moments still $\le$ the Gaussian ones? At $w$, $Q(w) = \tfrac1{\sqrt d}\sum_i Y_i$ with $Y_i=\pm1$ i.i.d., versus the Gaussian comparison $T = \tfrac1{\sqrt d}\sum_i G_i\sim N(0,1)$ with $G_i\sim N(0,1)$. Match them term by term in the moment expansion: any monomial $\mathbb{E}[Y_{i_1}\cdots Y_{i_{2k}}]$ is nonzero only when every index appears an even number of times (odd powers integrate to zero by symmetry, for both $Y$ and $G$), so everything reduces to comparing single-coordinate even moments $\mathbb{E}[Y_1^{2\ell}]$ vs. $\mathbb{E}[G_1^{2\ell}]$. For the sign, $\mathbb{E}[Y_1^{2\ell}] = 1$. For the Gaussian, $\mathbb{E}[G_1^{2\ell}] = (2\ell-1)!! = (2\ell)!/(\ell!\,2^\ell) \ge 1$. So $\mathbb{E}[Y_1^{2\ell}]\le\mathbb{E}[G_1^{2\ell}]$ trivially, the domination propagates up through every multi-index, and $\mathbb{E}[Q(w)^{2k}]\le\mathbb{E}[T^{2k}]$. Chaining: for *any* unit $x$, $\mathbb{E}[Q(x)^{2k}]\le\mathbb{E}[Q(w)^{2k}]\le\mathbb{E}[T^{2k}]$. The sign matrix's moments are everywhere below the Gaussian's. Summing into the MGF, $\mathbb{E}[\exp(hQ^2)]\le (1-2h)^{-1/2}$ for $h\in[0,1/2)$ — exactly the $\chi^2_1$ MGF — and $\mathbb{E}[Q^4]\le 3$. The Chernoff bound therefore reproduces the *same* tail $\exp(-\tfrac k2(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3}))$, and hence the *same* $k\ge 4(\varepsilon^2/2-\varepsilon^3/3)^{-1}\ln n$. Spherical symmetry bought me comfort, not necessity; concentration is the only thing that mattered, and the sign matrix concentrates at least as well.
+because every monomial with an odd exponent in some coordinate has expectation zero. For Gaussian coordinates the same expansion appears with $\mathbb{E}[G^{2\ell}]=(2\ell-1)!!$. For $\pm1$ signs, $\mathbb{E}[r_i^{2\ell}]=1\le(2\ell-1)!!$, term by term, so every even moment of $\langle r,x\rangle$ is bounded by the corresponding Gaussian moment, for every $x$. Summing the positive series gives
 
-Can I push sparsity further? The estimator only needs mean zero and variance one, so I have a free parameter: let each entry be $0$ with some probability and a larger spike otherwise, keeping variance one. Try $r_{ij} \in \{+\sqrt3, 0, -\sqrt3\}$ with probabilities $\{\tfrac16, \tfrac23, \tfrac16\}$: mean zero, and variance $3\cdot\tfrac13 = 1$. Now two-thirds of the matrix is zero, so applying it touches only a third of the coordinates — a threefold speedup and even fewer operations. Does the worst-case-is-all-ones argument survive? The same balancing and moment-domination go through — the single-coordinate even moments are $\mathbb{E}[Y_1^{2\ell}] = 3^\ell\cdot\tfrac13 = 3^{\ell-1} \le (2\ell)!/(\ell!\,2^\ell)$, still dominated by the Gaussian — so the positive-probability union-bound dimension is unchanged. If I want the explicit high-probability form with failure at most $n^{-\beta_{\rm prob}}$, I only change the union-bound target from $2/n^2$ to $2/n^{2+\beta_{\rm prob}}$, which gives $k_0=\frac{4+2\beta_{\rm prob}}{\varepsilon^2/2-\varepsilon^3/3}\log n$. There's a sharp limit though: in this simple three-value, variance-one family, pushing the zero-probability past $\tfrac23$ breaks the domination needed for arbitrary vectors. So $\tfrac23$ is exactly the most sparsity I can take for free with this argument.
+$$\mathbb{E}[\exp(hQ^2)]\le(1-2h)^{-1/2},\qquad 0\le h<\tfrac12.$$
 
-So the method is settled. Sample a $k\times d$ matrix $R$ with i.i.d. mean-zero, variance-one entries — Gaussian, or the database-friendly $\pm1$ / $\{\pm\sqrt3,0\}$ signs — fold in a $1/\sqrt k$ so the map is unbiased, set $k = \lceil 4(\varepsilon^2/2-\varepsilon^3/3)^{-1}\ln n\rceil$, and project $f(X)=XR^\top$. Let me write it grounded in how this is actually built.
+Then the upper tail for $S=\sum_{j=1}^k Q_j^2$ follows exactly as in the Gaussian calculation:
+
+$$\Pr[S\ge(1+\varepsilon)k]\le \inf_h (1-2h)^{-k/2}\exp(-h(1+\varepsilon)k).$$
+
+At $h=\varepsilon/(2(1+\varepsilon))$, this is $\exp(\tfrac k2(\ln(1+\varepsilon)-\varepsilon))\le\exp(-\tfrac k2(\tfrac{\varepsilon^2}{2}-\tfrac{\varepsilon^3}{3}))$.
+
+The lower tail needs its own check; the positive MGF alone does not prove it. Markov on $\exp(-hS)$ gives
+
+$$\Pr[S\le(1-\varepsilon)k]\le \exp(h(1-\varepsilon)k)\left(\mathbb{E}[\exp(-hQ^2)]\right)^k.$$
+
+Since $e^{-z}\le 1-z+z^2/2$ for $z\ge0$, and the moment domination gives $\mathbb{E}[Q^2]=1$ and $\mathbb{E}[Q^4]\le3$,
+
+$$\mathbb{E}[\exp(-hQ^2)]\le 1-h+\tfrac32h^2.$$
+
+I don't need the lower tail to be as sharp as the upper one — I only need it no weaker than the *binding* (upper) tail, whose per-coordinate exponent is $\tfrac{\varepsilon^2}{4}-\tfrac{\varepsilon^3}{6}$. Optimizing $\log(1-h+\tfrac32h^2)+h(1-\varepsilon)$ over $h\ge0$ gives
+
+$$\tfrac1k\log\Pr[S\le(1-\varepsilon)k]\;\le\;\min_{h\ge0}\Big[\log\!\big(1-h+\tfrac32h^2\big)+h(1-\varepsilon)\Big]\;\le\;-\Big(\tfrac{\varepsilon^2}{4}-\tfrac{\varepsilon^3}{6}\Big),$$
+
+for $0<\varepsilon<1$ (the small $h\approx\varepsilon/2$ minimizer leaves room to spare). So the lower tail is at least as small as the binding upper tail, and the sign matrix has the same two-sided tail I need, not just the same mean.
+
+Can I push sparsity further? The estimator only needs mean zero and variance one, so I can let each entry be zero most of the time and compensate by making the nonzeros larger. Suppose the nonzero density is $p$, with entries $\pm1/\sqrt p$ each with probability $p/2$ and $0$ otherwise. The variance is one, but the fourth moment is $1/p$. The moment comparison above already tells me I cannot take $p<1/3$, because the Gaussian fourth moment is $3$. At the edge $p=1/3$, the entries are $\{+\sqrt3,0,-\sqrt3\}$ with probabilities $\{\tfrac16,\tfrac23,\tfrac16\}$; for every $\ell\ge1$,
+
+$$\mathbb{E}[r_i^{2\ell}] = 3^{\ell-1}\le(2\ell-1)!!,$$
+
+with equality at $\ell=1,2$ and then the Gaussian double factorial grows faster. Now two-thirds of the matrix is zero, so applying it touches only a third of the coordinates — a threefold speedup and even fewer operations — while the same upper-MGF and lower-tail calculations still apply. If I want the explicit high-probability form with failure at most $n^{-\beta_{\rm prob}}$, I only change the union-bound target from $2/n^2$ to $2/n^{2+\beta_{\rm prob}}$, which gives $k_0=\frac{4+2\beta_{\rm prob}}{\varepsilon^2/2-\varepsilon^3/3}\log n$.
+
+So the method is settled. Sample a $k\times d$ matrix $R$ with i.i.d. mean-zero, variance-one entries — Gaussian, or the database-friendly $\pm1$ / $\{\pm\sqrt3,0\}$ signs — fold in a $1/\sqrt k$ so the map is unbiased, set $k = \lceil 4(\varepsilon^2/2-\varepsilon^3/3)^{-1}\ln n\rceil$, and project $f(X)=XR^\top$. Let me write the pieces in the same order I need to use them.
 
 ```python
 import numpy as np
@@ -95,7 +125,7 @@ from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.utils.random import sample_without_replacement
 
-def johnson_lindenstrauss_min_dim(n_samples, *, eps=0.1):
+def min_embedding_dim(n_samples, *, eps=0.1):
     eps = np.asarray(eps)
     n_samples = np.asarray(n_samples)
     if np.any(eps <= 0.0) or np.any(eps >= 1):
@@ -103,14 +133,21 @@ def johnson_lindenstrauss_min_dim(n_samples, *, eps=0.1):
     if np.any(n_samples <= 0):
         raise ValueError("n_samples must be positive")
     denominator = (eps**2 / 2) - (eps**3 / 3)
-    return (4 * np.log(n_samples) / denominator).astype(np.int64)
+    bound = np.ceil(4 * np.log(n_samples) / denominator).astype(np.int64)
+    return np.maximum(bound, 1)
 
 def _check_density(density, n_features):
     if density == "auto":
-        density = 1 / np.sqrt(n_features)
-    elif density <= 0 or density > 1:
-        raise ValueError("density must be in (0, 1]")
-    return density
+        density = 1.0 / 3.0
+    try:
+        density = float(density)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("density must be 'auto', 1/3, or 1") from exc
+    if np.isclose(density, 1.0):
+        return 1.0
+    if np.isclose(density, 1.0 / 3.0):
+        return 1.0 / 3.0
+    raise ValueError("density must be 'auto', 1/3, or 1")
 
 def _check_input_size(n_components, n_features):
     if n_components <= 0:
@@ -118,7 +155,7 @@ def _check_input_size(n_components, n_features):
     if n_features <= 0:
         raise ValueError("n_features must be positive")
 
-def _gaussian_random_matrix(n_components, n_features, random_state=None):
+def _dense_random_matrix(n_components, n_features, random_state=None):
     _check_input_size(n_components, n_features)
     rng = check_random_state(random_state)
     return rng.normal(
@@ -144,9 +181,10 @@ def _sparse_random_matrix(n_components, n_features, density="auto", random_state
         indices.append(indices_i)
         offset += nnz
         indptr.append(offset)
-    indices = np.concatenate(indices)
+    indices = np.concatenate(indices).astype(np.intp, copy=False)
     data = rng.binomial(1, 0.5, size=np.size(indices)) * 2 - 1
-    components = sp.csr_array((data, indices, indptr), shape=(n_components, n_features))
+    indptr = np.asarray(indptr, dtype=np.intp)
+    components = sp.csr_matrix((data, indices, indptr), shape=(n_components, n_features))
     return np.sqrt(1 / density) / np.sqrt(n_components) * components
 
 class RandomProjection:
@@ -163,24 +201,26 @@ class RandomProjection:
         n_samples, n_features = X.shape
         random_state = check_random_state(self.random_state)
         if self.n_components == "auto":
-            k = johnson_lindenstrauss_min_dim(n_samples=n_samples, eps=self.eps)
+            k = min_embedding_dim(n_samples=n_samples, eps=self.eps)
         else:
             k = self.n_components
         self.n_components_ = int(k)
         if self.kind == "gaussian":
-            self.components_ = _gaussian_random_matrix(
+            self.components_ = _dense_random_matrix(
                 self.n_components_, n_features, random_state=random_state
             )
-        else:
+        elif self.kind == "sparse":
             self.density_ = _check_density(self.density, n_features)
             self.components_ = _sparse_random_matrix(
                 self.n_components_, n_features, density=self.density_,
                 random_state=random_state
             )
+        else:
+            raise ValueError("kind must be 'gaussian' or 'sparse'")
         return self
 
     def transform(self, X):
         return safe_sparse_dot(X, self.components_.T, dense_output=self.dense_output)
 ```
 
-So the causal chain: insist on a *linear* map so each pairwise distance becomes the length of one difference vector; make the map *random and rotation-blind* so it ignores the data and treats every direction alike, which a data-fitting SVD can't; reduce the all-pairs requirement to a single tail bound, $\Pr[\,|\|f(x)\|^2-\|x\|^2|>\varepsilon\|x\|^2\,]$, and prove it via the squared-Gaussian MGF, where the ambient $d$ only sets the mean and cancels, leaving the relative error governed by $k$ alone; sharpen the binding upper tail with the three-term log bound to get $k = 4(\varepsilon^2/2-\varepsilon^3/3)^{-1}\ln n$; union-bound over $\binom{n}{2}$ pairs so a random draw works with probability $\ge 1/n$; then notice the proof used only mean zero, variance one, and independence — so swap Gaussians for $\pm1$ or sparse $\{\pm\sqrt3,0\}$ entries, with moment domination at the all-ones worst case certifying the same $k$ — buying integer arithmetic, sparsity, and far fewer random bits at no cost in the bound.
+So the causal chain: insist on a *linear* map so each pairwise distance becomes the length of one difference vector; make the map *random and rotation-blind* so it ignores the data and treats every direction alike, which a data-fitting SVD can't; reduce the all-pairs requirement to a single tail bound, $\Pr[\,|\|f(x)\|^2-\|x\|^2|>\varepsilon\|x\|^2\,]$, and prove it via the squared-Gaussian MGF, where the ambient $d$ only sets the mean and cancels, leaving the relative error governed by $k$ alone; sharpen the binding upper tail with the three-term log bound to get $k = 4(\varepsilon^2/2-\varepsilon^3/3)^{-1}\ln n$; union-bound over $\binom{n}{2}$ pairs so a random draw works with probability $\ge 1/n$; then notice that termwise moment domination preserves the same tail for $\pm1$ entries and for the sparsest variance-one three-value entries $\{\pm\sqrt3,0\}$ with density $1/3$ — buying integer arithmetic, sparsity, and far fewer random bits at no cost in the bound.

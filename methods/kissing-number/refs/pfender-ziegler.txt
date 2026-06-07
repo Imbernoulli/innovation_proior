@@ -1,0 +1,1255 @@
+Kissing Numbers, Sphere
+Packings, and Some
+Unexpected Proofs
+Florian Pfender and Günter M. Ziegler
+
+T
+
+he “kissing number problem” asks for the
+maximal number of blue spheres that
+can touch a red sphere of the same size
+in n-dimensional space. The answers in
+dimensions one, two, and three are classical, but the answers in dimensions eight and
+twenty-four were a big surprise in 1979, based on
+an extremely elegant method initiated by Philippe
+Delsarte in the early seventies which concerns inequalities for the distance distributions of kissing
+configurations.
+Delsarte’s approach led to especially striking
+results in cases where there are exceptionally symmetric, dense, and unique configurations of
+spheres: In dimensions eight and twenty-four these
+are given by the shortest vectors in two remarkable
+lattices, known as the E8 and the Leech lattice.
+However, despite the fact that in dimension four
+there is a special configuration which is conjectured
+to be optimal and unique—the shortest vectors in
+the D4 lattice, which are also the vertices of a regular 24-cell—it was proved that the bounds given
+by Delsarte’s method are not good enough to solve
+the problem in dimension four. This may explain
+the astonishment even to experts when in the fall
+of 2003 Oleg Musin announced a solution of the
+problem, based on a clever modification of Delsarte’s method [22], [23].
+Independently, Delsarte’s by now classical approach has also recently been adapted by Henry
+Cohn and Noam Elkies [5] to deal with optimal
+sphere packings more directly and more effectively than had been possible before. Based on this,
+Florian Pfender is postdoctoral fellow of the DFG Research
+Center “Mathematics for Key Technologies” in Berlin. His
+email address is fpfender@math.tu-berlin.de. Günter
+M. Ziegler is professor of mathematics at Technische Universität Berlin. His email address is ziegler@math.
+tu-berlin.de.
+
+SEPTEMBER 2004
+
+Henry Cohn and Abhinav Kumar [6] [7] have now
+proved that the sphere packings in dimensions
+eight and twenty-four given by the E8 and Leech
+lattices are optimal lattice packings (for dimension
+eight this had been shown before) and that they
+are optimal sphere packings, up to an error of not
+more than 10−28 percent.
+Here we try to sketch the setting, to explain
+some of the ideas, and to tell the story. For this
+
+Figure 1. The perfect kissing arrangement for
+n = 2.
+The first author was supported by the DFG Research Center “Mathematics in the Key Technologies” (FZT86). The
+second author was partially supported by Deutsche
+Forschungs-Gemeinschaft (DFG), via the DFG Research
+Center “Mathematics in the Key Technologies” (FZT86), the
+Research Group “Algorithms, Structure, Randomness”
+(Project ZI 475/3), and a Leibniz grant.
+
+NOTICES OF THE AMS
+
+873
+
+(Graphics: Detlev Stalling, ZIB Berlin)
+
+Figure 2. The hexagonal lattice packing in the
+plane.
+we start with a brief review of the sphere packing
+and kissing number problems. Then we look at the
+remarkable kissing configurations in dimensions
+four, eight, and twenty-four. We give a sketch of
+Delsarte’s method and how it was applied for the
+kissing number problem in dimensions eight and
+twenty-four. Then Musin’s ideas kick in, which
+leads us to look at some nonlinear optimization
+problems as they occur as subproblems in his approach. Finally, we sketch an elegant construction
+of the Leech lattice in dimension twenty-four, which
+starts from the graph of the icosahedron and uses
+only simple linear algebra. This is the lattice which
+Cohn and Kumar have now proved to be optimal
+
+Figure 4. The fcc sphere packing.
+874
+
+Figure 3. The icosahedron configuration.
+in dimension twenty-four by another extremely
+elegant and puzzling adaption of Delsarte’s
+method. A sketch for this will end our tour.
+
+Three Classical Problems
+The “kissing number problem” is a basic geometric problem that got its name from billiards: two
+balls “kiss” if they touch. The kissing number problem asks how many blue balls can touch one given
+red ball at the same time if all the balls have the
+same size. If you arrange the balls on a pool table,
+it is easy to see that the answer is exactly six: six
+balls just perfectly surround a given ball.
+The sphere packing problem is to determine the
+maximal density of a packing of balls (all of them
+of the same size) in Euclidean n-space.
+One class of packings to consider are lattice
+packings, which are invariant under any translation
+that takes one ball of the packing to the other.
+It is a simple exercise (recommended) to prove,
+for dimension two, that the “obvious” hexagonal
+packing of equal-sized disks (two-dimensional
+balls) in the plane—a lattice packing in which each
+disk touches κ(2) = 6 others—is the optimal lattice
+packing and to compute its density.
+It is not so easy to prove that the hexagonal packing is indeed an optimal sphere packing for dimension two. (Experts disagree whether the first
+proof for this, given by Thue 1892/1910, was indeed complete; if there was a gap, it was closed by
+Mahler and by Segre in 1940. See e.g. [14] for a
+proof.)
+Thus the hexagonal planar lattice packing yields
+optimal solutions for the two-dimensional cases of
+the kissing number problem, the lattice packing
+problem, and the sphere packing problem. However,
+there are various indications that solutions of these
+three problems in higher dimensions are not so simple, they are not just given by “one perfect lattice
+packing”, and things are much more complicated
+than in dimension two. This starts to show already
+in dimension three.
+
+NOTICES OF THE AMS
+
+VOLUME 51, NUMBER 8
+
+SEPTEMBER 2004
+
+(From Cohn and Elkies [5])
+
+Geometry Is Difficult …
+… as soon as you reach dimension three. The kissing number problem in dimension three asks,
+“How many balls can touch a given ball at the same
+time?” This problem is indeed very interesting and
+surprisingly hard. Isaac Newton and David Gregory had a famous controversy about it in 1694:
+Newton said that 12 should be the correct answer,
+while Gregory thought that 13 balls could fit. The
+regular icosahedron yields a configuration of 12
+touching balls that has great beauty and symmetry and leaves considerable gaps between the balls,
+which are clearly visible in our figure.
+So perhaps if you moved all of them to one side,
+a 13th ball would possibly fit in? It is a close call,
+but the answer is no; 12 is the correct answer. To
+prove this is a hard problem, which was finally
+solved by Schütte and van der Waerden [27] in 1953.
+A short sketch of an elegant proof was given by
+Leech [18] in 1956, but it is a substantial challenge
+to derive a complete proof from this.
+The lattice packing problem for dimension three
+was solved by Gauß in 1831, in an Anzeige (what
+today we would call a book review) of a book by Ludwig August Seeber. Indeed, Gauß proved a result
+about ternary quadratic forms which he even interpreted geometrically and which easily implies that
+the so-called “face-centered cubic (fcc)” packing is
+the unique densest lattice sphere packing for dimension three.
+The centers for this sphere packing are all the
+integral points in Z3 with exactly one or exactly
+three even coordinates. Again, it is a nice exercise
+to prove that this does indeed give a lattice
+√ pack1
+ing and that we can pack spheres of radius 2 2 with
+their centers in the lattice points, to compute the
+density of the resulting sphere packing, and to
+recognize that in this packing each sphere is
+“kissed” by exactly 12 other spheres whose touching points do not give a regular icosahedron.
+Just recall that the general sphere packing problem for dimension 3 , known as the “Kepler conjecture”, was only recently solved by Thomas C.
+Hales. The controversial story about that case has
+been told elsewhere (see for instance [14], [15],
+and [28]) and may even continue after the publication of Hales’s papers (which are expected to
+appear in the Annals and Discrete & Computational
+Geometry).
+So the lattice packing problem is different from
+the general sphere packing problem, and it seems
+to be considerably simpler. This starts with the fact
+that lattice packings are easy to describe (by a
+basis matrix). The density of a lattice packing is easily derived from the length of a shortest nonzero
+lattice vector and the determinant of a basis matrix. Also, the subtleties in the definition of “density” of a sphere packing disappear in the lattice
+case.
+
+upper curve: the previously best upper bound
+lower curve: Cohn & Elkies’ new upper bound
+bottom line: best packing known
+
+Figure 5. Plot of log2 δ + n(24 − n)/96 vs. dimension n, where
+δ is the “center density”.
+… and in High Dimensions
+It is likely that for most dimensions the optimal
+kissing arrangement is not unique and not rigid,
+the optimal sphere packing is not a lattice packing, and thus the methods discussed in this paper
+will not be able to give optimal results—but they
+do give the best known results in virtually the
+whole range of dimensions, from n = 1 to very
+large.
+Here are three indications that the final answers
+in high dimensions will not be extremely simple:
+• The optimal lattice packings E7 , E8 , and Λ9
+(conjectured) in dimensions 7 , 8 , and 9 have approximate densities 0.29530 , 0.25367 , and
+0.14577 respectively, so there is a “sudden drop”
+beyond n = 8 it seems. A similar effect happens
+at n = 24 . (See Figure 5, taken from Cohn and
+Elkies [5] with their kind permission.) This
+nonmonotone behaviour indicates that there
+are “special effects” happening in special
+dimensions.
+• In dimension n = 9 the nonlattice packing
+known as “P9a” contains spheres that kiss 306
+others, while it is known that in each lattice
+packing the kissing number (which is the same
+for all spheres) cannot exceed 272 . So in general the optimal kissing configuration is not
+given by a lattice.
+• In dimension n = 10 the packing “P10c” has
+a greater density than the best known lattice
+packing, “Λ10 ”.
+• In most dimensions, there is not even a plausible conjecture for a best sphere packing. Also,
+every dimension seems to have its own characteristics, with remarkable phenomena occurring
+in dimensions 4 , 8 , and 24, which is, however,
+not reflected in the upper bounds we have.
+
+NOTICES OF THE AMS
+
+875
+
+Three Kissing Configurations
+The theory of lattices and sphere packings features some of the most beautiful objects in mathematics, including some remarkable kissing configurations in special dimensions. In the following,
+we describe optimal kissing configurations of
+spheres in dimensions 4 , 8 , and 24. In each of
+them the vectors are the shortest vectors of a lattice of high symmetry, and there are special binary
+codes, large simple groups, and a lot of other miracles attached to them. Thompson’s little book
+[29] is a nice historical account of the discoveries;
+Conway and Sloane’s book [8] is the classical technical account, which includes a number of the key
+research papers in the subject; and Elkies’s prizewinning Notices papers [12] explain a lot of the connections to other mathematical fields, such as theta
+functions and modular forms.
+n = 4: There are 24 vectors with two zero components and √
+two components equal to ±1 ; they√all
+have length 2 and a minimum distance
+√ of 2 .
+Properly rescaled (that is, multiplied by 2 ), they
+yield the centers for a kissing configuration of unit
+spheres and imply that κ(4) ≥ 24 . The convex hull
+of the 24 points yields a famous 4 -dimensional
+polytope, the “24-cell”, discovered in 1852 by Ludwig Schäfli. Its facets are 24 regular octahedra.
+n = 8: Again we present a configuration with simple integer coordinates which 
+then can be rescaled.
+8
+Our configuration includes the 2 4 = 112 vectors
+of type “(06 , ±22 ) ,” that is, with two nonzero coordinates, which are ±2 , as well as the 27 = 128
+vectors of type “(±18 ) ” with an even number of negative components.
+√ 112 + 128 = 240 vec√ All the
+tors have length 8 = 2 2 , which is also the minimum distance between the points.
+At the same time, the vectors above are the
+shortest nonzero vectors of the exceptional root lattice E8 , which appears, for example, in the classification of simple Lie algebras. It consists of all integral vectors in R8 whose coordinates are all odd
+or all even, and for which the sum of all coordinates
+is divisible by 4 .
+n = 24: The configuration consists of the shortest (nonzero) vectors in a remarkable lattice, the
+Leech lattice, for which we will later outline a simple construction.
+The vectors have three different types: The vectors of type “(016 , ±28 ) ” have 16 zero coordinates
+and eight coordinates that are ±2 , with an even
+number of minus signs. The Leech lattice contains
+7
+759
+= 97152 such vectors, all of them of length
+√ ·2 √
+32 = 4 2 . The second type of vector is
+“(022 , ±42 ) ”, with two nonzero
+  components, ±4 , of
+24
+
+arbitrary sign. There are 2 4 = 1104 such vec√
+tors, again of length 32 , and we take them all. The
+third type is vector of the form “(±123 , ±(−3)) ”,
+obtained from a vector with one entry −3 and all
+entries +1 by reversing the sign on a number of
+
+876
+
+coordinates which are divisible by 4 . Exactly
+3 · 215 = 98304 of these√are contained in the Leech
+lattice, again of length 32 . Miraculously, all the
+resulting 97152 + 1104 + 98304 = 196560 vectors
+have the same length, and
+√ the minimum distance
+between them is again 32 — and this minimum
+distance is achieved very often.
+The Delsarte Method
+Philippe Delsarte (Phillips Research Labs) started
+in the early seventies [9] to develop an approach
+that via linear programming yields upper bounds
+for cardinalities of binary codes where Krawtchouk
+polynomials appear at the core of the method. (See
+Best [4] for a beautiful exposition.) However, Delsarte’s approach was much more general, yielding
+cardinality bounds for “association schemes” [10].
+An important case is the situation for spherical
+codes in the Delsarte-Goethals-Seidel method [11],
+where Gegenbauer polynomials play the decisive
+role.
+Here is our sketch: If N unit spheres kiss the unit
+sphere in Rn, then the set of kissing points is a
+rather special configuration of unit vectors, namely
+N vectors x1 , . . . , xN ∈ Rn that satisfy xi , xj ≤ 12
+for i ≠ j, while xi , xi = 1 for all i. If we write the
+xi as the columns of a matrix X ∈ Rn×N , then the
+special properties amount to a matrix
+ 
+xij := X T X ∈ RN×N
+with the following properties:
+(i) it has ones on the diagonal,
+1
+(ii) all off-diagonal entries are at most 2,
+(iii) it has rank (at most) n, and
+(iv) it is positive semidefinite.
+Now we use a result that may be traced to a paper
+by Schoenberg [26]. He characterized the functions
+f one may apply to the entries of matrices with
+properties (i), (iii), and (iv) such that the resulting
+matrix
+
+
+f (xij )
+is guaranteed to be still positive semidefinite. If we
+restrict f to be a polynomial of degree at most d ,
+then Schoenberg’s answer is that f can be an arbitrary nonnegative linear combination of the Gegen(n)
+bauer polynomials Gk of degree k ≤ d . These polynomials (also known as the spherical or the ultra
+spherical polynomials) may be defined in a variety
+of ways. One compact description is that for any
+(n)
+n ≥ 2 and k ≥ 0, Gk (t) is a polynomial of degree k ,
+(n)
+normalized such that Gk (1) = 1 , and such that
+2
+
+−1
+, . . . are orG0 (t) = 1 , G1 (t) = t , G2 (t) = ntn−1
+thogonal with respect to the scalar product
+ +1
+
+
+n−3
+g(t), h(t) :=
+g(t)h(t)(1 − t 2 ) 2 dt
+(n)
+
+(n)
+
+(n)
+
+−1
+
+on the vector space R[t] of polynomials, which
+arises naturally in integration over S n−1 . This is just
+
+NOTICES OF THE AMS
+
+VOLUME 51, NUMBER
+
+one of many possible descriptions and definitions
+of these remarkable polynomials. For example,
+readers are invited to derive a recursion from this
+description by applying Gram-Schmidt orthogonalization. For n = 3 one obtains the Legendre
+polynomials; for n = 4 , the Chebychev polynomials of the second kind (but with a different normalization than usual). Perhaps one more useful
+fact to know about Gegenbauer polynomials is that
+computer algebra systems such as Maple and Mathematica “know them”.
+The key property of the Gegenbauer polynomials that we need, Schoenberg’s lemma, is a simple
+consequence of the classical addition theorem for
+spherical harmonics, beautifully explained and derived in the book by Andrews, Askey and Roy [2,
+Chap. 9], who credit Müller [21], who in turn says
+that this goes back to Gustav Herglotz (1881–1925).
+
+ones on the diagonal, and
+ letus look at the polynomials f (t) such that f (xij ) has a nonnegative
+sum of entries. Clearly f (t) = 1 has this property,
+and f (t) = t as well. It starts to be interesting if we
+apply f (t) = t 2 + α, since then the set of admissible αs depends on the rank n. The claim of Schoen1
+berg’s lemma is that we can take any α ≥ − n , since
+n−1 (n)
+1
+2
+t + α = n G2 (t) + ( n + α) .
+Theorem 3 (Delsarte, Goethals and Seidel [11]). If
+d
+
+is a nonnegative combination of Gegenbauer polynomials, with c0 > 0 and ck ≥ 0 otherwise, and if
+f (t) ≤ 0 holds for all t ∈ [−1, 12 ] , then the kissing
+number for Rn is bounded by
+
+where ωn is the (n − 1) -dimensional area of S n−1
+and the functions Sk,1 , Sk,2 , . . . , Sk,m form an orthonormal basis for the space of “spherical harmonics of degree k ”, which has dimension
+k+n−2
+k+n−3
+m = m(k, n) =
++
+.
+k
+k−1
+This easily yields Schoenberg’s result:
+Lemma 2 (Schoenberg [26]). If (xi,j ) ∈ R
+is a poswith ones
+itive semidefinite matrix of rank atmost n 
+(n)
+on the diagonal, then the matrix Gk (xi,j ) is positive semidefinite as well. In particular, the sum of
+all its entries is nonnegative.
+N×N
+
+T
+
+Proof. We can write the matrix (xi,j ) as X X ; that
+is, xi,j = xi , xj for vectors xi , xj ∈ S n−1 . Here we
+
+
+prove only that the sum of all entries of Gk(n) (xi,j )
+is nonnegative: For this we plainly compute
+N
+(n)
+
+Gk ( xi , xj )
+i,j=1
+N
+
+m
+
+=
+
+ωn
+Sk, (xi )Sk, (xj )
+m i,j=1 =1
+
+=
+
+m  N
+ N
+
+ωn
+Sk, (xi )
+Sk, (xj )
+m =1 i=1
+j=1
+
+=
+
+m  N
+2
+ωn
+Sk, (xi )
+≥ 0.
+m =1 i=1
+
+To get a feel for “what this means”, let (xij ) be
+a positive semidefinite matrix of rank n ≥ 2 with
+
+SEPTEMBER 2004
+
+f (1)
+.
+c0
+
+κ(n) ≤
+
+Proof.
+ We estimate the sum of all entries of the
+matrix f (xij ) in two ways. The first one is the simple computation
+
+m
+
+ωn
+Sk, (x)Sk, (y),
+m =1
+
+(n)
+
+ck Gk (t)
+k=0
+
+Lemma 1 (Addition Theorem [2, Thm. 9.6.3]).
+(n)
+The Gegenbauer polynomial Gk (t) can be written
+as
+
+Gk ( x, y ) =
+
+(n)
+
+f (t) =
+
+N
+
+N
+
+d
+
+f (xij )
+
+=
+
+i,j=1
+
+(n)
+
+ck
+
+Gk (xij )
+i,j=1
+
+k=0
+N
+
+≥
+
+(n)
+
+G0 (xij ) = c0 N 2 ,
+
+c0
+i,j=1
+
+which rests on the fact that by Schoenberg’s lemma
+ (n)
+
+the sum of all entries of the matrix Gk (xij ) is
+nonnegative.
+The second, equally simple, computation
+N
+
+f (xij ) = N f (1) +
+
+(1)
+i,j=1
+
+f (xij ) ≤ N f (1)
+i≠j
+
+depends on the fact
+ that all the off-diagonal entries of the matrix f (xij ) are nonpositive, due to
+our assumption on the function f (t) in the range
+where the scalar products xij = xi , xj lie.
+Now the two estimates yield c0 N 2 ≤ N f (1) .
+n = 8 and n = 24
+The kissing number problems in dimensions eight
+and twenty-four were solved in the late seventies
+by matching the Delsarte-Goethals-Seidel bound
+with the very special E8 and Leech configurations:
+Andrew Odlyzko and Neil Sloane at AT&T Bell
+Labs [24], [7, Chap. 13], and independently Vladimir
+I. Levenšteı̆n in Russia [19] proved that the correct,
+exact maximal numbers for the kissing number
+problem are κ(8) = 240 and κ(24) = 196560 .
+In dimensions with a candidate for a unique optimal configuration for the kissing number problem, one has a quite straightforward guess for the
+
+NOTICES OF THE AMS
+
+877
+
+Status 2004: Kissing Numbers
+The only exact values of kissing numbers
+known:
+
+0.2
+
+0.15
+
+n
+κ(1)
+κ(2)
+κ(3)
+κ(4)
+κ(8)
+κ(24)
+
+0.1
+
+0.05
+
+-1
+
+-0.5
+
+0.5
+
+1
+
+Figure 6. f8 (t) .
+polynomial to be used in Delsarte’s method.
+Namely, for the estimate (1) to be tight, we must
+have f (xij ) = 0 for all scalar products xij that actually occur for i ≠ j in our candidate solution.
+Thus, in dimension n = 8 the configuration
+given by the roots of the E8 lattice seems so nice
+and dense and rigid that it might be unique. It is
+also very symmetric, and the only scalar products
+that occur (if the roots are normalized to length 1 )
+are ±1 , ± 1 , and 0 . Thus the “obvious” function to
+2
+write down is
+1
+1
+f8 (t) := (t − )t 2 (t + )2 (t + 1).
+2
+2
+You (or your computer algebra system) have to expand this polynomial in terms of Gegenbauer polynomials, check that all coefficients in the expansion are nonnegative, compute f8 (1)/c0 , and get
+240 .
+One can proceed similarly for n = 24 and the
+shortest roots of the Leech lattice, which have the
+1
+additional scalar products ± 4 . Thus one uses
+
+f24 (t) := (t −
+
+1
+1
+1
+1
+)(t + )2 t 2 (t + )2 (t + )2 (t + 1).
+2
+4
+4
+2
+
+It works!
+The same approach cannot work for dimension
+n = 3 , where the optimal configuration is far from
+unique, so the function f would have to be equal
+to zero in a whole range of possible scalar products to get a tight estimate N ≤ 12 , or would have
+to be close to zero to get the estimate N < 12.9999 ,
+say, which would be good enough to prove
+κ(3) = 12 .
+Musin’s Trick
+To determine the kissing number for n = 4 has
+been a challenge for quite a while now. There is a
+claim by Wu-Yi Hsiang that dates back to 1993 but
+that apparently has not been backed up by a detailed proof. It may be surprising that for n = 4 the
+878
+
+=
+=
+=
+=
+=
+=
+
+2
+6
+12
+24
+240
+196560
+
+lattice
+A1
+A2
+H3
+D4
+E8
+Λ24
+
+regular polytope
+hexagon
+icosahedron
+24-cell
+
+Delsarte method does not work: After all, we have
+a conjectured unique optimal configuration of unit
+vectors, given by the 24-cell (the D4 lattice), with
+only very few scalar products between distinct
+1
+points (± 2 , 0 , and −1 ). However, from the “obvious” polynomial
+1
+1
+f4 (t) = (t − )t 2 (t + )2 (t + 1),
+2
+2
+which is the same polynomial as for n = 8 and the
+E8 lattice, we get only κ(4) ≤ f4 (1)/c0 = 28.8 .
+Once we look a little bit harder for a suitable
+function, Delsarte’s bound yields that κ(4) ≤ 25 ,
+but nothing better than that. Arestov and Babenko
+[3] have analyzed this case in detail and proved that
+even with an optimally chosen Delsarte function,
+the bound obtained will not be smaller than 25.
+So it came as a great surprise that now the Russian mathematician Oleg Musin, who lives in Los Angeles, has indeed found a method to modify Delsarte’s method in a very beautiful and clever way
+which yields better bounds. In particular he improves the upper
+bound from 25
+to 24.
+In the meantime, an announcement [23]
+has appeared in
+print; the long
+version [22] is
+submitted and
+being refereed. So
+let us assume
+that the details
+and computaOleg R. Musin. (Photo: private)
+tions work out
+right (which are
+technical and for some of which alternative routes
+are outlined in the preprint) and will be confirmed
+in the reviewing process. Then, indeed, κ(4) = 24
+is the answer! However, Musin makes no claim to
+have proved that the special configuration of the
+24-cell is unique.
+Here we want only to sketch Musin’s beautiful
+idea. He allows the function f (t) to get positive
+
+NOTICES OF THE AMS
+
+VOLUME 51, NUMBER 8
+
+“opposite to the given sphere”, that is, close to
+t = −1 . Here is the result in a nutshell.
+Theorem 4 (Musin’s theorem). Fix a parameter t0
+1
+in the range −1 ≤ t0 < − 2 . If
+(Graphics: Michael Joswig/polymake [13])
+
+(n)
+
+f (t) =
+
+ck Gk (t)
+k≥0
+
+is a nonnegative combination of Gegenbauer polynomials (ck ≥ 0 for all k , with c0 > 0 ) and if f (t) ≤ 0
+1
+holds for all t ∈ [t0 , 2 ] , while f  (t) < 0 for
+t ∈ [−1, t0 ] , then the kissing number for Rn is
+bounded by
+1
+κ(n) ≤
+max{h0 , h1 , . . . , hµ },
+c0
+where hm is the maximum of
+
+Figure 7. A “Schlegel diagram” of the 24-cell.
+
+m
+
+f (1) +
+
+f ( e1 , yj )
+j=1
+
+over all configurations of m ≤ µ unit vectors yj in
+the spherical cap given by e1 , yj ≤ t0 whose pair1
+wise scalar products are at most 2. Here µ denotes
+the maximal number of points that fit into the
+spherical cap.
+Proof. We argue just as in the proof of Delsarte’s theorem, except that in (1) we cannot drop
+all nondiagonal terms: We now get only that
+N
+
+N
+
+f (xij ) ≤
+
+(2)
+i,j=1
+
+
+f (xij ) .
+
+
+f (1) +
+j: xi ,xj ≤t0
+
+i=1
+
+Letting m denote the number of points that could
+appear in the last sum (0 ≤ m ≤ µ ) yields the estimate in Musin’s theorem.
+Nonlinear Optimization Problems
+The bad news about Musin’s approach is that it
+forces him to compute, at least approximately, the
+numbers h0 , . . . , hµ , and this leads to nonconvex optimization problems.
+Almost everything can be written as a nonlinear,
+nonconvex, constrained optimization problem. For
+example, the question whether 25 spheres can kiss
+a given sphere is immediately answered if we solve
+the problem
+
+(3)
+
+min
+
+max
+
+x1 ,...,x25 ∈S 3 1≤i<j≤25
+1
+
+xi , xj .
+
+Indeed, if the answer is 2 or smaller, then the 25
+points xi that achieve the minimum give a kissing
+1
+configuration. If the answer is larger than 2, then
+a kissing configuration with 25 spheres doesn’t
+exist. However, high-dimensional, nonlinear, nonconvex, constrained optimization problems are extremely hard to solve. We may interpret (3) as a
+SEPTEMBER 2004
+
+problem in 100 variables, the coordinates of
+x1 , . . . , x25 ∈ R4 , constrained by the restrictions
+xi ∈ S 3 . Or we may eliminate the constraints, say,
+by introducing polar coordinates, and thus have an
+unconstrained problem in 75 variables. Eliminating the symmetry of the 3 -sphere will reduce the
+number of variables by 10 but not significantly simplify the problem. This problem is nonconvex,
+since it has lots of minima: indeed, any asymmetric optimal configuration will yield 25! minima,
+and we may assume that there are lots of “combinatorially different” optimal solutions. Numerical
+methods for nonlinear optimization, such as local
+descent methods, might find some feasible point,
+and they should even find a stationary point, say,
+a local maximum or minimum of the function to
+be optimized. Such methods exist and are widely
+used, the most popular ([25], Matlab) and the most
+questionable (see [17], [20]) one probably being
+the Nelder-Mead simplex method. However, a local
+improvement method cannot guarantee finding a
+global optimum.
+Dimension Reduction
+However, the good news for Musin’s approach is
+that if parameters are chosen carefully, if t0 is
+small enough (that is, close to −1 ), and if the monotonicity assumption is exploited carefully, then
+one gets low-dimensional problems of a type that
+can be treated numerically.
+So, it is already a remarkable achievement that
+Musin’s improvement of the Delsarte method yields
+a clean and simple proof for the Newton-Gregory
+problem, κ(3) < 13 . Indeed, choosing t0 = −0.5907
+and a suitable polynomial f3 (t) of degree 9 , Musin
+gets µ = 4 and the parameters h0 = f3 (1) = 10.11 ,
+h1 = f3 (1) + f3 (−1) = 12.88 , while all other hi ’s are
+smaller.
+
+NOTICES OF THE AMS
+
+879
+
+10
+8
+6
+4
+2
+
+-1
+
+-0.5
+
+0.5
+
+1
+
+Figure 8. Musin’s f(t).
+
+Figure 9. An h3 -configuration.
+A Sketch of Musin’s Proof for κ(4) < 25 .
+Musin produced a polynomial of degree 9 satisfying the assumptions of his theorem with
+t0 ≈ −0.608 :
+(4)
+
+(4)
+
+(4)
+
+f (t) = G0 (t) + 2G1 (t) + 6.12G2 (t)
+(4)
+
+(4)
+
+(4)
+
++ 3.484G3 (t) + 5.12G4 (t) + 1.05G5 (t)
+= 53.76t 9 − 107.52t 7 + 70.56t 5
++16.384t 4 − 9.832t 3 − 4.128t 2
+−0.434t − 0.016.
+This was found via discretization and linear
+programming; such methods had been employed
+already by Odlyzko and Sloane for the same purpose.
+To evaluate hm , we have to consider arrangements of m points y1 , . . . , ym in the spherical cap
+880
+
+C0 := {y ∈ S 3 : e1 , y ≤ t0 } . The points have a
+1
+minimum distance of 60◦ = π /3 = arccos( 2 ) given
+1
+by yi , yj ≤ 2 , and this distance is larger than the
+radius arccos(−t0 ) of the spherical cap. We know
+that in an optimal arrangement for a given m we
+cannot move one or several of the points towards
+the center of the cap while maintaining the “minimum distance” requirement, because of the monotonicity assumption on f (t) . From this Musin [22,
+Lemma 1] derives strong conditions on the combinatorics of optimal configurations. For example, for m ≥ 1 the center −e1 of the spherical cap
+is contained in the (spherical) convex hull of the
+m points yi ; for m ≥ 2 each point has at least one
+other point at distance exactly π /3 (for m ≥ 2 ), etc.
+This already yields that h0 = f (1) = 18.774 and
+h1 = f (1) + f (−1) = 24.48 . Also,
+π
+h2 = max f (1) + f (− cos(ϕ)) + f (− cos
+− ϕ)),
+ϕ≤π /3
+3
+which yields h2 ≈ 24.8644 . The computations of
+hm for m = 3, 4, 5 amount to rather well-behaved
+optimization problems in m − 1 variables that can
+be solved numerically and yield hm < h2 ; for the
+case m = 6 Musin shows that h6 < h2 by a separate argument.
+Clearly there is potential for other applications
+of Musin’s insight: in the whole range of sphere
+packing and coding theory problems where Delsarte’s method was used in the last thirty years,
+with tremendous success.
+Sphere Packings
+Surprisingly, Musin’s breakthrough is not the only
+remarkable recent piece of progress related to the
+packing of spheres in high-dimensional space.
+Namely, by again extending and improving upon
+Delsarte’s method, Henry Cohn (Microsoft Research) in joint papers with Noam Elkies (Harvard
+University) and with Abhinav Kumar (a mathematics graduate student at Harvard) has obtained
+new upper bounds on the density of sphere packings in n-space, for n ≤ 36 .
+Once you know bounds for spherical codes (the
+kissing number is a special case of this, and these
+more general bounds can be derived in a similar
+fashion), you can bound the density of a sphere
+packing in this dimension. This is the classical
+way of using Delsarte’s method in the context of
+sphere packings, by Kabatjanskiı̆ and Levenšteı̆n
+[16], which gives the best-known upper bounds for
+the density of very-high-dimensional sphere packings.
+Cohn and Elkies found a more direct approach
+to the problem. Instead of using functions defined
+only on the interval [−1, 1], they use functions defined on all of Rn to get good bounds, as follows.
+Let f : Rn → R be an L1 function, and let its
+Fourier transform f be defined as
+
+NOTICES OF THE AMS
+
+VOLUME 51, NUMBER 8
+
+f (x)e2π i x,t dx.
+Rn
+
+The function f (t) is called admissible if there is a
+constant ε > 0 such that |f (x)| and |f (x)| are
+bounded above by a constant times (1 + |x|)−n−ε .
+One crucial property of these functions is the Poisson summation formula
+
+f (x + v) =
+x∈Λ
+
+1
+e−2π i v,t f (t),
+|Λ| t∈Λ∗
+
+for every vector v ∈ Rn and every lattice Λ ⊂ Rn ,
+where Λ∗ = {y ∈ Rn : x, y ∈ Z for all x ∈ Λ} is
+its dual lattice.
+Theorem 5 (Cohn and Elkies [5]). Suppose that
+f : Rn → R is an admissible function, not identically
+zero, which satisfies the following two conditions:
+1. f (x) ≤ 0 for |x| ≥ 1 , and
+2. f (t) ≥ 0 for all t .
+Then the density of n-dimensional sphere packings
+is bounded above by
+
+ωn f (0)
+∆n ≤
+.
+n2n f (0)
+Proof. A periodic packing is given by vectors
+v1 , . . . , vN and a lattice Λ such that the packing consists of all spheres centered at translates of
+v1 , . . . , vN by elements of Λ , and such that
+vi − vj ∈ Λ implies that i = j. It is easy to see that
+periodic packings come arbitrarily close in density
+to the densest possible sphere packing, so it is sufficient to consider packings of this type. Rescale
+the packing so that all spheres have radius 1/2 .
+1
+ω N
+The density of such a packing is n2nn |Λ| , since n ωn
+is the volume of a unit n-ball.
+Now we bound the quantity
+N
+
+f (x + vj − vk ).
+j,k=1 x∈Λ
+
+From below, the Poisson summation formula yields
+a lower estimate of N 2 f (0)/|Λ| . To get an upper
+bound, observe that x + vj and vk are two centers
+of the packing. Thus, |x + vj − vk | < 1 if and only
+if x + vj = vk , i.e. x = 0 and j = k . We have
+f (x + vj − vk ) ≤ 0 whenever |x + vj − vk | ≥ 1 , and
+thus Nf (0) is an upper bound for the sum. This
+yields
+N 2 f (0)
+Nf (0) ≥
+,
+|Λ|
+and thus the theorem.
+
+The Golay Code and the Leech Lattice
+Since the most spectacular applications of the setup by Cohn and Elkies concern the Leech lattice,
+SEPTEMBER 2004
+
+we describe it here. For this we
+start with a construction of the
+(extended binary) Golay code, a
+remarkable binary linear code of
+length 24, dimension 12, and minimal distance 8 : that is, a linear 12dimensional subspace of (Z2 )24
+consisting of 212 = 4096 code
+words (vectors), all of which except
+for the zero vector have weight
+(number of ones) at least 8 . There
+is a myriad of ways in the literature to describe this code, the
+most compact one being just a list
+of twelve basis vectors. Here, we Henry Cohn.
+choose not just any basis but one
+based on the adjacency matrix of the graph X of
+the icosahedron to make use of some symmetries
+later, following lecture notes by Aigner [1].
+Consider the binary 12 × 24 matrix
+
+(Photo courtesy of Valerie Samn)
+
+
+f (t) :=
+
+G := ( I | B ) ∈ Z12×24 ,
+where I is the identity matrix of order 12 and
+B = J − A is the all-one matrix of that order minus
+the adjacency matrix A of the icosahedron. Thus
+B is a symmetric 0/1-matrix with seven ones in each
+row and each column, corresponding to the seven
+nonneighbors for each vertex of the icosahedron
+(counting the vertex itself). We will see in a minute
+that the code
+
+C := rowspan(G) ⊂ (Z2 )24
+is a (24, 12, 8) -code. It has been proved that there
+is a unique such code, the famous Golay code.
+Consider B 2. We have
+
+(B 2 )ij = 12 − |N(vi ) ∪ N(vj )|
+for every pair of vertices vi , vj ∈ V (X) , where we
+write N(v) for the set of vertices adjacent to a vertex v . Therefore,
+
+
+
+7
+
+
+ 4
+2
+(B )ij =
+
+4
+
+
+ 2
+
+if dist(vi , vj ) = 0,
+if dist(vi , vj ) = 1,
+if dist(vi , vj ) = 2,
+if dist(vi , vj ) = 3.
+
+Thus all entries of I − B 2 are even, which we write
+as I − B 2 ≡ O (mod 2) , and it follows that
+
+GGT = I + B 2 ≡ O
+
+(mod 2).
+
+This implies that C ⊆ C ⊥, and thus C = C ⊥, since
+dim(C) + dim(C ⊥ ) = 24 . From this, together with
+the fact that all rows of G have Hamming weight
+8 , we conclude that for each c ∈ C the Hamming
+weight is divisible by 4 .
+All that is left to show is that there are no code
+words of weight 4 . Note that
+
+NOTICES OF THE AMS
+
+881
+
+(Graphic: Michael Joswig/polymake [12])
+
+Figure 10. The icosahedron graph.
+
+BG = B(I | B) = (B | B 2 ) ≡ (B | I) (mod 2).
+This implies that for each code word c = (cL | cR ) ,
+(cR | cL ) is a code word too. If c has weight 4 , then
+one of cL and cR has weight at most 2 . All one has
+to do to exclude code words of weight 4 therefore
+is to check sums of up to two rows of G , and we
+have already seen that a sum of two different rows
+has weight at least 16 − 8 = 8 .
+In order to construct the Leech lattice from the
+Golay code, consider the lattice
+
+sum). The best currently known function was found
+by Cohn and Kumar [6], a radial function that consists of a polynomial of degree 803 (evaluated at
+|x|2 , so technically it is a polynomial of degree
+2
+1606) multiplied by e−π |x| . It yields a density bound
+that is above the density of the Leech lattice by a
+factor of less than 1 + 10−29 . Similarly, they found
+a function that provides a density bound that is
+above the density of the E8 -lattice by a factor of less
+than 1 + 10−14 . Functions which show that these lattices are in fact densest possible sphere packings
+are yet to be found.
+But what about the easier quest of finding the
+densest lattice packing? In dimension 8 the question was settled, while in dimension 24 it was still
+open. This case was now answered by Cohn and
+Kumar [6]. Since it is known that the Leech lattice
+is a local optimum for the density of lattice packings, it is enough to show that every denser lattice
+has to be very close to the Leech lattice. This required finding the above-mentioned admissible
+function and then quite a bit of work involving linear programming and association scheme theory.
+The reader may have arrived at this point and
+said, “What a shame they don’t explain this in more
+detail”. Well, we feel the same—and refer you to the
+original papers/preprints, which are fascinating
+mathematics and a pleasure to read!
+Acknowledgements
+We are grateful to Eiichi Bannai, Henry Cohn, Noam
+Elkies, and Oleg Musin for discussions, helpful remarks, and many insightful comments related to
+this paper.
+References
+
+Γ24 = {x ∈ Z24 : x mod 2 ∈ C}.
+Then Γ24 = Γ1 ∪ Γ2 , where
+
+Γ1
+
+=
+
+Γ2
+
+=
+
+
+
+
+x ∈ Γ24 : xi ≡ 0 (mod4) ,
+
+
+
+x ∈ Γ24 : xi ≡ 2 (mod4) .
+
+Finally, let Λ24 = 2Γ1 ∪ (1 + 2Γ2 ) . One can show
+that
+√
+this is a lattice with minimum distance 32 , the
+Leech lattice.
+Optimality of the Leech Lattice
+Cohn and Elkies have conducted a systematic computer search for suitable admissible functions. In
+this context, the role of the Gegenbauer polynomials
+is played by Bessel functions (times some power
+of |x| ). These are the functions whose Fourier
+transform is a delta function on a sphere centered
+at the origin, so a function with nonnegative Fourier
+transform is like a nonnegative linear combination of them (but with an integral instead of a
+882
+
+NOTICES OF THE AMS
+
+[1] M. AIGNER, Gitter, Codes und Graphen, Lecture Notes,
+FU Berlin, 1994/95.
+[2] G. E. ANDREWS, R. ASKEY, AND R. ROY, Special Functions,
+Encyclopedia Math. Appl., vol. 71, Cambridge University Press, Cambridge, 1999.
+[3] V. V. ARESTOV AND A. G. BABENKO, Estimates for the maximal value of the angular code distance for 24 and
+25 points on the unit sphere in R4 , Math. Notes 68
+(2000), 419–435.
+[4] M. R. BEST, Optimal codes, Packing and Covering in
+Combinatorics (A. Schrijver, ed.), Mathematical Centre Tracts, vol. 106, CWI, Amsterdam, 1979,
+pp. 119–140.
+[5] H. COHN AND N. ELKIES, New upper bounds on sphere
+packings. I, Ann. of Math. 157 (2003), 689–714.
+[6] H. COHN AND A. KUMAR, Optimality and uniqueness of
+the Leech lattice among lattices, preprint, March
+2004, 39 pages; arXiv:math.MG/0403263.
+[7] H. COHN AND A. KUMAR, The densest lattice in twentyfour dimensions, Elec. Res. Ann. 10 (2004), 58–67.
+[8] J. H. CONWAY AND N. J. A. SLOANE, Sphere Packings, Lattices and Groups, Grundlehren Math. Wiss., vol. 290
+Springer-Verlag, New York, third ed., 1993.
+[9] P. DELSARTE, Bounds for unrestricted codes, by linear
+programming, Philips Res. Rep. 27 (1972), 272–289.
+
+VOLUME 51, NUMBER 8
+
+[10] P. DELSARTE, An algebraic approach to the association
+schemes of coding theory, Philips Res. Rep. Suppl.
+(1973), vi+97.
+[11] P. DELSARTE, J. M. GOETHALS, AND J. J. SEIDEL, Spherical
+codes and designs, Geom. Dedicata 6 (1977),
+363–388.
+[12] N. D. ELKIES, Lattices, linear codes, and invariants.
+I/II, Notices Amer. Math. Soc. 47 (2000), 1238–1245
+and 1382–1391.
+[13] E. GAWRILOW AND M. JOSWIG, Polymake: A software
+package for analyzing convex polytopes, http://www.
+math.tu-berlin.de/diskregeom/polymake/.
+[14] T. C. HALES, Cannonballs and honeycombs, Notices
+Amer. Math. Soc. 47 (2000), 440–449.
+[15] ___, A computer verification of the Kepler conjecture,
+Proceedings of the International Congress of Mathematicians, Vol. III (Beijing, 2002), Higher Ed. Press,
+Beijing, 2002, pp. 795–804; math.MG/0305012.
+[16] G. A. KABATJANSKIı̆ AND V. I. LEVENŠTEı̆N, Bounds for packings on the sphere and in space, Problemy Peredači
+Informatsii 14 (1978), 3–25.
+[17] J. C. LAGARIAS, J. A. REEDS, M. H. WRIGHT, AND P. E.
+WRIGHT, Convergence properties of the Nelder-Mead
+simplex method in low dimensions, SIAM J. Optim.
+9 (1999), 112–147.
+[18] J. LEECH, The problem of the thirteen spheres, The
+Math. Gazette 40 (1956), 22–23.
+[19] V. I. LEVENŠTEı̆ N, On bounds for packings in n -dimensional euclidean space Soviet Math. Doklady 20
+(1979), 417–421.
+[20] K. I. M. MCKINNON, Convergence of the Nelder-Mead
+simplex algorithm to a non-stationary point, SIAM
+J. Optim. 9 (1999), 148–158.
+[21] C. MÜLLER, Spherical Harmonics, Lecture Notes in
+Math., vol. 17, Springer-Verlag, Berlin and Heidelberg,
+1966.
+[22] O. R. MUSIN, The kissing number in four dimensions,
+preprint, September 2003, 22 pages; math.
+MG/0309430.
+[23] O. R. MUSIN, The problem of the twenty-five spheres,
+Russian Math. Surveys 58 (2003), 794–795.
+[24] A. M. ODLYZKO AND N. J. A. SLOANE, New bounds on the
+number of unit spheres that can touch a unit sphere
+in n dimensions, J. Combin. Theory Ser. A 26 (1979),
+210–214.
+[25] W. H. PRESS, S. A. TEUKOLSKY, W. T. VETTERLING, AND B. P.
+FLANNERY, Numerical Recipes in C. The Art of Scientific Computing, Cambridge University Press, Cambridge, second ed., 1992.
+[26] I. J. SCHOENBERG, Positive definite functions on spheres,
+Duke Math. J. 9 (1942), 96–107.
+[27] K. SCHÜTTE AND B. L. VAN DER WAERDEN, Das Problem der
+dreizehn Kugeln, Math. Ann. 53 (1953), pp. 325–334.
+[28] G. G. SZPIRO, Kepler’s Conjecture. How Some of the
+Greatest Minds in History Helped Solve One of the Oldest Math Problems in the World, Wiley, 2003.
+[29] T. M. THOMPSON, From Error-Correcting Codes through
+Sphere Packings to Simple Groups, Carus Math.
+Monogr., vol. 21, Math. Assoc. America, Washington,
+DC, 1983.
+
+SEPTEMBER 2004
+
+About the Cover
+Kissing in Motion
+The cover accompanies the article by
+Florian Pfender and Günter Ziegler in this
+issue (see also my short article, “The
+Difficulties of Kissing in Three Dimensions”, pp. 884–885). It shows the motion of
+the “shadows” of kissing spheres in a deformation pointed out by Conway and Sloane,
+following an observation of Coxeter. The
+sequence is left-right, right-left, left-right
+(sometimes called boustrophedon).
+
+NOTICES OF THE AMS
+
+—Bill Casselman
+Covers/Graphics Editor
+(notices-covers@ams.org)
+
+883
+
+

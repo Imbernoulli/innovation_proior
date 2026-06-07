@@ -1,13 +1,33 @@
-# raw materials (large / external clones / binaries) — track only methods/*/results/ + site
-**/src/
+# Reference-implementation clones: 58 nested git repos + large wheels — local-only, re-clonable
 **/code/
-**/refs/
-**/notes/
-**/*.tar.gz
-**/*.pdf
+
+# Paper figures & LaTeX build artifacts under methods/ (not provenance)
+methods/**/*.png
+methods/**/*.jpg
+methods/**/*.jpeg
+methods/**/*.gif
+methods/**/*.eps
+methods/**/*.svg
+methods/**/*.tif
+methods/**/*.tiff
+methods/**/*.tar.gz
+methods/**/*.aux
+methods/**/*.log
+methods/**/*.synctex.gz
+methods/**/*.fdb_latexmk
+methods/**/*.fls
+methods/**/*.blg
+methods/**/*.bcf
+methods/**/*.run.xml
+
+# OS / local
 **/.DS_Store
 .DS_Store
-# codex-gate sweep local artifacts (resume sentinels + run logs)
+
+# codex-gate local artifacts (resume sentinels + run logs)
 **/.codex_done
 tools/codex_gate_report.txt
 tools/codex_gate_sweep.out
+tools/codex_logs/
+tools/codex_*.log
+tools/*codex*.log

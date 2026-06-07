@@ -1,0 +1,591 @@
+                                                               Fast Algorithms for Convolutional Neural Networks
+
+                                                                            Andrew Lavin                         Scott Gray
+                                                                           alavin@acm.org                      Nervana Systems
+                                                                                                             sgray@nervanasys.com
+
+
+
+
+arXiv:1509.09308v2 [cs.NE] 10 Nov 2015
+                                                                 Abstract                                    cause they achieve better accuracy with fewer weights than
+                                                                                                             shallow networks with larger filters [11, 7].
+                                            Deep convolutional neural networks take GPU days of                  Therefore there is a strong need for fast convnet algo-
+                                         compute time to train on large data sets. Pedestrian de-            rithms for small batch sizes and small filters. However
+                                         tection for self driving cars requires very low latency. Im-        conventional convnet libraries require large batch sizes and
+                                         age recognition for mobile phones is constrained by limited         large filters for fast operation.
+                                         processing resources. The success of convolutional neural
+                                         networks in these situations is limited by how fast we can             This paper introduces a new class of fast algorithms for
+                                         compute them. Conventional FFT based convolution is fast            convolutional neural networks based on the minimal filter-
+                                         for large filters, but state of the art convolutional neural        ing algorithms pioneered by Winograd [13]. The algorithms
+                                         networks use small, 3 × 3 filters. We introduce a new class         can reduce the arithmetic complexity of a convnet layer by
+                                         of fast algorithms for convolutional neural networks using          up to a factor of 4 compared to direct convolution. Almost
+                                         Winograd’s minimal filtering algorithms. The algorithms             all of the arithmetic is performed by dense matrix multi-
+                                         compute minimal complexity convolution over small tiles,            plies of sufficient dimensions to be computed efficiently,
+                                         which makes them fast with small filters and small batch            even when the batch size is very small. The memory re-
+                                         sizes. We benchmark a GPU implementation of our al-                 quirements are also light compared to the conventional FFT
+                                         gorithm with the VGG network and show state of the art              convolution algorithm. These factors make practical im-
+                                         throughput at batch sizes from 1 to 64.                             plementations possible. Our implementation for NVIDIA
+                                                                                                             Maxwell GPUs achieves state of the art throughput for all
+                                                                                                             batch sizes measured, from 1 to 64, while using at most
+                                         1. Introduction                                                     16MB of workspace memory.
+
+                                            Deep convolutional neural networks (convnets) achieve
+                                         state of the art results on image recognition prob-                 2. Related Work
+                                         lems [11][7]. The networks take several days of GPU time
+                                         to train and require significant compute resources during             The FFT and convolution theorem have been used to re-
+                                         classification as well. Larger data sets and models lead to         duce the arithmetic complexity of convnet layers, first by
+                                         better accuracy but also increase computation time. There-          Mathieu et al. [10], then refined by Visalache et al. [12],
+                                         fore progress in deep neural networks is limited by how fast        and then implemented in the NVIDIA cuDNN library [1].
+                                         the networks can be computed.
+                                            Likewise the application of convnets to low latency in-             The Strassen algorithm for fast matrix multiplication was
+                                         ference problems, such as pedestrian detection in self driv-        used by Cong and Xiao [3] to reduce the number of convo-
+                                         ing car video imagery, is limited by how fast a small set of        lutions in a convnet layer, thereby reducing its total arith-
+                                         images, possibly a single image, can be classified.                 metic complexity. The authors also suggested that more
+                                            Distributed training of convnets can be achieved by parti-       techniques from arithmetic complexity theory might be ap-
+                                         tioning each batch of examples across the nodes of a cluster        plicable to convnets.
+                                         and accumulating weight updates across the nodes. Large                Various approaches have been attempted to reduce the
+                                         batch sizes adversely affect convergence of the network, so         complexity of convnets by quantizing or otherwise approx-
+                                         the minimum batch size that can be computed efficiently             imating the convolutional layer. We consider these ap-
+                                         places an upper limit on cluster size [8, 6].                       proaches as orthogonal and complementary to those that ex-
+                                            State of the art convnet architectures for image recogni-        ploit algebraic structure, and therefore declare them outside
+                                         tion use deep networks of 3 × 3 convolutional layers, be-           the scope of this paper.
+
+                                                                                                         1
+3. Convolutional Neural Networks                                 where
+    A convnet layer correlates a bank of K filters with C                                                  g0 + g1 + g2
+                                                                    m1 = (d0 − d2 )g0      m2 = (d1 + d2 )
+channels and size R × S against a minibatch of N images                                                         2
+with C channels and size H × W . We denote filter elements          m4 = (d1 − d3 )g2                      g0 − g1 + g2
+                                                                                           m3 = (d2 − d1 )
+as Gk,c,u,v and image elements as Di,c,x,y .                                                                    2
+    The computation of a single covnnet layer output Yi,k,x,y
+                                                                     This algorithm uses just 4 multiplications and is there-
+is given by the formula:                                         fore minimal by the formula µ(F (2, 3)) = 2 + 3 − 1 = 4.
+                    C X
+                    X R X
+                        S                                        It also uses 4 additions involving the data, 3 additions and
+       Yi,k,x,y =                  Di,c,x+u,y+v Gk,c,u,v   (1)   2 multiplications by a constant involving the filter (the sum
+                    c=1 v=1 u=1                                  g0 + g2 can be computed just once), and 4 additions to re-
+                                                                 duce the products to the final result.
+and we can write the output of an entire image/filter pair as        Fast filtering algorithms can be written in matrix form
+                             C                                   as:                                       
+                             X
+                    Yi,k =         Di,c ∗ Gk,c             (2)                      Y = AT (Gg) ⊙ (B T d)                   (6)
+                             c=1                                 where ⊙ indicates element-wise multiplication.            For
+where ∗ denotes 2D correlation.                                  F (2, 3), the matrices are:
+                                                                                                                
+                                                                                       1       0      −1        0
+4. Fast Algorithms                                                                   0        1         1      0
+                                                                              BT =  0
+                                                                                                                 
+    It has been known since at least 1980 that the minimal                                   −1          1      0
+filtering algorithm for computing m outputs with an r-tap                              0       1         0    −1
+FIR filter, which we call F (m, r), requires                                                             
+                                                                                        1        0      0
+                                                                                     1          1      1
+                                                                               G=      2       2       2
+                 µ(F (m, r)) = m + r − 1                   (3)                       1       − 21      1
+                                                                                                                           (7)
+                                                                                        2               2
+multiplications [13, p. 39]. Also, we can nest minimal 1D                               0        0      1
+                                                                                                              
+algorithms F (m, r) and F (n, s) to form minimal 2D algo-                              1     1        1       0
+rithms for computing m × n outputs with an r × s filter,                      AT =
+                                                                                       0     1      −1       −1
+which we call F (m × n, r × s). These require                                                     T
+                                                                                g = g0 g1 g2
+   µ(F (m × n, r × s)) = µ(F (m, r))µ(F (n, s))                                                          T
+                                                           (4)                  d = d0 d1 d2 d3
+                             = (m + r − 1)(n + s − 1)
+                                                                    A minimal 1D algorithm F (m, r) is nested with itself to
+multiplications [14]. We can continue to nest 1D algorithms      obtain a minimal 2D algorithm, F (m × m, r × r) like so:
+to form algorithms for multi-dimensional FIR filters.                                                    
+   It is interesting to note that in 1D, 2D, and multi-
+                                                                              Y = AT [GgGT ] ⊙ [B T dB] A                (8)
+dimensions, the minimal algorithm requires a number of
+multiplications equal to the number of inputs. In other
+words, to compute F (m, r) we must access an interval of         where now g is an r × r filter and d is an (m + r − 1) ×
+m + r − 1 data values, and to compute F (m × n, r × s)           (m + r − 1) image tile. The nesting technique can be gener-
+we must access a tile of (m + r − 1) × (n + s − 1) data          alized for non-square filters and outputs, F (m × n, r × s),
+values. Therefore the minimal filtering algorithm requires       by nesting an algorithm for F (m, r) with an algorithm for
+one multiplication per input.                                    F (n, s).
+                                                                    F (2 × 2, 3 × 3) uses 4 × 4 = 16 multiplications, whereas
+4.1. F(2x2,3x3)                                                  the standard algorithm uses 2 × 2 × 3 × 3 = 36. This
+   The standard algorithm for F (2, 3) uses 2 × 3 = 6 multi-     is an arithmetic complexity reduction of 36  16 = 2.25. The
+plications. Winograd [13, p. 43] documented the following        data transform uses 32 additions, the filter transform uses
+minimal algorithm:                                               28 floating point instructions, and the inverse transform uses
+                                                               24 additions.
+                              g0                                Algorithms for F (m × m, r × r) can be used to compute
+              d    d1      d2            m1 + m2 + m3
+F (2, 3) = 0                     g1 =                            convnet layers with r × r kernels. Each image channel is
+              d1   d2      d3              m2 − m3 − m4
+                                 g2                              divided into tiles of size (m + r − 1) × (m + r − 1), with r −
+                                                        (5)      1 elements of overlap between neighboring tiles, yielding
+P = ⌈H/m⌉⌈W/m⌉ tiles per channel, C. F (m × m, r × r)                  Algorithm 1 Compute Convnet Layer with Winograd Min-
+is then computed for each tile and filter combination in each          imal Filtering Algorithm F (m × m, r × r)
+channel, and the results are summed over all channels.                   P = N ⌈H/m⌉⌈W/m⌉ is the number of image tiles.
+    Substituting U = GgGT and V = B T dB, we have:                       α = m + r − 1 is the input tile size.
+                                                                       Neighboring tiles overlap by r − 1.
+                    Y = AT U ⊙ V A                         (9)
+                                                                         dc,b ∈ Rα×α is input tile b in channel c.
+  Labeling tile coordinates as (e x, ye), we rewrite the con-            gk,c ∈ Rr×r is filter k in channel c.
+vnet layer formula (2) for a single image i, filter k, and tile          G, B T , and AT are filter, data, and inverse transforms.
+coordinate (ex, ye) as:                                                  Yk,b ∈ Rm×m is output tile b in filter k.
+                                                                         for k = 0 to K do
+                          C
+                          X                                                  for c = 0 to C do
+           Yi,k,ex,ey =         Di,c,ex,ey ∗ Gk,c
+                                                                                 u = Ggk,c GT ∈ Rα×α
+                          c=1                                                                                (ξ,ν)
+                          C                                                    Scatter u to matrices U: Uk,c = uξ,ν
+                          X
+                                  T
+                    =           A         Uk,c ⊙ Vc,i,ex,ey A   (10)     for b = 0 to P do
+                          c=1                                                for c = 0 to C do
+                            X
+                             C                                                  v = B T dc,b B ∈ Rα×α
+                    = AT                  Uk,c ⊙ Vc,i,ex,ey A                                               (ξ,ν)
+                                                                                 Scatter v to matrices V: Vc,b = vξ,ν
+                                 c=1
+                                                                         for ξ = 0 to α do
+  Thus we can reduce over C channels in transform space,
+                                                                             for ν = 0 to α do
+and only then apply the inverse transform A to the sum.                          M (ξ,ν) = U (ξ,ν) V (ξ,ν)
+This amortizes the cost of the inverse transform over the
+                                                                         for k = 0 to K do
+number of channels.                                                          for b = 0 to P do
+  We examine the sum                                                                                               (ξ,ν)
+                                                                                 Gather m from matrices M: mξ,ν = Mk,b
+                                C
+                                X                                                Yk,b = AT mA
+               Mk,i,ex,ey =            Uk,c ⊙ Vc,i,ex,ey        (11)
+                                c=1
+
+and simplify the notation by collapsing the image/tile coor-
+dinates (i, x
+            e, ye) down to a single dimension, b. We also la-
+bel each component of the element-wise multiplication sep-
+arately, as (ξ, ν), yielding:                                          4.2. F(3x3,2x2)
+                                 C
+                                 X
+                    (ξ,ν)                   (ξ,ν)   (ξ,ν)
+                 Mk,b       =             Uk,c Vc,b             (12)
+                                 c=1                                       Training a network using stochastic gradient descent re-
+  This equation is just a matrix multiplication, so we can             quires computation of the gradients with respect to the in-
+write:                                                                 puts and weights. For a convnet layer, the gradient with re-
+                 M (ξ,ν) = U (ξ,ν) V (ξ,ν)            (13)             spect to the inputs is a convolution of the next layer’s back-
+                                                                       propagated error, of dimension N × K × H × W , with a
+    Matrix multiply has efficient implementations on CPU,              flipped version of the layer’s R × S filters. Therefore it
+GPU, and FPGA platforms, owing to its high computational               can be computed using the same algorithm that is used for
+intensity. Thus we have arrived at the practical implemen-             forward propagation.
+tation for the fast algorithm listed in Algorithm 1.
+    Winograd documented a technique for generating the
+minimal filtering algorithm F (m, r) for any choice of m                   The gradient with respect to the weights is a convolution
+and r. The construction uses the Chinese remainder the-                of the layer inputs with the backpropagated errors, produc-
+orem to produce a minimal algorithm for linear convolu-                ing R × S outputs per filter and channel. Therefore we need
+tion, which is equivalent to polynomial multiplication, then           to compute the convolution F (R×S, H ×W ), which is im-
+transposes the linear convolution algorithm to yield a min-            practical because H ×W is much too large for our fast algo-
+imal filtering algorithm. The reader is referred to Wino-              rithms. Instead we decompose this convolution into a direct
+grad’s seminal book [13], or Blahut’s book [2] for a mod-              sum of smaller convolutions, for example F (3 × 3, 2 × 2).
+ern treatment of the subject. We provide derivations of the            Here the algorithm’s 4 × 4 tiles are overlapped by 2 pixels
+specific algorithms used in this paper in the supplementary            in each dimension, and the 3 × 3 outputs are summed over
+material.                                                              all tiles to form F (3 × 3, H × W ).
+   The transforms for F (3 × 3, 2 × 2) are given by:           tiles, the transforms cannot be computed accurately [13,
+                                                             p. 28].
+             1    0 −1 0                                           Convnets require surprisingly little numeric precision [4,
+           0     1     1 0                                5]. This implies that we can sacrifice some numeric ac-
+   BT =                                  1      0
+           0 −1        1 0                                   curacy in the filtering computation without affecting the
+                                       1       1 
+             0 −1       0 1 , G =  21          2     (14)    accuracy of the convnet. We examine the possibility of
+                                           − 21 
+                                          2                    F (6 × 6, 3 × 3) in the supplementary material.
+             1 1      1 0                 0      1
+   AT =  0 1 −1 0 
+                                                               4.4. Fast Fourier Transform
+             0 1      1 1
+                                                                  The Fast Fourier Transform (FFT) can be used to pro-
+   With (3 + 2 − 1)2 = 16 multiplies versus direct convolu-    duce a tiled convolution algorithm that has the same form
+tion’s 3 × 3 × 2 × 2 = 36 multiplies, it achieves the same     as Algorithm 1. The main difference is that the trans-
+36/16 = 2.25 arithmetic complexity reduction as the corre-     form matrices are replaced with FFT and inverse FFT,
+sponding forward propagation algorithm.                        and point-wise multiplication of complex FFT components
+                                                               yields cyclic convolution. Only m × n components of the
+4.3. F(4x4,3x3)                                                (m + r − 1) × (n + s − 1) cyclic convolution are valid, the
+   A minimal algorithm for F (4, 3) has the form:              rest must be discarded, and the tiles must be overlapped by
+                                                             r − 1 and s − 1 in order to recompute the discarded outputs.
+                   4    0 −5         0 1 0                     This technique is referred to as overlap and save [2, p. 195].
+                 0 −4 −4            1 1 0                       The similarity of overlap and save to our approach makes
+                                              
+                  0    4    −4   −1     1 0                  for an easy comparison. With FFT based convolution, the
+          T
+         B =                                 
+                 0 −2 −1            2 1 0                   multiply stage still uses 1 multiply per input, but now the
+                 0     2 −1 −2 1 0                           operands are complex numbers. Direct multiplication of
+                   0    4      0 −5 0 1                        complex numbers requires 4 real multiplications. Thank-
+                 1                                           fully, a couple of tricks reduce the complexity further.
+                      4      0     0
+                 −1      − 61 − 16                              The Fourier transform of a real signal has Hermitian
+                 61                                  (15)    symmetry, which reduces the number of unique products in
+                 −
+                     6
+                            1
+                            6   − 16 
+          G= 1             1      1                          each U ⊙V by almost half. FFT based convnet implementa-
+                 24       12      6 
+                 1 −1             1                          tions have exploited this property [10, 12]. Specifically, the
+                     24    12      6
+                      0      0     1                           discrete Fourier transform of a α × α array of real values
+                                                             can be represented with an array of α × (⌊ α2 ⌋ + 1) complex
+                   1 1       1 1       1 0                     values. Furthermore U H V H = (U V )H , so the products
+                 0 1 −1 2 −2 0 
+         AT =   0 1
+                                                              of the missing values can be reconstructed simply by taking
+                             1 4       4 0                    the complex conjugate of the computed values. Thus the
+                   0 1 −1 8 −8 1                               multiply stage of the FFT convnet algorithm with tile size
+                                                               α = m + r − 1 requires N ⌈ m   H
+                                                                                                ⌉⌈ W           α
+                                                                                                    m ⌉CKα(⌊ 2 ⌋ + 1) com-
+    The data transform uses 13 floating point instructions,                                α
+                                                               plex multiplications, or (⌊ 2 ⌋+1)/α complex multiplies per
+the filter transform uses 8, and the inverse transform uses
+                                                               input.
+10.
+                                                                  Using the standard algorithm for multiplying complex
+    Applying the nesting formula yields a minimal algorithm
+                                                               numbers, this equals 4(⌊ α2 ⌋ + 1)/α > 2 real multiplies per
+for F (4 × 4, 3 × 3) that uses 6 × 6 = 36 multiplies, while
+                                                               input.
+the standard algorithm uses 4 × 4 × 3 × 3 = 144. This is an
+                                                                  Another technique, which to our knowledge has not been
+arithmetic complexity reduction of 4.
+                                                               used in convnets, is to use a fast algorithm to multiply com-
+    The 2D data transform uses 13(6 + 6) = 156 floating
+                                                               plex numbers with 3 real multiplications [13]:
+point instructions, the filter transform uses 8(3 + 6) = 72,
+and the inverse transform uses 10(6 + 4) = 100.                 (x0 + ix1 )(y0 + iy1 ) = [x0 y0 − x1 y1 , i(x0 y1 + x1 y0 )]
+    The number of additions and constant multiplications                                = [uc va + ua vc , i(ua vc − ub vb )]
+required by the minimal Winograd transforms increases
+                                                                                                                          (16)
+quadratically with the tile size [9, p. 211]. Thus for large
+tiles, the complexity of the transforms will overwhelm any     where
+savings in the number of multiplications.
+    The magnitude of the transform matrix elements also in-                   ua = x0        va = y0
+creases with increasing tile size. This effectively reduces                   ub = x0 + x1 , vb = y1                     (17)
+the numeric accuracy of the computation, so that for large                     uc = x1 − x0 vc = y0 + y1
+                      Winograd                         FFT                                        FFT with Fast CGEMM
+    Tile                                                                               Tile
+             α′       β′    γ′          δ′       α′     β ′ , γ ′, δ′                           α′      β′       γ′   δ′
+     3      9.00       -     -           -                                               8     3.33   3.77     4.30 4.30
+     4      4.00     2.00 1.75         1.50                                             16     2.20   6.23     6.82 6.82
+     5      2.78     3.60 2.24         2.24                                             32     1.81   8.94     9.57 9.57
+     6      2.25     4.33 2.00         2.78                                             64     1.65 11.72 12.36 12.36
+     8      1.78     6.50 2.23         4.38     4.44          2.42                     128     1.57 14.48 15.14 15.14
+    16                                          2.94          4.23                     256     1.54 17.22 17.88 17.88
+    32                                          2.42          6.24
+    64                                          2.20          8.30         Table 2. Normalized arithmetic complexity for FFT filtering with
+    128                                         2.10         10.37         fast CGEMM. Fast CGEMM uses 3 multiplies per complex mul-
+                                                                           tiply instead of 4, but has slightly greater transform overhead and
+    256                                         2.05         12.42
+                                                                           uses more memory.
+Table 1. Multiply (α′ ), data transform (β ′ ), filter transform (γ ′ ),
+and inverse transform (δ ′ ) normalized arithmetic complexity ver-
+sus tile size, for both Winograd and FFT based convolution.
+                                                                           5. Arithmetic Complexity Analysis
+F(4x4,3x3) has tile size 6. Direct convolutions has tile size 3.              In our model of fast convnets, the arithmetic complexity
+                                                                           of the multiplication stage is:
+
+   An FFT based convnet algorithm can incorporate this by                   M = N ⌈H/m⌉⌈W/n⌉CK(m + R − 1)(n + S − 1) (19)
+modifying the FFT transforms of the filter and data to output
+the the real valued matrices (Ua , Ub , Uc ) and (Va , Vb , Vc )              When m = n = 1, the formula equals the arithmetic
+instead of the complex valued matrices U and V . This adds                 complexity of direct convolution. Therefore direct convolu-
+2 floating point instructions per output to the filter trans-              tion is the minimal algorithm for F (1 × 1, R × S)
+form, and 1 to the data transform. It also increases the mem-                 Although our analysis employs minimal convolutions,
+ory footprint of each matrix by half.                                      the convnet layer itself is still not minimal because it per-
+   Then we can calculate M = U V using 3 calls to a stan-                  forms more convolutions than are strictly necessary. We
+dard real matrix multiply function (e.g. SGEMM):                           could reduce the number of convolutions by employing
+                                                                           Strassen recursions as in [3], but each recursion reduces
+               T = Ua Vc            M0 = Uc Va + T                         all 3 dimensions of our matrices by half while providing
+                                                                    (18)   only an 87 reduction in arithmetic complexity. The matrix
+             M1 = −Ub Vb + T, M = (M0 , iM1 )                              multiplications cannot be computed efficiently if C or K
+                                                                           is too small. Fast convolution alone provides a 2.25 or
+    The accumulation of temporary matrix T is performed                    larger arithmetic complexity reduction while shrinking only
+using regular SGEMM with β = 1 and C = T , at the cost                     the largest dimension of the matrix, P . Still, for layers
+of adding 2 floating point instructions per output. We can                 with large C, K, and P , it may be worthwhile to perform
+think of these instructions as adding to the inverse transform             Strassen recursions in addition to fast convolution. We leave
+cost. The temporary matrix T increases memory use by                       this as an area for further research.
+half, so that the total workspace size is approximately twice                 In order to simplify the equations, we will henceforth
+that of FFT based convolution with direct CGEMM.                           assume that W/m and H/n have no remainders. We also
+    Combining Hermitian symmetry with fast CGEMM                           assume square filters and blocks, R = S and m = n.
+gives us a multiplication stage with 3(⌊ α2 ⌋ + 1)/α > 1.5                    The multiplication complexity can be rewritten as:
+real multiplies per input. Recall that the multiply stage of
+the Winograd algorithms is always 1 real multiply per in-                              M = (m + R − 1)2 /m2 N HW CK
+                                                                                                                                         (20)
+put. Thus even with fast CGEMM, FFT base convolution                                     = α′ N HW CK
+must use a significantly larger tile size in order to rival the
+arithmetic complexity of the Winograd algorithms.                          where α = (m + R − 1)2 and α′ = α/m2
+    For the FFT transform itself, we consider the split-radix                 The total arithmetic complexities of the data, filter, and
+FFT algorithm, which is the minimal practical FFT algo-                    inverse transforms can be written as:
+rithm when N is a power of 2 [9, p. 150]. We assume the
+                                                                                              T (D) = β/m2 N HW C
+2D FFT transform is constructed using row-column com-
+position, and borrow the complexity figures from the DSP                                      T (F ) = γCK                               (21)
+Handbook [9, pp. 173,175] for Table 1.                                                                        2
+                                                                                               T (I) = δ/m N HW K
+where β, γ, and δ are the number of floating point instruc-          large enough dimensions so that the multiply stage is effi-
+tions used by the corresponding transforms for single tiles.         cient. This is problematic for current GPUs, which have a
+    Dividing the complexity of each transform by M yields            limited amount of on chip memory. CPUs have large caches
+its relative complexity:                                             and might therefore compute FFT based convolution more
+                                                                     efficiently.
+               T (D)/M = β/(Kα2 ) = β ′ /K
+               T (F )/M = γ/(N HW α2 /m2 )                           6. GPU Implementation
+                                                             (22)
+                          = γ/(P α2 ) = γ ′ /P                           We implemented F (2 × 2, 3 × 3) for NVIDIA Maxwell
+                                     2
+               T (I)/M = δ/(Cα ) = δ /C     ′                        GPUs and tested on the NVIDIA Titan X model.
+                                                                         The small 4 × 4 tile size and light weight transforms of
+    We call β ′ , γ ′ , and δ ′ the normalized arithmetic complex-   F (2 × 2, 3 × 3) make possible a fused implementation of
+ities of the data, filter, and inverse transforms, respectively.     the algorithm stages, where the the data and filter transform,
+P = N HW/m2 is the number of tiles per channel.                      16 batched matrix multiplies (GEMMs), and inverse trans-
+    Adding the terms for each stage gives the total arithmetic       form are all computed in the same block. Another resource
+complexity of the convnet layer:                                     limit is the instruction cache, which can only fit about 720
+                                                                     instructions. Our main loop is larger than this, but aligning
+    L = α′ (1 + β ′ /K + γ ′ /P + δ ′ /C)N HW CK             (23)    the start of the loop with the 128 byte instruction cache-line
+                                                                     boundary helps mitigate the cost of a cache miss.
+    In order to achieve a large speedup, the multiplication              The 16 batched GEMMs compute 32×32 outputs, which
+complexity α′ must be as small as possible, and the trans-           enables us to fit the workspace in the registers and shared
+form complexities β ′ , γ ′ , and δ ′ must each be small com-        memory of a single block and still have 2 active blocks per
+pared with K, P , and C, respectively.                               SM for latency hiding. Zero padding is implicit through use
+    For direct convolution, α′ = α2 = R2 and β ′ = γ ′ =             of predicates. If the predicate deselects a global image load,
+δ ′ = 0. Therefore the maximum speedup of a fast algorithm           the zero value is loaded with a dual issued I2I instruction.
+versus direct convolution is R2 /α′ .                                    Image data is stored in CHWN order to facilitate con-
+    We list the normalized transform complexity for differ-          tiguous and aligned memory loads, significantly reducing
+ent tile sizes and algorithms in Tables 1 and 2. Due to its          over-fetch. We employ a “super blocking” strategy to load
+similarity to our approach, FFT based convolution complex-           32 tiles of size 4 × 4 from a configurable number of images,
+ity can also be measured with Equation 23.                           rows, and columns. For N >= 32, we load tiles from 32
+    FFT based convnet layers with direct CGEMM must use              separate images. For N < 32, we load a super block of
+tile size at least 64 × 64 to equal the multiplication stage         X × Y = 32/N tiles per image. This strategy facilitates
+complexity of Winograd F (4 × 4, 3 × 3) and its 6 × 6 tile,          efficient loads with small batch sizes, as the W × N dimen-
+but then it incurs much greater transform overhead. Also             sions of the input data are contiguous in memory. Further-
+a 64 × 64 tile will waste computation on many unwanted               more, the 2 pixel overlap between adjacent tiles causes high
+pixels for images with sizes that are not close to a multiple        L1 cache hit rates when using several tiles in a super block.
+of 62 × 62. Even for moderate size layers, a moderate to                 We also employ L2 cache blocking to increase the re-use
+large minibatch must be used, or there will be too few tiles         of overlapping blocks. Since the number of image tiles is
+to compute the CGEMM efficiently. Finally, the memory                typically much larger than the number of filters, our block
+used by a single transformed filter channel is 64 × 64 =             mapping iterates over a group of up to 128 filters in the inner
+4096 units, which is a large expansion of the 3 × 3 = 9 unit         loop, and then iterates over all image tiles in the second
+filter. The 6x6 tile of F (4 × 4) expands the same filter to         loop. All channels of the filter group fit in L2 cache, so
+6 × 6 = 36 units.                                                    each filter will only be loaded once from DDR memory, and
+    FFT based convnet layers with fast CGEMM can be                  each image tile will be loaded ⌈K/128⌉ times as we iterate
+much more competitive with Winograd algorithms. They                 over the filter groups. This strategy reduces DDR memory
+have multiplication stage parity with tile size 16, and rea-         bandwidth by almost half.
+sonable transform complexity. Also tile size 16 generates a              We implemented a version of our kernel that loads fp16
+reasonably large number of tiles with large convnet layers           data, which decreases global memory bandwidth. We also
+or moderate batch size.                                              implemented a variant that we call “FX” that runs a filter
+    Even with fast CGEMM, the larger tile size compared to           transform kernel first and stores the result in a workspace
+Winograd means FFT based convnet implementations must                buffer. The convolution kernel loads transformed filter
+have a large memory workspace to hold transformed data.              values from the workspace as needed. The size of the
+A decent amount of transformed data must be held in order            workspace is only 16KC units of memory, which equals
+to amortize transform cost and to generate matrices with             just 16MB when K = C = 512 and data is fp32.
+ Layer        Depth       C ×H ×W              K     GFLOPs        over C channels, rather than the RSC filter elements re-
+ conv 1.1       1        3 × 224 × 224         64      0.17        duced by direct convolution. F (4 × 4, 3 × 3) has a larger
+ conv 1.2       1        64 × 224 × 224       64       3.70        error, but it is still more accurate than direct convolution
+ conv 2.1       1        64 × 112 × 112       128      1.85        with fp16 data.
+ conv 2.2       1       128 × 112 × 112       128      3.70            All tested algorithms are equally accurate with fp16 data.
+ conv 3.1       1        128 × 56 × 56        256      1.85        Here accuracy is limited by the precision of the inputs. Be-
+ conv 3.2       3        256 × 56 × 56        256     11.10        cause direct convolution is accurate enough for training and
+ conv 4.1       1        256 × 28 × 28        512      1.85        inference with low precision data [4, 5], we conclude that
+ conv 4.2       3        512 × 28 × 28        512     11.10        F (4 × 4, 3 × 3) is too.
+ conv 5         4        512 × 14 × 14        512      3.70            Table 5 and Table 6 show the total throughput for VGG
+                                                                   Network E layers for cuDNN and our F (2×2, 3×3) imple-
+ Total                                                39.02
+                                                                   mentation for fp32 and fp16 data for different batch sizes.
+Table 3. Convolution layers of VGG network E. All layers uses          For fp32 data, F (2 × 2, 3 × 3) is 1.48X at N = 64 and
+3 × 3 filters. Depth indicates the number of times a given layer   2.26X as fast at N = 1. The throughput at N = 16 is 9.49
+shape occurs in the network. GFLOPs is weighted by depth and       TFLOPS. For fp16 data, F (2×2, 3×3) extends its lead over
+assumes N=1.                                                       cuDNN, recording 10.28 TFLOPS throughput for N = 64.
+                                                                   N = 8 performance is still very good at 9.57 TFLOPS.
+                                                                       Figure 1 shows throughput by layer. Hatch marks indi-
+7. Experiments
+                                                                   cate the layers where cuDNN used the FFT algorithm, oth-
+    We ran accuracy and speed experiments with VGG Net-            erwise direct convolution was used. For F (2 × 2, 3 × 3),
+work E [11]. This is a deep network that uses 3×3 filters ex-      hatch marks indicate that the external filter transform (FX)
+clusively in the convolution layers, which are summarized          was used, otherwise the fused transform was faster.
+in Table 3.                                                            cuDNN appears to erroneously select its FFT algorithm
+    We tested the accuracy of our fast algorithms with both        for intermediate values of N despite the fact that it performs
+single precision (fp32) and half precision (fp16) data and         very poorly, under 2 TFLOPS. While this is probably just a
+filters. In all tests we used fp32 arithmetic instructions. We     bug, it is revealing. Low performance at moderate values of
+used random data and filters from the uniform distribution         N suggests that the FFT convolution implementation either
+[−1, 1] and measured absolute element error. Ground truth          uses large tiles, or possibly just a single tile per image, as
+was computed by direct convolution using a double preci-           in [12], which leads to inefficient multiplication stages un-
+sion accumulator for reductions.                                   less N is large. At large N , cuDNN FFT performs much
+    We measured the speed of our GPU implementation of             better, but stays well under 8 TFLOPS.
+F (2 × 2, 3 × 3) and compared with cuDNN v3 [1] on a su-               F (2×2, 3×3) performs better than cuDNN at every layer
+perclocked NVIDIA Titan X GPU. We disabled boost clock             and batch size, except layer conv1.1, which contributes less
+and observed a maximum clock rate of 1126MHz. The                  than 0.5% of the total network computation.
+GPU has 3072 cores, yielding a device peak throughput of               In general, we found that the FX variant of our imple-
+2 × 3072 × 1126 = 6.96 TFLOPS.                                     mentation performed best unless the number of filters and
+    Speed for a given layer was calculated by dividing the         channels was very large. Computing the filter transform is
+number of GFLOPs of computation required by direct con-            heavily memory bound, therefore transforming a larger fil-
+volution, as tabulated in 3, by the run time in milliseconds to    ter bank decreases computational efficiency.
+yield Effective TFLOPS. The reduction of arithmetic com-               The worst F (2 × 2, 3 × 3) performance occurs for the
+plexity allows fast algorithms to have Effective TFLOPS            14×14 layers when N = 1. In this case the 8×4 superblock
+that can exceed device peak throughput.                            runs over the image boundary and computes unwanted pix-
+    Total GFLOPs and run time were calculated by weight-           els. Throughput on this layer configuration is still over 5
+ing the GFLOPs and run time for each layer by its depth,           TFLOPS, where cuDNN performance is just 1.6 TFLOPS.
+and total throughput was calculated as the ratio of the two.           cuDNN FFT uses a global memory workspace up to 2.6
+                                                                   GB in our experiments. By contrast, our fused F (2 × 2, 3 ×
+8. Results                                                         3) implementation does not use any global workspace, and
+                                                                   the FX variant uses no more than 16 MB.
+   Table 4 shows the numeric accuracy of the different con-            F (2 × 2, 3 × 3) performance shows new capabilities for
+volution layer algorithms tested with single precision (fp32)      high throughput and small batch size with state of the art
+and half precision (fp16) input data and filters.                  convolutional neural networks. We expect performance to
+   F (2 × 2, 3 × 3) is actually slightly more accurate than        increase again when F (4 × 4, 3 × 3) is implemented.
+direct convolution. Its simple transforms do not lose much
+precision, and its multiplication stage performs a reduction
+                                                                                                                 vgg.conv1.1
+                                                                                       12
+                                                                                       10
+                                                                                        8
+                                                                                        6
+                            fp32                                                        4
+ Layer                                                    fp16                          2
+            Direct      F(2x2,3x3)      F(4x4,3x3)                                      0
+
+   1.2     4.01E-05      1.53E-05        2.84E-04       1.14E-02
+                                                                                                                 vgg.conv1.2
+   2.2     8.01E-05      2.86E-05        5.41E-04       1.45E-02                       12
+                                                                                       10
+   3.2     1.53E-04      5.34E-05        9.06E-04       1.99E-02                        8
+                                                                                        6
+                                                                                        4
+   4.2     3.20E-04      5.34E-05        1.04E-03       3.17E-02                        2
+                                                                                        0
+    5      3.43E-04      4.20E-05        1.08E-03       2.61E-02
+                                                                                                                 vgg.conv2.1
+Table 4. Maximum element error on VGG network layers. With                             12
+                                                                                       10
+fp32 data, F (2×2, 3×3) is more accurate than direct convolution.                       8
+                                                                                        6
+With fp16 data, all algorithms are equally accurate.                                    4
+                                                                                        2
+                                                                                        0
+
+                                                                                                                 vgg.conv2.2
+                                                                                       12
+                                                                                       10
+                                                                                        8
+                                                                                        6
+                                                                                        4
+                                                                                        2
+                                                                                        0
+              cuDNN               F(2x2,3x3)
+
+
+
+                                                                    Effective TFLOPS
+  N
+          msec TFLOPS           msec TFLOPS
+                                                        Speedup                                                  vgg.conv3.1
+                                                                                       12
+                                                                                       10
+  1       12.52     3.12         5.55      7.03           2.26X                         8
+                                                                                        6
+                                                                                        4
+  2       20.36     3.83         9.89      7.89           2.06X                         2
+                                                                                        0
+  4      104.70     1.49        17.72      8.81           5.91X
+  8      241.21     1.29        33.11      9.43           7.28X                                                  vgg.conv3.2
+ 16      203.09     3.07        65.79      9.49           3.09X                        12
+                                                                                       10
+ 32      237.05     5.27       132.36      9.43           1.79X                         8
+                                                                                        6
+                                                                                        4
+ 64      394.05     6.34       266.48      9.37           1.48X                         2
+                                                                                        0
+
+Table 5. cuDNN versus F (2 × 2, 3 × 3) performance on VGG
+                                                                                                                 vgg.conv4.1
+Network E with fp32 data. Throughput is measured in Effective                          12
+                                                                                       10
+TFLOPS, the ratio of direct algorithm GFLOPs to run time.                               8
+                                                                                        6
+                                                                                        4
+                                                                                        2
+                                                                                        0
+
+                                                                                                                 vgg.conv4.2
+                                                                                       12
+                                                                                       10
+                                                                                        8
+                                                                                        6
+                                                                                        4
+                                                                                        2
+                                                                                        0
+              cuDNN               F(2x2,3x3)
+  N                                                     Speedup
+          msec TFLOPS           msec TFLOPS
+                                                                                                                 vgg.conv5
+  1       14.58     2.68         5.53      7.06           2.64X                        12
+                                                                                       10
+                                                                                        8
+  2       20.94     3.73         9.83      7.94           2.13X                         6
+                                                                                        4
+  4      104.19     1.50        17.50      8.92           5.95X                         2
+                                                                                        0
+  8      241.87     1.29        32.61      9.57           7.42X                             1     2       4         8         16   32         64
+ 16      204.01     3.06        62.93      9.92           3.24X                                                  Batch Size
+ 32      236.13     5.29       123.12     10.14           1.92X                                 cuDNN                    F(2x2,3x3)
+ 64      395.93     6.31       242.98     10.28           1.63X                                 cuDNN FFT                F(2x2,3x3) FX
+                                                                                                cudNN fp16               F(2x2,3x3) fp16
+Table 6. cuDNN versus F (2 × 2, 3 × 3) performance on VGG                                       cudNN FFT fp16           F(2x2,3x3) FX fp16
+Network E with fp16 data.
+
+                                                                    Figure 1. VGG net Effective TFLOPS vs. batch size for cuDNN
+                                                                    and F (2 × 2, 3 × 3) on a 6.96 TFLOPS NVIDIA Titan X GPU.
+References
+ [1] cuDNN. https://developer.nvidia.com/cudnn.
+     Accessed: 2015-11-01. 1, 7
+ [2] Richard E Blahut. Fast algorithms for signal process-
+     ing. Cambridge University Press, 2010. 3, 4
+ [3] Jason Cong and Bingjun Xiao. Minimizing compu-
+     tation in convolutional neural networks. In Artifi-
+     cial Neural Networks and Machine Learning–ICANN
+     2014, pages 281–290. Springer, 2014. 1, 5
+ [4] Matthieu Courbariaux, Yoshua Bengio, and Jean-
+     Pierre David. Low precision arithmetic for deep learn-
+     ing. CoRR, abs/1412.7024, 2014. 4, 7
+ [5] Suyog Gupta, Ankur Agrawal, Kailash Gopalakr-
+     ishnan, and Pritish Narayanan.    Deep learning
+     with limited numerical precision. arXiv preprint
+     arXiv:1502.02551, 2015. 4, 7
+ [6] Suyog Gupta, Wei Zhang, and Josh Milthrope. Model
+     accuracy and runtime tradeoff in distributed deep
+     learning. arXiv preprint arXiv:1509.04210, 2015. 1
+ [7] Sergey Ioffe and Christian Szegedy. Batch nor-
+     malization: Accelerating deep network training by
+     reducing internal covariate shift. arXiv preprint
+     arXiv:1502.03167, 2015. 1
+ [8] Alex Krizhevsky. One weird trick for paralleliz-
+     ing convolutional neural networks. arXiv preprint
+     arXiv:1404.5997, 2014. 1
+ [9] V. Madisetti. The Digital Signal Processing Hand-
+     book. Number v. 2 in Electrical engineering handbook
+     series. CRC, 2010. 4, 5
+[10] Michaël Mathieu, Mikael Henaff, and Yann LeCun.
+     Fast training of convolutional networks through ffts.
+     CoRR, abs/1312.5851, 2013. 1, 4
+[11] Karen Simonyan and Andrew Zisserman. Very deep
+     convolutional networks for large-scale image recogni-
+     tion. arXiv preprint arXiv:1409.1556, 2014. 1, 7
+[12] Nicolas Vasilache, Jeff Johnson, Michaël Mathieu,
+     Soumith Chintala, Serkan Piantino, and Yann LeCun.
+     Fast convolutional nets with fbfft: A GPU perfor-
+     mance evaluation. CoRR, abs/1412.7580, 2014. 1,
+     4, 7
+[13] Shmuel Winograd. Arithmetic complexity of computa-
+     tions, volume 33. Siam, 1980. 1, 2, 3, 4
+[14] Shmuel Winograd. On multiplication of polynomials
+     modulo a polynomial. SIAM Journal on Computing,
+     9(2):225–229, 1980. 2
+

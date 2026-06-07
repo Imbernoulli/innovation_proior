@@ -1,0 +1,525 @@
+Computing 7, 281--292 (1971)
+9 by Springer-Verlag 1971
+
+
+
+
+                Sehnelle Multiplikation groller Zahlen
+                                          Von
+
+                              A. Seh6nhage, Konstanz
+                                          und
+                                 V. Strassen, Ztirich 1
+                            (Eingegangen am 8. Juli 1970)
+
+                           Zusammenfassung -- Summary
+     SehneUe Multiplikation groBer Zahlen. Es wird ein Algorithmus zur Berechnung
+des t)roduktes v o a zwei N-stelligen Dualzahlen angegeben. Zwei Arten der Reali-
+siertmg werden b e t r a c h t e t : Turingmaschinen m i t mehreren B/indern und logisehe
+Netze (aus zweistelligen logischen Elementen aufgebaut).
+    Fast Multiplication of Large Numbers. An algorithm is given for computing the
+product of two N-digit binary numbers b y 0 (N lg 57 ]g lg N) steps. Two ways of
+implementing the algorithm are considered: multitape Turing machines and logical
+nets (with step = binary logical element.)
+
+                                    1. Einleitung
+    Die Sehulmethode zur Multiplikation zweier Dezimalzahlen 1/~l~t sich
+ohne weiteres ffir die Multiplikation N-stelliger Dualzahlen auf einer
+Turingmaschine mit mehreren B/~ndern oder in einem (aus zweistelligen
+logischen Elementen aufgebau~en)]ogischen Netz verwenden. In beiden
+F/~llen ergibt sich ein Aufwand der GrSl~enordnung N ~. Dabei verstehen
+wir unter dem Aufwand eines Netzes die Anzahl seiner Elemente.
+    Bei einer Turingmaschine, die die Multiplikation yon Zahlen beliebiger
+L/~nge leistet, definiert man den Aufwand der Multiplikation N-stelliger
+Zahlen als das Maximum der Anzahl der Bewegungen der KSpfe, gebfldet
+fiber alle Inputzahlenpaare der L/~nge N.
+    Die herrschende und intuitiv einleuchtende Auffassung, daft sich der
+bei der Schulmethode erforderliche Aufwand nicht wesentlich verkleinern
+]/iBt, wurde 1962 yon A. KARACU]~A [4] durch Konstruktion eines Netzes
+mit
+                                 0 (N ~1~8)
+Elementen widerlegt (21g3 ~ 1,58). Die Methode fibertr/igt sich ohne
+Schwierigkeiten auf Turingmaschinen.
+
+    1 P a r t of the research of the second author was done at the Depax'tment of
+Statistics, University of California, Berkeley. H e wishes to t h a n k the National
+Science Foundation for their support (~TSF GP-7454).
+282                             A. ScK6~AGE:
+
+   Eine weitere 0berraschung enthielt die im folgenden J a h r erschienene
+Note yon Too~ [7], in der ein Netz zur Multiplikation N-stelliger Dual-
+zahlen mit
+                           0 (N 2 constV ~ )
+logischen Elementen angegeben wurde.
+    Unabhii.ngig yon Too~ und mit einer ganz anderen Methode zeigte
+SCH6~AG~ [6] 1966, dab sieh N-stellige ZaMen auf einer Turingmaschine
+mit einem Aufwand von
+                        0 (N 2 ~     (lg N) ~/2)
+multiplizieren lassen.
+    In der Folge wurde auch der TooMsche Algorithmus auf Turing-
+maschinen ribertragen (COOK [1]), und zwar mit einem zu
+
+                              0 (N 2 ~      lg N)
+versch//rften Aufwand (Cook [1] nnd Kz~vTat [5], Seite 273). Die wesent-
+lich verschiedenen Methoden yon T o o ~ und SCHSZ~mtGE liefern also
+praktisch den gteichen Aufwand, was zu Spekulationen riber dessen un-
+gef~.hre Optimalitgt geftihrt hat.
+    Dem interessierten Leser sei das 4. Kapitel yon K~cTI~S brillanter
+Ein-Mann-Enzyklop/idie ,,The Art of Computer Programming" emp-
+fohlen, in d e m die hier nur aufgez/ihlten Ergebnisse ausfrihrlieh dargestellt
+und bewiesen werden.
+    In der vorliegenden Arbeit werden zwei Verfahren zur Multiplikation
+N-stelliger DuMzahlen angegeben, die sich mit logischen Netzen ebenso
+wie mit Turingmaschinen realisieren lassen. Der Aufwand des einen ist
+                           0 (N lg N (lg lg N) 1+ ~),
+der des andern
+                             0 (N lg N lg lg N).
+    Beide Verfahren verwenden die schnelle FocRIE~transformation
+(CooLEY and TUKEY [3]; unabhiingig Yon uns hat auch D. K~vT~ die
+Idee gehabt, die schnelle Fov-RiERtransformation bei der Multiplikatio~
+grol3er Zahlen auszunutzen). Ihre Verwendung wird dadurch nahegelegt,
+dab die Multiplikation zweier Zahlen bis auf das Ausffihren der (~bertr//ge
+eine Konvolution ist. SpMtet man also die beiden zu multiplizierenden
+Dualzahlen in Stricke geeigneter L/rage auf und interpretiert diese Stricke
+als Elemente eines Rings R, der die (eigentlieh im Ring Z der ganzen
+Zahlen zu vollziehenden) Rechnungen mit den Stricken treu wiederzugeben
+gestattet und aul~erdem die n6tigen Einheitswurzeln enth//lt, so kann
+man die gewrinschte ,,grol3e" Multiplikation zerlegen in die FOVRIER-
+transformation der beiden Strickfolgen, komponentenweise Multiplikation
+der transformierten Folgen, Riicktransformation und Ausfiihren der Uber-
+tr/ige. Die dabei auftretenden ,,kleinen" Multiplikationen werden analog
+behandelt. Es entsteht so eine rekursive Schachtelung yon Routinen der
+gerade beschriebenen Art.
+                       Schnello Multiplikmbion grol~er Zahlen                         283
+
+    Bei unserem ersten Verfahren ist R = C der KSrper der komplexen
+Zahlen, die Stiiekl~nge ist ~ l g Y , und man erh~lt den Aufwand
+0 (IV lg IV (lg lg IV)1+ ~) sehon, wenn man dreimal sehaehtelt.
+    Bei unserem zweiten Ve~r           verwenden wir fiir R den Restklassen-
+ring ZF n yon Z nach einer F]~RlVIATzahl F n ~ 22~@ 1, eine Stiickliinge
+yon ~ VN, und wir schachteln ungefiihr lg lg IV-real. Der entscheidende
+Vorteil der FER~ATzahlen F n besteht darin, dab 2 eine primitive 2n+l-te
+Einheitswurzel rood F n ist, deren Potenzreste extrem einfache Dual-
+darstellungen besitzen, so dab das Multiplizierea mit diesen Einheits-
+wurzeln nicht ins Gewicht fgllt.
+    Die R.ealisierung des zweiten Verfahrens durch ein logisches Netz
+kann so geschehen, dab die Tiefe des Netzes (die den Zeitaufwand be-
+stimmt) 0 (lg N) ist. Wit ffihren das allerdings nicht genauer aus. Die
+GrSBenordnung lg IV ffir die Tiefe ist natiirlich die bestmSgliche.
+    Wir glanben nicht, dab die GrSBenordnung IV lg IV lg lg IV fiir den
+Aufwand optimal ist, sondern vermuten dies fiir die Gr6Benordnung
+IV lg IV (vgl. hierzu das tiefliegende Resultat yon COOK und AAZeDER~ [2] ;
+leider ist die on-line Einschr/~nkung far logische Netze unannehmbar und
+fiir die Berechnung auf Turingmaschinen jedenfalls zu streng, da z.B.
+auBer der Schulmethode keines der erwiihnten Verfahren on-line verl/iuft).
+    Im n/~chsten Abschnitt bringen ~wir die schnelle FouRIERtransformation
+in der Form, wie wir sie sp~ter brauchen. Im dritten Abschnitt skizzieren
+wir das einfachere mit R = C arbeitende Verfahren und im vierten Ab-
+schnitt schlieBlich besprechen wit ausfiihrlich das Verfahren mit
+R = Z~ n.
+
+                      2. Schnelle F o u r i e r t r a n s f o r m a t i o n
+   R sei kommutativer Ring mit 1, wn ~ R sei 2n-re Einheitswurzel mit
+w~~-1 = -- 1, und 2 = I -k 1 sei Einheit in R.
+   Dann 1/iBt sich die Transformation
+                                 2n--1
+                         a~ = ~, ajw~ ~             (0 ~< ~ < 2n),                   (2.1)
+                                 j=0
+
+die jedem Vektor a ~ R 2n die FouRiERtransformierte ~ zuordnet, nach
+folgendem Schema in Einzelschritte auflSsen.
+    Ffir k und j werden die Dualdarstellungen
+               n--1                 n--1
+           =   ]~ ~ 2~,      j = ] ~ jr 2 n - 1 - ~          (~,, iv = o oder = 1)   (2.2)
+
+benutzt. Ausgehend yon
+                          A o (jo, . . . , j n - 1 ) =- a1      (0 < j < 2n)         (2.3)
+definiert man A 1 . . . . , A n rekursiv dureh
+284                                                                    A. Sc~/3~g_~Gn :
+
+                                          A ~ + I (/Co. . . . .              kv, j v + l . . . . .     jn-1) =
+                     1
+             = ~                A , (/co, ...,/c,-1, j, . . . .                        , i n _ l ) w ~ "~"-l-~(~e+'+~~176                    (2.4)
+                  iv = 0
+oder u n t e r B e r f i c k s i c h t i g u n g v o n w~~-1 = - - 1 ausfiihrticher
+
+A v + l ( . . . /C,-1: 0: j~+l, - . . )                           =                                                             |
+= A~ (...,/C,_1, o, A+~, 9 9 .) + A , (...,/C,_~, 1, j~+~, . . . ) w~,
+A,+I (.../C,_~, 1, j,+~, ...) =                                                                                                 I[           (2.5)
+= A~, (. . ., /C~,_I, O, j ~ + l , - . - ) - - A v ( . . . , / C ~ - 1 ,                             1, j r + l , . . .) w n
+                                                                                                                                I
+m i t u - - 2 ~-1 - " (/C~-1 2 ~-1 -}- 9 9 9 + / C o 2o).
+     A u s (2.3) u n d (2.4) erhglt m a n bei B e a c h t u n g y o n
+                                                 W~"02 n - 1 + """ § ]~-12n- ~) k~ 2~ =                      1
+
+mittels Induktion                        die geschlossene D a r s t e l l u n g
+
+                                         A~+I (/CO. . . . .                   /C,, j , + l . . . .   , jn-1) =
+                                   1                 1
+                         ----     ~      .. . ~               a3....
+                                                                  ~(~2~-1 + . . . + j ~ - l - ~ ) ( k ~ + . . . + ~ o . 2 , )
+                                ~'v= 0          j~   =    0
+
+Gem/iB (2.1) u n d (2.2) folg~ so i n s b e s o n d e r e
+
+                                                          A n (/Co, 9 .., /cn-1) = ~ -                                                       (2.6)
+Fiir die U m k e h r t r a n s f o r m a t i o n                             $ ~-~ a e r g i b t sich d u t c h A u f l S s u n g y o n
+(2.5) die V o r s c h r f f t
+
+A,, ( . . . . /Cv-1, 0, j v + l . . . .          )=
+= 2 -1 (A,+z ( . . . , /C,-1, 0, j , + l , . . . )                              -[- A , + I ( . . . , /C,_1,1, j,+l, . . . ) ) ,
+A , ( . . . . /C,-1, 1, jv+l . . . . ) =                                                                                                     (2.7)
+= 2-1 9 w~ ~"(A~+~ (..., /cv-1, 0 , j ~ + l . . . ) - - A , + I (...,/cv-1, 1 , j , + l , . . . ) )
+
+m i t ~ = 2 n-~ - " (/C~-1 2 "-~ -t- 9 9 9 + / C o 20).
+      A n sp/iterer Stelle ist n o e h f o l g e n d e r U m s t a n d                                           wesentlieh:
+      N a e h (2.3), (2.4) gilt speziell fiir 0 ~<j < 2 n-~
+
+11(1,       jl,    -..,          in-l)      =- A 0 ( 0 ,               jl,   ...,     jn-1)---/lo(1,              jl .....          jn-1)=
+                                                                                                                                             (2.s)
+                                            =        g]   -   -       a]+2n-l~
+
+u n d die w e i t e r e n S c h r i t t e der a u f /co = 1 e i n g e s c h r g n k t e n ~ e k m ~ s i o n
+(2.5) fiihren v o n diesen D i f f e r e n z e n zu d e n ~ m i t u n g e r a d e m k; e n t -
+s p r e c h e n d l~ssen sich die D i f f e r e n z e n (2.8) m i t t e l s (2.7) ( e i n g e s c h r ~ n k t
+~ u f /co = 1) Mlein ~us den 2n-1 vielen ~k m i t u n g e r a d e m /C zuriick-
+gewinnen.
+                     Schnelle Mul~iplikalbion groBer Z a h l e n                      285
+
+
+             3. Multiplikation mit Hilfe komplexer Zahlen
+   In diesem Abschnitt beschreiben wir eine Methode zur Konstruktion
+schneller Multiplikationsverfahren, bei der die schnelle FOVRIERtrans-
+formation im Ring R = C der komplexen Zahlen benutzt wird. Beginnend
+mit dem elementaren Verfahren Vo nach der Schulmethode erhalten wir
+mittels dieser Konstruktion sukzessiv schnellere Vcrfahren V1, V2, . . .
+Unter Voraussetzung yon Vm ist also anzugeben, wie beim Verfahren
+ Vm+I zu ganzen Zahlen a >~ 0, b ~> 0 in N-stelliger Dualdarstellung das
+2N-stellige Prodnkt c = a b berechnet wird.
+   Ausgehend yon natfirlichen Zahlen 1 und n, die unter Einhaltung der
+Bedingung
+                               1 . 2 n >~ 2 N                       (3.1)
+spgter in Abhgngigkeit yon N noch geeignet zu wghlen sein werden, zer-
+legt man die Faktoren a und b gemgB
+                              2n--1                       2n--1
+
+                        a =           aj 2J ,      b =            bj 2Jz
+                               i=o                         j=0
+        mit 0 ~< aj < 21, 0 ~ bj < 2z und aj = bj = 0 fiir j ~> 2 n-1
+
+in Abschnitte der Lgnge 1. Dann ergibt sich das Produkt in der Form
+                                                2n-1
+                               C---- a b    =      Z     c~231
+                                                                                     (3.3)
+                  mit c r =     Z      aqb~=                  Z              aeba'
+                              e+ a= v                  e+ ~ v ( m o d 2 n)
+
+d. h. die c~ entstehen durch Fultung der a e m i t den b~. Die in 2. be-
+schriebene Fov~IE~transformar       mit w n ~ e 2~i'2-n iiberffihrt diese
+Faltung in 2n vide Multip]ikationen, ngmlich
+          2n--1       2n--1                2n--1
+
+
+          ~=0         a=O                  ~=0
+
+Damit lggt sich das Verfahren Vm+l in groben Zflgen umreif~en:
+(3.5)   Ubergang von den a~ zu den ~                    und entsprechend yon den b~ zu
+        den b~ gemg$ (2.5);
+(3.6)   Ausffihrung der 2n Multiplikationen a~b~ = ~k;
+(3.7)   lJbergang yon den g~ zu den cr gemg$ (2.7);
+(3.8)   stellengerechte Addition der c, gemgB (3.3).
+
+   U m diesen Plan finit zu realisieren, ist es erforderlich, die in den
+Schritten (3.5) bis (3.7) vorkommenden komplexen Zahlen dutch hin-
+286                                          A. ScEb~EAOE;
+
+
+reichend genaue numerische N d h e r u n g s w e r t e zu ersetzen. Dabei sind die
+Rundungsfehler so klein zu halten, dab die ganzzahligen cw bis auf
+             1
+Fehler < ~ berechnet werden u n d so durch R u n d u n g exakt bestimmt
+werden kSnnen. Neben den A~(...) aus 2. treten beim l'Jbergang von
+den bj zu den bk u n d y o n den ck zu den c i entsprechende Gr5Ben B~ ( . . . )
+u n d C~ ( . . . ) auf. Aus aj < 2 Z, bj < 2z folgt nach (2.5) u n d (2.7)
+
+         IA, (...)1 < 2z+',                 (...)1 <                     < 2z+ ,              <
+
+
+      D a m i t bei der numerischen N/~herung die Reehnung in komplexer
+F e s t k o m m a a r i t h r a e t i k mit einer Stelle vor dem K o m m a u n d einer ge-
+eigneten Zahl s yon Stellen nach dem K o m m u ausgefiihrt werden kann,
+verwende~ m a n neben s-stelligen
+                      (On,~ mit [eOn,~ - - w~! < 2 -s ffir [~] < 2n-1
+skMierte N~herungswerte
+                 ~, ( . . . ) ~ 2 - z - , A , ( . . . ) , fl, ( . . . ) ~ 2 -4-~ B , ( . . . ) ,
+                                    7, (...)         2-2 -2       G (...).
+    Aus (2.5), (3.6) u n d (2.7) ist ersiehtlieh, wie die Berechnung der
+e~, fir, y~ unter Beriieksichtigung dieser Skalierungen zu erfolgen hat. Die
+dabei auftretenden komplexen Multiplikationen werden durch jeweils
+4 Multiplikationen reeller s-stelliger Zahlen nach dem Verfahren Vm u n d
+zus//tzliche Additionen mit R u n d u n g auf s Stellen nach dem K o m m a
+realisiert. Die Abseh/itzung der Rundungsfehler liefert
+                                                                                                   1
+         12uz+2n yo (jo, 9 9 i n - l ) - - cjl <~ const 9 n 9 2 21+2n-s < ~ ,
+
+sofern wir
+                                 s >~2l@ 2n@lgn-~const                                                 (3.9)
+w/ihlen.
+    N u n m e h r k6mlen wit den A u f w a n d ]klm+ 1 ( N ) des Verfahrens Vm+l
+abseh/~tzen, indem wir auf M m (s) zuriiekgreifen u n d ffir die Addition
+s-stelliger Zahlen die Sehranke 0 (s) benutzen. Die con, ~ kSnnen bei Ver-
+wendung logiseher Netze fest eingebaut werden. Bei Verwendung mehr-
+b/~ndiger Turingmasehinen sind sie vorher zu berechnen. Das ist wegen
+
+                  wl = -- 1, w2 = i ,              w~+l-- i11 @ wv fiir v >~ 2,
+                                                              +~w~l
+                                  2u        u _ 2u§
+                                 W~+ 1 --~ Wv, 'Wv§           :   Wv+I    "   W~
+
+mittels 0 (2n) Operationen wie Addition, Multiplikation, Division, Wurzel-
+ziehen mSglich, u n d diese erfordern bei Genauigkeit auf s Stellen nacla
+elementaren Verfahren h6ehstens 0 (2 n . 82) Schritte.
+    Die Schritte (8.5) u n d (3.7) verursachen in der zuvor besehriebenen
+Realisierung einen Aufwand          0 (2n 9 n ( M m (8) ~ s)), (3.6) kostet
+                        Schnelle Multiplika~ion groBer Zahlen                 287
+
+0 (2n (Mm (s) -k s)) u n d (3.8) schlieBlich noch 0 (2 n (2 1 -k n)). So folgt
+             Mm+I (N) = O (2n(s 2 -~ n Mm (s) -~ n s + 2 1 + n))
+u n d bei W a h l y o n mSglichst kleinem s unter der Bedingung (3.9)
+                   Mm+l (N) : 0 (2 n ((1 q- n) 2 + n Mm (3 (l -k n)))).     (3.10)
+Fiir die Schulmethode Vo grit M o (s) = 0 (s~), also
+                           MI(N) :O(2        n.n(l+n)2).
+W/~hlen wir unter E i n h a l t u n g y o n (3.1)
+
+
+
+d a n n erhalten wir fiir das Verfahren V1 den A u f w a n d
+                              _~11 (5") = o (N (lg N)2).                    (3.11)
+    J e t z t benutzen wir dieses Ergebnis in (3.10) fiir m = 1; das fiihrt bei
+gleieher W a h l y o n l u n d n zu
+                          M2 (N) = 0 (N lg N (lg lg N)2).
+    So weitersehlieBend gelangt m a n zu
+                    Ma (N) = 0 (N lg N lg lg N (lg lg lg N) 2)
+usw. Wir verziehten darauf, den Sehaehtelungsgrad m in Abh/~ngigkeit
+y o n N zu wghlen, well wir ohnehin im n/iehsten Absehnitt ein noeh etwas
+sehnelleres Verfahren besehreiben.
+
+                      4. u                  yon Fermatzahlen
+    Start der komplexen Zahlen benutzen wir jetzt die Rest klassenringe
+ZF n zu den FERMA,Tzahlen
+                                    F n ~-- 2 2n -~- 1.
+    Weil die Multiplikation N-stelliger DualzaMen a, b ~ Z (a, b ~ 0) ohne
+Verfiilschung auch als Multiplikation in ZF n aufgefaBt werden kann,
+so~(3rn
+                                 2 iV ~ 2n                            (4.1)
+gilt u n d damit c = a b d u t c h
+                        c ~ a b ( m o d F n ) u n d 0 ~ c ~ Fn               (4.2)
+eindeutig bestimmt ist, kSnnen wit uns im weiteren a u f die B e t r a e h t u n g
+der Multiplikation in diesen Restklassenringen besehr/~nken.
+   Die Elemente yon ZF n werden zweekm~Bigerweise dureh Dualzahlen
+der festen L~nge 2 n+z, d . h . dureh ganze Zahlen x der F o r m
+                           2n+t--1
+                       x ~    ~    xj2J      (xj---- 0 oder ~ 1 )            (4.3)
+                             j=o
+288                                    A. Sc~6~Ae~:
+
+repr/~sentiert. Diese Art der Darstellung ist zwar nieht eindeutig; sie
+besitzt aber andere Vorteile, die auf der Kongruenz
+                                   2 ~n+l -- 1 (mod F~)                               (4.4)
+beruhen.
+    Wegen 29'n -~ -- 1 (rood F n ) erfiillt R = ZFn die Voraussetzungen in
+2., hier mit n - f - 1 start n und Wn+l=2 bzw. mit w n = 4 . Die bei
+Fov~IE~transformation in ZFn notwendigen Multiplikationen mit
+wn+1 = 2~ lassen sieh wegen (4.4) einfaeh dureh zyklischen Schift um
+  Stellen realisieren :
+                            2n+ 1_1                     2n+l--1
+              2~ ' . x =      ~       x~.2J+~             ~       YTc2e (modFn)
+                             ]=o                         k=o
+                   mit x j = y k       ffir j - k ~ k             (mod 2n+1).
+    Die Addition mod Fn yon Zahlen der Form (4.3) erfolgt ebenfalls
+zykliseh, d. h. ein Uberlauf 22n+1 ist als @ 1 in der 0-ten Stelle zu beriiek-
+sichtigen. Die Subtraktion kann wegen 2 2 n ~            i (mod Fn) dureh
+zyklischen Schift des Subtrahenden um 2n Stellen auf die Addition zuriiek-
+geffihrt werden. Diese Operationen erfordern jeweils h6ehstens einen
+Aufwand 0 (2n). AuBerdem ben6tigen wir im weiteren noeh die LSsung
+der folgenden Teilanfgaben: Die Reduktion yon
+                x=u-kv.2              ~n,     0 ~ < u < 2 ~n,         0 ~<v < 2 2 n   (4.5)
+
+auf die Darstellung dureh minimalen nieht negativen Rest
+
+                             =~ x (mod Fn),              0 ~. ~ ~ 22n
+wird naeh der Vorschrift
+                               / u -- v,                      falls v ~ u,            (4.6)
+                           ~:=[2 2n+ 1-t-u--v,                falls v > u
+mit Anfwand 0 (2n) realisiert.
+      Die Aufgabe, bei vorgegebenem ~ und ~] die dureh
+
+                           I z~$ (rood Fn), 0 < ~ < ~ 2 2n,
+                            z ~ V (rood 2n+2), 0 ~< V < 2n+2,                         (4.7)
+                            0 ~ Z < 2 n+2 F n
+
+eindeutig bestimmte ganze Zahl z zu bereehnen, 1/~gt sich ebenfMls mit
+Aufwand 0 (2n) 15sen, indem zuerst
+                 5 ~= ~ -- ~       (mod 2n+2) mit 0 ~< d < 2n+2
+u n d dann
+                                   z = ~ + ~ (2 ~ + 1)
+berechnet wird.
+                                Schnelle Multiplikation groSer Zahlen                                         289
+
+    Nach diesen Vorbereitungen beschreiben wir jetzt eine Methode, die
+Multiplikation in ZF m a u f Multiplikationen in ZF n zuriickzuffihren, wobei
+die FKlle
+                               m=2n--                 1    oder          m=2n--2                         (4.8)
+zu unterscheiden sind. D a m i t n < m gilt, sei m ~> 3.
+    Zuerst behandeln wir den Fall m = 2 n -- 1.
+    Die zu multiplizierenden Elemente aus ZF m sind in der F o r m (4.3)
+als 2m+l-stellige Zahlen a u n d b gegeben. Bei Zerlegung
+               2n+ I - - 1                            2n+ I - - 1
+          =       ~          a~ 2~~-~, b =                ~         bo e~           0 < a~, b~ < 22~-~ (4.9)
+                 0=0                                      a=O
+
+in jeweils 2n+z viele Abschnitte der L/~nge 2n-1 ergibt sich das P r o d u k t
+in der F o r m
+                                           2n+ 1--1
+                                 a b ~--        ~_~ c~2 ~2n-1 (mod Fm)
+                                                z=0
+mit
+                               c, =              Z              a~ bz < 2 n+l+2n.                       (4.10)
+                                      q+ ~T(mod2 n+l)
+                                        0 <_q,a< 2n + l
+      Wegen
+                              2 2n'2n-I     =     2 2m ~        --   1        (mod Fm)
+gilt aber auch
+       2n--1                                                         2n+ l --1
+ab ~ Z         (ci -- cj+2n + 2n+l+2n)2J'2n-1 +                          Z       2 n+l+2n 9 2J" 2n-l(mod Fro),
+        j=0                                                           ] = 2n
+
+mit
+                               Cj - - Cj+2 n - ~       2 n+l+2n fiir        ~<j < 2 n
+                                                                             0
+                      zj = [2n+l+2n                                  fiir 2n ~<j < 2 n+l                (4.11)
+
+also
+                                          2n+ 1--1
+                                a b ~-      ~          zj 2J 2~-~ (mod F~).                             (4.12)
+                                           j=o
+
+    Der Summand 9n+l+2n wltrde im I-Iinblick auf (4.10) hinzugefiigt, so
+dab 0 ~ zj < 2n+2 Fn grit.
+    Well 2n+2 u n d •n teilerfremd sind, geniigt es, die zj m o d 2 n+2 lind
+m o d Fn zu berechnen. Die Berechnung der zj m o d 2 ~+2 gelingt a u f ein-
+fache Weise durch folgenden Kunstgriff: Mit den durch
+
+                  ~j -~ aj,       flj = bj (rood 2n+2),                      0 -~< ~], flj < 2 n+2
+  Computing 7/8--4                                                                                       19
+290                                             A. SC~6~-~AG~:
+
+"bestimmten ~j, flj bildet m a n die Zahlen
+                              2n+1--i                             2n+l_ 1
+                         =                                 v =                                    (4.13)
+
+                                   ~o=0                             a=O
+                                           U, V ~ 2 2 n + l ( 3 n + 5 ) -
+
+    Deren P r o d u k t enth~lt als disjunkte Teilstiicke der L~nge 3 n @ 5
+die S u m m e n
+                   Yv=         Z      ~e/~a < 2n+l 9 (2n+2) 2, 0 ~< v < 2 n~:2.
+
+
+      N a c h (4.10) gilt ffir 0 ~< ~ < 2n+1
+                                   Cv ~    ~v -~ ~v+2 n + l       (mod       2n+2),
+nach (4.11) also
+                             zj -----~]i    (rood 2 n+2)         fiir       O <~j < 2n,           (4.14)
+wobei
+   ~]j ~ ~'j - - y]+2n -~ YJ+2.2 n - - Yj+3.2 n (rood 2 n+2) u n d 0 ~ ~j < 2 n+2.
+    Die B e r e c h n u n g der •j k o s t e t so hSchstens den A u f w a n d 0 (2 2n) u n d
+eine Multiplikation u 9 v y o n Zahlen der LKnge ~ 2 n+l (3 n @ 5), deren
+Aufwund nach (3.11) durch
+                     M1(2 n+l(an@                  5)) = 0 ( 2     n . n 8) ~ 0 ( 2 2n)
+abgesch~tzt werden kann. (Wir haben hier (3.11) n u t aus Griinden der
+Bcquemlichkeit b e n u t z t ; es wiirde an dieser Stelle auch jede Schranke
+0 (N 2-~) ausreichen, z . B . die y o n K~mACV]~A, siehe K~UTH [5], Seite
+258--259).
+      Die B e r e c h n u n g der zj rood F n fiihren wir mit der FOV~I~Rtrans-
+f o r m a t i o n in ZFn , wobei wn+l = 2 b e n u t z t wird, auf Multiplikationen in
+ZF n zuriick, indem wir wie in den Schritten (3.5) bis (3.7) vorgehen.
+Wichtig ist jedoch, daf~ j e t z t start der c i im Hinblick a u f (4.11) n u r die
+2n vielen Differenzen c j - cj+2n (mod F n ) berechnet werden miissen. I n
+Analogie zu (2.8) sind das die 2n+1-stelligen
+C1 (1, j r , 9 9    j n ) ~ cj - - cj+2n (mod Fn) m i t j -----j l 9 2n-1 @ 9 9 9 @ j n " 20,
+u n d nach den B e m e r k u n g e n am Schlul~ y o n 2. sind ffir deren B e r e c h n u n g
+im Unterschied zu (3.6) nur die 2n Multiplikationen
+                   ak bk - - ~k (mod F n ) ffir ungerades k < 2 n+l
+erforderlich. Die Fov~I~l~transformationen in ZF n benStigen 0 ( n . 2",)
+Schritte jeweils v o m A u f w a n d 0 (2 n) n n d kosten so 0 (n 9 22n). Addition
+von 2 n+l+2n u n d R e d u k t i o n rood En gem/~13 (4.6) liefert mit einem Auf-
+w a n d O (22n) fiir 0 ~< j < 2 n die Reste
+       ~j ~- C1 (1, j l , 9 9         j n ) @ 2n+l+2n =-- z1 (rood F n ) ,            0 ~ Sj ~ 2 ~n.
+                          Schnelle Multiplikation groBer Zahlen                                 291
+
+    Zusammen mit (4.14) hat man so Kongruenzen der Form (4.7), aus
+denen sieh die 2n vielen zi (j ~ 2n) mit einem Aufwand 0 (22n) bereehnen
+lassen. SchlieBlieh erfordert die stellengerechte Addition der zt in (4.]2)
+nochmals den Aufwalld 0 (22n).
+    Insgesamt haben wir gezeigt, dab sich die Multiplikation in ZF2,,_ ~
+mit 2 n Multiplikationen in ZF n und zus/~tzlichem Aufwand 0 (n-22n)
+realisieren l~fit.
+    Der gerade Fall m ~ 2 n -- 2 1/~ftt sich analog behandeln: Die Faktoren
+a und b werden in 2n Abschnitte der Ls           2n-1 zerlegt. Deren Faltung
+wird durch Foul~Im~transformation in ZF n -- jetzt mit wn----4 -- auf
+Multiplikationen in ZF n zurfickgeffihrt. Wieder benStigt man nur die
+Multiplikationen ftir ungerades k, und das sind in diesem Falle 2n-1 Stfick.
+Deshalb ]i~Bt sich die'Multiplikation in ZF2n_ 2 mit 2 n-1 Multiplikationen
+in ZFn und zus/~tzlichem Aufwand 0 ( n . 22n) realisieren.
+    Jetzt wollen wir den Aufwand unseres Verfahrens in gesehlossener
+Form abschi~tzen. Bezeichnet M (n) die MindestgrSBe logischer :Netze ffir
+die Multiplikation in ZF n (bei Verwendung der Darstellung (4.3)), dann
+gilt nach dem Vorangehenden mit hinreichend groBem y0
+        {M ( 2 n - - 2 ) ~ 2 n - l M ( n ) ~ y o ( n - - 1 ) 2 2 n - 1
+           (2 n -- 1) ~ 2n M (n) + y0 (n -- 1) 22n                       f i i r n ~ a.   (4.15)
+
+Andererseits lassen sich diese Ungleichungen aber auch ebenso als Zeit-
+absch~tzung einer geeignet organisierten mehrb~ndigen Turingmaschine
+interpretieren, die nach der zuvor beschriebenen Methode rekursiv ar~
+beitet, sofern M (n) die yon ihr maximal benStigte Schrittzahl fiir Multi-
+plikation in ZF n bezeichnet.
+    Mit
+                      --~ max {M (1), M (2), M (3), ~0}
+
+ergibt sich naeh (4.15) dureh Induktion fiber k
+                        M(n) ~yk.            2/c+n fiir n ~ 2 I t + 1,
+also
+                                   M (n) = 0 (2n n lg n).
+
+Bei Anwendung auf die Multip]ikation N-'stelliger Dualzahlen w/~hlen wir
+unter Einhaltung von (4.1)
+                                       n = [2 lg (2 N)].
+    Die im Hinblick auf (4.2) nach der Multiplikation in ZF n notwendige
+Reduktion rood Fn kostet nach (4.6) nur 0 (2n)--__ 0 (N). Die Multi-
+plikation N-stelliger Zahlen l~l~t sich also mit einem Aufwand
+                                     0 (N lg N lg lg N)
+bewerkstelligen.
+                                                                                          19"
+292           A. Sc~5~g~GE: Schnelle Multiplikation groi3er Zahlen
+
+                                       Literatur
+[1] CooI~, S. A. : On the Minimum Computation Time of Functions. Dissertation,
+    H a r v a r d Universit~t (1966).
+[2] COOK, S.A., and S. O. AA~DERAA: On the Minimum Computation Time of Func-
+    tions. Trans. AMS 142~ 291--314 (1969).
+[3] CooLEY, J. W., and J. W. TU~:Eu An Algorithm for the Machine CMculatiom
+    of Complex FouRIEa Series. Math. Comp. 19, 297--301 (1965).
+[4] KARACUBA, A., (und J. OFMA~): Multiplikation vielstelliger Zahlen m i t Reehen-
+    automaten (russisch). Dokl. Akad. ~ a u k SSSI~ 145~ 293--294 (1962).
+[5] KNv~g, D. E.: The Art of Computer Programming. Vol. 2: Seminumerical
+    Algorithms, Chapter 4: Arithmetic. Addison-Wesley. 1969.
+[6] SOHS~AGE, A.: Multiplikation grol~er Zahlen. Computing 1~ 182--196 (1966).
+[7] Too~, A; L. : Die Komplexit~t eines logischen Netzes, das die Multiplikation
+    ganzer Zahlen realisiert. Dokl. Akad. N a u k SSSR 150, 496--498 (1963).
+
+           Doz. Dr. A. SchSnhage                            V. ~Strassen
+             Universitiit Konstanz                      Universlt~t Zi~rich
+           Fachbereich Mathematik             Seminar ]i~r Angewandte Mathematik
+      Post]ach 733, BRD-775 Konstanz            Freiestrafle 36, CH.8000 Zi~rich
+                 Deutschland                                  Schweiz
+

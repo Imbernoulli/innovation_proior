@@ -26,15 +26,15 @@ So I need the full polynomial space of degree at most `q-1`, whose dimension is
 
     C(n+q-1,n) ≈ q^n/n!.
 
-Dropping homogeneity breaks the cone argument, so I need another way to extract information about the direction of a line. Let `P=P_0+P_1+...+P_t` be a nonzero polynomial of degree `t≤q-1`, with `P_i` homogeneous of degree `i`. If a line `b+a y` lies in `K`, then the restriction
+Dropping homogeneity breaks the cone argument, so I need another way to extract information about the direction of a line. A line still has one algebraic trace of its direction: the top coefficient of the restriction to that line. Let `P=P_0+P_1+...+P_t` be a nonzero polynomial of degree `t≤q-1`, with `P_i` homogeneous of degree `i` and `P_t` not zero. If a line `b+a y` lies in `K`, then the restriction
 
     p(a)=P(b+a y)
 
-has degree at most `t` and vanishes for all `a ∈ F_q`; since `t<q`, it is the zero polynomial. The coefficient of its top power `a^t` comes only from `P_t`. In a homogeneous degree-`t` form, the `a^t` term of `P_t(b+a y)` is obtained by taking the `a y` part in every factor, so that coefficient is exactly `P_t(y)`. In particular, at the first pass with `t=q-1`, the coefficient of `a^{q-1}` in `P(b+a y)` is `P_{q-1}(y)`. Because `p` is identically zero, this coefficient vanishes.
+has degree at most `t` and vanishes for all `a ∈ F_q`; since `t<q`, it is the zero polynomial. The coefficient of `a^t` cannot come from any lower homogeneous piece. Inside `P_t(b+a y)`, the `a^t` term is obtained by taking the `a y` part in every degree-`t` factor, so that coefficient is exactly `P_t(y)`. Because `p` is identically zero, `P_t(y)=0`.
 
-The direction `y` was arbitrary. So the top homogeneous part `P_t` vanishes at every point of `F_q^n`. This still needs a finite-field check: a nonzero polynomial can be the zero function when its degree is large, as `X^q-X` shows. But here `t≤q-1`, and Schwartz-Zippel gives at most `t q^{n-1}<q^n` zeros for any nonzero degree-`t` polynomial. Since `P_t` has all `q^n` points as zeros, it must be the zero polynomial. That contradicts the definition of `t` as the top degree unless there is no top part left.
+The nonzero direction `y` was arbitrary. If `t>0`, homogeneity also gives `P_t(0)=0`, so the top homogeneous part `P_t` vanishes at every point of `F_q^n`. This still needs a finite-field check: a nonzero polynomial can be the zero function when its degree is large, as `X^q-X` shows. But here `t≤q-1`, and Schwartz-Zippel gives at most `t q^{n-1}<q^n` zeros for any nonzero degree-`t` polynomial. Since `P_t` has all `q^n` points as zeros, it must be the zero polynomial, contradicting the choice of `P_t` as the top nonzero homogeneous part. If `t=0`, then `P` is a nonzero constant, and that cannot vanish on the nonempty set `K`.
 
-Peeling makes this precise. If a nonzero `P` of degree at most `q-1` vanishes on a Kakeya set, the line-restriction argument kills its highest homogeneous part. Then the degree drops, and the same argument kills the new highest homogeneous part, and so on. Eventually only the constant term remains; because `K` is nonempty and `P` vanishes on it, that constant is zero. So `P` was the zero polynomial after all.
+The same idea can be viewed as peeling from degree `q-1` downward, but taking the actual top degree avoids the bookkeeping: no nonzero polynomial of degree at most `q-1` can vanish on a Kakeya set.
 
 Now the linear-algebra threshold can be read off exactly. If
 
@@ -47,6 +47,32 @@ then the `C(n+q-1,n)` coefficients of polynomials of degree at most `q-1` satisf
         ≈ q^n/n!.
 
 That is the `q^n` lower bound. The homogeneous proof finds the polynomial-method mechanism; the leading-form coefficient at infinity is the extra move that recovers the missing factor of `q`.
+
+The constant still looks wasteful. The loss is not coming from directionality anymore; it is coming from counting each zero as a yes-or-no event. If I require a polynomial to vanish to multiplicity `m` on every point of `K`, then each point imposes `C(m+n-1,n)` homogeneous linear conditions, while the degree-`≤d` coefficient space has `C(d+n,n)` unknowns. So interpolation would still produce a nonzero polynomial when
+
+    C(m+n-1,n)|K| < C(d+n,n).
+
+The price is that I now have to propagate multiplicity along the Kakeya lines. In finite characteristic I should phrase this with Hasse derivatives. Let `ell` be a large multiple of `q`, choose
+
+    d = ell q - 1,    m = 2 ell - ell/q.
+
+Suppose interpolation gives a nonzero `P` of actual degree `d*≤d` and multiplicity at least `m` on every point of `K`. Since `K` is nonempty, a nonzero polynomial with multiplicity `m` at a point must have degree at least `m`, so `d*≥m≥ell`. For every Hasse derivative of weight `w<ell`, the derivative `Q=P^{(i)}` has multiplicity at least `m-w` at each point of `K` and degree at most `d*-w`. On the Kakeya line in direction `b`, the univariate restriction of `Q` has `q` field points, each with multiplicity at least `m-w`. I need
+
+    (m-w)q > d* - w
+
+to force that restriction to be zero. The parameter choice gives it uniformly, because
+
+    (m-w)q - (d-w) = (q-1)(ell-w)+1 > 0,
+
+and `d*≤d`. If the top homogeneous part `H` of `P` has derivative `H^{(i)}` nonzero, then `H^{(i)}` is the top homogeneous part of `Q`, and its value at `b` is the leading coefficient of `Q` restricted to the line in direction `b`; if `H^{(i)}` is already zero, there is nothing to prove. So every derivative of `H` of weight below `ell` vanishes at every nonzero direction, and the origin is automatic because `d*≥ell>w`. Running this for all `w<ell` forces `H` to vanish to multiplicity `ell` at every point of `F_q^n`. The multiplicity version of Schwartz-Zippel gives
+
+    sum_{a in F_q^n} mult(H,a) ≤ d* q^{n-1},
+
+but the propagated multiplicities give at least `ell q^n`, and `ell q^n > d q^{n-1} ≥ d* q^{n-1}`. The top part cannot be nonzero. Therefore the interpolation inequality must fail, and with these parameters it gives
+
+    |K| ≥ C(d+n,n)/C(m+n-1,n) -> (q/(2 - 1/q))^n ≥ q^n/2^n.
+
+I do not need this sharper constant to get `c_n q^n`, but it explains why higher-order vanishing is the right way to move from the `1/n!` constant toward the scale of the known constructions.
 
 I also want the computational check to match the proof rather than merely decorate it. The code should count the two monomial spaces, sample-check the Schwartz-Zippel ceiling `d q^(n-1)`, verify the coefficient identity `coeff_{a^{q-1}} P_{q-1}(b+a y)=P_{q-1}(y)`, build an actual small planar Kakeya set, check that it contains a line in each projective direction, and confirm that no nonzero degree-`≤q-1` polynomial vanishes on it. The same Gaussian-elimination routine is exactly the linear-algebra forcing step.
 
@@ -142,19 +168,17 @@ def lagrange_top_coefficient(vals, q):
 
 def line_direction_certificate_holds(q, n):
     F = make_field(q)
-    random.seed(1000 + 10 * q + n)
     mons = homogeneous_monomials(n, q - 1)
-    P_top = {e: random.randrange(q) for e in mons}
-    if all(c == 0 for c in P_top.values()):
-        P_top[mons[0]] = 1
-    for y in product(F, repeat=n):
-        for b in product(F, repeat=n):
-            vals = [
-                peval(P_top, tuple((bi + a * yi) % q for bi, yi in zip(b, y)), q)
-                for a in F
-            ]
-            if lagrange_top_coefficient(vals, q) != peval(P_top, y, q):
-                return False
+    for mon in mons:
+        P_top = {mon: 1}
+        for y in product(F, repeat=n):
+            for b in product(F, repeat=n):
+                vals = [
+                    peval(P_top, tuple((bi + a * yi) % q for bi, yi in zip(b, y)), q)
+                    for a in F
+                ]
+                if lagrange_top_coefficient(vals, q) != peval(P_top, y, q):
+                    return False
     return True
 
 def kakeya_lower_bound(q, n):
@@ -197,4 +221,4 @@ if __name__ == "__main__":
     run_checks()
 ```
 
-So I end with the chain I was looking for: small set forces a vanishing polynomial by dimension; many points on many lines kill a homogeneous polynomial on many directions and give the robust `C(d+n-1,n-1)` bound; using the whole degree-`≤q-1` space requires replacing the cone trick by the leading-coefficient identity; that identity makes every top homogeneous part vanish on all of `F_q^n`, Schwartz-Zippel kills it, and peeling leaves no nonzero polynomial. Hence a Kakeya set has at least `C(q+n-1,n) ≈ q^n/n!` points.
+So I end with the chain I was looking for: small set forces a vanishing polynomial by dimension; many points on many lines kill a homogeneous polynomial on many directions and give the robust `C(d+n-1,n-1)` bound; using the whole degree-`≤q-1` space requires replacing the cone trick by the leading-coefficient identity; that identity makes every positive-degree top homogeneous part vanish on all of `F_q^n`, Schwartz-Zippel kills it, and peeling leaves no nonzero polynomial. Hence a Kakeya set has at least `C(q+n-1,n) ≈ q^n/n!` points, with multiplicities sharpening the constant to at least `(q/(2-1/q))^n`.

@@ -63,9 +63,10 @@ periodic autocorrelation when `p ≡ 3 (mod 4)`. There is no comparable group un
 **The character-sum / Gauss-sum toolbox.** For a prime `p`, the Legendre symbol
 `(j | p)` is the quadratic multiplicative character, with Euler's criterion
 `(j | p) ≡ j^{(p-1)/2} (mod p)` interpreted as `+1`, `-1`, or `0`.
-The basic facts available: multiplicativity `(i | p)(j | p) = (ij | p)`; the quadratic
-Gauss sum `sum_{j} (j | p) ζ^{jk}` has modulus exactly `p^{1/2}` (with an explicit phase
-`i^{(p-1)^2/4}`); and the Weil bound, which controls character sums of polynomials —
+The basic facts available: multiplicativity `(i | p)(j | p) = (ij | p)`; for `k ≠ 0`, the
+quadratic Gauss sum `sum_{j} (j | p) ζ^{jk}` has modulus exactly `p^{1/2}` (with an
+explicit phase `i^{(p-1)^2/4}`); and the Weil bound, which controls character sums of
+polynomials —
 `| sum_{x ∈ F_p} ( f(x) | p ) | ≤ (deg f - 1) p^{1/2}` whenever `f` is not a perfect square
 in `F_p[x]`. These are the only handles that turn a sum of `±1`'s over an interval into
 something estimable.
@@ -137,15 +138,31 @@ A minimal harness for candidate construction and measurement:
 import math
 import numpy as np
 
-def quadratic_residue_sign(i, p):
-    """+1 if i is a nonzero QR mod p, -1 if a non-residue. (i ≡ 0 handled by caller.)"""
-    if i % p == 0:
-        return None  # caller decides the convention for the zero index
-    return 1 if pow(i % p, (p - 1) // 2, p) == 1 else -1
+def is_prime(n):
+    if n < 2:
+        return False
+    if n % 2 == 0:
+        return n == 2
+    d = 3
+    while d * d <= n:
+        if n % d == 0:
+            return False
+        d += 2
+    return True
 
-def build_sequence(n):
+def valid_length(n):
+    """TODO: identify the arithmetic restrictions on admissible periods."""
+    pass
+
+def algebraic_sign(i, n):
     """TODO: choose the +-1 algebraic rule and zero-index convention."""
     pass
+
+def build_sequence(n):
+    """Build one period once valid_length() and algebraic_sign() are filled."""
+    if not valid_length(n):
+        raise ValueError("invalid candidate length")
+    return np.array([algebraic_sign(i, n) for i in range(n)], dtype=np.int64)
 
 def rotate(A, r):
     """Cyclically shift A by floor(r * n) positions."""

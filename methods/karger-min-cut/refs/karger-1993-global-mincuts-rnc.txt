@@ -1,0 +1,630 @@
+     Global Min-cuts in RN C , and Other Rami cations of a Simple
+                         Min-Cut Algorithm
+                                             David R. Karger
+                                      Department of Computer Science
+                                            Stanford University
+                                          karger@cs.stanford.edu
+                                               October 30, 1992
+Abstract This paper presents a new algorithm for cut. The best presently known sequential time bound
+  nding global min-cuts in weighted, undirected graphs. for max- ow is O(mn log(n2=m)), found by Goldberg
+One of the strengths of the algorithm is its extreme and Tarjan [GT88]. Global min-cuts can be computed
+simplicity. This randomized algorithm can be imple- by minimizing over s-t max- ows; Hao and Orlin [HO92]
+mented as a strongly polynomial sequential algorithm show how the max- ow computations can be pipelined
+with running time ~ O(mn2 ), even if space is restricted so that together they take no more time than a single
+to O(n), or can be parallelized as an RNC algorithm max- ow computation; thus the global min-cut problem
+which runs in time O(log2 n) on a CRCW PRAM with can be solved in the same ~            O(mn) running time.1
+mn2 log n processors. In addition to yielding the best        Recently, progress has been made in special cases
+known processor bounds on unweighted graphs, this al- of the min-cut problem. On unweighted graphs, the
+gorithm provides the rst proof that the min-cut prob- min-cut problem is often known as the edge-connectivity
+lem for weighted undirected graphs is in RNC . The problem. Gabow [Gab91] shows how to nd the edge-
+algorithm does more than nd a single min-cut; it nds connectivity c of a graph in time O(cn log(n2 =m)). On
+all of them. The algorithm also yields numerous results weighted, undirected graphs, the algorithm of Nag-
+on network reliability, enumeration of cuts, multi-way amochi and Ibaraki [NI92] computes the min-cut in time
+cuts, and approximate min-cuts.                          O(mn+n2 logn). These algorithms make no use of max-
+                                                          ow computations.
+1 Introduction                                                Work has also been done on parallel solutions to
+This paper studies the min-cut problem. Given a          the  min-cut problem. Goldschlager, Shaw, and Sta-
+graph with n vertices and m (possibly weighted) edges,   ples [GSS82] showed that the s-t min-cut problem on
+we wish to partition the vertices into two non-empty     weighted    directed graphs is P-complete. This is also
+sets S and T so as to minimize the number of edges       true  for  the  global min-cut problem (see section 4.2).
+crossing from S to T (if the graph is weighted, we       In  the   special   case of unweighted directed or undi-
+wish to minimize the total weight of crossing edges).    rected   graphs,  the  matching algorithm of Karp, Upfal
+Throughout this paper, the graph is assumed to be        and  Wigderson     [KUW86],    together with a reduction de-
+connected, since otherwise the problem is trivial. The   scribed   by  Mulmeley,   Vazirani  and Vazirani [MVV87],
+problem actually comes in two avors: in the s-t min-     can  be    used  to    nd  s-t  max-  ows and min-cuts in
+                                                                                      3:5
+cut problem, we require that the two speci c vertices s  O(log  2
+                                                                  n)  time  using  mn     processors. An alternative
+and t be on opposite sides of the cut; in what will be   approach    of  Galil  and  Pan  [GP88]  uses  n2M(n) pro-
+called the min-cut problem, or for emphasis the global cessors, where M(n) is the processor2:37cost for multiply-
+min-cut problem, there is no such restriction.           ing two matrices (presently about n ). In undirected
+                                                         graphs, xing a vertex s and nding s-t min-cuts for
+1.1 Previous Work. The oldest known way to vertices t identi es a min-cut; this requires perform-
+                                                         all
+compute min-cuts is to use their well known duality with ing n 4min-cut    computations in parallel at a total cost
+                                                                  :5 or n2M(n) processors. Either algorithm can
+max- ows [FF56, FF62]. Computation of an s-t max-        of  mn
+  ow allows the immediate determination of an s-t min- be extended to weighted graphs by treating an edge of
+                                                         weight w as a collection of w unweighted edges. How-
+   Supported by a National Science Foundation Graduate
+Fellowship.                                                   1 The notation O~(f ) denotes O(f polylog f )
+               min-cut bounds             unweighted                  weighted
+                                   undirected      directed  undirected       directed2
+               sequential time                    n
+                                           cn log m 2
+                                                            mn + n log n
+                                                                   2
+                                                                             mn log nm
+                                            [Gab91]            [NI92]      [GT88, HO92]
+               processors previous     mn4:5 or n2M(n)           ?          P -complete
+               used in      work   [KUW86, MVV87, GP88]                       [GSS82]
+               RNC          new       cn3                       mn2
+                                   Figure 1: Bounds For the Min-Cut Problem
+
+ever, this makes the processor cost polynomial in the version shows that the minimal r-way cut problem is
+total weight of the edges, and therefore the algorithm in RNC for any constant r. In contrast, it is shown
+is only in RNC when edge weights are represented in in [DJP+ 92] that the multiway cut problem in which
+unary. Until now there has been no known RNC algo- k speci ed vertices are required to be separated (i.e.,
+rithm for the general weighted case. These results are a generalization of the s-t min-cut problem) is NP -
+summarized in the Figure 1 (c denotes the value of the complete for any k > 2.
+min-cut).
+                                                  2 The Contraction Algorithm
+1.2 New Results. This paper presents a new frame- We now present an abstract version of the Contraction
+work for the computation of global min-cuts. The Algorithm. Although certain changes must be made for
+surprisingly simple Contraction Algorithm described in ecient implementation, this version of the algorithm
+Section 2 nds global min-cuts in weighted undirected is particularly intuitive and easy to analyze.
+graphs without any use of max- ow or s-t min-cut com-          Assume initially that we are given a multigraph
+putations. In Section 3 we describe how to implement G(V; E) with n vertices and m edges. The Contraction
+the algorithm with a sequential running time O(mn~ 2 ). Algorithm uses one fundamental operation, contraction
+No complex data structures are used. The algorithm of graph vertices. To contract two vertices v1 and v2,
+is parallelized in section 4 to yield the rst RNC al- replace them by a new vertex v, and let the set of edges
+gorithm for global min-cuts of weighted graphs. Ex- incident on v be the union of the sets of edges incident
+tensions to the algorithm, including a practical time- on v1 and v2 . We do not merge edges from v1 and v2
+processor tradeo , an approximation algorithm, and an which have the same other endpoint; instead, we give v
+improved construction of the cactus representation of multiple instances of those edges. However, we remove
+min-cuts described by Naor and Vazirani in [NV91], are edges which connect v1 and v2 to eliminate self loops.
+described in Section 5                                      The Contraction Algorithm is described in Figure 2.
+    Section 6 describes combinatorial rami cations of
+the Contraction Algorithm. The algorithm yields the- repeat until two vertices remain
+orems which bound the number of distinct minimal or             choose an edge at random
+small cuts which a graph may have. These results are in
+interesting counterpoint to work of Vazirani and Yan-           contract its endpoints
+nakakis [VY92] on enumeration of small cuts. In sec-
+tion 7, we show how this counting allows an accurate                 Figure 2: The Contraction Algorithm
+estimation of how likely a graph is to become discon-
+nected if its edges fail with certain probabilities. This      When the Contraction Algorithm terminates, each
+is relevant to the practical problem of network reli- original vertex has been contracted into one of the two
+ability, which is studied in, for example, Colbourn's remaining \metavertices." This de nes a cut of the
+book [Col87]. It is also closely related to a result of original graph in an obvious way.
+Margulis [Mar75], discussed in [Bol85], which proves the       Theorem 2.1. A particular min-cut in G is pro-
+existence of a threshold function for connectedness in duced by the Contraction Algorithm with probability
+graphs.                                                      (n 2 ).
+     With slight modi cations described in Section 8, the              Fix attention on some speci c min-cut of c
+Contraction Algorithm can be used to compute minimal edgesProof. (from  now on, the term \min-cut edge" refers only
+multi-way cuts. The sequential time bound improves on to edges in this
+the multi-way cut algorithm of [GH88], and the parallel if we never selectparticular   min-cut). First, observe that
+                                                                             a min-cut edge during the Contraction
+                                                          2
+Algorithm, then the two metavertices we end up with the O(n2 log n) trials. We begin by presenting a sim-
+must de ne the min-cut. To see this, consider two ple method for unweighted graphs, and then show how
+vertices on opposite sides of the min-cut. If they to improve the running time by working a little harder.
+end up in the same metavertex, then there must be We then extend to the case of graphs with polynomi-
+a path between them consisting of edges which were ally bounded edge weights, and nally to arbitrarily
+contracted. However, any path between them crosses weighted graphs.
+the min-cut, so a min-cut edge would have had to be
+contracted. This contradicts our assumption.               3.1 Unweighted Graphs. A minor reformulation
+     Next observe that after each contraction, the min- of the Contraction Algorithm is convenient. If we per-
+cut of the new graph must still be at least c. This is formed contractions one at a time, we would need to use
+because contracting vertices u and v simply restricts complex data structures to update the adjacency lists
+attention to cuts of the original graph in which u and v of the graph. Instead, we simulate the performance of
+are on the same side.                                      many contractions at once. We begin by generating a
+     Each contraction in the above loop reduces the random permutation of the edges. Imagine contracting
+number of vertices in the graph by one. Consider the edges in the order in which they appear in the permu-
+contraction during which the graph has r vertices. Since tation, until only two vertices remain. This is clearly
+the contracted graph has a min-cut of at least c, it equivalent to the rst formulation of the Contraction Al-
+must have minimum degree c, and thus at least rc=2 gorithm. We can immediately say that with probability
+edges. However, only c of these edges are in the min-cut. (n 2 ), a random permutation will yield a contraction
+Thus, a randomly chosen edge is in the min-cut with to two vertices which determine a particular min-cut.
+probability at most 2=r. The probability that we never         Consider any such permutation. It has a pre x such
+contract a min-cut edge through all n 2 contractions that the set of edges in this pre x induces two connected
+is thus at least                                           components which are the two sides of the min-cut.
+                                       1                 All we need to do is determine how long the pre x is.
+        2        2             2       n
+   (1 n )(1 n 1 )    (1 3 ) = 2 = (n ):           2     Binary  search solves this problem, because any pre x
+                                                           which is too short will yield more than two connected
+                                                           components, and any pre x which is too long will yield
+     This bound is tight. In the graph
+                                           consisting of only one. The correct pre x can therefore be determined
+a cycle on n vertices, there are n2 min-cuts, one for using logm connected component computations, each
+each pair of edges in the graph. Each of the min-cuts requiring O(m) time. The total running time of the
+is produced by the Contraction
+                       
+                                   Algorithm with equal trial is therefore O(m logm).
+probability, namely n2 1.                                      We can improve this running time by taking better
+     Corollary 2.1. If we perform O(n2 log n) inde- advantage of the connected component computations.
+pendent contractions to two vertices, we nd a min-cut Given the permutation, use O(m) time to identify the
+with high probability. In fact, with high probability we connected components induced by the rst m=2 edges.
+  nd every min-cut.                                        If only one connected component is induced, then we
+     An alternative interpretation of the Contraction can discard the last m=2 edges because the desired
+Algorithm is that we are randomly ranking the edges pre x ends before the middle edge. If not, then we can
+and then constructing a minimum spanning tree of the contract the rst m=2 edges all at once in O(m) time
+graph based on these ranks (we are in fact emulating by nding connected components, and search for the
+Kruskal's minimum spanning tree algorithm [Kru56]). correct pre x in the remaining m=2 edges. Either way,
+If we then remove the heaviest edge in the minimum in O(m) time, we have reduced the problem size to m=2.
+spanning tree, the two components which result have Thus we nish in O(m)+O(m=2)+O(m=4)+   = O(m)
+an (n 2 ) chance of de ning a particular min-cut.          time.
+                                                               The two methods described above both require
+3 Sequential Implementation                                O(m) space. We can improve this bound to O(n)
+                                                           space if we are willing to sacri ce some time. The
+Our most interesting new results are in the parallel ver- only
+sion of this algorithm; however, it is easier to explain is thepart   of the algorithm which requires O(m) space
+                                                                  generation  of an edge permutation. If, instead,
+certain concepts by describing a sequential implemen- the edges are stored       in read-only memory, we can avoid
+tation and then showing how to parallelize it. To show generating the permutation.       We use the union- nd data
+how to implement the Contraction Algorithm, we need structure of [AHU83] to identify          sets of vertices which
+only show how to implement a single trial, since it is have been contracted together. We          choose an edge at
+simple to remember the best result which occurs during
+                                                         3
+random, and apply a union operation to its endpoints' the rst appearance of a multigraph edge with w
+sets if they do not already belong to the same set. copies is determined by the minimum of w randomly
+We continue until only two sets remain. We have a chosen scores. Consider multiplying each edge by a
+high probability of choosing every edge at least once large constant weight k, so that an edge of weight w
+after making O(m log m) choices, and we will necessarily corresponds to wk multigraph edges. This scales the
+contract the graph to two vertices some time before this. value of the min-cut without changing its structure.
+Each choice requires one nd operation, and we will also Suppose we gave each multigraph edge a score chosen
+perform a total of n 2 union operations. Therefore the uniformly at random from the continuous interval [0; k].
+total running time of a trial will be O(m log m). The use The probability distribution for the minimum score X
+of path compression in the union- nd data structure among wk edges is then
+provides no improvement in the running time, which
+is dominated by the requirement that every edge be                           Pr[X > t] = (1 t=k)wk :
+sampled at least once.
+     Corollary 3.1. With high probability, the Con- convergesIf we now let k become arbitrarily large, the distribution
+traction Algorithm nds all min-cuts of an multigraph a score chosen     to one in which an edge of weight w receives
+with m edges and n vertices in time O(mn2 logn) and                          from the exponential distribution
+space O(m), or in time O(mn2 log2 n) if space is re-                            Pr[X > t] = e wt :
+stricted to be O(n).
+                                                             If we can generate an exponential random variable in
+3.2 Weighted Graphs. It is easy to apply the O(1) time, then we can simulate a permutation in
+Contraction Algorithm to integer weighted graphs: just O(m) time (note that we do not actually have to sort
+treat an edge of weight w as a collection of w parallel based on the scores: we can use median nding to do
+edges. This might appear to cause the running time a binary search of the edges in O(m) time, as was
+to become dependent on the sum of the edge weights, described in Section 3.1). If all we have is coin ips,
+but we show how to avoid this. We begin by assuming it is possible to use them to generate approximately
+that edge weights are integers with maximum value exponential distributions in polylogarithmic time and
+polynomial in the problem size, and then clear up a introduce a negligible error in the computation. This
+few details to make the algorithm strongly polynomial. technique will be described in the full paper.
+     Observe that the entire edge permutation is not nec-
+essary in the computation, since as soon as a multigraph 3.2.2 Iterated Sampling. Our second method
+edge is contracted, all the other edges with the same avoids the mathematical computations needed to gen-
+endpoints vanish. In fact, all that matters is the earliest erate exponential variates if one has access only to coin
+place in the permutation that an edge with particular ips or uniform integer distributions. We repeatedly
+endpoints appears. This information suces to tell us simulate the uniform selection of a multigraph edge by
+in which order vertices of the graph are contracted: we choosing from the graph edges with probabilities pro-
+contract u and v before w and x precisely when the rst portional to the edge weights; the order of selection
+(u; v) edge in the permutation precedes the rst (w; x) then determines the order of rst appearance of multi-
+edge in the permutation. Thus our goal is to generate an graph edges. The following procedure can be used to
+edge permutation whose distribution re ects the order choose one edge. First, from edge weights       P
+                                                                                                           w1; : : :; wm;
+of rst appearance of endpoints in a uniform permu- construct cumulative weights Wk = ki=1 wi . Then
+tation of the corresponding multigraph edges. We can choose an integer r uniformly at random from 0; : : :; Wm
+then use the permutation to contract the graph in the and use binary search to identify the edge ei such that
+same fashion as was described for unweighted graphs. Wi 1 < r < Wi .
+     We present two separate methods for generating a            Once the cumulative weights are known, choosing
+permutation. While they may not be the best possible an edge takes O(log n) time (based on the present
+sequential algorithms, they have the advantage of being assumption that Wm is polynomial in n). Since it takes
+easy to parallelize.                                         linear time to recompute the cumulative distribution, it
+                                                             is undesirable to do this each time we wish to sample
+3.2.1 Exponential Variates. The rst method is to an edge. An alternative approach is to keep sampling
+directly model the weighted graph as a multigraph. One from the original cumulative distribution, and ignore
+way we can generate a permutation of the multigraph edges if we sample them more than once. Unfortunately,
+edges is by assigning a uniform random score to each to ensure that all edges have been sampled once, we
+edge and sorting according to score. In this case, expect to need a number of samples equal to the sum of
+                                                           4
+the edge weights. We solve this problem by combining that Wi 1 < Wm s=M < Wi . We have only a
+the two approaches and recomputing the cumulative polynomially small probability of having a di erent
+distribution only occasionally. We use the following result than we would if we used exact arithmetic,
+lemma:                                                      since such an error is introduced only if Wm s=M and
+     Lemma 3.1. With high probability, (weighted) sam-      W  m (s + 1)=M specify di erent edges.
+pling m times from a set of at most m edges yields a set         We also need to ensure that not too many iterations
+of edges whose total weight is more than 1=3 of the total   of  the   permutation generating loop of Figure 3 are
+weight of the entire set of edges.                          needed.     We use a very rough approximation to the
+     Proof. If the outcome of the lemma does not occur,     min-cut    to  ensure that O(log n) iterations suce even
+there must be some set of edges which contains 2=3 of edge weight suchweights
+                                                            when    the  edge
+                                                                                  that
+                                                                                         are large. Let W be the largest
+                                                                                       the  set of edges of weight greater
+the total weight, such that no edge in this set is sampled. than or equal to W connects
+The probability of this happening is 1=3 . Since there minimum weight of an edge all
+                                           m                                                        of G. This is just the
+are only 2 di erent sets of edges, the probability that tree of G, and can thus be identi edmaximum
+           m                                                                                    in  a            spanning
+this happens with some set of edges is at most 2 =3 , time [FT86]. It follows that any cut of the graphn log
+                                                     m  m                                               in O(m  +       n)
+                                                                                                                      must
+which is negligible.                                        cut an edge of weight at least W, so the min-cut has
+     We can therefore apply the procedure of Figure 3. weight         at least W. It also follows from the de nition
+A single iteration of this loop takes O(m log m) time. of W that          there is a cut which does not cut any edge
+ repeat until no edges remain                               of weight    exceeding    W. This means the min-cut has
+                                                            weight less than n2W, since fewer than n2 edges are
+          compute the cumulative weight measures. in the graph, and at worst all edges of weight at most
+          extend the permutation with m samples W are cut. 2 This guarantees that no edge of weight
+            from the remaining edges.                       exceeding n W can possibly be in the min-cut. We can
+                                                            therefore
+          remove edges which were sampled at least any min-cut         contract all such edges, without eliminating
+            once                                                            in the graph. Afterwards the total weight
+                                                            of edges in the graph is at most n4 W.
+           Figure 3: Generating a Permutation                    Since initially the total weight of edges was at
+                                                            most n4W, Lemma 3.1 proves that the amount of
+If the total weight of edges polynomial in n, then Figure   weight remaining unsampled after O(logn) iterations of
+Lemma 3.1 shows that O(log n) iterations of the loop the permutation 3 is less than W. It follows that the portion of
+ensure that the total remaining weight of unsampled must suce to contract       which we have constructed at this point
+edges is less than 1, i.e. no edges remain and we have since otherwise we would the         have
+                                                                                                graph to a single vertex,
+                                                                                                 a cut of weight less than
+  nished constructing a permutation.                        W   (it  could   cut  only  the  unsampled   edges), which is
+     We remark that the O(n) space bound discussed for less than the min-cut. We can therefore                 ignore the
+unweighted graphs can be achieved here as well. As be- remaining unsampled edges and use the permutation
+fore, we use the union- nd data structure of [AHU83] to pre x which we have constructed so far.
+contract edges as we select them. Instead of maintaining
+a list of all unsampled edges, we maintain a threshold           Corollary 3.2. A single Contraction Algorithm
+X(t) such that any edge of weight exceeding X(t) has a      trial  on weighted graphs can be run in strongly poly-
+high probability of being sampled within t trials. After    nomial    O(m log2 n) time, so the Contraction Algorithm
+time t we sample only from among those edges which can be run in O(mn log n) time.
+                                                                                     2    3
+
+
+have weight less than this threshold.
+                                                              4 Parallel Complexity of Min-cut
+3.3 Strong Polynomiality. The exponential vari- This section demonstrates a signi cant di erence in
+able technique for generating permutations can be made the complexity of the min-cut problem on directed
+strongly polynomial by approximating the exponential and undirected graphs. Our parallelization of the
+distribution appropriately; however, we will focus on the Contraction Algorithm proves the the undirected min-
+second technique.                                          cut problem is in RNC . On the other hand, we show
+     Construction of the cumulative edge weights is that the global min-cut problem on directed graphs is
+easily strongly polynomial. To quickly select an edge P -complete.
+from the cumulative distribution, even if the edge
+weights are large, let M = nO(1), generate s uniformly 4.1 Parallel Implementation. We now show how
+at random from 0; : : :; M, and choose the edge i such to parallelize the Contraction Algorithm to give an
+                                                         5
+O(log2 n) time parallel algorithm which uses mn2 log n 4.2 Comparison to Directed Graphs. The previ-
+processors. As before, the only real question is how to ous result shows a fundamental distinction between the
+run a single trial of the Contraction Algorithm, since it min-cut problems on directed and undirected graphs.
+is simple to run O(n2 log n) trials in parallel and com- The s-t min-cut problem on directed graphs was shown
+bine their results. We implement a trial as in the se- to be P -complete [GSS82]. A simple reduction shows
+quential case, by generating a permutation of the edges that the global min-cut problem is also P -complete for
+and contracting based on that permutation. RNC al- directed graphs. To nd a minimum s-t cut using a
+gorithms for connected components exist which run global min-cut algorithm, simply add, for each vertex
+in O(logn) time on a CRCW PRAM [Gaz86] or in v, directed edges of in nite weight from t to v and from
+O(logn log log n) time on an EREW PRAM [KPN92], v to s. The global min-cut in this modi ed graph must
+and use O(m) processors. There is therefore no dif- have s on the inside and t on the outside and thus cor-
+  culty in performing the binary search on connected responds to the minimum s-t cut in the original graph.
+components which was described in the sequential algo-           The min-cut problem is therefore in the fam-
+rithm. Thus we need only show how a linear number ily of problems, such as reachability [NSW92], which
+of processors can be used to generate an appropriately presently have dramatically di erent diculties on di-
+distributed permutation.                                     rected and undirected graphs.
+     In the case of an unweighted graph, generating a
+permutation is trivial. Each processor takes one edge 5 Extensions of the Algorithm
+and assigns it a score chosen uniformly at random from 5.1 Approximating the Min-cut. If we are look-
+the integers 1; : : :; n7 (this large range guarantees that ing only for a \small" cut, then it is possible to sig-
+with high probability no two edges get the same score). ni cantly reduce the amount of work required in the
+We then sort the edges according to score in O(log n) algorithm.
+time (using, e.g., Cole's algorithm [Col88]). All of this                   5.1. With probability n 2=k , a single
+requires only m processors per trial. This yields the trialTheoremof the Contraction Algorithm will yield a cut of
+result for unweighted graphs:                                weight kc.
+     Theorem 4.1. All min-cuts in an unweighted
+multigraph can be found in O(log2 n) time using                  Proof. We return to the unweighted multigraph
+mn log n CRCW processors.
+    2                                                        discussion. We again x our attention on a particular
+                                                             min-cut.  Suppose
+     The bottleneck in the runtime is caused by the to r vertices and have     that at some point we have contracted
+binary search for connected components. If we in- than kc (if we have, than       not yet seen a vertex of degree less
+crease the number of processors to m n log n, we the desired size). Then thewetotal
+                                              2 2                                         have a corresponding cut of
+can examine all pre xes of each permutation in par- graph is at least kc=2. It follows number            of edges in the
+allel and achieve a running time of O(log n), even on edge with probability 2=kr. Arguing as before,aitmin-cut
+                                                                                               that  we  pick
+                                                                                                                 follows
+an EREW PRAM. This matches the (logn) EREW that our probability of success over n 2 iterations                         is
+lower bound of [CDR86], and closely approaches the at least
+  (logn= log log n) CRCW lower bound of [Has86].
+     It remains to generalize the algorithm to the case
+of weighted graphs. We do this by parallelizing the se-                n                       n
+                                                                               2 ) = exp(X         ln(1 ki2 ))
+                                                                      Y
+quential methods described in Section 3. The reduction                   (1   ku
+to small edge weights can be parallelized using, for ex-              u=3                     i=3
+                                                                                                  n 2
+ample, the parallel maximum spanning tree algorithm                                     exp(
+                                                                                                X
+                                                                                                        )
+of [AS87] and the connected components algorithms de-                                            i=3 ki
+scribed above. Once edge weights are small, permuta-
+tion by assignment of exponentially distributed scores is                            e( 2 ln n=k)
+simple to parallelize using a parallel sorting algorithm.                           = (n 2=k ):
+It is also straightforward to parallelize a single itera-
+tion of the weighted sampling loop used in our second
+method, by assigning one processor to perform each of            Corollary 5.1. A cut within a factor of k of
+the m selections described there.                            the min-cut can be found with high probability in
+     Theorem 4.2. The min-cut problem on arbitrarily O(mn2=k logn) time.
+weighted graphs can be solved in RNC in O(log2 n) time           Proof. Because of the above theorem, we need
+using mn2 logn CRCW processors.                              only show that we can identify the smallest degree
+                                                             metavertex which arises during the contraction process.
+                                                           6
+Recall that the Contraction Algorithm can be simulated constant probability of having none of its edges chosen.
+by assigning random ranks and running a minimum If this happens, then this min-cut will still be a min-
+spanning tree algorithm. Given the minimum spanning cut in the contracted graph. It will happen with high
+tree, it is relatively simple to identify the smallest vertex probability after only O(log n) trials. In each trial, the
+which arose from a contraction. Details are left for the lemma proves that the contracted graph will contain
+full paper.                                                     ~
+                                                               O(nc) edges. We then apply the Contraction algorithm,
+                                                               using ~O(n2 ) trials on a graph of ~O(nc) edges, yielding
+5.2 A Time-Processor Tradeo . The Contraction a total processor cost of ~O(n3c).
+Algorithm may be e ective in practice as a way to
+parallelize sequential min-cut algorithms. The key 5.4 Cactus Representation For Min-Cuts. The
+observation is that if we only contract the graph until set of all min-cuts in a graph has a simple and compact
+it has been reduced to s vertices, then a particular representation known as the cactus representation. The
+min-cut survives with probability ((s=n)2 ) (this is a best presently known sequential algorithm for construct-
+simple extension of the original proof of correctness). ing the cactus ([NK92]) runs in time O(mn). Naor and
+This contracted graph will have at most min(m; s2 ) Vazirani [NV91] have shown how to construct this cac-
+edges. Assuming the min-cut survives, we can nd it tus representation in RNC when edge weights are repre-
+by running a sequential min-cut algorithm for a graph sented4:in         unary. The processor cost for their algorithm
+of size s. It follows that the Contraction Algorithm is mn 5 . Both the processor cost and the restriction to
+can be used by p processors to accelerate any sequential unary edge weights stem from the same source, namely
+weighted graph algorithm by a factor of pp.                    the need for an algorithm to compute individual min-
+                                                               cuts in RNC . They use the algorithm of [KUW86]. If
+5.3 Fewer Processors for Unweighted Graphs. we instead use the Contraction Algorithm, both of these
+In the case of unweighted graphs, we can reduce the problems are eliminated. We therefore deduce:
+processor cost from mn2 to n3c. This provides no                   Theorem 5.2. The cactus representation of an ar-
+improvement in the worst case, since a graph with bitrarily weighted graph can be computed in RNC using
+min-cut c may have as few as nc=2 edges, but it does mn2 log n processors.
+improve performance on dense graphs with small min-
+cuts. This improvement is achieved by transforming 6 Combinatorial Rami cations
+the graph into one with ~O(nc) edges, and running the We now use the Contraction Algorithm to prove several
+original algorithm. We use the following lemma:                interesting facts about the combinatorial structure of
+     Lemma 5.1. If each edge of a graph is marked inde- cuts in a graph. In particular, we show bounds on
+pendently with probability p, and connected components the number of small cuts in a graph. Vazirani and
+induced by the marked edges are contracted, then with Yannakakis [VY92] perform a similar investigation with
+high probability the number of edges of the contracted di erent results.
+graph is O(n lnn=p).                                               Theorem 6.1. The number of min-cuts in an ar-
+     Proof. The number of edges in the contracted graph bitrarily weighted graph is at most n2 .
+is just the number of edges crossing between two dif-                      The Contraction Algorithm can be viewed
+ferent connected components induced by the marked as aProof.
+edges. The number of di erent arrangements of con- proved that any for
+                                                                     procedure        randomly generating cuts. We
+                                                                                  particular  min-cut is generated with
+nected components is certainly no more than the num-                                      n  1
+ber of ways to partition the set of n vertices into at most probability at least p = 2 . It follows that there can
+n groups, namely nn. For any given partition which cuts be at most 1=p min-cuts.
+k edges, the probability that no crossing edge is chosen           We can perform a similar analysis of larger cuts:
+             k       kp
+is (1 p)  e . The probability that k edges are                    Theorem 6.2. For k half an integer, the number
+cut in the partition resulting from the connected com-         of cuts of weightat most k times the graph min-cut is
+ponent construction is just the probability that for some      at most  22k 1 2nk , which is less than n2k .
+partition with at least k crossing edges, no one of these          Proof. We consider the unweighted case; the exten-
+k edges is chosen. This is at most nne kp = en ln n kp, sion to weights goes as before. Let k be half an integer,
+which is negligible when kp = (n ln n).                        and c the min-cut, and consider some cut of weight at
+     We apply this lemma to our problem by letting most kc. Suppose we run the Contraction Algorithm.
+the probability p in the lemma be 1=c. If we mark If with r vertices remaining we choose a random edge,
+edges and contract components which are connected then since the number of edges is at least cr=2, we take
+by marked edges, then any particular min-cut has a an edge from the min-cut with probability at most 2k=r.
+                                                             7
+If we do this until r = 2k, then the probability that the at most p c of having all of its edges eliminated. Let
+cut survives is                                               f( ) be the number of cuts of weight c. Recall that
+                                                     1 for some constant ,
+       2k         2k                2k
+(1 n )(1 (n 1) )    (1 (2k + 1) ) = 2k            n                                 X
+                                                                              F( ) = f( ) < n2 :
+                                                                                        <
+We can again use the algorithm to generate a random
+cut, although we must now add an extra step. Since Let C denote the set of all cuts. The probability of
+we stop before the number of vertices reaches 2, we disconnectionX
+                                                                             is at most
+                                                                                                         X
+still have to nish selecting a cut. Do so by randomly               Pr[all edges of C are eliminated] = f( )p c :
+partitioning the remaining vertices into two groups. C 2C
+Since there are less than 22k 1 partitions, it follows that            c
+the probability of a particular cut being chosen is at Since p is decreasing with , a perturbation argument
+least 21 2k 2nk 1:                                            shows that to maximize the sum, it is desirable to have
+                                                              as much of the mass of f as possible at small values
+     When k > n=2 we can apply the obvious upper of . In other words, we want as many small cuts as
+bound of 2n 1 to the number of cuts of this size.             possible, so F( ) should be maximized at every value
+     Corollary 6.1. For arbitrary real values of k, the of (subject to the constraints). If we remove the
+number of cuts of size less than k times the min-cut is restriction that f be discrete and integer valued, then
+O(n2k).                                                       we can take f(1) = n2 and F( ) = n2 for > 1.
+     Proof. Full Paper.                                       Then the sum is bounded by
+     Vazirani and Yannakakis [VY92] derive bounds                      Z 1
+based on the rank of a cut relative to the others; we n2 pc + ( @ n2 )p c d = n2 pc + n2 pc =(a 2):
+instead derive bounds based on the value of a cut                        1   @
+relative to the others. Thus neither bound dominates              Note that for large c, n a=c  1 a lnn=c. We
+the other.                                                    have thus shown that if we kill edges with probability
+     Corollary 6.2. The problem of enumerating all 1 3 ln n=c, the graph is disconnected with probability
+cuts within any constant factor of the min-cut is in O(1=n). On the other hand, if we kill edges with
+RNC .                                                         probability 1 1=c, then the graph is disconnected with
+     Consider the complete n-vertex graph in the context constant probability.
+of these results. The min-cut there has value n 1. Any            Consider the complete graph. Choosing to kill edges
+set of k vertices de nes a cut of about kn edges. Thus with probability 1 (ln n=n) corresponds to choosing
+the number of cuts of size about kn is nk , a result which a random graph from Gn;p with p = (ln n=n). It
+is strikingly close to the one we have derived. The cycle is well known [Bol85] that p = (ln n=n) is precisely
+graph shows an even closer match for the case c = 2 the threshold at which the complete graph becomes
+and k an integer. Such a graph has 2nk cuts of size 2k, connected with high probability. This result is extended
+since every choice of 2k edges de nes such a cut.             by Margulis [Mar75], who shows that every graph has a
+                                                              connectivity threshold; however, this paper appears to
+7 Network Reliability                                         be the rst to explicitly describe the threshold function.
+From the cut counting theorem we can deduce a useful              Corollary 7.1. In a weighted graph, if each edge
+fact about the ability of graphs with large min-cuts          of weight  w fails with probability n 2(1+)w=c, then the
+to resist being separated. In [Col87], the relationship graph remains connected with probability 1 O(n  =).
+between the min-cut and graph reliability is investigated         Proof. Apply the above theorem to the multigraph
+in great detail; however, this result is of a di erent corresponding to the weighted graph.
+  avor:                                                           This gives a method for analyzing the reliability of
+     Theorem 7.1. If each edge of a graph with min- a given network.
+cut c is removed with probability p = n a=c, then                 Corollary 7.2. Suppose in an n-vertex network
+the probability that the graph becomes disconnected is each edge e has failure probability pe . Assign to edge
+O(n2pc =(a 2)).                                               e a weight logn pe . The network failure probability is
+                                                                  2 c
+     Proof. In order for the graph to be disconnected,        O(n     ), where c is the min-cut of the weighted graph.
+some cut must have all its edges eliminated. We                   Proof. Network edge e fails with probability pe =
+therefore bound the probability that all the edges in any n we = n( cwe )=c , which precisely simulates the
+cut are eliminated. A cut of weight c has probability weighted failure criteria in the previous corollary.
+                                                            8
+                                                                              n              n
+    We use the following lemma to prove the next                                (1 r u 1 )       (1 ur 11 )
+                                                                              Y             Y
+corollary:                                                              =
+    Lemma 7.1. If (A; B) is a min-cut of weight c, then                   u=r+1            u=r+1
+                                                                                  1      
+the subgraphs induced by the vertex sets A and B each                   = r rn1       n 1 1:
+have min-cut at least c=2.                                                             r 1
+    Proof. Full Paper.
+    Corollary 7.3. If all edges of a graph are killed
+                                                                                           ~ 2r 1 ) (sequen-
+                                                            This analysis yields a simple O(mn
+with probability (n logn) 4=c , then with probability tial time or parallel processor) algorithm for nding
+  ((n logn) 4 ), the resulting graph has two connected a minimal r-way cut. This is a signi cant improve-
+components, each of which is one side of a min-cut.     ment2 on the previously best known sequential result of
+                                                        O(nr r+11=2) reported in [GH88]. As before, our algo-
+Consider a graph G with min-cut c, and consider the rithm
+two subgraphs A and B induced by the two sides of the          in fact nds all the minimal r-way cuts.
+min-cut. By Lemma 7.1, each subgraph has min-cut at         Corollary      8.1. The number ofminimum    r-cuts
+                                                   4=c  of a   graph  is  no  more than    n n 1, which is
+least c=2. Killing edges with probability (n log n) =                                   1
+                                                                                        r r 1 r 1
+(n logn) 2=(c=2) ensures that with constant probability O(n2(r 1) ).
+A and B are each connected. Independent of this,
+with probability (n log n) 4, all edges of the min-cut      Corollary 8.2. The number of r-cuts within a
+are killed.                                             factor  of k of the optimum is O(n2k(r 1)):
+                                                            Corollary 8.3. Enumerating all the r-way cuts
+8 Multi-way Cuts                                             within any constant factor of the optimum is in RNC
+With a small change, the Contraction Algorithm can for any constant r.
+be used to nd a minimum weight r-way cut, which
+partitions the graph into r pieces rather than 2. The 9 Open Questions
+analysis need be only slightly changed.                       The min-cut problem has long been known to be P -
+     Theorem 8.1. Stopping the Contraction Algo- complete. However, the reduction of [GSS82] showed
+rithm when r vertices remain yields a particular min- this to be true only for directed graphs. This paper
+imum r-way cut with probability at least                      shows that for undirected graphs the situation is entirely
+                          1        1                      di erent, and that much remains to be done in this area.
+                  r rn1         n 1 :
+                                r 1
+                                                              In particular, we have shown that the min-cut problem
+                                                              for undirected graphs is in RNC . This immediately
+                                                              suggests
+     Proof. As before, the key to the analysis is bound- s-t min-cut   that a similar result may be possible for the
+ing the probability p that a randomly selected graph                      problem on undirected graphs.
+edge is from a particular minimal r-cut. Suppose we lated problem are
+                                                                   Questions
+                                                                              of
+                                                                                 also raised regarding the closely re-
+                                                                                 max-  ow. Unlike many min-cut al-
+choose r 1 vertices uniformly at random, and consider gorithms, the Contraction
+the r-cut de ned by taking each of the vertices as one max- ow computations. IsAlgorithm   this an
+                                                                                                      makes no use of
+                                                                                                    accident, or is the
+member of the cut and all the other vertices as the last max- ow problem not parallelizable? Is it possible           to
+member. Let f be the number of edges cut by this ran- use a min-cut algorithm in a non-trivial way as a com-
+dom partition, and m the number of graphs edges. The ponent of a max- ow algorithm? If not, in what sense is
+number of edges we expect to cut is                           the min-cut problem fundamentally easier than that of
+                            r   1       r    1                max- ow? In particular, what is the complexity (RNC ?
+          E[f] = [1 (1 n )(1 n 1 )]m;                         P -complete?) of nding a max- ow corresponding to a
+                                                              global min-cut?
+since the quantify in brackets is just the probability that        The Contraction Algorithm uses a very simple rule
+a single edge is cut. Since f can be no less than the value to nd min-cuts in a graph. Further analysis of the
+of the minimal r-cut, E[f] must also be no less than the Contraction Algorithm may suggest more intelligent
+min-cut. We can therefore deduce that the probability schemes for choosing edges. The goal, of course,
+that a particular minimum r-cut survives the reduction would be to increase the success probability of the
+process until there are r vertices remaining is at least algorithm so as to decrease the number of trials needed.
+         n                                                    Another signi cant accomplishment would be to nd a
+       Y           r  1
+            (1 u )(1 u 1 )    r   1                           deterministic edge contraction rule which places min-cut
+      u=r+1                                                   in NC .
+                                                            9
+10 Acknowledgement                                                 \The maximum ow problem is logspace complete for
+Many thanks to Serge Plotkin, who has given a great                P". Theoretical Computer Science, 21:105{111, 1982.
+deal of his time and asked numerous helpful questions         [GT88] Andrew V. Goldberg and Robert Endre Tarjan. \A
+related to this research. Thanks also to Daphne Koller             new approach to the maximum ow problem. Journal
+                                                                   of the ACM, 35:921{940, 1988.
+who suggested numerous clari cations of the exposi-           [Has86] Johann Hastad. \Improved lower bounds for small
+tion.                                                              depth circuits. In Proceedings of the 18 Annual ACM
+                                                                                                         th
+
+
+                                                                   Symposium on Theory of Computing, pages 6{20. ACM
+References                                                         Press, 1986.
+[AHU83] Alfred V. Aho, John E. Hopcroft, and Je rey D.        [HO92] J. Hao and J. B. Orlin. \A faster algorithm for
+     Ullman. Data Structures and Algorithms. Addison                 nding the minimum cut in a graph". In Proceedings
+     Wesley, 1983.                                                 of the 3 Annual Symposium on Discrete Algorithms,
+                                                                           rd
+
+
+
+[AS87] Baruch Awerbuch and Y. Shiloach. \New connec-               pages 165{174, 1992.
+     tivity and msf algorithms for shue-exchange net-        [KPN92] David Karger, Michal Parnas, and Noam Nissan.
+     work and pram". IEEE Transactions on Computers,               \Fast connected components algorithms for the EREW
+     36(10):1258{1263, October 1987.                               PRAM". In Proceedings of the 4 Annual ACM-SIAM
+                                                                                                   th
+
+
+
+[Bol85] Bela Bollobas. Random Graphs. Harcourt Brace               Symposium on Parallel Algorithms and Architectures,
+     Janovich, 1985.                                               pages 562{572, 1992.
+[CDR86] S. Cook, Cynthia Dwork, and R. Reischuk. \Up-         [Kru56] J. B. Kruskal, Jr. \On the shortest spanning
+     per and lower bounds for parallel random access ma-           subtree of a graph and the traveling salesman problem.
+     chines without simultaneous writes". SIAM Journal             Proceedings of the American Mathematical Society,
+     on Computing, February 1986.                                  7(1):48{50, 1956.
+[Col87] Charles J. Colbourn. The Combinatorics of Net-        [KUW86] Richard M. Karp, Eli Upfal, and Avi Wigderson.
+     work Reliability, volume 4 of The International Series        \Constructing a perfect matching is in random N C .
+     of Monographs on Computer Science. Oxford Univer-             Combinatorica, 6(1):35{48, 1986.
+     sity Press, 1987.                                        [Mar75] G. A. Margulis. \Probabilistic characteristics of
+[Col88] R. Cole. \Parallel merge-sort". SIAM Journal of            graphs with large connectivity (translated from rus-
+     Computing, 17(4):770{785, August 1988.                        sian)". Problems in Information Transmission, 9:325{
+[DJP+ 92] E. Dahlhaus, D. S. Johnson, C. H. Papadimitriou,         332, 1975.
+     P. D. Seymour, and M. Yannakakis. \The complexity        [MVV87] Ketan Mulmuley, Umesh V. Vazirani, and Vi-
+     of multiway cuts". In Proceedings of the 24 ACM
+                                                  th               jay V. Vazirani. \Matching is as easy as matrix in-
+     Symposium on Theory of Computing, pages 241{251.              version". Combinatorica, 7(1):105{113, 1987.
+     ACM Press, May 1992.                                     [NI92] Hiroshi Nagamochi and Toshihde Ibaraki. \Com-
+[FF56] L. R. Ford, Jr. and D. R. Fulkerson. Maximal                puting edge connectivity in multigraphs and capaci-
+     Flow Through a Network. Canadian Journal of Math.,            tated graphs". SIAM Journal of Discrete Mathemat-
+     8:399{404, 1956.                                              ics, 5(1):54{66, February 1992.
+[FF62] L. R. Ford, Jr. and D. R. Fulkerson. Flows in          [NK92] Hiroshi Nagamochi and Tiko Kameda. \An ecient
+     Networks. Princeton Univ. Press, Princeton, NJ, 1962.         construction of cactus representation for minimum cuts
+[FT86] M. L. Fredman and R. E. Tarjan. \Fibonacci                  in undirected networks". Manuscript, 1992.
+     heaps and their uses in improved network optimization    [NSW92] Noam Nissan, Endre Szemeredi, and Avi Wigder-
+     algorithms". Journal of the ACM, 36:596{615, 1986.            son. \Undirected connectivity in o(log1 5 n) space". In
+                                                                                                          :
+
+
+
+[Gab91] Harold N. Gabow. \A matroid approach to nding              Proceedings of the 33 Annual Symposium on Foun-
+                                                                                          rd
+
+
+
+     edge connectivity and packing arborescences". In              dations of Computer Science, pages 24{29. IEEE Com-
+     Proceedings of the 23 Annual Symposium on Theory
+                          rd                                       puter Society Press, October 1992.
+     of Computing. ACM Press, May 1991.                       [NV91] Dalit Naor and Vijay V. Vazirani. \Representing
+[Gaz86] H. Gazit. \An optimal randomized parallel algo-            and enumerating edge connectivity cuts in RN C ". In
+     rithm for nding connected components in a graph".             F. Dehne, J. R. Sack, and N. Santoro, editors, Pro-
+     In Proceedings of the 27 Annual Symposium on Foun-
+                               th                                  ceedings of the 2 Workshop on Algorithms and Data
+                                                                                     nd
+
+
+
+     dations of Computer Science. ACM Press, 1986.                 Structures, volume 519 of Lecture Notes in Computer
+[GH88] Oliver Goldschmidt and Dorit Hochbaum. \Poly-               Science, pages 273{285. Springer-Verlag, August 1991.
+     nomial algorithm for the k-cut problem". In Proceed-     [VY92] Vijay V. Vazirani and Mihalis Yannakakis. \Subop-
+     ings of the 29 Annual Symposum on the Foundations
+                  th                                               timal cuts: Their enumeration, weight, and number".
+     of Computer Science, pages 444{451. IEEE Computer             In The 19 International Colloquium on Automata,
+                                                                                th
+
+
+
+     Society Press, 1988.                                          Languages and Programming, volume 623 of Lecture
+[GP88] Zvi Galil and Victor Pan. \Improved processor               Notes in Computer Science, pages 366{377. Springer-
+     bounds for combinatorial problems in RN C ". Com-             Verlag, 1992.
+     binatorica, 8:189{200, 1988.
+[GSS82] L. M. Goldschlager, R. A. Shaw, and J. Staples.
+                                                          10
+

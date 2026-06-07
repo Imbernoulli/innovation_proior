@@ -1,0 +1,42 @@
+# Synthesis — Karmarkar–Karp bin packing (FOCS 1982)
+
+## Sources read (refs/)
+- **PRIMARY**: `karmarkar-karp-1982-primary.txt` (full FOCS 1982 paper, 9 pp, all sections incl. §6 fractional algorithm). HARD GATE primary satisfied.
+- **SELF-ACCOUNT**: `karp-1985-turing-lecture.txt` (Turing lecture, bin-packing section pp. ~105–106) + `karp-turing-oral-history.txt` (Karp/Papadimitriou). Useful for FRAMING (theory↔practice gap, the FFD→FdlVL line, additive vs multiplicative). NO derivation-level self-account of THIS method — gap.
+- **ANTECEDENTS / ANALYSIS**: `rothvoss-2013.txt` (arXiv 1301.4010 — modern survey of the lineage, configuration LP, grouping, ellipsoid, integrality gap). Plus Wikipedia + TheoremDep + lecture notes (via WebFetch/WebSearch, captured in notes here). Eisemann 1957, Gilmore–Gomory 1961, GLS 1981, FdlVL 1981 — read via primary ref list + Rothvoss + web explainers.
+
+## Research question / pain point
+NP-hard 1-D bin packing. Pre-1981 work: multiplicative guarantees A(I) ≤ C·OPT + o(OPT), C driven 1.7 → 1.222 → 1.18333 (FFD: relative error 2/9 ≈ asymptotic 11/9). FdlVL 1981 broke to (1+ε)OPT + O(1/ε²) asymptotic PTAS. Johnson: let ε depend on I → OPT + o(OPT). GOAL here: an *additive* guarantee OPT + O(log² OPT), i.e. asymptotically you use essentially the optimal number of bins, the slack only polylog.
+
+## The objects
+- Configuration / Gilmore–Gomory LP. m distinct sizes s_1..s_m, b_i pieces of type i. A "configuration" = multiset of types fitting in a unit bin (Σ a_ij s_i ≤ 1). A = m×q matrix (q = #configurations, astronomically large). 
+  - Primal (I): min 1·x s.t. Ax ≥ b, x ≥ 0. LIN(I) = optimum.
+  - Dual (II): max u·b s.t. uᵀA ≤ 1, u ≥ 0. (u_i = "price" of a piece of type i; constraint per configuration: total price in a bin ≤ 1.)
+- LIN(I) ≤ OPT(I) (integer packing is a feasible integer x). SIZE(I) ≤ LIN(I) (Lemma 2). Lemma 1: OPT ≤ 2·SIZE + 1 (at most one bin <half full).
+
+## Key derivation pillars
+1. **Rounding a basic feasible solution (Lemma 2 / Cor 1).** A basic feasible x to (I) has ≤ m nonzero components (≤ #constraints). Round: principal part = ⌊x_j⌋ bins of config j. Residual instance I' has SIZE(I') ≤ Σ frac parts ≤ (#nonzero) = m. Pack residual with the better of: (a) one bin per nonzero config minus excess ≤ m bins, or (b) 2·SIZE(I')+1. Gives a packing of cost ≤ 1·x + (m+1)/2, i.e. **OPT ≤ LIN + (m+1)/2**. So the integer–fractional gap is controlled by the NUMBER OF DISTINCT SIZES m, not n. This is the lever: if m is small, rounding loss is small.
+
+2. **Grouping to make m small without raising OPT much.**
+   - Eliminate small pieces (Lemma 3): set aside pieces ≤ g; pack rest; reinsert greedily, new bin only when needed → cost ≤ max(A, (1+g)OPT(I)+1). Reinsertion only loses a (1+g) factor.
+   - Linear grouping (FdlVL, param k): sort desc, groups of k; round each group up to its max; discard top group G1 (k pieces, packed singly). Result J has m(J) ≤ n/k distinct sizes and OPT(J) ≤ OPT(I) ≤ OPT(J)+k. (Lemma 4.)
+   - **Geometric grouping (NEW, param k):** split by size-scale into intervals (2^-(r+1), 2^-r]; apply linear grouping with parameter k·2^r in scale r. Yields m(J) ≤ SIZE(I)/k + ⌈log₂(1/a(I))⌉ distinct sizes while OPT(J) ≤ OPT(I) ≤ OPT(J) + k·⌈log₂(1/a)⌉. The size-weighted variant (Thm 2): groups of total size ≥ k → m(I) ≤ SIZE(I)/k + ln(1/a(I)), and OPT loss ≤ 2k(2 + ln 1/a). The point: distinct sizes scale with SIZE/k, and the loss with k — so choosing k trades the two.
+
+3. **Solving the huge LP in poly time (§6).** q is astronomical, so work on the DUAL (m variables, q constraints) with the GLS ellipsoid method. Separation oracle for dual point u: is there a configuration with price > 1? = solve a KNAPSACK: max v·u s.t. v·s ≤ 1, v≥0 integer. If optimum > 1, that config is a violated constraint (feasibility cut). To avoid NP-hard exact knapsack, ROUND u down to multiples of t/n (component-wise ū_i = (t/n)⌊n u_i/t⌋); then knapsack on ū solvable by DP: F(k) = min total size achieving price exactly k·(t/n); F(0)=0, F(k)=min_i F(k−ū_i')+s_i. u feasible iff F(k)>1 for all k>1. DP cost O(n²/t·m)-ish. Rounding loses ≤ t in objective → ellipsoid solves dual within tolerance t.
+   - Ellipsoid: N = O(m² ln(...)) iterations; each iteration either an optimality cut (feasible center) or feasibility cut (knapsack returns violated config). After M=4m²⌈ln(n/t)⌉ iterations get u* with u*·b ≥ z − t.
+   - **Recover the primal & keep only m configs.** The infeasible-point iterations returned ≤ M configurations → a "realized" LP (II') with the same optimum to within t. Then a constraint-elimination procedure (partition into m+1 groups, drop a group disjoint from the critical m-set, test via GLS) prunes down to exactly m constraints → reduced primal (I*) with ≤ m configurations and a basic feasible x = B⁻¹b. So the output basic solution has ≤ m nonzero configs — exactly what Lemma 2 rounding needs. T(m,n) = O(m⁸ log m log²n + m⁴ n log m log n).
+
+4. **Recursive / iterative rounding (Algorithm 2 → Theorem 4).** Don't pack the whole residual cheaply once; instead iterate. Each iteration: group so m ≈ SIZE/k, solve fractional LP (tolerance h=1), buy ⌊x_j⌋ bins per config, delete those pieces. The residual instance has SIZE roughly Σ frac ≤ m ≈ SIZE/k. With k=2, SIZE halves each round → O(log SIZE) = O(log OPT) rounds. Per round the grouping + rounding loss is O(log(...)) ≈ O(log OPT) bins (because with g = 1/SIZE the small-item and grouping terms are O(log SIZE)). O(log OPT) rounds × O(log OPT) loss/round = **O(log² OPT)** total additive error. Final: A(I) ≤ OPT(I) + O(log² OPT(I)). (Algorithm 3 / Thm 5: when m is already small, get OPT + O(log² m).)
+
+## Design-decision → why
+- Configuration LP not item-assignment LP: needs the strong relaxation whose integer–fractional gap is only O(log² OPT). Gilmore–Gomory introduced it for cutting stock; Eisemann the trim problem.
+- Work on dual: primal has q≈∞ variables; dual has m variables, q constraints — ellipsoid only needs a separation oracle, not the explicit constraints.
+- Separation = knapsack: a dual point is feasible iff no bin (configuration) is overpriced; the most-overpriced bin is exactly the knapsack optimum.
+- Round prices to multiples of t/n: exact knapsack is NP-hard; rounding makes the value set polynomially bounded so DP works, at a controlled t loss → "approximate feasibility" suffices for ellipsoid within tolerance.
+- Grouping before solving: m controls both the rounding loss ((m+1)/2) and the LP runtime T(m,n); must shrink m. Linear grouping shrinks it to n/k; geometric grouping shrinks it to SIZE/k + log(1/a) — crucial because SIZE ≤ OPT, so m becomes O(OPT/k), and the round-up loss stays O(k·log).
+- Geometric over linear: linear grouping's OPT loss is +k per application; if you applied it once to the whole instance you couldn't simultaneously get m small AND loss small. Splitting by dyadic size scale and using k·2^r in scale r makes the per-scale piece count uniform, so the total distinct sizes is SIZE/k and the loss only k·log(1/a). 
+- Iterate (don't round once): single rounding loses (m+1)/2 ≈ SIZE/(2k) bins — too much (Θ(OPT)). Iterating buys the integer part and recurses on the residual whose SIZE shrinks geometrically, so total loss is the sum over O(log OPT) rounds of an O(log OPT) per-round loss = O(log² OPT).
+- Eliminate small pieces with g = 1/SIZE: reinsertion costs only (1+g)OPT+1 = OPT + O(1); and after removing small pieces a(I) ≥ g so log(1/a) = O(log SIZE) = O(log OPT) — the grouping terms become polylog.
+
+## Illustrative faithful code plan
+Field-appropriate: a runnable Python that mirrors the algorithm's STRUCTURE faithfully but at small scale — solve the configuration LP by explicit column generation / direct LP (the ellipsoid is the poly-time *existence* proof; an honest illustrative implementation uses the knapsack-pricing column generation that Gilmore–Gomory used and KK invoke, since enumerating all configs is the astronomical thing the method avoids). Then iterative rounding: group sizes, solve fractional LP over generated columns via knapsack separation, buy ⌊x⌋, recurse on residual, base-case pack small/residual with first-fit. Comments tie each block to the reasoning. Use scipy.optimize.linprog for the restricted master and a DP knapsack for pricing/separation. This is faithful to the construction (dual knapsack oracle generating configurations + recursive rounding) while being executable.

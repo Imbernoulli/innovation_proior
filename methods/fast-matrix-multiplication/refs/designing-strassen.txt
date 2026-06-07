@@ -1,0 +1,728 @@
+Designing Strassen’s Algorithm
+Joshua A. Grochow∗ and Cristopher Moore†
+
+arXiv:1708.09398v1 [cs.DS] 30 Aug 2017
+
+September 1, 2017
+
+Abstract
+In 1969, Strassen shocked the world by showing that two n × n matrices could be multiplied
+in time asymptotically less than O(n3 ). While the recursive construction in his algorithm is very
+clear, the key gain was made by showing that 2 × 2 matrix multiplication could be performed
+with only 7 multiplications instead of 8. The latter construction was arrived at by a process of
+elimination and appears to come out of thin air. Here, we give the simplest and most transparent
+proof of Strassen’s algorithm that we are aware of, using only a simple unitary 2-design and a
+few easy lines of calculation. Moreover, using basic facts from the representation theory of ﬁnite
+groups, we use 2-designs coming from group orbits to generalize our construction to all n ≥ 2
+(although the resulting algorithms aren’t optimal for n ≥ 3).
+
+1
+
+Introduction
+
+The complexity of matrix multiplication is a central question in computational complexity, bearing
+on the complexity not only of most problems in linear algebra, but also of myriad combinatorial
+problems, e.g., various shortest path problems [Zwi02] and bipartite matching problems [San09].
+The main question around matrix multiplication is whether two n × n matrices can be multiplied in
+time O(n2+ε ) for every ε > 0. The current best upper bound on this exponent is 2.3728639 [LG14],
+narrowly beating [DS13, Wil12]. The best known lower bound is still only 3n2 − o(n) [Lan14].
+Since Strassen’s 1969 paper [Str69], which showed how to beat the standard O(n3 ) time algorithm, it has been understood that one way to get asymptotic improvements in algorithms for
+matrix multiplication is to ﬁnd algebraic algorithms for multiplying small matrices using only a
+few multiplications, and then to apply these algorithms recursively.
+While the recursive construction in Strassen’s algorithm is very clear—treat a 2n × 2n matrix
+as a 2 × 2 matrix each of whose entries is an n × n matrix—the base case, which accounts for how
+Strassen was able to beat O(n3 ), seems to come out of thin air. Indeed, Strassen was trying to
+prove, by process of (intelligently exhaustive) elimination, that such an algorithm could not exist
+(e.g., [Lan08, Remark 1.1.1] or [LR13]). In his paper it is presented as follows, which “one easily
+sees” [Str69, p. 355] correctly computes 2 × 2 matrix multiplication C = AB:
+C11 = I + IV − V + V II
+C21 = II + IV
+
+C12 = III + V
+,
+C22 = I + III − II + V I
+
+∗
+Departments of Computer Science and Mathematics,
+jgrochow@colorado.edu
+†
+The Santa Fe Institute, Santa Fe, NM moore@santafe.edu
+
+1
+
+University
+
+of
+
+Colorado,
+
+Boulder,
+
+CO
+
+where
+
+I
+II
+III
+IV
+
+=
+=
+=
+=
+
+(A11 + A22 )(B11 + B22 )
+(A21 + A22 )B11
+A11 (B12 − B22 )
+A22 (−B11 + B21 )
+
+V = (A11 + A12 )B22
+V I = (−A11 + A21 )(B11 + B12 )
+.
+V II = (A12 − A22 )(B21 + B22 )
+
+While verifying the above by calculation is not diﬃcult—after all, it’s only seven multiplications
+and four linear combinations—it is rather un-illuminating. In particular, the veriﬁcation gives no
+sense of why such a decomposition exists.
+In this paper, we give a proof of Strassen’s algorithm that is the most transparent we are aware
+of. The basic idea is to note that Strassen’s algorithm has a symmetric group of vectors lurking
+in it, which form what is known as a (unitary) 2-design. Using the representation theory of ﬁnite
+groups, we obtain generalizations to higher dimensions, which suggest further directions to explore
+in our hunt for eﬃcient algorithms.
+
+1.1
+
+Other explanations of Strassen’s algorithm
+
+Landsberg [Lan08, Section 3.8] points out that Strassen’s algorithm could have been anticipated
+because the border-rank of any 4 × 4 × 4 tensor is at most seven. Although this may lead one to
+suspect the existence of an algorithm such as Strassen’s, it does not give an explanation for the
+fact that the rank (rather than border-rank) of 2 × 2 matrix multiplication is at most seven, nor
+does it give an explanation of Strassen’s particular construction.
+Several authors have tried to make Strassen’s construction more transparent through various
+calculations, e. g., [Gas71, Yuv78, Cha86, Ale97, Pat09, GK00, Min15, CILO16]. While these lend
+some insight, and some provide proofs that are perhaps easier to remember (and teach) than
+Strassen’s original presentation, each of them either involves some ad hoc constructions or some
+un-illuminating calculations, which are often left to the reader. We feel that they do not really
+oﬀer conceptual explanations for the fact that the rank of MM2 is at most 7.
+Clausen [Cla88] (see [BCS97, pp. 11–12] for a more widely available explanation in English)
+showed how one can use group orbits to show that the rank of MM2 is at most 7. In fact, Clausen’s
+beautiful construction was one of the starting points of our investigation. However, that construction relies on a seemingly magical property of a certain 4 × 4 multiplication table. More recently,
+Ikenmeyer and Lysikov [IL17] gave a beautiful explanation of Clausen’s construction, but ultimately
+their proof for Strassen’s algorithm still relies on the same magical property of the same 4 × 4 multiplication table, and it is not immediately obvious how to generalize to all n. In contrast, our
+result easily generalizes to all n, and more generally to orbits of any irreducible representation of
+any ﬁnite group.
+
+1.2
+
+Related work
+
+This paper is a simpliﬁed and self-contained version of Section 5 of [GM16], in which we explored
+highly symmetric algorithms for multiplying matrices. Recently, there have been several papers
+analyzing the geometry and symmetries of algebraic algorithms for small matrices [Bur14, Bur15,
+LR16, LM16, CILO16]. In [GM16], we tried to take this line of research one step further by
+using symmetries to discover new algorithms for multiplying matrices of small size. While those
+algorithms did not improve the state-of-the-art bounds on the matrix multiplication exponent, they
+suggested that we can use group symmetries and group orbits to ﬁnd new algorithms for matrix
+multiplication. In addition to their potential value for future endeavors, we believe that these
+
+2
+
+highly symmetric matrix multiplication algorithms are beautiful in their own right, and deserve to
+be shared simply for their beauty.
+Although the method of construction suggested in [GM16], and independently in [CILO16], is
+more general than this, the constructions we ended up ﬁnding in [GM16] were in fact all instances of
+a single design-based construction yielding n3 −n+1 multiplications for n×n matrix multiplication.
+The proof that this construction works is the simplest and most transparent proof of Strassen’s
+algorithm that we are aware of.
+One may also reasonably wonder whether there is any relationship between our group-based
+construction and the family of group-based constructions suggested by Cohn and Umans [CU03],
+including the constructions given in [CKSU05] and generalizations in [CU13]. While there may be
+a common generalization that captures both methods, at the moment we don’t know of any direct
+relationship between the two. Indeed, one cannot use the group-theoretic approach of [CU03] to
+explain Strassen’s result, even though the constructions of [CKSU05] get a better exponent: The
+only way to use their approach for the 2 × 2 case is to embed MM2 into the cyclic group C7 ,
+but Cohn and Umans showed that one could not beat n3 using only abelian groups. (Some of
+their more complicated constructions can beat n3 in abelian groups, but those involve embedding
+multiple copies of MM into the same group simultaneously, whereas here we are explicitly talking
+about embedding a single copy of MM2 .)
+
+2
+
+Complexity, symmetry, and designs
+
+For general background on algebraic complexity, we refer the reader to the book [BCS97]. Bläser’s
+survey article [Blä13], in addition to excellent coverage around matrix multiplication, has a nice
+tutorial on tensors and their basic properties.
+In the algebraic setting, since matrix multiplication is a bilinear map, it is known that it can
+be reformulated as a tensor, and that the algebraic complexity of matrix multiplication is within a
+factor of 2 of the rank of this tensor. The matrix multiplication tensor for n × n matrices is
+a b c
+MMabc
+def = δe δf δd ,
+
+(1)
+
+where the indices range from 1 to n, and where δ is the Kronecker delta, δba = 1 if a = b and 0 if
+a 6= b. This is also deﬁned by the inner product
+hMM | A ⊗ B ⊗ Ci = tr ABC .
+Given vector spaces V1 , . . . , Vk , a vector v ∈ V1 ⊗ · · · ⊗ Vk is said to have tensor rank one if it is
+a separable tensor, that is, of the form v1 ⊗ v2 ⊗ · · · ⊗ vk for some vi ∈ Vi . The tensor rank of v is
+the smallest number of rank-one tensors whose sum is v. In the case of MMn , we have k = 3 and
+V1 ∼
+= V2 ∼
+= V3 ∼
+= Cn×n .
+The matrix multiplication tensor MM is characterized by its symmetries (e.g., [BI11]). That
+is, up to a constant, it is the unique operator ﬁxed under the following action of GL(n)3 : given
+X, Y, Z ∈ GL(n), we have
+MM = (X ⊗ Y ⊗ Z)MM(Z −1 ⊗ X −1 ⊗ Y −1 ) ,
+
+(2)
+
+where, if the notation isn’t already clear, it will become so in the next equation. To see that MM
+has this symmetry, note that
+tr ABC = tr(Z −1 AX)(X −1 BY )(Y −1 CZ) .
+3
+
+The fact that MM is the only such operator up to a constant comes from a simple representationtheoretic argument, which generalizes the fact that the only matrices which are invariant under
+conjugation are scalar multiples of the identity.
+This suggests that a good way to search for matrix multiplication algorithms is to start with
+sums of separable tensors where the sum has some symmetry built in from the beginning. As we
+will see, one useful kind of symmetry is the following. We say that a set of n-dimensional vectors
+S is a unitary 2-design if it has the following two properties:
+X
+
+v=0
+
+and
+
+1
+1 X
+|vihv| = 1 ,
+|S|
+n
+
+(3)
+
+v∈S
+
+v∈S
+
+where 1 denotes the identity matrix. Here we use the Dirac notation |uihv| for the outer product
+of u and v, i.e., the matrix whose i, j entry is ui vj∗ where ∗ denotes the complex conjugate.
+The following theorem shows how 2-designs can be used to construct matrix multiplication
+algorithms.
+Theorem 2.1. Let S ⊂ Cn be a unitary 2-design, and let s = |S|. Then the tensor rank of MMn
+is at most s(s − 1)(s − 2) + 1.
+Proof. Let S = {w1 , . . . , ws }. We will show that the following is a decomposition of MMn :
+MMn = 1⊗3 +
+
+n3
+s3
+
+X
+
+i, j, k distinct
+
+|wi ihwj − wi | ⊗ |wj ihwk − wj | ⊗ |wk ihwi − wk | .
+
+(4)
+
+Since there are s(s − 1)(s − 2) distinct ordered triples i, j, k ∈ {1, . . . , s}, this decomposition has
+s(s − 1)(s − 2) + 1 terms.
+To prove (4), we use the fact (1) that MM can be written as a kind of twisted tensor product
+of identity matrices or Kronecker deltas. By the second property in the deﬁnition (3) of a 2-design,
+we have
+n3 X
+|wi ihwj | ⊗ |wj ihwk | ⊗ |wk ihwi |
+(5)
+MMn = 3
+s
+i,j,k
+
+At the same time, the un-twisted version of this identity is
+1⊗3 =
+
+n3 X
+|wi ihwi | ⊗ |wj ihwj | ⊗ |wk ihwk | .
+s3
+
+(6)
+
+i,j,k
+
+Now we expand (4). We can sum over all s3 triples i, j, k, since if any of these are equal the
+
+4
+
+summand is zero. Then
+X
+|wi ihwj − wi | ⊗ |wj ihwk − wj | ⊗ |wk ihwi − wk |
+i,j,k
+
+=
+
+X
+i,j,k
+
+|wi ihwj | ⊗ |wj ihwk | ⊗ |wk ihwi |
+
+−
+
+Xh
+
+i
+|wi ihwi | ⊗ |wj ihwk | ⊗ |wk ihwi | + |wi ihwj | ⊗ |wj ihwj | ⊗ |wk ihwi | + |wi ihwj | ⊗ |wj ihwk | ⊗ |wk ihwk |
+
++
+
+Xh
+
+i
+|wi ihwj | ⊗ |wj ihwj | ⊗ |wk ihwk | + |wi ihwi | ⊗ |wj ihwk | ⊗ |wk ihwk | + |wi ihwi | ⊗ |wj ihwj | ⊗ |wk ihwi |
+
+i,j,k
+
+i,j,k
+
+−
+
+X
+i,j,k
+
+(7)
+
+(8)
+
+|wi ihwi | ⊗ |wj ihwj | ⊗ |wk ihwk |
+
+The mixed terms in lines (7) and (8) disappear because each product has an index that appears
+only once, and the ﬁrst property in the deﬁnition (3) of a 2-design implies that summing over that
+index gives zero. Combining this with (5) and (6) leaves us with
+n3 X
+|wi ihwj − wi | ⊗ |wj ihwk − wj | ⊗ |wk ihwi − wk | = MMn − 1⊗3 ,
+s3
+i,j,k
+
+which completes the proof.
+Now, in n = 2 dimensions the three corners of an equilateral triangle form a 2-design:
+√
+√
+
+S = (1, 0) , (−1/2, 3/2) , (−1/2, − 3/2) .
+
+(9)
+
+The outer products of these vectors with themselves are
+√  
+√ 
+
+ 
+3/4
+3/4
+1 0
+1/4
+−
+1/4
+√
+,
+, √
+,
+0 0
+− 3/4
+3/4
+3/4 3/4
+
+and the average of these is 1/2. This design (9) has size s = 3, in which case Theorem 2.1 shows
+that MM2 has a tensor rank of at most 7.
+The reader might object that we haven’t really re-derived Strassen’s algorithm since our algorithm doesn’t seem to yield the same equations as Strassen’s. However, de Groote [dG78] has shown
+that all 7-term decompositions of MM2 are equivalent up to a change of basis, i.e., an instance of
+the GL(n)3 action (2). Thus the algorithm based on the triangular design (9) is in fact isomorphic
+to Strassen’s algorithm, and in any case, it gives a conceptual explanation for the fact that MM2
+has tensor rank 7. (For the reader wondering about algorithms for matrix multiplication over rings
+other than C, see Section 4.)
+
+3
+
+Generalizations to larger n from group orbits
+
+The triangular design (9) has a pleasing symmetry. In this section we show how to ﬁnd similar
+designs in higher dimensions as the orbits of group actions. We assume basic familiarity with ﬁnite
+groups, for which we refer the reader to any standard textbook such as [Art91]. We need a few
+5
+
+facts from representation theory, which we spell out for completeness in the hopes of making the
+paper self-contained for a larger audience. Everything we do will be over the complex numbers C,
+but generalizes to other ﬁelds, with some modiﬁcations.
+A representation of a ﬁnite group G is a vector space V together with a group homomorphism
+ρ : G → GL(V ), where GL(V ) denotes the general linear group of V , namely, the group of all
+invertible linear transformations from V to itself. By choosing a basis for V , we identify V ∼
+= Cdim V ,
+and each ρ(g) becomes a dim V × dim V matrix such that ρ(g)ρ(h) = ρ(gh) for all g, h ∈ G.
+When the homomorphism ρ is understood from context, we refer to V as a representation of
+G. In this case, for g ∈ G and v ∈ V we write gv instead of ρ(g)(v). The trivial representation is
+the identity map on V , where gv = v for all g ∈ G.
+A representation V of G is called unitary if each ρ(g) is a unitary matrix. Any representation
+of a ﬁnite group over C is equivalent, up to
+of basis, to a unitary representation.
+In this
+Pchange
+P
+∗
+2
+2
+basis we deﬁne the inner product hu | vi = i ui vi and the norm |v| = hv | vi = i |vi | as usual.
+Note that hu | vi = hgu | gvi and |gv|2 = |v|2 .
+Given two representations ρ : G → GL(V ) and ρ′ : G → GL(V ′ ) of the same group G, their
+direct sum is a representation (ρ ⊕ ρ′ ) : G → GL(V ⊕ V ′ ) given by the matrices
+
+
+ρ(g)
+0
+′
+(ρ ⊕ ρ )(g) =
+.
+0
+ρ′ (g)
+A representation ρ : G → GL(V ) is irreducible if the only subspaces W ⊆ V that are sent to
+themselves by every g ∈ G, i.e., such that ρ(g)(w) ∈ W for all g ∈ G and w ∈ W , are the trivial
+subspaces W = 0 or W = V . In ﬁelds of characteristic zero such as C or R, a representation is a
+direct sum if and only if it is not irreducible.
+Given two representations V, W of G, a homomorphism of representations is a linear map
+ϕ : V → W that commutes with the action of G, in the sense that ϕ(gv) = gϕ(v) for all g ∈ G, v ∈ V .
+Lemma (Schur’s Lemma). If V and W are two irreducible representations of a group G, then every
+nonzero homomorphism V → W is invertible. In particular, over an algebraically closed field, every
+homomorphism V → V is a scalar multiple of the identity 1V .
+Schur’s Lemma implies that the orbit of any unit-length vector in an irreducible representation
+is a 2-design in the sense deﬁned above. We include a proof of this classical fact for completeness.
+Corollary 3.1. If V is a nontrivial irreducible representation of G, and v ∈ V with |v|2 = 1, then
+the orbit {gv | g ∈ G} is a 2-design.
+P
+Proof. First,
+the
+vector
+always spans a 1-dimensional trivial sub-representation W ⊆ V ,
+g∈G gv P
+P
+P
+since h · ( gv) = g∈G (hg)v = g∈G gv. If V P
+is irreducible, then either W = 0 or W = V , but
+if V is nontrivial weP
+cannot have W = V . Thus g gv = 0.
+Second, let ϕ = g∈G |gvihgv|. Then for any h ∈ G we have
+!
+X
+X
+X
+X
+|gvihgv| w =
+|hgvi hgv | wi =
+|gvi h−1 gv | w =
+|gvi hgv | hwi = ϕ(hw) .
+hϕ(w) = h
+g
+
+g
+
+g
+
+g
+
+Thus ϕ is a homomorphism of representations, and by Schur’s Lemma ϕ is a multiple of 1V . We
+obtain the scaling factor by taking traces:
+1
+1 X
+1
+|gv|2 = |v|2 = 1 =
+tr ϕ =
+tr 1V ,
+|G|
+|G| g
+dim V
+so ϕ/|G| = 1V / dim V .
+6
+
+We can now combine Corollary 3.1 with Theorem 2.1 to produce matrix multiplication algorithms in all dimensions, by considering families of ﬁnite groups and their irreducible representations. In particular, we have the following.
+Corollary 3.2. For every n ≥ 1, the tensor rank of MMn is at most n3 − n + 1.
+Proof. Let G = Sn+1 be the symmetric group acting by permuting the coordinates on V = Rn+1 .
+As a representation of G, this splits into a direct sum of the trivial representation (spanned by the
+all-ones vector) and the so-called “standard representation” V of Sn+1 , of dimension n (consisting
+of the vectors whose coordinates sum to zero). Let w ∈ V ⊂ Rn+1 be the unit vector
+w=p
+
+1
+n(n + 1)
+
+(n, −1, . . . , −1)
+
+The orbit of w has size s = n + 1, and consists of unit vectors pointing to the corners of a simplex.
+Now apply Theorem 2.1.
+
+4
+
+Future directions
+
+Highly symmetric algorithms? Since any design must span Cn , it has size s ≥ n. Indeed,
+since its elements sum to zero, they are linearly dependent, so s ≥ n + 1. Thus the simplex designs
+of Corollary 3.2 are optimal in this context, and applying Theorem 2.1 to larger n cannot directly
+improve the matrix multiplication exponent. This leaves open the question of whether there are
+other families of highly symmetric algorithms. See [GM16, CILO16] for work in this direction, as
+well as [Bur14, Bur15, LR16, LM16, IL17].
+Using t-designs for t > 2? The key fact we used was that any orbit in an irreducible representation of a ﬁnite group is a unitary 2-design. Similarly, a unitary t-design in a vector space V is
+a set of vectors S ⊆ V such that, for every polynomial f on V of degree at most t, the average
+of f over S is the same as the average of f over the unit sphere in V . (Over the reals, these are
+traditionally called “spherical t-designs,” but we are working in complex vector spaces.) Another
+open question is then
+Question 4.1. Can t-designs for t > 2 help us construct efficient matrix multiplication algorithms?
+For example, one might hope for a similar construction to Theorem 2.1, in which one could leverage
+the t-design property to get even more terms to cancel.
+Working over arbitrary rings? One fact which is obvious from Strassen’s original construction,
+but not from ours, is that the rank of MM2 is at most 7 over any ring. Strassen’s construction
+works
+√
+3,
+1/2,
+1/3],
+so it
+in all rings since it only uses coeﬃcients
+in
+{0,
+±1};
+ours
+uses
+coeﬃcients
+in
+Z[
+√
+works in any ring where the elements 3, 1/2, 1/3 exist. Note that 1/2 and 1/3 exist in any ring R
+of characteristic
+in which 2 and 3
+√ m coprime to 6, since any such ring contains Z/mZ as a subring,
+′
+are units. If 3 doesn’t exist in R, we can formally adjoin it by considering R = R[x]/(x2 − 3); by
+a standard trick (e.g. [BCS97, Section 15.3]), this implies the same exponent over R itself (although
+it may not actually yield an algorithm for MM2 over R).
+Question 4.2. Is there a similarly transparent and conceptual proof of Strassen’s result that works
+over arbitrary rings?
+
+7
+
+Acknowledgments
+Parts of this project were inspired in 2015 by discussions with Jonah Blasiak, Thomas Church,
+Henry Cohn, and Chris Umans, via a collaboration funded by the AIM SQuaRE program, with
+an additional visit hosted by the Santa Fe Institute. J.A.G. was funded by an Omidyar Fellowship
+from the Santa Fe Institute during this work and by NSF grant DMS-1620484, and C.M. was
+funded partly by the John Templeton Foundation. C.M. also thanks École Normale Supérieure for
+providing a visiting position during which some of this work was carried out.
+
+References
+[Ale97]
+
+V. B. Alekseyev.
+Maximal extensions with simple multiplication for the algebra of matrices of the second order.
+Disc. Math. Appl., 7:89–101, 1997.
+doi:10.1515/dma.1997.7.1.89.
+
+[Art91]
+
+Michael Artin. Algebra. Prentice Hall, Inc., Englewood Cliﬀs, NJ, 1991.
+
+[BCS97]
+
+Peter Bürgisser, Michael Clausen, and M. Amin Shokrollahi. Algebraic complexity
+theory, volume 315 of Grundlehren der Mathematischen Wissenschaften [Fundamental
+Principles of Mathematical Sciences]. Springer-Verlag, Berlin, 1997. With the collaboration of Thomas Lickteig. doi:10.1007/978-3-662-03338-8.
+
+[BI11]
+
+Peter Bürgisser and Christian Ikenmeyer. Geometric complexity theory and tensor rank.
+In STOC ’11: 43rd Annual ACM Symposium on Theory of Computing, pages 509–518.
+ACM, New York, 2011. Preprint of the full version available as arXiv:1011.1350 [cs.CC].
+doi:10.1145/1993636.1993704.
+
+[Blä13]
+
+Markus Bläser. Fast Matrix Multiplication. Number 5 in Graduate Surveys. Theory of
+Computing Library, 2013. doi:10.4086/toc.gs.2013.005.
+
+[Bur14]
+
+Vladimir P. Burichenko. On symmetries of the Strassen algorithm. arXiv:1408.6273
+[cs.CC], 2014.
+
+[Bur15]
+
+Vladimir P. Burichenko.
+Symmetries of matrix multiplication algorithms. I.
+arXiv:1508.01110 [cs.CC], 2015.
+
+[Cha86]
+
+Philippe Chatelin. On transformations of algorithms to multiply 2 × 2 matrices. Inform.
+Process. Lett., 22(1):1–5, 1986. doi:10.1016/0020-0190(86)90033-5.
+
+[CILO16] Luca Chiantini, Christian Ikenmeyer, J.M. Landsberg, and Giorgio Ottaviani.
+The geometry of rank decompositions of matrix multiplication I: 2 × 2 matrices.
+arXiv:1610.08364 [cs.CC], 2016.
+[CKSU05] Henry Cohn, Robert Kleinberg, Balazs Szegedy, and Christopher Umans. Grouptheoretic algorithms for matrix multiplication. In FOCS ’05: 46th Annual IEEE Symposium on Foundations of Computer Science, pages 379–388. IEEE Computer Society,
+2005. Preprint available as arXiv:math.GR/0511460. doi:10.1109/SFCS.2005.39.
+[Cla88]
+
+M. Clausen. Beiträge zum Entwurf schneller Spektraltransformationen. Habilitation,
+Universität Karlsruhe, 1988.
+
+8
+
+[CU03]
+
+Henry Cohn and Christopher Umans. A group-theoretic approach to fast matrix multiplication. In FOCS ’03: 44th Annual IEEE Symposium on Foundations of Computer Science, pages 438–449. IEEE Computer Society, 2003. Preprint available as
+arXiv:math.GR/0307321. doi:10.1109/SFCS.2003.1238217.
+
+[CU13]
+
+Henry Cohn and Christopher Umans. Fast matrix multiplication using coherent
+conﬁgurations. In SODA ’13: 24th ACM–SIAM Symposium on Discrete Algorithms, pages 1074–1087, 2013. Preprint available as arXiv:1207.6528 [math.NA].
+doi:10.1137/1.9781611973105.77.
+
+[dG78]
+
+Hans F. de Groote. On varieties of optimal algorithms for the computation of bilinear
+mappings. II. Optimal algorithms for 2 × 2-matrix multiplication. Theoret. Comput.
+Sci., 7(2):127–148, 1978. doi:10.1016/0304-3975(78)90045-2.
+
+[DS13]
+
+A. M. Davie and A. J. Stothers.
+Improved bound for the complexity of
+matrix multiplication.
+Proc. Roy. Soc. Edinburgh Sect. A, 143:351–369, 2013.
+doi:10.1017/S0308210511001648.
+
+[Gas71]
+
+N. Gastinel. Sur le calcul des produits de matrices. Numer. Math., 17:222–229, 1971.
+doi:10.1007/BF01436378.
+
+[GK00]
+
+Ann Q. Gates and Vladik Kreinovich.
+Strassen’s algorithm made (somewhat) more natural: A pedagogical remark.
+Technical Report 502, University of Texas at El Paso, Department of Computer Science, 2000.
+URL:
+http://digitalcommons.utep.edu/cs_techrep/502.
+
+[GM16]
+
+Joshua A. Grochow and Cristopher Moore. Matrix multiplication algorithms from group
+orbits. arXiv:1612.01527 [cs.CC], 2016.
+
+[IL17]
+
+Christian Ikenmeyer and Vladimir Lysikov. Strassen’s 2 × 2 matrix multiplication algorithm: a conceptual perspective. arXiv:1708.08083v1 [csDS], 2017.
+
+[Lan08]
+
+J. M. Landsberg. Geometry and the complexity of matrix multiplication. Bull. Amer.
+Math. Soc. (N.S.), 45(2):247–284, 2008. doi:10.1090/S0273-0979-08-01176-2.
+
+[Lan14]
+
+J. M. Landsberg. New lower bounds for the rank of matrix multiplication. SIAM J.
+Comput., 43:144–149, 2014. doi:10.1137/120880276.
+
+[LG14]
+
+François Le Gall. Powers of tensors and fast matrix multiplication. In Proceedings
+of the 39th International Symposium on Symbolic and Algebraic Computation, ISSAC ’14, pages 296–303, New York, NY, USA, 2014. ACM. Full version available
+as arXiv:1401.7714 [cs.DS]. doi:10.1145/2608628.2608664.
+
+[LM16]
+
+J. M. Landsberg and Mateusz Michalek. On the geometry of border rank algorithms for
+matrix multiplication and other tensors with symmetry. arXiv:1601.08229 [math.AG],
+2016.
+
+[LR13]
+
+Richard J. Lipton and Kenneth W. Regan.
+Volker Strassen: Amazing results. In People, Problems, and Proofs: Essays from Gödel’s Lost Letter: 2010,
+pages 75–78. Springer Berlin Heidelberg, 2013. Based on blog post available at
+https://rjlipton.wordpress.com/2010/03/27/fast-matrix-products-and-other-amazing-resu
+doi:10.1007/978-3-642-41422-0_13.
+9
+
+[LR16]
+
+J. M. Landsberg and Nicholas Ryder. On the geometry of border rank algorithms for
+n × 2 by 2 × 2 matrix multiplication. Exper. Math., 2016. In press. Preprint available
+as arXiv:1509.08323 [cs.NA]. doi:10.1080/10586458.2016.1162230.
+
+[Min15]
+
+Jacob
+Minz.
+Derivation
+of
+Strassen’s
+algorithm
+for
+the
+multiplication
+of
+2 × 2
+matrices.
+Blog
+post
+at
+http://jacobminz.blogspot.in/2015/05/derivation-of-strassens-algorithm-for.html,
+2015.
+
+[Pat09]
+
+Mike
+Paterson.
+Strassen
+symmetries.
+Presentation
+at
+Leslie
+Valiant’s
+60th
+birthday
+celebration,
+May
+2009.
+URL:
+http://www.cis.upenn.edu/~mkearns/valiant/paterson.ppt.
+
+[San09]
+
+Piotr Sankowski. Maximum weight bipartite matching in matrix multiplication time.
+Theoret. Comput. Sci., 410(44):4480–4488, 2009. doi:10.1016/j.tcs.2009.07.028.
+
+[Str69]
+
+Volker Strassen. Gaussian elimination is not optimal. Numer. Math., 13:354–356, 1969.
+doi:10.1007/BF02165411.
+
+[Wil12]
+
+Virginia Vassilevska Williams.
+Multiplying matrices faster than Coppersmith–
+Winograd. In STOC ’12: 44th Annual ACM Symposium on Theory of Computing,
+pages 887–898, New York, NY, USA, 2012. ACM. doi:10.1145/2213977.2214056.
+
+[Yuv78]
+
+Gideon Yuval. A simple proof of Strassen’s result. Inform. Process. Lett., 7(6):285–286,
+1978. doi:10.1016/0020-0190(78)90018-2.
+
+[Zwi02]
+
+Uri Zwick. All pairs shortest paths using bridging sets and rectangular matrix multiplication. J. ACM, 49(3):289–317 (electronic), 2002. doi:10.1145/567112.567114.
+
+10
+
+

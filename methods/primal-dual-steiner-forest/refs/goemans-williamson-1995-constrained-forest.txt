@@ -1,0 +1,1197 @@
+SIAM J. COMPUT.                                                            () 1995 Society for Industrial and Applied Mathematics
+Vol. 24, No. 2, pp. 296-317, April 1995                                                                                      O08
+
+
+
+
+                                A GENERAL APPROXIMATION TECHNIQUE
+                                 FOR CONSTRAINED FOREST PROBLEMS*
+                                    MICHEL X. GOEMANS* AND DAVID E WILLIAMSON*
+
+     Abstract. We present a general approximation technique for a large class of graph problems. Our technique
+mostly applies to problems of covering, at minimum cost, the vertices of a graph with trees, cycles, or paths satisfying
+certain requirements. In particular, many basic combinatorial optimization problems fit in this framework, including
+the shortest path, minimum-cost spanning tree, minimum-weight perfect matching, traveling salesman, and Steiner
+tree problems.
+     Our technique produces approximation algorithms that run in O(n log n) time and come within a factor of
+2 of optimal for most of these problems. For instance, we obtain a 2-approximation algorithm for the minimum-
+weight perfect matching problem under the triangle inequality. Our running time of O(n log n) time compares
+favorably with the best strongly polynomial exact algorithms running in O(n 3) time for dense graphs. A similar
+result is obtained for the 2-matching problem and its variants. We also derive the first approximation algorithms for
+many NP-complete problems, including the nonfixed point-to-point connection problem, the exact path partitioning
+problem, and complex location-design problems. Moreover, for the prize-collecting traveling salesman or Steiner
+tree problems, we obtain 2-approximation algorithms, therefore improving the previously best-known performance
+guarantees of 2.5 and 3, respectively [Math. Programming, 59 (1993), pp. 413-420].
+
+     Key words, approximation algorithms, combinatorial optimization, matching, Steiner tree problem, T-joins,
+traveling salesman problem
+
+     AMS subject classifications. 68Q25, 90C27
+
+     1. Introduction. Given a graph G     (V, E), a function f 2 v --+ {0, 1}, and a non-
+negative cost function c E --+ Q+, we consider the following integer program:
+                                 Min            CeX
+                                          eEE
+                        subject to:
+(IP)                                      x(3(S)) >_ f (S)                   0 SC V
+                                          Xe E {0, 1}                        eEE
+where 6(S) denotes the set of edges having exactly one endpoint in S and x(F)                Xe.                   eEF
+The integer program (I P) can be interpreted as a very special type of covering problem in
+which we need to find a minimum-cost set of edges that cover all cutsets 6 (S) corresponding
+to sets S with f (S)     1. The minimal solutions to (I P) are incidence vectors of forests. We
+therefore refer to the graph problem associated with (I P) as a constrainedforest problem. Let
+(LP) denote the linear programming relaxation of (I P) obtained by relaxing the integrality
+restriction on the variables x to X     O. For the most part we will consider constrained forest
+problems corresponding to proper functions; that is, a function f 2v __+ {0, such that the
+following properties hold:
+        (i) [Symmetry] f(S) f(V S) for all S c_ V; and
+       (ii) [Disjointness] If A and B are disjoint, then f(A)= f(B)--0 implies f(A U B)--0.
+
+     *Received by the editors January l, 1993; accepted for publication (in revised form) October 6, 1993. This
+research was partially supported by Defense Advanced Research Project Agency contract N00014-89-J-1988.
+     *Department of Mathematics, Massachusetts Institute of Technology, Cambridge, Massachusetts 02139. Addi-
+tional support provided by Air Force contract AFOSR-89-0271.
+     *School of Operations Research and Industrial Engineering, Cornell University, Ithaca, New York 14853. This
+research was conducted while the author was a graduate student at the Massachusetts Institute of Technology. Addi-
+tional support was provided by a National Science Foundation graduate fellowship.
+                                                             296
+                           A GENERAL APPROXIMATION TECHNIQUE                                   297
+
+We also assume that f(V)          0. Many interesting families of forests can be modelled by
+(I P) with  proper functions.  In Table  1, we have indicated some examples of proper functions
+along  with  the corresponding   set of minimal  forests. Thus the minimum-cost spanning tree,
+shortest path, Steiner tree, and T-join problems (see 3 for definitions) can be stated as proper
+constrained forest problems; that is, they can be modelled as (I P) with a proper function.
+Many more complex combinatorial optimization problems, such as the nonfixed point-to-point
+connection problem and the generalized Steiner tree problem, are also proper constrained forest
+problems.
+                                                TABLE
+                   Examples ofproper functions and proper constrained forest problems.
+
+               Input       f(S)                               Minimal forests
+                           f (S)    VS                        Spanning trees
+
+               s,t E V     f(S)          IS {s, t}l           s-t paths
+                                     0   otherwise
+
+               T       V   f(S)                               Steiner trees with terminals T
+                                     0   otherwise
+
+               T c_ V      f(S)          IS f3 T[ odd         T-joins
+                                     0   otherwise
+
+
+     Since many proper constrained forest problems are NP-complete, we focus our attention
+on heuristics. If a heuristic algorithm for an optimization problem delivers a solution guar-
+anteed to be within a factor of ot of optimal, it is said to have a performance guarantee of c.
+Furthermore, if it runs in polynomial time, it is called an or-approximation algorithm. In this
+paper, we present a (2     )-approximation     algorithm for proper constrained forest problems,
+where A       {v 6 V f({v})           1}. Our algorithm runs in O(min(nZlogn, mn(m,n)))
+time, where n IV I, m         E I, and t is the inverse Ackermann function. For the sake of the
+analysis, we implicitly construct a feasible solution to the dual linear program to (L P), and
+                                                                                                2
+we prove that the value of our approximate integral primal solution is within a factor of 2 Ial
+of the value of this dual solution. Therefore, for all proper functions f, the ratio between the
+                                                                 2
+optimal values of (I P) and (L P) is upper bounded by 2 I-"          This result can be contrasted
+with the various logarithmic upper bounds on the ratio between the optimal values of general
+integer covering problems and their fractional counterparts (Johnson [19], Lovisz [271, and
+Chvital [5]).
+     Our algorithm can be characterized in several ways. It is an adaptive greedy algorithm
+in which, at every iteration, the edge with minimum reduced cost is selected. It is adaptive
+in the sense that the reduced costs are updated throughout the execution of the algorithm. It
+can also be seen as a primal-dual algorithm in which, alternately, primal and dual updates are
+performed.
+     Our approximation algorithm generalizes many classical exact and approximate algo-
+rithms. When applied to the spanning tree problem, it reduces to Kruskal’s greedy algorithm
+[23]. For the s-t shortest path problem, our algorithm is reminiscent of the variant of Dijkstra’s
+algorithm that uses bidirectional search (Nicholson [28]). The algorithm is exact in these two
+cases. For the Steiner tree problem, we obtain the minimum spanning tree heuristic whose
+many variants have been described in the literature (see [39]). In the case of the generalized
+Steiner tree problem, our algorithm simulates Agrawal, Klein, and Ravi’s 2-approximation
+algorithm [1 ]. Their algorithm was instrumental in motivating our work. In particular, we
+generalize their use of duality from generalized Steiner trees to all proper constrained for-
+est problems. In the process, we make their use of linear programming duality explicit and
+298                         MICHEL X. GOEMANS AND DAVID P. WILLIAMSON
+
+provide some conceptual simplifications since neither our algorithm nor its analysis require
+contractions, recursive calls to construct the forest or subdivisions of edges, as is used in the
+presentation of Agrawal, Klein, and Ravi [1 ].
+     One important consequence of the algorithm is that it can be turned into a 2-approximation
+algorithm for the minimum-weight perfect matching problem given that the edge costs obey
+the triangle inequality. Our running time of O(n 2 log n) time is faster than the currently
+best-known algorithms that solve the problem exactly (due to Gabow [11 and Gabow and
+Tarjan 13]) on all but very sparse graphs. In addition, our algorithm improves upon all known
+approximation algorithms for this problem in either running time or performance guarantee.
+     Given the triangle inequality, the algorithm can also be turned into an approximation
+algorithm for related problems involving cycles or paths, instead of trees. This observation
+allows us to consider additional problems such as the traveling salesman problem, Hamiltonian
+location problems [25], and many other problems. Our algorithm can also be extended to
+handle some nonproper constrained forest problems. In general, our technique applies to
+many NP-complete problems arising in the design of communication networks, VLSI design,
+and vehicle routing. We have also been able to apply the technique to the prize-collecting
+traveling salesman problem (given the triangle inequality) and the prize-collecting Steiner tree
+problem, thereby deriving the first 2-approximation algorithms for these problems.
+     The rest of the paper is structured as follows. In 2, we describe our approximation
+algorithm for proper constrained forest problems. We also present its analysis and an efficient
+implementation. In 3, we describe how the algorithm can be applied to the various proper
+constrained forest problems mentioned above. In 4, we show how to extend the algorithm
+and proof techniques to other problems, including the prize-collecting traveling salesman
+problem. We discuss previous work for particular constrained forest problems in 3 and 4.
+We conclude in 5 with a discussion of subsequent work.
+      2. The algorithm for proper constrained forest problems.
+     2.1. Description. The main algorithm is shown in Fig. 1. The algorithm takes as input
+an undirected graph G        (V, E), edge costs c > 0 for all e E E, and a proper function
+f. The algorithm produces as output a set of edges F’ whose incidence vector of edges is
+feasible for (IP). The basic structure of the algorithm involves maintaining a forest F of
+edges, which is initially empty. The edges of F will be candidates for the set of edges to be
+output. The algorithm loops, in every iteration selecting an edge (i, j) between two distinct
+connected components of F, then merging these two components by adding (i, j) to F. The
+loop terminates when f(C) 0 for all connected components C of F; since f(V) 0, the
+loop will finish after at most n     iterations. The set F’ of edges that are output consists of
+only the edges of F needed to meet the covering requirements. More precisely, if an edge e
+can be removed from F such that f (C) 0 for all components C of F e, then e is omitted
+from F’.
+     The approximation properties of the algorithm will follow from the way we choose the
+edge each iteration. The decision is based on a greedy construction of an implicit solution to
+the dual of (L P). This dual is
+
+                    Max      Z f S) ys
+                             SCV
+              subject to:
+(D)                            Z yS<_Ce
+                             S:e3(S)
+                                                             eEE,
+
+                             ys>O                            O:/:SCV.
+                         A GENERAL APPROXIMATION TECHNIQUE                                     299
+Input: An undirected graph G (V, E), edge costs C         0, and a proper function f
+Output: A forest F’ and a value L B
+         F+--0
+2        Comment: Implicitly set ys <-- O for all S C V
+3        LB<--O
+4        C +- {{v} v V}
+5        For each v E V
+6          d(v) +- 0
+7        While 3C C: f (C)
+                                                                                        ce-d(i)-d(j)
+8          Find edge e (i, j) with      Cp C, j Cq C, Cp Cq that minimizes              f(Cp)+f(Cq)
+9          F +- FU{e}
+10         For allvECr eCdod(v) +-d(v)+.f(Cr)
+11         Comment: Implicitly set Yc *- Yc 4- f (C) for all C C.
+12         LB +-- LB +     Y--cC  f (C)
+13         C <--- C [.-J {Cp [..J Cq} {Cp} {Cq}
+14       F’ +-- {e 6 F For some connected component N of (V, F             {e}), f(N)
+                                     FIG. 1. The main algorithm.
+
+
+Define an active component to be any component C of F for which f (C)         1. In each iteration
+the algorithm tries to increase Yc uniformly for each active component C by a value 6 that is
+as large as possible without violating the packing constraints       Ys < Ce. Finding such an 6
+will make a packing constraint tight for some edge (i, j) between two distinct components;
+the algorithm will then add (i, j) to F and merge these two components. An alternate view
+of this process is that the algorithm tries to find the edge (i, j) between distinct components
+with the minimum "reduced" cost 6.
+     We claim that the algorithm shown in Fig. behaves in exactly this manner. To see
+that the dual solution generated in steps 2 and 11 is feasible for (D), note first that initially
+Zeca(S) YS 0 < Ce for all e 6 E. We show by induction that the packing constraints
+continue to hold. Note that it can be shown by induction that d(i)      s:ics Ys for each vertex
+i; thus as long as vertices and j are in different components, ea{s) Ys           d(i) + d(j) for
+edge  e    (i, j). It follows that in a given iteration Yc  can be increased by for each active
+                                                                                6
+component    C  without  violating the packing  constraints as long as
+
+                          d(i) + d(j) + 6     f (Cp) + 6 f (Cq) < Ce,
+for all e    (i, j)   E,        Cp and j Cq, Cp and Cq distinct. Thus the largest feasible
+increase in 6 for a particular iteration is given by the formula in step 8. Once the endpoints
+  and j of an edge e        (i, j) are in the same component, the sum YS:e,as)Ys does not
+increase, so that these packing constraints will continue to hold. Hence when the algorithm
+terminates, the dual solution y constructed by the algorithm will be feasible for (D). By the
+preceding discussion, we also have that Ce Y.S:e,aS) YS for each e 6 F. Note that the value
+L B computed in steps 3 and 12 corresponds to the value of the dual solution y. As the value
+of the dual solution is a lower bound on the optimal cost, LB provides a guarantee on the
+performance of the algorithm for any specific instance. Furthermore, L B will also be used in
+the analysis below to evaluate the worst-case performance guarantee of the algorithm.
+     To complete our claim that the algorithm in Fig. behaves as described, we need to show
+that the edges removed in the final step of the algorithm are not necessary to meet the covering
+requirements; in other words, we need to show that F’ is a feasible solution to (I P). We do
+this below.
+300                      MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+     Two snapshots of the algorithm for the proper function f (S)      SI (mod 2) are shown in
+Figs. 2 and 3. The two snapshots are one iteration apart. In both figures, the cost of an edge
+is the Euclidean distance between its endpoints. The radius around each vertex v represents
+the value d(v). Thick radii represent active components, thin radii inactive components. The
+region of the plane defined by these radii are the so-called moats of Jiinger and Pulleyblank
+[20], [21 ]. The set of edges F at the end of the main loop is shown in Fig. 4, and the set of
+edges F’ output by the algorithm is shown in Fig. 5.
+
+
+
+
+                                 FG. 2. Snapshot of the algorithm.
+
+     We can now see that the algorithm is a generalization of some classical graph algorithms.
+The shortest s-t path problem corresponds to the proper function f(S)            if and only if
+IS A  {s, t}l  1. Our  algorithm adds minimum-cost   edges  extending paths  from  both s and
+in a manner reminiscent of Nicholson’s bidirectional shortest path algorithm [28]. The main
+loop terminates when s and are in the same component, and the final step of the algorithm
+removes all edges not on the path from s to t. Thus for this problem, whenever Ys > O,
+IF’ A6(S)I 1, and whenever e F’, ZS:eEg(S) YS Ce. In other words, the primal and dual
+feasible solutions F’ and y obey the complementary slackness conditions; hence the solutions
+are optimal. Note that the edge removal step is necessary to obtain a good performance
+guarantee in this case; this statement is also true in general. The minimum-cost spanning
+tree problem corresponds to a proper function f (S)        for 0 C S C V. For this function
+f, our algorithm reduces to Kruskal’s algorithm: all components will always be active, and
+thus in each iteration the minimum-cost edge joining two components will be selected. Since
+Kruskal’s algorithm produces the optimal minimum-cost spanning tree, our algorithm will
+also. The solutions produced do not obey the complementary slackness conditions for (L P),
+but induce optimal solutions for a stronger linear programming formulation of the spanning
+tree problem introduced by Jtinger and Pulleyblank [20].
+    A GENERAL APPROXIMATION TECHNIQUE                                 301
+
+
+
+
+     FIG. 3. Snapshot of the algorithm one iteration later.
+
+
+
+
+                                           2
+
+
+
+
+                                                              8
+
+                                                                  9
+
+
+
+
+7
+
+     FIG. 4. Set of edges after the main loop terminates.
+302                       MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+
+
+
+                                    3    4
+
+
+
+
+                                5
+
+
+
+
+                               6
+                                                                               9
+
+
+
+
+                   7
+
+                                        FIG. 5. Final set of edges.
+
+
+     2.2. Analysis. We now need to show that the algorithm has the properties we claim.
+We will begin by showing that the algorithm produces a feasible solution, and then we will
+                                                                2
+turn to proving that the solution is within a factor of (2     i-)  of the optimal solution. We
+
+
+
+
+                                                    __
+assume throughout the ensuing discussion that F is the set of candidate edges selected by the
+algorithm, F’ is the forest output by the algorithm, and that x’ is the incidence vector of edges
+
+
+
+
+                                                                                         _
+of F’.
+      OBSERVATION 2.1. If f (S) 0 and f (B) 0 for some B S, then f (S B) O.
+      Proof. By the symmetry property of f, f (V S) f (S) O. By disjointness,
+f ((V S) U B) 0. By symmetry again, f (S B) f ((V S) t2 B) 0.                             l-I
+      LEMMA 2.2. For each connected component N of F’, f (N) O.
+      Proof. By the construction of F’, N C for some component C of F. Now, let
+el        ek be edges of F such that ei E 6(N) (possibly k       0). Let Ni and C Ni be the
+two components created by removing ei from the edges of component C, with N                C Ni
+(see Fig. 6). Note that since ei       F’, it must be the case that f(Ni)      O.  Note  also    that
+the sets N, N1, N2        Nk form   a partition C.
+                                                of    So  then f(C N) f(tO=Ni)                  0 by
+disjointness. Because f(C) O, the observation above implies that f (N) 0.                  1
+      THEOREM 2.3. The incidence vector x’ is a feasible solution to (I P).
+      Proof. Suppose not, and assume that x’(3 (S)) 0 for some S such that f (S) 1. Let
+N1         Np be the components of F’. In order for x’ (3 (S)) 0, it must be the case that for
+all i, either S f3 Ni   0 or S (q Ni Ni. Thus S Ni, U             t2 Nik for some i           i. By
+the lemma above, however, f(Ni) 0 for all i, so f (S) 0 by the disjointness of f. This
+contradicts our assumption that f (S)       1. Therefore, x’ must be a feasible solution.
+      Now we will show that the algorithm has the approximation properties that we claim.
+For this purpose, we use the dual solution y implicitly constructed by the algorithm. Let Z,
+be the cost of the optimal solution to (L P), and let Z, be the cost of the optimal solution
+                          A GENERAL APPROXIMATION TECHNIQUE                                           303
+
+
+
+
+                                                                              =       = F’
+
+
+
+
+                                   FIG. 6. Illustration of Lemma 2.2.
+
+
+to (1P). Obviously Z*p < Zp. Because y is a feasible dual solution and Ys > 0 only if
+f(S) 1, it follows that LB        scvYs <_ Z*I,. We will now prove the following theorem.
+     THEOREM 2.4. The algorithm in Fig. produces a set of edges F’ and a value L B such
+that
+
+         ce < 2           LB-- 2                        Ys < 2                    ZLp < 2          Zip.
+   eF’              IAI                  IAI      scv                   IAI                  IAI
+                                2
+Hence the algorithm is a (2    TN)-apprximatin algorithm for the constrainedforest problem
+for any proper function f
+     Proof Since we know that }--.eeF’ c           Y.eF’ YS:ee(S)YS, by exchanging the summa-
+tions we can rewrite  Y-eeF’
+                           C as
+by induction on the main loop that
+                                   scv       Ys   IF’ Cl 3(S)I. To prove the theorem, we will show
+
+                           scv-Ys’lF’Na(S)l<-(2 IAI2)                   SCV
+                                                                              YS.
+
+Certainly the inequality holds before the first iteration of the loop, since initially all Ys O.
+Consider the set C of components at the beginning of some iteration of the loop. The left-hand
+side of the inequality will increase by
+
+
+                                    CC:f(C)=I
+                                                  . IF’      6(C)1
+
+in this iteration. If we can prove that this increase is bounded above by the increase of the
+right-hand side, namely
+
+
+                                        (2)
+                                         2
+                                          IAI " Ic
+                                                               I,
+
+where C        {C 6 C f(C)          }, then we will be done.
+     The basic intuition behind the proof of this result is that the average degree of a vertex in a
+                                              2
+forest of at most AI vertices is at most 2- IN"   To begin, construct a graph H by considering the
+active and inactive components of this iteration as vertices of H, and the edges e 6 6 (C) C) F’
+for all C 6 C as the edges of H. Remove all isolated vertices in H that correspond to inactive
+components. Note that H is a forest. We claim that no leaf in H corresponds to an inactive
+vertex. To see this, suppose otherwise, and let v be a leaf, Cv its associated inactive component,
+e the edge incident to v, and C the component of F that contains Cv. Let N and C N be the
+304
+                            _
+                           MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+two components formed by removing edge e from the edges of component C. Without loss
+of generality, say that Co N. The set N Cv is partitioned by some of the components of
+the current iteration; call these C1  Ck (see Fig. 7). Since vertex v is a leaf, no edge in F’
+connects Cv to any Ci. Thus by the construction of F’, f(I,.)Ci) O. Since f(C) 0 also,
+it follows that f (N) 0. We know f (C) 0, so by Observation 2.1 f (C N) 0 as well,
+
+                                          ’
+and thus by the construction of F’, e F’, which is a contradiction.
+
+
+
+
+                                                                                        F’
+
+
+
+
+                       FIG. 7. Illustration of claim that all leaves of H are active.
+
+     In the graph H, the degree d of vertex v corresponding to component C must be If(C)
+F’I. Let N, be the set of vertices in H corresponding to active components, so that ]N ]Cll.
+Let Ni be the set of vertices in H that correspond to inactive components. Then
+
+
+                                v6N,       vENaUNi          vGNi
+                                       < 2([N.[ + INil             1)   2INI
+                                           21NI       2.
+
+This inequality holds since H is a forest with at most N, + Ni]      edges, and since each
+vertex corresponding to an inactive component has degree at least 2. Multiplying each side
+by e, we obtain   -v_Ua  d, < e(21Na[ 2), or
+
+                  e
+                      CC
+                           IF’     6(C)1 _< 2e(IC’l- 1) _<         (2--
+since the number of active components is always no more than AI. Hence the theorem is
+proven.      F1
+
+     2.3. Implementing the algorithm. We now turn to the problem of implementing the
+algorithm efficiently and show how the algorithm can be made to run in O(min(n 2 log n,
+mnot(m, n))) time. We neglect the time taken to compute f from this discussion, since we
+can compute f(C) in O(n) time for all problems of interest, and since we need to perform
+this computation at most O (n) times.
+     Some of the implementation details are obvious. For example, we can maintain the
+components C as a union-find structure of vertices. Then all merging will take at most
+O(not(n, n)) time overall, where ot is the inverse Ackermann function [33]. The two main
+algorithmic problems arise from selecting the edge that minimizes e at each iteration, and
+from finding the edges in F that belong in F’. We consider each of these problems separately.
+     As a naive approach to finding the minimum edge, we can simply use O (mot (m, n)) time
+each iteration to compute the reduced cost (Ce d(i) d(j))/(f(Cp) + f(Cq)) for each
+edge e (i, j) and to check whether the edge spans two different components. Other loop
+                         A GENERAL APPROXIMATION TECHNIQUE                                    305
+
+operations take O (n) time, resulting in a running time of O (mnot (m, n)) for the main loop,
+since there are at most n       iterations.
+      By being somewhat more careful, we can reduce the time taken to find the minimum edge
+in dense graphs to O (n log n). We need three ideas for this reduced time bound. The first idea
+is to introduce a notion of time into the algorithm. We let the time T be 0 at the beginning of the
+algorithm and increment it by the value of each time through the main loop. The second idea
+is that instead of computing the reduced cost for an edge every time through the loop, we can
+maintain a priority queue of edges, where the key of an edge is the time T at which its reduced
+cost is expected to be zero. If we know whether the components of an edge’s endpoints are
+active or inactive, and assume that the activity (or inactivity) will continue indefinitely, it is
+easy to compute this time T. Of course the activity of a component can change, but this occurs
+only when it is merged with another component, and only edges incident to the component
+are affected. In this case, we can recompute the key for each incident edge, delete the element
+with the old key, and reinsert it with the new key. The last idea we need for the lower time
+bound is that we only need to maintain a single edge between any two components. If there is
+more than one edge between any two components, one of the edges will always have a reduced
+cost no greater than that of the others; hence the others may be removed from consideration
+altogether.
+     Combining these ideas, we get the following algorithm for the main loop: first, we
+calculate the initial key value for each edge and insert each edge into the queue (in time
+O(m log n)). Each time through the loop, we find the minimum edge (i, j) by extracting the
+minimum element from the queue. If            Cp and j Cq, we delete all edges incident to Cp
+and Cq from the queue. For each component Cr different from Cp and Cq we update the keys
+of the two edges from Cp to Cr and Cq to Cr, select the one edge that has the minimum key
+value, then reinsert it into the queue. Since there are at most n components at any point in
+time, each iteration will have O(n) queue insertions and deletions, yielding a time bound of
+O (n log n) per iteration, or O (n 2 log n) for the entire loop.
+     To compute F’ from F, we iterate through the components C of F. Given a component
+C, we root the tree at some vertex, put each leaf of the tree in a separate list, and compute the
+f value for each of the leaves. An edge joining a vertex to its parent is discarded if the f value
+for the set of vertices in its subtree is 0. Whenever we have computed the f value for all the
+children of some vertex v, we concatenate the lists of all the children of v, add v to the list,
+and compute f of the vertices in the list. We continue this process until we have examined
+every edge in the tree. Since there are O(n) edges, the process takes O(n) time.
+     3. Applications of the algorithm. In this section, we list several problems to which the
+algorithm can be applied.
+     The generalized Steiner tree problem. The generalized Steiner tree problem is the
+problem of finding a minimum-cost forest that connects all vertices in T/ for               p.
+The generalized Steiner tree problem is a proper constrained forest problem with f (S)
+if there exists 6 {1         p} with 0 =/:: S f3 Ti =/: Ti and 0 otherwise. In this case, our
+approximation algorithm has a performance guarantee of 2 2 wherek_  ,               I[,_ji=, pT/I
+and simulates an algorithm of Agrawal, Klein, and Ravi [1 ]. Their algorithm was the first
+approximation algorithm for this problem.
+     When p 1, the problem reduces to the classical Steiner tree problem. For a long time,
+                                                                                       2
+the best approximation algorithm for this problem had a performance guarantee of (2 )     (for
+a survey, see Winter [39]) but, very recently, Zelikovsky [40] obtained an !!-approximation
+algorithm. An improved !-approximation algorithm based upon Zelikovsky’s ideas was later
+proposed by Berman and Ramaiyer [3].
+306                      MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+     The performance guarantee of the algorithm can be shown to be tight for this problem.
+When p        1, our algorithm reduces to the standard minimum-cost spanning tree heuristic
+(see Goemans    and Bertsimas 15]) The heuristic can produce solutions which have cost 2 2k
+times the optimal cost, as is shown in 15].
+     The T-join problem. Given an even subset T of vertices, the T-join problem consists
+of finding a minimum-cost set of edges that has odd degree at vertices in T and even degree
+at vertices not in T. Edmonds and Johnson [9] have shown that the T-join problem can be
+solved in polynomial time and can be formulated by the linear program (L P) with the proper
+function f (S)       if IS 7/T[ is odd and 0 otherwise. The edge-removing step of our algorithm
+guarantees that the solution produced is a T-join (see below). Using our algorithm, we obtain
+a (2
+       rl  )-approximation algorithm for the T-join problem.
+     The performance guarantee of the algorithm is tight for the T-join problem. Figure 8(a)-
+(c) shows an example on eight vertices in which the minimum-cost V-join has cost 4+ 3, while
+the solution produced by the algorithm has cost 7, yielding a worst-case ratio of approximately
+7=2_2g. Clearly the example can be extended to larger numbers of vertices and to an arbitrary
+set T.
+     When TI        2, the T-join problem reduces to the shortest path problem. Our algorithm
+is exact in this case, since 2
+                                 ITI
+      The minimum-weight perfect matching problem. The minimum-weight perfect match-
+ing problem is the problem of finding a minimum-cost set of nonadjacent edges that cover
+all vertices. This problem can be solved in polynomial time by the original primal-dual algo-
+rithm discovered by Edmonds [7]. The fastest strongly polynomial time implementation of
+Edmonds’ algorithm is due to Gabow 11 ]. Its running time is O(n(m + n log n)). For integral
+costs bounded by C, the best weakly polynomial algorithm runs in O (m
+time and is due to Gabow and Tarjan [13].
+                                                                       noe   (m, n) log n log n C)
+
+      These algorithms are fairly complicated and, in fact, too time-consuming for large in-
+stances that arise in practice. This motivated the search for faster approximation algorithms.
+Reingold and Tarjan [30] have shown that the greedy procedure has a tight performance guar-
+antee of 54.0.585
+            n     for general nonnegative cost functions. Supowit, Plaisted, and Reingold [32]
+and Plaisted [29] have proposed an O (min(n 2 log n, m log 2 n)) time approximation algorithm
+for instances that obey the triangle inequality. Their algorithm has a tight performance guar-
+antee of 2 log(1.5n). As shown by Gabow and Tarjan [13], an exact scaling algorithm for
+the maximum-weight matching problem can be used to obtain an (1 / 1/na)-approximation
+algorithm (a > 0) for the minimum-weight perfect matching problem. Moreover, if the orig-
+inal exact algorithm runs in O(f(m, n)log C) time, the resulting approximation algorithm
+runs in O(mv/n logn + (1 +a)f(m, n) log n). Vaidya [34] obtains a (3 + 2)-approximation
+algorithm for minimum-weight perfect matching instances satisfying the triangle inequality.
+His algorithm runs in O(n 2 log 2"5 n log(1/e)) time.
+      The algorithm for proper constrained forest problems can be used to approximate the
+minimum-weight perfect matching problem when the edge costs obey the triangle inequality.
+We use the algorithm with the proper function f(S) being the parity of IS[, i.e., f(S)
+if IS] is odd and 0 if IS] is even. This function is the same as the one used for the V-join
+problem. The algorithm returns a forest whose components have even size. More precisely,
+the forest is a V-join, and each vertex has odd degree: if a vertex has even degree, then,
+by a parity argument, some edge adjacent to the vertex could have been deleted so that the
+resulting components have even size. Thus this edge would have been deleted in the final
+step of the algorithm. The forest can be transformed into a perfect matching with no increase
+of cost by repeatedly taking two edges (u, v) and (v, w) from a vertex v of degree three or
+more and replacing these edges with the edge (u, w). This procedure maintains the property
+                               A GENERAL APPROXIMATION TECHNIQUE                                              307
+
+that the vertices have odd degree. After O(n) iterations, each vertex has degree one. Since
+each iteration takes O(1) time, the overall procedure gives an approximation algorithm for
+weighted perfect matching which runs in O(n 2 log n) time and has a performance guarantee
+of 2 2.
+     The performance guarantee of the algorithm is tight for this problem also, as in shown in
+Fig. 8(d).
+
+
+
+
+                                     (e)                                   (d)
+
+      FiG. 8. Worst-case example for V-join or matching. Graph (a) gives the instance: plain edges have cost 1,
+                           ,
+dotted edges have cost + and all other edges have cost 2. Graph (b) is the minimum-cost solution. Graph (c) is
+the set of edges found by the constrained forest algorithm, and graph (d) shows a bad (but possible) shortcutting of
+the edges to a matching.
+
+     Point-to-point connection problems. In the point-to-point connection problem, we are
+given a set C {ci           Cp} of sources and a set D {dl         dp} of destinations in a graph
+G      (V, E) and we need to find a minimum-cost set F of edges such that each source-
+destination pair is connected in F [26]. This problem arises in the context of circuit switching
+and VLSI design. The fixed destination case in which ci is required to be connected to di is
+a special case of the generalized Steiner tree problem where T/         {ci, di }. In the nonfixed
+destination case, each component of the forest F is only required to contain the same number
+of sources and destinations. This problem is NP-complete [26].
+     The nonfixed case is a proper constrained forest problem with f(S)               if IS
+IS Cq DI and 0 otherwise. For this problem, we obtain a (2 7)-approximation algorithm.
+     Exact partitioning problems. In the exact tree (cycle, path) partitioning problem, for
+a given k we must find a minimum-cost collection of vertex-disjoint trees (cycles, paths) of
+size k that cover all vertices. These problems and related NP-complete problems arise in the
+design of communication networks, vehicle routing, and cluster analysis. These problems
+generalize the minimum-weight perfect matching problem (in which each component must
+have size exactly 2), the traveling salesman problem, the Hamiltonian path problem, and the
+minimum-cost spanning tree problem.
+     We can approximate the exact tree, cycle, and path partitioning problems for instances
+that satisfy the triangle inequality. For this purpose, we consider the proper constrained forest
+308                          MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+problem with the function f (S)        if IS] 0 (mod k) and 0 otherwise. Our algorithm finds
+a forest in which each component has a number of vertices that is a multiple of k, and such
+that the cost of the forest is within 2 2 of the optimal such forest. Obviously the cost of the
+optimal such forest is a lower bound on the optimal exact tree and path partitions. Given the
+forest, we duplicate each edge and find a tour of each component by shortcutting the resulting
+Eulerian graph on each component. If we remove every kth edge of the tour, starting at some
+edge, the tour is partitioned into paths of k nodes each. Some choice of edges to be removed
+(i.e., some choice of starting edge) accounts for at least of the cost of the tour, and so we
+remove these edges. Thus this algorithm is a (4(1 )(1 ))-approximation algorithm for
+the exact tree and path partitioning problems.
+      To produce a solution for the exact cycle partitioning problem, we add the edge joining
+the endpoints of each path; given the triangle inequality, this at most doubles the cost of
+the solution produced. We claim, however, that the algorithm is still a (4(1 )(1 ))-
+approximation algorithm for the cycle problem. To see that this claim is true, note that the
+following linear program is a linear programming relaxation of the exact cycle partitioning
+program, given the function f above:
+
+                    Min     Z
+                            eEE
+                                  CeXe
+
+              subject to:
+                            x(6(S)) > 2f(S)                           Sc V
+                            xe>O                                      eE.
+
+Its dual is
+
+                    Max 2    Z f(S).ys
+                             SCV
+              subject to:
+                             Z
+                            S:e(S)
+                                     yS<Ce                          eE,
+
+                            ys>O                                    O#Sc V.
+We know the algorithm produces a solution y that is feasible for this dual such that ZeEF’ Ce
+      2
+(2 g)      Ys. The argument above shows how to take the set of edges F’ and produce a set
+of edges T such that T is a solution to the exact cycle partitioning problem, and          Y-eET
+                                                                                           Ce <
+4(1 ) --eF’ Ce’ SO that
+
+
+                                  Ce _8 1---
+                                  eT
+                                                           1---
+                                                               11
+                                                                       YS.
+
+
+
+
+                                                     -   ys is a lower bound on the cost of the optimal
+Since 2 ys is the dual objective function, 2
+exact cycle partition,      Z.
+                         Thus
+
+                                         ce <_4 1-          1-- Z c.
+                                    eT
+
+    The proper functions corresponding to the nonfixed point-to-point connection problem,
+the T-join problem and the exact partitioning problems are all of the form f(S)         if
+-,is ai    0 (mod p) and 0 otherwise, for some integers ai,   V, and  some integer p.
+                         A GENERAL APPROXIMATION TECHNIQUE                                    309
+
+    4. Extensions. The main algorithm can be extended in a number of ways to handle
+nonproper functions f and even other somewhat different integer programming problems.
+We describe these extensions in this section.
+     4.1. More general functions f. We can weaken the conditions for a proper function f
+and obtain a modified (2- )-approximation algorithm for the constrained forest problem. A
+number of new problems can be approximated under these weaker conditions; these problems
+are listed below. To solve these problems, the main algorithm must be modified to handle
+functions f that are not symmetric and cannot be made symmetric without violating disjoint-
+ness. The central modifications that must be made involve maintaining a root vertex for each
+component, to cope with the asymmetry of f, and maintaining sets of vertices that must be
+connected in the final solution.
+     We omit discussion of the extended algorithm here because a recent algorithm of
+Williamson et al. [38] simplifies and subsumes our extended algorithm. Williamson et al.
+have shown how some of the results of this paper can be extended to uncrossable functions
+h. A function h 2 v -+ {0, 1} is uncrossable if whenever h(A)              h(B)        then either
+h(A B) h(B A) 1, or h(A U B) h(A G B) 1. Williamson et al. show that an
+algorithm somewhat similar to our algorithm finds solutions to (I P) for uncrossable functions
+that are within a factor of 2 +/- of optimal. The algorithm can be implemented in polynomial
+time for many uncrossable functions, including those for which the function has the property
+that if h(A)         then h(B)              :
+                                       for 13    B C A. The problems listed below fit in this
+category. See Williamson [36] and Goemans and Williamson [17] for a discussion of how the
+techniques of Williamson et al. apply to these problems.
+     Lower eapaeitated partitioning problems. The lower capacitated partitioning prob-
+lems are like the exact partitioning problems except that each component is required to have at
+least k vertices rather than exactly k vertices. The lower capacitated cycle partitioning problem
+is a variant of the 2-matching problem. More precisely, the cases k 2, 3, and 4 correspond
+to integer, binary, and triangle-free binary 2-matchings, respectively. The lower capacitated
+cycle partitioning problem is NP-complete for k >_ 5 (Papadimitriou (as reported in [6]) for
+k > 6 and Vornberger [35] for k 5), polynomially solvable for k 2 or 3 (Edmonds and
+Johnson [8]), while its complexity for k 4 is open. Imielinska, Kalantari, and Khachiyan
+ 18] have shown that the lower capacitated tree partitioning problem is NP-complete for k >_ 4.
+     The lower capacitated tree partitioning problem is the constrained forest problem cor-
+responding to f(S)           if 0 < IS[ < k and 0 otherwise. The extended algorithm gives
+a (2      )-approximation algorithm for this problem for any k. Furthermore, assuming
+the triangle inequality, this algorithm can be turned into a (2 +/-)-approximation algorithm
+for the lower capacitated cycle partitioning problem and a (4            2)_approximation algo-
+rithm for the lower capacitated path partitioning problem.
+      Location-design and location-routing problems. Many network design or vehicle rout-
+ing problems require two levels of decisions. In the first level, the location of special vertices,
+such as concentrators or switches in the design of communication networks, or depots in the
+routing of vehicles, need to be decided. There is typically a set of possible locations and a
+fixed cost is associated with each of them. Once the locations of the depots are decided, the
+second level deals with the design or routing per se. These problems are called location-design
+or location-routing problems [24]. Several of these problems can be approximated using the
+extended algorithm. For example, we can provide a (2 +/-)-approximation algorithm for the
+problem in which we need to select depots among a subset D of vertices of a graph G (V, E)
+and cover all vertices in V with a set of cycles, each containing a selected depot [25], [24].
+The goal is to minimize the sum of the fixed costs of opening our depots and the sum of the
+         _
+310                      MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+
+
+cycle is required to have at least k vertices.
+                                                                        _
+costs of the edges of our cycles. The algorithm can also be extended to the case in which every
+
+
+     4.2. Nonnegative functions f. Using techniques from Goemans and Bertsimas [15],
+we can provide approximation algorithms for many functions f 2v              I, assuming that we
+can have multiple copies of an edge in the solution. Suppose f satisfies f (S)
+for all S     V, and, if A and B are disjoint, then max{f(A), f(B)} > f(A U B). Suppose
+                                                                                       f (V S)
+also that f assumes at most p different nonzero values, P0 0 < p <               < pp. Let (I P’)
+denote the integer program (I P) with the Xe        {0, 1} constraint replaced by the constraint
+Xe     1. Then we can show that there is an approximation algorithm for (I P’) that comes
+within a factor of 2 _t= (Pk Pk-1)/P, of optimal. Note that at worst the values of f
+will be 0, 1, 2, 3       fmax max s f (S), so that the performance guarantee will be at most
+2 ’Jnax
+  A.k=l k
+         1
+               O(log   fma)  The performance guarantee will also be no worse than 2p The
+algorithm for (I P’) works by performing p iterations of our main algorithm. In iteration
+i, set g(S)        if f(S) >_ IOp+l_i, g(S)     0 otherwise, and call the main algorithm with
+function g. By the properties of f, g will be a proper function for the main algorithm. When
+the algorithm returns F’, we make (lOp+l_i Dp-i) copies of each edge, and add them to
+
+within a factor of 2
+                    =
+the set of edges to be output. The proof that constructing a set of edges in this way comes
+                            (p p_)/p of optimal is essentially the same as the proof used
+by Goemans and Bertsimas. We can potentially reduce the number of calls to our main
+algorithm by using a "scaling" technique introduced by Agrawal, Klein, and Ravi [1 ], which
+requires [log fmaxJ at- iterations. In iteration i, we set g(S)         if f(S) > 2 [lgJ%x/+l-i
+g(S) 0 otherwise, and call the main algorithm with the function g. We make 2
+copies of the edges in the resulting F’, and add them to the set of edges to be output. Using the
+Goemans and Bertsimas proof, it can be shown that this procedure results in a (2 [log fmaJ +2)-
+approximation algorithm.
+     One application of allowing fma > is the generalized Steiner network problem in which
+each pair of vertices i, j must be connected by rij edge-disjoint paths. In this case we want
+f(S) maxis, jcs rij For this particular problem, Agrawal, Klein, and Ravi [1] showed how
+to reduce this general case to the 0-1 case.
+     Williamson et al. [38] have recently shown how to approximate (I P) for functions of the
+type mentioned above when no edge replication is allowed.
+      4.3. The prize-collecting problems. The prize-collecting traveling salesman problem
+is a variation of the classical traveling salesman problem (TSP). In addition to the cost on the
+edges, we have also a penalty rri on each vertex i. The goal is to find a tour on a subset of the
+vertices that minimizes the sum of the cost of the edges in the tour and the vertices not in the
+tour. We consider the version in which a prespecified root vertex r has to be in the tour; this is
+without loss of generality, since we can repeat the algorithm n times, setting each vertex to be
+the root. This version of the prize-collecting TSP is a special case of a more general problem
+introduced by Balas [2]. The prize-collecting Steiner tree problem is defined analogously. The
+standard Steiner tree problem can be seen to be a special case of the prize-collecting Steiner
+tree problem in which nonterminals have a penalty of zero, while terminals have a very large
+penalty (e.g., equal to the diameter of the graph).
+      Bienstock et al. [4] developed the first approximation algorithms for these problems.
+Their performance bounds are 5/2 for the TSP version (assuming the triangle inequality) and
+3 for the Steiner tree version. These approximation algorithms are not very efficient, however,
+since they are based upon the solution of a linear programming problem.
+      These problems do not fit in the framework of problems considered so far since they cannot
+be modelled by (IP). However, the main algorithm can be modified to give a (2               _)-
+                         A GENERAL APPROXIMATION TECHNIQUE                                   311
+
+approximation algorithm for both the prize-collecting TSP (under the triangle inequality) and
+the prize-collecting Steiner tree problem. Moreover, these algorithms are purely combinatorial
+and do not require the solution of a linear programming problem as in [4]. We will focus our
+attention on the prize-collecting Steiner tree problem, and at the end of the section we will
+show how the algorithm for the tree problem can be easily modified to yield a prize-collecting
+TSP algorithm.
+    4.3.1. The prize-collecting Steiner tree. The prize-collecting Steiner tree can be for-
+mulated as the following integer program:
+
+                       Min      Z
+                                e6E
+                                       Cexe -3t-     Z ZT(Z 7i)
+                                                   TCV;rT       i6T
+
+                subject to:
+(PC-IP)                         x(3(S)) +          Z
+                                                   T3S
+                                                         ZT >               S C V; r   S
+
+                                     Z ZT<I
+                                TCV;rT
+                                Xe E {0, 1}                                 eEE
+                                zr         {0,1}                            TCV;rT.
+Intuitively, zr is set to 0 for all T except the set T of all vertices not spanned by the tree
+of selected edges. A linear programming relaxation (PC-L P) of the integer program can
+be created by replacing the integrality constraints with the constraints Xe > 0 and zr > 0
+and dropping the constraint        -r
+                                    zr < (in fact, including this constraint does not affect
+the optimal solution). The LP relaxation (PC-L P) can be shown to be equivalent to the
+
+
+
+
+                                   -
+following, perhaps more natural, linear programming relaxation of the prize-collecting Steiner
+tree problem, which was used by the algorithm of Bienstock et al. [4]"
+
+               Min     Z
+                       eE
+                            CeXe       E (1 Si)7fi
+                                        ir
+         subject to:
+                       x((S))          s                               S; r S
+                       xe>O                                           eE
+                       si >0                                           V =fir.
+
+    The dual of (P C-L P) can be formulated as follows:
+
+                        Max          ZYs
+                                   S:rS
+                  subject to"
+(PC-D)                                 Z
+                                   S:e(S)
+                                              ys<Ce                   eEE
+
+                                   Eys<_ZJri                          rCV;rCr
+                                   SC_T            iT
+                                   ys >_O                             S C V;r   S.
+
+     The algorithm for the prize-collecting Steiner tree problem is shown in Fig. 9. The basic
+structure of this algorithm is similar to that of the main algorithm. The algorithm maintains a
+forest F of edges, which is initially empty. Hence each vertex v is initially in its own connected
+312                            MICHEL X. GOEMANS AND DAVID P. WILLIAMSON
+
+component. All components except the root r are considered active, and each vertex is initially
+unmarked. The algorithm loops, in each iteration doing one of two things. First, the algorithm
+may add an edge between two connected components of F. If the resulting component contains
+the root r, it becomes inactive; otherwise it is active. Second, the algorithm may decide to
+"deactivate" a component. Intuitively, a component is deactivated if the algorithm decides it is
+willing to pay the penalties for all vertices in the component. In this case, the algorithm labels
+each vertex in the component with the name of the component. The main loop terminates
+when all connected components of F are inactive. Since in each iteration the sum of the
+number of components and the number of active components decreases, the loop terminates
+after at most 2n     iterations. The final step of the algorithm removes as many edges from F
+as possible while maintaining two properties. First, all unmarked vertices must be connected
+to the root, since these vertices were never in any deactivated component and the algorithm
+
+connected to the root, then so is every vertex with label C’ C.           _.
+was never willing to pay the penalty for these vertices. Second, if a vertex with label C is
+
+
+Input: An undirected graph G (V, E), edge costs cij >_ O, vertex penalties 7h >_ O, and a root vertex r
+Output: A tree F’, which includes vertex r, and a set of unspanned vertices X
+
+2         Comment." Implicitly set Ys +- 0 for all S C V
+3         C +- {{v} v V}
+4         For each v 6 V
+5
+6
+7
+8
+9
+                   -
+            Unmark v
+            d(v)    0
+            w({v}) <-- 0
+            If v r then X({v}) +-- 0 else ,k({v}) +--
+          While C C X(C)
+                                                                                               ce-d(i)-d(j)
+l0          Findedgee (i, j) with/
+ll          Find       6 C with   ()        that minimizes :2
+12              min(l, 2)
+13          w(C) +-- w(C) + X(C) for all C 6 C
+14          Comment." Implicitly set yc +- Yc / X(C) for all C                 C
+15          For allv6Cr 6C
+16            d(v) +- d(v) + )(Cr)
+17
+18
+19
+            If e
+              ()
+                   2
+
+
+                       -   o
+              Mark all unlabelled vertices of
+
+
+
+
+                                                                      _
+20          else
+21            F <-- FU{e}
+22            d +- d u {C u C}           {G}      {C.}
+23             uU(Cp U Cq) uo(Cp) -a u)(Cq)
+24             If r Cp U Cq then k(Cp U Ca) +- 0 else k(Cp U Ca) +-
+25        F’ is derived from F by removing as many edges as possible but so that the following two
+          properties hold: (1) every unlabelled vertex is connected to r; (2) if vertex v with label C is
+          connected to r, then so is every vertex with label C’ C.
+26        X is the set of all vertices not spanned by F’.
+                        FIG. 9. The algorithm for the prize-collecting Steiner tree problem.
+
+    As with the main algorithm, the choices of the algorithm are motivated by the greedy
+construction of an implicit solution to the dual (PC-D). Initially all dual variables are set to
+                         A GENERAL APPROXIMATION TECHNIQUE                                    313
+
+zero. In each iteration of the main loop, the algorithm increases Yc for all active C by a value
+  that is as large as possible without violating the two types of packing constraints of (PC-D)"
+Ys:ee(s) Ys < ce for all e 6 E, and   -sc_r   ys <_ Y-ier rri for all T C V. Increasing the Yc for
+active C by e will cause one of the packing constraints to become tight. If one of the first kind
+of constraints becomes tight, then it becomes tight for some edge e between two connected
+components of the current forest F; hence we add this edge to F. If one of the second kind of
+constraints becomes tight, then it becomes tight for some active component C. In this case,
+the algorithm chooses to deactivate C.
+     We claim that the algorithm shown in Fig. 9 behaves exactly in the manner described
+above. The claim follows straightforwardly from the algorithm’s construction of y and F, and
+from the fact that d(i) ZS:iS YS and w(C)             ’s_c   Ys at the beginning of each iteration.
+Note that the algorithm keeps track of the activity of component C by setting )(C)           if and
+only if component C is active.
+     Let Z*PcLe and Z*czp be the optimal solutions to (PC-LP) and (PC-IP) respectively.
+Obviously  -scv      Ys <ZPcLP ZPctP.
+will show the following theorem.
+                                              In a manner analogous to that of Theorem 2.4, we
+
+     THEOREM 4.1. The algorithm in Fig. 9 produces a set of edges F and a set of vertices X
+whose incidence vectors are feasible for (PC-I P), and such that
+
+
+                eF        iX
+                                          n-1      SCV
+                                                                   n-1 ZPciP
+
+Hence the algorithm is a (2
+tree problem.
+                                 -l )-approximation algorithm for the prize-collecting Steiner
+
+     Proof It is not hard to see that the algorithm produces a feasible solution to (PC-I P),
+since F’ has no nontrivial component not containing r and the component containing r is a
+tree.
+     By the construction of F’, each vertex not spanned by F’ (i.e., the vertices in X) lies in
+some component deactivated at some point during the algorithm. Furthermore, if the vertex
+was in some deactivated component C, then none of the vertices of C are spanned by F’.
+Using these observations, plus the manner in which components are formed by the algorithm,
+we can partition the vertices of X into disjoint deactivated components C1           Ck. These
+sets are the maximal labels of the vertices in X. Since each Cj is a deactivated component,
+it follows thaty-sc_c  Ys      -iG 7ri, and thus that the inequality to be proven is implied by
+
+-eGF    Ce -Jl- Zj -SCj YS <  (2      5--) SCV   YS" In addition, since Ce     ZS:eE6(S)YS for
+each e 6 F’ by construction of the algorithm, all we need to prove is that
+
+
+                      eF’ S:e6(S)
+                                                           -)
+                                                             n-1 scv
+                                                                      Zys,
+                                            S_Cj
+
+or, rewriting terms as in Theorem 2.4,
+
+                     _yslF’O 6(S)[ +                  Ys <_ (2- n-1
+                     S                        Sc_Cj                    scv
+     As in Theorem 2.4, this theorem can be proven by induction on the main loop. Pick
+any particular iteration, and let C be the set of active components of the iteration. Let H be
+the graph formed by considering active and inactive components as vertices and the edges
+e 6 3(C) C F’ for active C as the edges of H. Discard all isolated inactive vertices. Let
+Na denote the set of active vertices in H, Ni the set of inactive vertices, Nd the set of active
+314                        MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+vertices corresponding to active sets contained in some Cj, and do the degree of a vertex v in
+H. Note that Nd {v E Na do 0}. In this iteration, the increase in the left-hand side of
+the inequality is (Y’-oU do + INd]) while the increase in the right-hand side of the inequality
+is (2    V_)lNal.    Thus we would like to prove that (Zvua do + INI) < (2           V_)lNal.
+Note that the degree of any vertex corresponding to an active set in some Cj is zero. Hence if
+we can show that     -oNa-Nd do <_ (2       _l)]N     Nal, then the proof will be complete.
+     To do this, we show that all but one of the leaves of H must be active vertices. Suppose
+that v is an inactive leaf of H, adjacent to edge e, and let Co be the inactive component
+corresponding to v. Further suppose that Co does not contain the root r. Since Co is inactive
+and does not contain r, it must have been deactivated. Because Co is deactivated, no vertex
+in Co is unlabelled; furthermore, since v is a leaf, no vertex in Co can lie on the path between
+the root and a vertex that must be connected to the root. By the construction of F’, then,
+
+  ’
+e F’, which is a contradiction. Therefore, there can be at most one inactive leaf, which must
+correspond to the component containing r.
+     Then
+
+
+                     vGNa --Nd      oG(Na -Nd)t-JNi     vGNi
+                                 < 2(I(N.         Na) U Nil- 1)   (21Nil- 1)
+                                    21N         N,zl-
+                                 < (2- )lNa
+                                            n-1
+                                                         NI.
+The inequality holds since all but one of the spanned inactive vertices has degree at least two,
+and since the number of active components is always at most n 1.            [3
+      The algorithm can be implemented in O(n 2 log n) time, by using the same techniques
+as were given for the main algorithm. In this case, we must also keep track of the time at
+which we expect each component to deactivate, and put this time into the priority queue. The
+only other difference from the main algorithm is the final step in which edges are deleted.
+This step can be implemented in O (n 2) time: first we perform a depth-first search from every
+unmarked vertex to the root, and "lock" all the edges and vertices on this path. We then look
+at all the deactivated components corresponding to the labels of "locked" vertices. If one of
+these contains an unlocked vertex, we perform a depth-first search from the vertex to the root
+and lock all the edges and vertices on the path. We continue this process until each locked
+vertex is in deactivated components that only contain locked vertices. We then eliminate all
+unlocked edges. This procedure requires at most n O (n) time depth-first searches.
+    4.3.2. The prize-collecting traveling salesman problem. To solve the prize-collecting
+TSP given that edge costs obey the triangle inequality, we use the algorithm shown in Fig. 10.
+Note that the algorithm uses the above algorithm for the prize-collecting Steiner tree problem
+with penalties zr[ i/2. TO see that the algorithm is a (2 )-approximation algorithm,
+we need to consider the following linear programming relaxation of the problem:
+
+             Min      Z CeXe-- Z ZT(Z i)
+                      eE         TCV;rq{T        iT
+
+       subject to"
+                      x(6(S)) + 2   Z zr 2
+                                    T_S
+                                            >                     r f/ S
+
+                      xe>O                                        eEE
+                      zr >0                                       T C V;r qT.
+                              A GENERAL APPROXIMATION TECHNIQUE                                   315
+
+This linear program is a relaxation of an integer program similar to (P C-I P) in which zr
+for the set of vertices T not visited by the tour, and zr 0 otherwise. We relax the constraint
+that each vertex in the tour be visited twice to the constraint that each vertex be visited at least
+twice. The dual of the linear programming relaxation is
+                  Max 2               ys
+                              S:rS
+          subject to:
+                              Z ys<_Ce
+                           S:e(S)
+                                                                      e6E
+
+                           2Zys<__ZrCi                                TC V,rT
+                              ST             iT
+                           ys>O                                       SCV, rS.
+Note that this dual is very similar to (PC-D). The dual solution generated by the algorithm
+for the prize-collecting Steiner tree for penalties rr’ will be feasible for the dual program
+
+
+
+
+                    -
+above with penalties rr By duality, 2                 J-scv
+                                                ys < ZPCTSP, where Zecrs e is the cost of
+the optimal solution to the prize-collecting TSP. Given a solution F’ and X to the prize-
+collecting Steiner tree problem, the cost of our solution to the prize-collecting TSP is at
+   eF’ -iEX
+most 2         Ce              7"gi        2(eF’ Ce + iEX ;)" Theorem 4.1 shows that e’ Ce +
+iX ; (2 ) SCV YS,                           SO that
+
+
+             2(          c+           i) < 2(2- )
+                                                n-1
+                                                                    YS < (2- ) Zecse
+                                                                             n-1
+                  e6F’        iGX                             SCV
+
+Thus the cost of the solution found by the algorithm is within (2                  ) of optimal
+Input: An undirected graph G (V, E), edge costs Ci. > 0, vertex penalties 7/" > 0, and a root vertex r
+Output: A tour T’, which includes vertex r, and a set of unspanned vertices X
+         Apply the prize-collecting Steiner tree algorithm to the problem instance with graph G, edge
+         costs c, root r, and penalties 7r    2"/" /2.
+
+2        Duplicate  the  edges F’ of the Steiner tree returned to form an Eulerian graph T.
+3        Shortcut T to form a tour T’. Let X be all vertices not in the tour.
+
+                    FIG. 10. The algorithm for the prize-collecting traveling salesman problem.
+
+     5. Concluding remarks. The approximation techniques described in the previous sec-
+tions have been applied to a number of related problems since the appearance of a prelim-
+inary version of this paper [16]. Saran, Vazirani, and Young [31] showed how to use our
+techniques to derive an approximation algorithm for the minimum-cost 2-edge-connected
+graph problem. Their algorithm has a performance guarantee of 3, equal to the perfor-
+mance guarantee of an earlier algorithm of Frederickson and Ja’Ja’ [10] for the same prob-
+
+proper functions f 2 v
+                               -
+lem. Klein and Ravi [22] demonstrated a 3-approximation algorithm for solving (I P) for
+                             {0, 2}. Building on some ideas of Ravi and Klein, Williamson
+et al. [38] devised an approximation algorithm to solve (IP) for general proper functions
+f 2v __+ N in which the disjointness condition is replaced by the more general condi-
+tion f(A U B) < max(f (A), f(B)) for disjoint A, B. The performance guarantee of the
+algorithm is at most 2k, where k      maxs f(S), but can be lower depending on the values
+taken on by f. The algorithm depends on showing that the techniques of this paper can be
+extended to approximate uncrossable functions, as defined in 4. Goemans et al. [14] have
+shown how to improve the performance guarantee of this algorithm to 2(1 + 7 +        -+- ).
+316                           MICHEL X. GOEMANS AND DAVID E WILLIAMSON
+
+Gabow, Goemans, and Williamson [12] have shown how to efficiently implement the algo-
+rithm of Williamson et al. A consequence of the implementation of Gabow, Goemans, and
+Williamson is an O(n 2 -+- nv/m log log n) implementation for our main algorithm. Finally, we
+have implemented the 2-approximation algorithm for Euclidean matching problems [37]. The
+performance of the algorithm in this case seems to be much better than the theoretical bounds
+given here" on 1,400 random and structured instances of up to 131,072 vertices, the algorithm
+was never more than 4% away from optimal.
+
+      Aeknowledgrnents. The authors would like to thank David Shmoys for extensive com-
+ments on a draft of this paper.
+
+                                                 REFERENCES
+
+     A. AGRAWAL, P. KLEIN, AND R. RAVI, When trees collide: An approximation algorithm for the generalized Steiner
+          problem on networks, in Proceedings of the 23rd Annual ACM Symposium on Theory of Computing, 1991,
+          pp. 134-144; SIAM J. Comput., to appear.
+ [2] E. BALAS, The prize collecting traveling salesman problem, Networks, 19 (1989), pp. 621-636.
+ [3] P. BERMAN AND g. RAMAIYER, Improved approximations for the Steiner tree problem, in Proceedings of the 3rd
+          Annual ACM-SIAM Symposium on Discrete Algorithms, 1992, pp. 325-334.
+ [4] D. BIENSTOCK, M. X. GOEMANS, D. SIMCHI-LEvI, AND D. WILLIAMSON, A note on the prize collecting traveling
+          salesman problem, Math. Programming, 59 (1993), pp. 413-420.
+ [5] g. CHVATAL, A greedy heuristic for the set-covering problem, Math. Oper. Res., 4 (1979), pp. 233-235.
+ [6] G. CORNUIJOLS AND W. PULLEYBLANK, A matching problem with side constraints, Discrete Math., 29 (1980),
+          pp. 135-159. Papadimitriou’s result appears in this paper.
+ [7] J. EDMOrDS, Maximum matching and a polyhedron with O, 1-vertices, J. Res. Nat. Bur. Standards B, 69B (1965),
+          pp. 125-130.
+ [8] J. EDMONDS AND E. JOHNSON, Matching: A well-solved class of integer linear programs, in Proceedings of the
+          Calgary International Conference on Combinatorial Structures and Their Applications, R. Guy et al., eds.,
+          Gordon and Breach, 1970, pp. 82-92.
+ [9]           Matching, Euler tours and the Chinese postman, Math. Programming, 5 (1973), pp. 88-124.
+ 10] G.N. FrEDERICKSON AND J. JA’JA’, Approximation algorithms for several graph augmentation problems, SIAM
+          J. Comput., 10 1981), pp. 270-283.
+ 11 H.N. GA3OW, Data structuresfor weighted matching and nearest common ancestors with linking, in Proceedings
+          of the st Annual ACM-SIAM Symposium on Discrete Algorithms, 1990, pp. 434-443.
+ 12] H.N. GABOW, M. X. GOEMANS, AND D. P. WILLIAMSON, An efficient approximation algorithm for the survivable
+          network design problem, in Proceedings of the Third MPS Conference on Integer Programming and
+          Combinatorial Optimization, 1993, pp. 57-74.
+[13] H. N. GABOW AND R. E. TARJAN, Faster scaling algorithms for general graph-matching problems, J. Assoc.
+          C0mput. Mach., 38 (1991), pp. 815-853.
+[14] M. GOEMANS, A. GOLDBERG, S. PLOTKIN, D. SHMOYS, E. TARDOS, AND D. WILLIAMSON, Improved approximation
+          algorithms for network design problems, in Proceedings of the Fifth Annual ACM-SIAM Symposium on
+          Discrete Algorithms, 1994, pp. 223-232.
+[15] M.X. GOEMANS AND D. J. BERTSIMAS, Survivable networks, linear programming relaxations and the parsimo-
+          nious property, Math. Programming, 60 (1993), pp. 145-166.
+[16] M. X. GOEMANS AND D. P. WILLIAMSON, A general approximation technique for constrained forest problems,
+           in Proceedings of the 3rd Annual ACM-SIAM Symposium on Discrete Algorithms, 1992, pp. 307-316.
+[17] M. X. GOEMANS AND D. E WILLIAMSON, Approximating minimum-cost graph problems with spanning tree
+           edges, Oper. Res. Lett., 16(1994), pp. 183-189.
+[18] C. IMIELIlqSKA, B. KALANTARI, AND L. KHACHIYAN, A greedy heuristic for a minimum-weight forest problem,
+           Oper. Res. Lett., 14 (1993), pp. 65-71.
+[19] D. S. JoHrqsor, Approximation algorithms for combinatorial problems, J. Comput. System Sci., 9 (1974),
+           pp. 256-278.
+[20] M. J3NGER AND W. PULLEYBLANK, New Primal and Dual Matching Heuristics, Research Report 91.105, Uni-
+           versitit zu K61n, 1991.
+[21]            Geometric Duality and Combinatorial Optimization,in Jahrbuch berblicke Mathematik 1993, S.
+           Chatterji et al., eds., Vieweg, Braunschweig, Germany, 1993, pp. 1-24; Research Report RC 17863
+           (#78620), IBM Watson Research Center, 1992.
+                             A GENERAL APPROXIMATION TECHNIQUE                                              317
+
+[22] E KLEIN AND R. RAVI, When cycles collapse: A general approximation technique for constrained two-
+          connectivity problems, in Proceedings of the Third MPS Conference on Integer Programming and Com-
+          binatorial Optimization, 1993, pp. 39-55. Also appears as Brown University Technical Report CS-92-30.
+[23] J. KRUSKAL, On the shortest spanning subtree of a graph and the traveling salesman problem, Proc. Amer.
+          Math. Soc., 7 (1956), pp. 48-50.
+[24] G. LAPORTE, Location-routing problems, in Vehicle routing: Methods and studies, B. L. Golden and A. A.
+          Assad, eds., North-Holland, Amsterdam, 1988, pp. 163-197.
+[25] G. LAPORTE, Y. NOBERT, AND P. PELLETIER, Hamiltonian location problems, European J. Oper. Res., 12 (1983),
+          pp. 82-89.
+[26] C.-L. LI, S. T. McCORMICK, AND D. SIMCHI-LEvI, The point-to-point delivery and connection problems: Com-
+          plexity and algorithms, Discrete Appl. Math., 36 (1992), pp. 267-292.
+[27] L. LovAsz, On the ratio of optimal integral and fractional covers, Discrete Math., 13 (1975), pp. 383-390.
+[28] Z. NICHOLSON, Finding the shortest route between two points in a network, Comput. J., 9 (1966), pp. 275-280.
+[29] D. A. PLAISTED, Heuristic matching for graphs satisfying the triangle inequality, J. Algorithms, 5 (1984),
+          pp. 163-179.
+[30] E.M. REINGOLD AND R. E. TARJAN, On a greedy heuristic for complete matching, SIAM J. Comput., l0 (1981),
+          pp. 676-681.
+[31] H. SARAN, V. VAZIRANI, AND N. YOUNG, A primal-dual approach to approximation algorithms for network
+          Steiner problems, in Proceedings of Indo-US workshop on Cooperative Research in Computer Science,
+           1992, pp. 166-168.
+[32] K.J. SUPOWIT, D. A. PLAISTED, AND E. M. REINGOLD, Heuristics for weighted perfect matching, in Proceedings
+          of the 12th Annual ACM Symposium on Theory of Computing, 1980, pp. 398-419.
+[33] R. E. TARJAN, Efficiency of a good but not linear set union algorithm, J. Assoc. Comput. Mach., 22 (1975),
+          pp. 215-225.
+[34] E VAIDYA. Personal communication, 1991.
+[35] O. VORNBERGER, Complexity ofpath problems in graphs, Ph.D. thesis, Universitit-GH-Paderborn, 1979.
+[36] D. E WILLIAMSON, On the Design of Approximation Algorithms for a Class of Graph Problems, Ph.D. thesis,
+          Massachusetts Institute of Technology, Cambridge; Massachusetts, September 1993. Also appears as Tech
+          Report MIT/LCS/TR-584.
+[37] D. E WILLIAMSON AND M. X. GOEMANS, Computational experience with an approximation algorithm on large-
+          scale Euclidean matching instances, in Proceedings of the Fifth Annual ACM-SIAM Symposium on
+          Discrete Algorithms, 1994, pp. 355-364.
+[38] D.P. WILLIAMSON, M. X. GOEMANS, M. MIHAIL, AND V. V. VAZIRANI, A primal-dual approximation algorithm
+         for generalized Steiner network problems, in Proceedings of the 25th Annual ACM Symposium on Theory
+          of Computing, 1993, pp. 708-717. To appear in Combinatorica.
+[39] E WNTER, Steiner problem in networks: A survey, Networks, 17 (1987), pp. 129-167.
+[40] A. ZELIKOVSKY, An 11 algorithm for the network Steiner problem, Algorithmica, 9 (1993),
+          pp. 463-470.
+

@@ -1,0 +1,1335 @@
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+
+
+6 Lovász Local Lemma
+
+The Lovász local lemma (LLL) was introduced in the paper of Erdős and Lovász
+(1975). It is a powerful tool in the probabilistic method.
+In many problems, we wish to avoid a certain set of “bad events.” Here are two easy
+to handle scenarios:
+    • (Complete independence) All the bad events are independent and have probabil-
+      ity less than 1.
+    • (Union bound) The sum of the bad event probabilities is less than 1.
+The local lemma deals with an intermediate situation where there is a small amount of
+local dependencies.
+We saw an application of the Lovász local lemma back in Section 1.1, where we used
+it to lower bound Ramsey numbers. This chapter explores the local lemma and its
+applications in depth.
+
+
+
+6.1 Statement and proof
+
+Definition 6.1.1 (Independence from a set of events)
+Here we say that an event 𝐴0 is independent from events 𝐴1 , . . . , 𝐴𝑚 if 𝐴0 is indepen-
+dent of every event of the form 𝐵1 ∧ · · · ∧ 𝐵𝑚 (we sometimes omit the “logical and”
+symbol ∧) where each 𝐵𝑖 is either 𝐴𝑖 or 𝐴𝑖 , i.e.,
+
+                        P( 𝐴0 𝐵1 · · · 𝐵𝑚 ) = P( 𝐴0 )P(𝐵1 · · · 𝐵𝑚 ),
+
+or, equivalently, using Bayes’s rule:
+
+                               P( 𝐴0 |𝐵1 · · · 𝐵𝑚 ) = P( 𝐴0 ).
+
+Given a collection of events, we can associate to it a dependency graph. This is a
+slightly subtle notion, as we will explain. Technically speaking, the graph can be a
+directed graph (=digraph), but for most applications, it will be sufficient (and easier)
+to use undirected graphs.
+
+
+
+                                                                                      79
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+
+Definition 6.1.2 (Dependency (di)graph)
+Let 𝐴1 , . . . , 𝐴𝑛 be events (the “bad events” we wish to avoid). Let 𝐺 be a (directed)
+graph with vertex set [𝑛]. We say that 𝐺 is a dependency (di)graph for the events
+𝐴1 , . . . , 𝐴𝑛 if, for for every 𝑖, 𝐴𝑖 is independent from all {𝐴 𝑗 : 𝑗 ∉ 𝑁 (𝑖) ∪ {𝑖}} (𝑁 (𝑖)
+is the set of (out)neighbors of 𝑖 in 𝐺).
+
+
+Remark 6.1.3 (Non-uniqueness). Given a collection of events, there can be more
+than one valid dependency graphs. For example, the complete graph is always a valid
+dependency graph.
+
+Remark 6.1.4 (Important!). Independence ≠ pairwise independence
+The dependency graph is not made by joining 𝑖 ∼ 𝑗 whenever 𝐴𝑖 and 𝐴 𝑗 are not
+independent (i.e., P( 𝐴𝑖 𝐴 𝑗 ) ≠ P( 𝐴𝑖 )P( 𝐴 𝑗 )).
+Example: suppose one picks 𝑥1 , 𝑥2 , 𝑥3 ∈ Z/2Z uniformly and independently at random
+and set, for each 𝑖 = 1, 2, 3 (indices taken mod 3), 𝐴𝑖 the event that 𝑥𝑖+1 + 𝑥𝑖+2 = 0.
+Then these events are pairwise independent but not independent. So the empty graph
+on three vertices is not a valid dependency graph (on the other hand, having at least
+two edges makes it a valid dependency graph).
+
+In practice, it is not too hard to construct a valid dependency graph, since most
+applications of the Lovász local lemma use the following setup (which we saw in
+Section 1.1).
+
+Setup 6.1.5 (Random variable model / hypergraph coloring)
+Let {𝑥𝑖 : 𝑖 ∈ 𝐼} be a collection of independent random variables. Let 𝐸 1 , . . . , 𝐸 𝑛 be
+events where each 𝐸𝑖 depends only on the variables indexed by some subset 𝐵𝑖 ⊆ 𝐼 of
+variables. A canonical dependency graph for the events 𝐸 1 , . . . , 𝐸 𝑛 has vertex set [𝑛]
+and an edge 𝑖 𝑗 whenever 𝐵𝑖 ∩ 𝐵 𝑗 ≠ ∅.
+
+It is easy to check that the canonical dependency graph above is indeed a valid depen-
+dency graph.
+
+Example 6.1.6 (Boolean satisfiability problem (SAT)). Given a CNF formula (con-
+junctive normal form, i.e., and-of-or’s), e.g., (∧ = and; ∨ = or)
+
+                 (𝑥 1 ∨ 𝑥 2 ∨ 𝑥3 ) ∧ (𝑥 1 ∨ 𝑥 2 ∨ 𝑥 4 ) ∧ (𝑥 2 ∨ 𝑥 4 ∨ 𝑥 5 ) ∧ · · ·
+
+the problem is to find a satisfying assignment with boolean variables 𝑥 1 , 𝑥2 , . . . . Many
+problems in computer science can be modeled using this way. This problem can be
+viewed as in Setup 6.1.5, where 𝐴𝑖 is the event that the 𝑖-th clause is violated.
+
+
+
+80
+                     Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                                       6.1 Statement and proof
+
+The following formulation of the local lemma is easiest to apply and is the most
+commonly used. It applies to settings where the dependency graph has small maximum
+degree.
+
+Theorem 6.1.7 (Lovász local lemma; symmetric form)
+Let 𝐴1 , . . . , 𝐴𝑛 be events, with P[ 𝐴𝑖 ] ≤ 𝑝 for all 𝑖. Suppose that each 𝐴𝑖 is independent
+from a set of all other 𝐴 𝑗 except for at most 𝑑 of them. If
+
+                                           𝑒 𝑝(𝑑 + 1) ≤ 1,
+
+then with some positive probability, none of the events 𝐴𝑖 occur.
+
+
+Remark 6.1.8. The constant 𝑒 is best possible (Shearer 1985). In most applications,
+the precise value of the constant is unimportant.
+
+
+Theorem 6.1.9 (Lovász local lemma; general form)
+Let 𝐴1 , . . . , 𝐴𝑛 be events. For each 𝑖 ∈ [𝑛], let 𝑁 (𝑖) be such that 𝐴𝑖 is independent
+from {𝐴 𝑗 : 𝑗 ∉ {𝑖} ∪ 𝑁 (𝑖)}. If 𝑥 1 , . . . , 𝑥 𝑛 ∈ [0, 1) satisfy
+                                       Ö
+                          P( 𝐴𝑖 ) ≤ 𝑥𝑖         (1 − 𝑥 𝑗 ) for all 𝑖 ∈ [𝑛],
+                                         𝑗 ∈𝑁 (𝑖)
+
+then
+                                                             𝑛
+                                                             Ö
+                        P(none of the events 𝐴𝑖 occur) ≥           (1 − 𝑥𝑖 ).
+                                                             𝑖=1
+
+
+
+Proof that the general form implies the symmetric form. Set 𝑥𝑖 = 1/(𝑑 + 1) < 1 for
+all 𝑖. Then
+                                                         𝑑
+                      Ö                       1        1          1
+                𝑥𝑖              (1 − 𝑥 𝑗 ) ≥       1−        >          ≥𝑝
+                                             𝑑+1      𝑑+1      (𝑑 + 1)𝑒
+                     𝑗 ∈𝑁 (𝑖)
+
+so the hypothesis of general local lemma holds.                                             □
+
+Here is another corollary of the general form local lemma, which applies if the total
+probability of any neighborhood in a dependency graph is small.
+
+Corollary 6.1.10
+                                                   Í
+In the setup of Theorem 6.1.9, if P( 𝐴𝑖 ) < 1/2 and 𝑗 ∈𝑁 (𝑖) P( 𝐴 𝑗 ) ≤ 1/4 for all 𝑖, then
+with positive probability none of the events 𝐴𝑖 occur.
+
+
+
+
+                                                                                           81
+                      Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+Proof. In Theorem 6.1.9, set 𝑥𝑖 = 2P( 𝐴𝑖 ) for each 𝑖. Then
+
+          Ö                               ∑︁ ª                          ∑︁
+                   (1 − 𝑥 𝑗 ) ≥ 𝑥𝑖 ­1 −         𝑥 𝑗 ® = 2P( 𝐴𝑖 ) ­1 −          2P( 𝐴𝑖 ) ® ≥ P( 𝐴𝑖 ).
+                                   ©                             ©                      ª
+     𝑥𝑖
+          𝑗 ∈𝑁 (𝑖)                 «    𝑗 ∈𝑁 (𝑖) ¬               «    𝑗 ∈𝑁 (𝑖)          ¬
+(The first inequality is by “union bound.”)                                                               □
+
+In some applications, one may need to apply the general form local lemma with
+carefully chosen values for 𝑥𝑖 .
+
+Proof of Lovász local lemma (general case). We will prove that
+
+                                Û ª
+                                     𝐴 𝑗 ® ≤ 𝑥𝑖      whenever 𝑖 ∉ 𝑆 ⊆ [𝑛].                             (6.1)
+                           ©
+                         P ­ 𝐴𝑖
+                           «    𝑗 ∈𝑆     ¬
+Once (6.1) has been established, we then deduce that
+                                                                       
+      P( 𝐴1 · · · 𝐴𝑛 ) = P( 𝐴1 )P 𝐴2 𝐴1 P 𝐴3 𝐴1 𝐴2 · · · P 𝐴𝑛 𝐴1 · · · 𝐴𝑛−1
+                         ≥ (1 − 𝑥 1 )(1 − 𝑥 2 ) · · · (1 − 𝑥 𝑛 ),
+
+which is the conclusion of the local lemma.
+Now we prove (6.1) by induction on |𝑆|. The base case |𝑆| = 0 is trivial.
+Let 𝑖 ∉ 𝑆. Let 𝑆1 = 𝑆 ∩ 𝑁 (𝑖) and 𝑆2 = 𝑆 \ 𝑆1 . We have
+                                          Ó            Ó            
+                            Û ª P 𝐴𝑖 𝑗 ∈𝑆1 𝐴 𝑗             𝑗 ∈𝑆2 𝐴 𝑗
+                                 𝐴𝑗® =                                                                 (6.2)
+                      ©
+                    P ­ 𝐴𝑖                 Ó         Ó           
+                      «     𝑗 ∈𝑆   ¬     P         𝐴
+                                              𝑗 ∈𝑆1 𝑗   𝑗 ∈𝑆2 𝑗𝐴
+                                                      
+For the RHS of (6.2), using that 𝐴𝑖 is independent of 𝑗 ∈ 𝑆2 : 𝐴 𝑗 ,
+
+                                     Û ª                          Ö
+                  numerator ≤ P ­ 𝐴𝑖       𝐴 𝑗 ® = P( 𝐴𝑖 ) ≤ 𝑥𝑖          (1 − 𝑥𝑖 ),                    (6.3)
+                                ©
+
+                                «    𝑗 ∈𝑆2     ¬                𝑗 ∈𝑁 (𝑖)
+
+
+
+
+82
+                      Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                                         6.2 Coloring hypergraphs
+
+and, denoting the elements of 𝑆1 by 𝑆1 = { 𝑗1 , . . . , 𝑗𝑟 },
+
+                         Û ª ©                      Û ª                                           Û ª
+denominator = P ­ 𝐴 𝑗1                                    𝐴 𝑗 ® · · · P ­ 𝐴 𝑗𝑟 𝐴 𝑗1 · · · 𝐴 𝑗𝑟 −1
+                ©                                                       ©
+                                𝐴 𝑗 ® P ­ 𝐴 𝑗2 𝐴 𝑗1                                                     𝐴𝑗®
+                «        𝑗 ∈𝑆2      ¬ «             𝑗 ∈𝑆2     ¬         «                         𝑗 ∈𝑆2   ¬
+            ≥ (1 − 𝑥 𝑗1 ) · · · (1 − 𝑥 𝑗𝑟 )     [by induction hypothesis]
+               Ö
+            ≥        (1 − 𝑥𝑖 )
+                    𝑗 ∈𝑁 (𝑖)
+
+Thus (6.2) ≤ 𝑥𝑖 , thereby finishing the induction proof of (6.1).                                       □
+
+Remark 6.1.11. We used the independence assumption only at step (6.3) of the proof.
+Upon a closerexamination, we  see that we only need to know correlation inequalities
+                  Ó
+of the form P 𝐴𝑖     𝑗 ∈𝑆2 𝐴 𝑗 ≤ P( 𝐴𝑖 ) for 𝑆 2 ⊆ 𝑁 (𝑖), rather than independence. This
+observation allows a strengthening of the local lemma, known as a lopsided local
+lemma, that we will explore later in the chapter.
+
+
+
+6.2 Coloring hypergraphs
+Previously, in Theorem 1.3.1, we saw that every 𝑘-uniform hypergraph with fewer
+than 2 𝑘−1 edges is 2-colorable. The next theorem gives a sufficient local condition for
+2-colorability.
+
+Theorem 6.2.1
+A 𝑘-uniform hypergraph is 2-colorable if every edge intersects at most 𝑒 −1 2 𝑘−1 − 1
+other edges
+
+
+Proof. For each edge 𝑓 , let 𝐴 𝑓 be the event that 𝑓 is monochromatic. Then P( 𝐴 𝑓 ) =
+𝑝 := 2−𝑘+1 . Each 𝐴 𝑓 is independent from all 𝐴 𝑓 ′ where 𝑓 ′ is disjoint from 𝑓 . Since
+at most 𝑑 := 𝑒 −1 2 𝑘−1 − 1 edges intersect every edge, and 𝑒(𝑑 + 1) 𝑝 ≤ 1, so the local
+lemma implies that with positive probability, none of the events 𝐴 𝑓 occur.            □
+
+
+Corollary 6.2.2
+For 𝑘 ≥ 9, every 𝑘-uniform 𝑘-regular hypergraph is 2-colorable.
+(Here 𝑘-regular means that every vertex lies in exactly 𝑘 edges.)
+
+
+Proof. Every edge intersects ≤ 𝑑 = 𝑘 (𝑘 −1) other edges. And 𝑒(𝑘 (𝑘 −1) +1)2−𝑘+1 < 1
+for 𝑘 ≥ 9.                                                                                              □
+
+
+
+
+                                                                                                       83
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+Remark 6.2.3. The statement is false for 𝑘 = 2 (triangle) and 𝑘 = 3 (Fano plane) but
+actually true for all 𝑘 ≥ 4 (Thomassen 1992).
+
+Here is an example where the symmetric form of the local lemma is insufficient (why?).
+
+Theorem 6.2.4
+Let 𝐻 be a (non-uniform) hypergraph where every edge has size ≥ 3. Suppose
+                             ∑︁                         1
+                                            2−| 𝑓 | ≤     ,   for each edge 𝑒,
+                                                        8
+                     𝑓 ∈𝐸 (𝐻)\{𝑒}:𝑒∩ 𝑓 ≠∅
+
+then 𝐻 is 2-colorable.
+
+Proof. Consider a uniform random 2-coloring of the vertices. Let 𝐴𝑒 be the event that
+edge 𝑒 is monochromatic. Then P( 𝐴𝑒 ) = 2−|𝑒|+1 ≤ 1/4 since |𝑒| ≥ 3. Also,
+                   ∑︁                         ∑︁
+                            P( 𝐴 𝑓 ) =                  2−| 𝑓 |+1 ≤ 1/4.
+               𝑓 ∈𝐸 (𝐻)\{𝑒}:𝑒∩ 𝑓 ≠∅              𝑓 ∈𝐸 (𝐻)\{𝑒}:𝑒∩ 𝑓 ≠∅
+
+Thus by Corollary 6.1.10 one can avoid all events 𝐴𝑒 , and hence 𝐻 is 2-colorable.     □
+
+Remark 6.2.5. A sign to look beyond the symmetric local lemma is when there are
+bad events of very different nature (e.g., having very different probabilities).
+
+
+Compactness argument
+Now we highlight an important compactness argument that allows us to deduce the
+existence of an infinite object, even though the local lemma itself is only applicable to
+finite systems.
+
+Theorem 6.2.6
+Let 𝐻 be a (non-uniform) hypergraph on a possibly infinite vertex set, such that
+each edge is finite, has at least 𝑘 vertices, and intersect at most 𝑑 other edges. If
+𝑒2−𝑘+1 (𝑑 + 1) ≤ 1, then 𝐻 has a proper 2-coloring.
+
+
+Proof. From a vanilla application of the symmetric local lemma, we deduce that for
+any finite subset 𝑋 of vertices, there exists an 2-coloring 𝑋 so that no edge contained
+in 𝑋 is monochromatic (color each vertex iid uniformly, and consider the bad event 𝐴𝑒
+that the edge 𝑒 ⊆ 𝑋 is monochromatic).
+Next we extend the coloring to the entire vertex set 𝑉 by a compactness argument. The
+set of all colorings is [2] 𝑉 . By Tikhonov’s theorem (which says a product of a possibly
+
+
+
+84
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                                     6.2 Coloring hypergraphs
+
+infinite collection of compact topological spaces is compact), [2] 𝑉 is compact under
+the product topology.
+For each finite subset 𝑋, let 𝐶 𝑋 ⊆ [2] 𝑉 be the subset of colorings where no edge
+contained in 𝑋 is monochromatic. Earlier from the local lemma we saw that 𝐶 𝑋 ≠ ∅.
+If 𝑌 ⊆ 𝑋, then 𝐶𝑌 ⊇ 𝐶 𝑋 . Thus
+
+                              𝐶 𝑋1 ∩ · · · ∩ 𝐶 𝑋ℓ ⊇ 𝐶 𝑋1 ∪···∪𝑋ℓ ,
+
+so {𝐶 𝑋 : |𝑋 | < ∞} is a collection of closed subsets of [2] 𝑉 with the finite intersection
+property (i.e., the intersection of any finite subcollection is nonempty).
+Recall from point-set topology the following basic fact (a defining property): a space
+is compact if and only if every family of closed subsets having the finite intersection
+property has non-empty intersection.
+Hence by compactness of [2] 𝑉 , the intersection of 𝐶 𝑋 taken over all finite 𝑋 is
+non-empty. Any element of this intersection corresponds to a valid coloring of the
+hypergraph.                                                                      □
+
+More generally, the above compactness argument yields the following.
+
+Lemma 6.2.7 (Compactness argument)
+Consider a variation of the random variable model (Setup 6.1.5) where each variable
+has only finitely many choices but there can be possibly infinitely many events (each
+event depends on a finite subset of variables). If it is possible to avoid any finite subset
+of events, then it is possible to avoid all the events.                                   □
+
+
+Remark 6.2.8. Note the conclusion may be false if we do not assume the random
+variable model (why?).
+
+The next application appears in the paper of Erdős and Lovász (1975) where the local
+lemma originally appears.
+Consider 𝑘-coloring the real numbers, i.e., a function 𝑐 : R → [𝑘]. We say that 𝑇 ⊆ R
+is multicolored with respect to 𝑐 if all 𝑘 colors appear in 𝑇.
+
+Question 6.2.9
+For each 𝑘 is there an 𝑚 so that for every 𝑆 ⊆ R with |𝑆| = 𝑚, one can 𝑘-color R so
+that every translate of 𝑆 is multicolored?
+
+The following theorem shows that this can be done whenever 𝑚 > (3 + 𝜀)𝑘 log 𝑘 and
+𝑘 > 𝑘 0 (𝜀) sufficiently large.
+
+
+
+
+                                                                                          85
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+
+Theorem 6.2.10
+The answer to the above equation is yes if
+                                                         𝑚
+                                                 1
+                            𝑒(𝑚(𝑚 − 1) + 1)𝑘 1 −                 ≤ 1.
+                                                 𝑘
+
+
+Proof. Each translate of 𝑆 is not multicolored with probability 𝑝 ≤ 𝑘 (1 − 1/𝑘) 𝑚 , and
+each translate of 𝑆 intersects at most 𝑚(𝑚 − 1) other translates. Consider a bad event
+for each translate of 𝑆 contained in 𝑋. The symmetric local lemma tells us that it is
+possible to avoid any finite collection of bad events. By the compactness argument, it
+is possible to avoid all the bad events.                                            □
+
+
+Coloring arithmetic progressions
+Here is an application where we need to apply the asymmetric local lemma.
+
+Theorem 6.2.11 (Beck 1980)
+For every 𝜀 > 0, there exists 𝑘 0 and a 2-coloring of Z with no monochromatic 𝑘-term
+arithmetic progressions with 𝑘 ≥ 𝑘 0 and common difference less than 2 (1−𝜀)𝑘 .
+
+
+Proof. We pick a uniform random color for each element of Z. For each 𝑘-term
+arithmetic progression in Z with 𝑘 ≥ 𝑘 0 and common difference less than 2 (1−𝜀)𝑘 ,
+consider the event that this 𝑘-AP is monochromatic. By the compactness argument, it
+suffices to check that we can avoid any finite subset of events.
+The event that a particular 𝑘-AP is monochromatic has probability exactly 2−𝑘+1 .
+(Since this number depends on 𝑘, we should use the asymmetric local lemma.)
+Recall that in the asymmetric local lemma (Theorem 6.1.9), we need to select 𝑥𝑖 ∈ [0, 1)
+for each bad event 𝐴𝑖 so that
+                                    Ö
+                       P( 𝐴𝑖 ) ≤ 𝑥𝑖    (1 − 𝑥 𝑗 ) for all 𝑖 ∈ [𝑛].
+                                      𝑗 ∈𝑁 (𝑖)
+
+It is usually a good idea to select 𝑥𝑖 to be somewhat similar to P( 𝐴𝑖 ). In this case, if 𝐴𝑖
+is the event corresponding to a 𝑘-AP, then we take
+                                                              1−𝜀/2
+                                      −(1−𝜀/2)𝑘     P( 𝐴𝑖 )
+                             𝑥𝑖 = 2               =
+                                                      2
+
+(with the same 𝜀 as in the statement of the theorem).
+
+
+
+
+86
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                                        6.2 Coloring hypergraphs
+
+Fix a 𝑘-AP 𝑃 in Z with 𝑘 ≥ 𝑘 0 . The number of ℓ-APs with ℓ ≥ 𝑘 0 and common
+difference less than 2 (1−𝜀)ℓ that intersects 𝑃 is at most 𝑘ℓ2 (1−𝜀)ℓ (one choice for the
+element of 𝑘, a choice of the position of the ℓ-AP, and at most 2 (1−𝜀)ℓ choices for the
+common difference). So to apply the local lemma, it suffices to check that
+                                         Ö                     𝑘ℓ2 (1− 𝜀)ℓ
+                        −𝜀𝑘/2+1                    −(1−𝜀/2)ℓ
+                       2             ≤           1−2                           .
+                                         ℓ≥𝑘 0
+
+
+Note that 1 − 𝑥 ≥ 𝑒 −2𝑥 for 𝑥 ∈ [0, 1/2]. So
+                                                         !                                            !
+                           ∑︁                                                      ∑︁
+         𝑅𝐻𝑆 ≥ exp −               21−(1−𝜀/2)ℓ · 𝑘ℓ2 (1−𝜀)ℓ = exp −𝑘                       ℓ21−𝜀ℓ/2
+                           ℓ≥𝑘 0                                                   ℓ≥𝑘 0
+
+
+By making 𝑘 0 = 𝑘 0 (𝜀) large enough, we can ensure that
+                                                                    Í                 1−𝜀ℓ/2 < 𝜀/4, and so
+                                                                       ℓ≥𝑘 0 ℓ2
+continuing,
+                                · · · ≥ 𝑒 −𝜀𝑘/4 ≥ 2−𝜀𝑘/2+1
+provided that 𝑘 ≥ 𝑘 0 (𝜀). So we can apply the local lemma to conclude.                                   □
+
+
+Decomposing coverings
+We say that a collection of disks in R𝑑 is a covering if their union is R𝑑 . We say that
+it is a 𝒌-fold covering if every point of R𝑑 is contained in at least 𝑘 disks (so 1-fold
+covering is the same as a covering).
+We say that a 𝑘-fold covering is decomposable if it can be partitioned into two cover-
+ings.
+In R𝑑 , is a every 𝑘-fold covering by unit balls decomposable if 𝑘 is sufficiently large?
+A fun exercise: in R1 , every 𝑘-fold covering by intervals can be partitioned into 𝑘
+coverings.
+Mani-Levitska and Pach (1986) showed that every 33-fold covering of R2 is decom-
+posable.
+What about higher dimensions?
+Surprising, they also showed that for every 𝑘, there exists a 𝑘-fold indecomposable
+covering of R3 (and similarly for R𝑑 for 𝑑 ≥ 3).
+However, it turns out that indecomposable coverings must cover the space quite un-
+evenly:
+
+
+
+
+                                                                                                          87
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+
+Theorem 6.2.12 (Mani-Levitska and Pach 1986)
+Every 𝑘-fold nondecomposable covering of R3 by open unit balls must cover some
+point ≳ 2 𝑘/3 times.
+
+
+Remark 6.2.13. In R𝑑 , the same proof gives ≥ 𝑐 𝑑 2 𝑘/𝑑 .
+
+We will need the following combinatorial geometric fact:
+
+Lemma 6.2.14
+A set of 𝑛 ≥ 2 spheres in R3 cut R3 into at most 𝑛3 connected components.
+
+
+Proof. Let us first consider the problem in one dimension lower. Let 𝑓 (𝑚) be the
+maximum number of connected regions that 𝑚 circles on a sphere in R3 can cut the
+sphere into.
+We have 𝑓 (𝑚 + 1) ≤ 𝑓 (𝑚) + 2𝑚 for all 𝑚 ≥ 1 since adding a new circle to a set of 𝑚
+circles creates at most 2𝑚 intersection points, so that the new circle is divided into at
+most 2𝑚 arcs, and hence its addition creates at most 2𝑚 new regions.
+Combined with 𝑓 (1) = 2, we deduce 𝑓 (𝑚) ≤ 𝑚(𝑚 − 1) + 2 for all 𝑚 ≥ 1.
+Now let 𝑔(𝑚) be the maximum number of connected regions that 𝑚 spheres in R3 can
+cut R3 into. We have 𝑔(1) = 2, and 𝑔(𝑚 + 1) ≤ 𝑔(𝑚) + 𝑓 (𝑚) ≤ 𝑔(𝑚) by a similar
+argument as earlier. So 𝑔(𝑚) ≤ 𝑓 (𝑚 − 1) + 𝑓 (𝑚 − 2) + · · · + 𝑓 (1) + 𝑔(0) ≤ 𝑚 3 . □
+
+Proof. Suppose for contradiction that every point in R3 is covered by at most 𝑡 ≤ 𝑐2 𝑘/3
+unit balls from 𝐹 (for some sufficiently small 𝑐 that we will pick later).
+Construct an infinite hypergraph 𝐻 with vertex set being the set of balls and edges
+having the form 𝐸 𝑥 = {balls containing 𝑥} for some 𝑥 ∈ R3 . Note that |𝐸 𝑥 | ≥ 𝑘 since
+we have a 𝑘-fold covering.
+Also, note that if 𝑥, 𝑦 ∈ R3 lie in the same connected component in the complement of
+the union of all the unit spheres, then 𝐸 𝑥 = 𝐸 𝑦 (i.e., the same edge).
+Claim: every edge of intersects at most 𝑑 = 𝑂 (𝑡 3 ) other edges
+Proof of claim: Let 𝑥 ∈ R3 . If 𝐸 𝑥 ∩ 𝐸 𝑦 ≠ ∅, then |𝑥 − 𝑦| ≤ 2, so all the balls in
+𝐸 𝑦 lie in the radius-4 ball centered at 𝑥. The volume of the radius-4 ball is 43 times
+the unit ball. Since every point lies in at most 𝑡 balls, there are at most 43 𝑡 balls
+appearing among those 𝐸 𝑦 intersecting 𝑥, and these balls cut the radius-2 centered at
+𝑥 into 𝑂 (𝑡 3 ) connected regions by the earlier lemma, and two different 𝑦’s in the same
+region produce the same 𝐸 𝑦 . So 𝐸 𝑥 intersects 𝑂 (𝑡 3 ) other edges. ■
+
+
+
+
+88
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                              6.3 Independent transversal
+
+With 𝑡 ≤ 𝑐2 𝑘/3 and 𝑐 sufficiently small, and knowing 𝑑 = 𝑂 (𝑡 3 ) from the claim, we
+have 𝑒2−𝑘+1 (𝑑 + 1) ≤ 1. It then follows by Theorem 6.2.6 (local lemma + compactness
+argument) that this hypergraph is 2-colorable, which corresponds to a decomposition
+of the covering, a contradiction.                                                   □
+
+
+
+6.3 Independent transversal
+The application of the local lemma in this section is instructive in that it is not obvious
+at first what to choose as bad events (even if you are already told to apply the local
+lemma). It is worth trying different possibilities.
+Every graph with maximum degree Δ contains an independent set of size ≥ |𝑉 |/(Δ+1)
+(choose the independent set greedily). The following lemma shows that by decreasing
+the desired size of the independent set by a constant factor, we can guarantee an
+independent set that is also a transversal to a vertex set partition.
+
+Theorem 6.3.1
+Let 𝐺 = (𝑉, 𝐸) be a graph with maximum degree Δ and let 𝑉 = 𝑉1 ∪ · · · ∪ 𝑉𝑟 be a
+partition, where each |𝑉𝑖 | ≥ 2𝑒Δ. Then there is an independent set in 𝐺 containing
+one vertex from each 𝑉𝑖 .
+
+
+Proof. The first step in the proof is simple yet subtle: we may assume that |𝑉𝑖 | = 𝑘 :=
+⌈2𝑒Δ⌉ for each 𝑖, or else we can remove some vertices from 𝑉𝑖 (if we do not trim the
+vertex sets now, we will run into difficulties later).
+Pick 𝑣 𝑖 ∈ 𝑉𝑖 uniformly at random, independently for each 𝑖.
+This is an instance of the random variable model (Setup 6.1.5), where 𝑣 1 , . . . , 𝑣 𝑟 are
+the random variables.
+We would like to design a collection of “bad events” so that if we avoid all of them,
+then {𝑣 1 , . . . , 𝑣 𝑟 } is guaranteed to be independent set.
+What do we choose as bad events? It turns out that some choices work better than
+others.
+Attempt 1:
+For each 1 ≤ 𝑖 < 𝑗 ≤ 𝑟 where there exists an edge between 𝑉𝑖 and 𝑉 𝑗 , let 𝐴𝑖, 𝑗 be the
+event that 𝑣 𝑖 is adjacent to 𝑣 𝑗 .
+We find that P( 𝐴𝑖, 𝑗 ) ≤ Δ/𝑘.
+The canonical dependency graph has 𝐴𝑖, 𝑗 ∼ 𝐴𝑖 ′ , 𝑗 ′ if and only if the two sets {𝑖, 𝑗 } and
+{𝑖′, 𝑗 ′ } intersect. This dependency graph has max degree ≤ 2Δ𝑘 (starting from (𝑖, 𝑗),
+
+
+
+                                                                                          89
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+look at the neighbors of all vertices in 𝑉𝑖 ∪ 𝑉 𝑗 ). The max degree is too large compared
+to the bad event probabilities.
+Attempt 2:
+For each edge 𝑒 ∈ 𝐸, let 𝐴𝑒 be the event that both endpoints of 𝑒 are picked.
+We have P( 𝐴𝑒 ) = 1/𝑘 2 .
+The canonical dependency graph has 𝐴𝑒 ∼ 𝐴 𝑓 if some 𝑉𝑖 intersects both 𝑒 and 𝑓 .
+This dependency graph has max degree ≤ 2𝑘Δ (if 𝑒 is between 𝑉𝑖 and 𝑉 𝑗 , then 𝑓 must
+be incident to 𝑉𝑖 ∪ 𝑉 𝑗 ).
+We have 𝑒(1/𝑘 2 )(2𝑘Δ + 1) ≤ 1, so the local lemma implies the with probability no
+bad event occurs, in which case {𝑣 1 , . . . , 𝑣 𝑟 } is an independent set.      □
+
+Remark 6.3.2. Alon (1988) introduced the above result as lemma in his near resolution
+of the still-open linear arboricity conjecture (see the Alon–Spencer textbook §5.5).
+Alon’s approach makes heavy use of the local lemma.
+Haxell (1995, 2001) relaxed the hypothesis to |𝑉𝑖 | ≥ 2Δ for each 𝑖. The statement
+becomes false if 2Δ is replaced by 2Δ − 1 (Szabó and Tardos 2006).
+
+
+
+6.4 Directed cycles of length divisible by 𝑘
+A directed graph is 𝒅-regular if every vertex has in-degree 𝑑 and out-degree 𝑑.
+
+Theorem 6.4.1 (Alon and Linial 1989)
+For every 𝑘 there exists 𝑑 so that every 𝑑-regular directed graph has a directed cycle
+of length divisible by 𝑘.
+
+
+Corollary 6.4.2
+For every 𝑘 there exists 𝑑 so that every 2𝑑-regular graph has a cycle of length divisible
+by 𝑘.
+
+
+Proof. Every 2𝑑-regular graph can be made into a 𝑑-regular digraph by orientating its
+edges according to an Eulerian tour. And then we can apply the previous theorem. □
+
+We will prove the following more general statement.
+
+
+
+
+90
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                            6.4 Directed cycles of length divisible by 𝑘
+
+
+Theorem 6.4.3 (Alon and Linial 1989)
+Every directed graph with min out-degree 𝛿 and max in-degree Δ contains a cycle of
+length divisible by 𝑘 ∈ N as long as
+
+                                             𝛿
+                                 𝑘≤                   .
+                                      1 + log(1 + 𝛿Δ)
+
+
+Proof. By deleting edges, can assume that every vertex has out-degree exactly 𝛿.
+
+Assign every vertex 𝑣 an element 𝑥 𝑣 ∈ Z/𝑘Z iid uniformly at random.
+We will look for directed cycles where the labels increase by 1 (mod 𝑘) at each step.
+These cycles all have length divisible by 𝑘.
+For each vertex 𝑣, let 𝐴𝑣 be the event that there is nowhere to go from 𝑣 (i.e., if no
+outneighbor is labeled 𝑥 𝑣 + 1 (mod 𝑘)). We have
+
+                             P( 𝐴𝑣 ) = (1 − 1/𝑘) 𝛿 ≤ 𝑒 −𝛿/𝑘 .
+
+
+Since 𝐴𝑣 depends only on {𝑥 𝑤 : 𝑤 ∈ {𝑣} ∪ 𝑁 + (𝑣)}, where 𝑁 + (𝑣) denotes the out-
+neighbors of 𝑣 and 𝑁 − (𝑣) the in-neighbors of 𝑣, the canonical dependency graph
+has
+     𝐴𝑣 ∼ 𝐴𝑤 if {𝑣} ∪ 𝑁 + (𝑣) intersects {𝑤} ∪ 𝑁 + (𝑤).
+The maximum degree in the dependency graph is at most Δ + 𝛿Δ (starting from 𝑣, there
+are
+  (1) at most Δ choices stepping backward
+  (2) 𝛿 choices stepping forward, and
+  (3) at most 𝛿(Δ − 1) choices stepping forward and then backward to land somewhere
+      other than 𝑣).
+So an application of the local lemma shows that we are done as long as 𝑒 1−𝛿/𝑘 (1+Δ+𝛿Δ),
+i.e.,
+                              𝑘 ≤ 𝛿/(1 + log(1 + Δ + 𝛿Δ)).
+This is almost, but not quite the result (though, for most applications, we would be
+perfectly happy with such a bound).
+The final trick is to notice that we actually have an even smaller valid dependency
+digraph:
+     𝐴𝑣 is independent of all 𝐴𝑤 where 𝑁 + (𝑣) is disjoint from 𝑁 + (𝑤) ∪ {𝑤}.
+
+
+
+
+                                                                                     91
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+Indeed, even if we fix the colors of all vertices outside 𝑁 + (𝑣), the conditional proba-
+bility that 𝐴𝑣 is still (1 − 1/𝑘) 𝛿 .
+The number of 𝑤 such that 𝑁 + (𝑣) intersects 𝑁 + (𝑤) ∪ {𝑤} is at most 𝛿Δ (no longer
+need to consider (1) in the previous count). And we have
+
+                          𝑒 𝑝(𝛿Δ + 1) ≤ 𝑒 1−𝛿/𝑘 (𝛿Δ + 1) ≤ 1.
+
+So we are done by the local lemma.                                                     □
+
+
+
+6.5 Lopsided local lemma
+Let us move beyond the random variable model, and consider a collection of bad
+events in the general setup of the local lemma. Instead of requiring that each event is
+independent of its non-neighbors (in the dependency graph), what if we assume that
+avoiding some bad events make it easier to avoid some others? Intuitively, it seems
+that it would only make it easier to avoid bad events.
+We can make this notion precise by re-examining the proof of the local lemma. Where
+did we actually use the independence assumption in the hypothesis of the local lemma?
+It was in the following step, Equation (6.3):
+
+                                 Û ª                           Ö
+              numerator ≤ P ­ 𝐴𝑖        𝐴 𝑗 ® = P( 𝐴𝑖 ) ≤ 𝑥𝑖          (1 − 𝑥𝑖 ).
+                            ©
+
+                            «    𝑗 ∈𝑆 2     ¬                𝑗 ∈𝑁 (𝑖)
+
+
+If we had changed the middle = to ≤, the whole proof would remain valid. This
+observation allows us to weaken the independence assumption. Therefore we have the
+following theorem, which was used by Erdős and Spencer (1991) to give an application
+to Latin transversals that we will see shortly.
+
+
+
+
+92
+                    Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                                      6.5 Lopsided local lemma
+
+
+Theorem 6.5.1 (Lopsided local lemma)
+Let 𝐴1 , . . . , 𝐴𝑛 be events. For each 𝑖, let 𝑁 (𝑖) ⊆ [𝑛] be such that
+
+              Û ª
+                   𝐴 𝑗 ® ≤ P( 𝐴𝑖 )   for all 𝑖 ∈ [𝑛] and 𝑆 ⊆ [𝑛] \ (𝑁 (𝑖) ∪ {𝑖})         (6.1)
+         ©
+       P ­ 𝐴𝑖
+         «    𝑗 ∈𝑆     ¬
+Suppose there exist 𝑥1 , . . . , 𝑥 𝑛 ∈ [0, 1) such that
+                                        Ö
+                      P( 𝐴𝑖 ) ≤ 𝑥𝑖            (1 − 𝑥 𝑗 ) for all 𝑖 ∈ [𝑛].
+                                      𝑗 ∈𝑁 (𝑖)
+
+Then
+                                                             𝑛
+                                                             Ö
+                      P(none of the events 𝐴𝑖 occur) ≥              (1 − 𝑥𝑖 ).
+                                                              𝑖=1
+
+
+Like earlier, by setting 𝑥𝑖 = 1/(𝑑 + 1), we deduce a symmetric version that is easier to
+apply.
+
+Corollary 6.5.2 (Lopsided local lemma; symmetric version)
+In the previous theorem, if |𝑁 (𝑖)| ≤ 𝑑 and P( 𝐴𝑖 ) ≤ 𝑝 for every 𝑖 ∈ [𝑛], and 𝑒 𝑝(𝑑 +1) ≤
+1, then with positive probability none of the events 𝐴𝑖 occur.
+
+The (di)graph where 𝑁 (𝑖) is the set of (out-)neighbors of 𝑖 is called a negative depen-
+dency (di)graph.
+
+Remark 6.5.3 (Important!). Just as with the usual local lemma, the negative depen-
+dency graph is not constructed by simply checking pairs of events.
+
+The hypothesis of Theorem 6.5.1 seems annoying to check. Fortunately, many appli-
+cations of lopsided local lemma fall within a model that we will soon describe, where
+there is a canonical negative dependency graph that is straightforward to construct.
+This is analogous to the random variable model for the usual local lemma, where the
+canonical dependence graph has two events adjacency if they share variables.
+
+
+Random injection model
+We describe a random injection model where there is an easy-to-construct canonical
+negative dependency graph (Lu and Székely 2007).
+Recall that a matching in a graph is a subset of edges with no two sharing a vertex.
+In a bipartite graph with vertex parts 𝑋 and 𝑌 , a complete matching from 𝑋 to 𝑌 is a
+matching where every vertex of 𝑋 belongs to an edge of the matching.
+
+
+
+                                                                                           93
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+
+Setup 6.5.4 (Random injection model)
+Let 𝑋 and 𝑌 be finite sets with |𝑋 | ≤ |𝑌 |.
+Let 𝑓 : 𝑋 → 𝑌 be an injection chosen uniformly at random. We can also represent 𝑓
+by a complete matching 𝑀 from 𝑋 to 𝑌 in 𝐾 𝑋,𝑌 (the complete bipartite graph between
+𝑋 and 𝑌 ). We will speak interchangeably of the injection 𝑓 and matching 𝑀.
+For a given matching 𝐹 (not necessarily complete) in 𝐾 𝑋,𝑌 , let 𝐴𝐹 denote the event
+that 𝐹 ⊆ 𝑀.
+Let 𝐹1 , . . . , 𝐹𝑛 be matchings in 𝐾 𝑋,𝑌 . The canonical negative dependency graph for
+the vents 𝐴𝐹1 , . . . , 𝐴𝐹𝑛 has one vertex for each event, and an edge between the events
+𝐴𝐹𝑖 and 𝐴𝐹 𝑗 (𝑖 ≠ 𝑗) if 𝐹𝑖 and 𝐹 𝑗 are not vertex disjoint.
+
+The following result shows that the above canonical negative dependency graph is a
+valid for the lopsided local lemma (Theorem 6.5.1).
+
+Theorem 6.5.5 (Nonnegative dependence for random injections)
+In Setup 6.5.4, let 𝐹0 be a matching in 𝐾 𝑋,𝑌 such that 𝐹0 is vertex disjoint from
+𝐹1 ∪ · · · ∪ 𝐹𝑘 . Then                        
+                          P 𝐴𝐹0 𝐴 𝐹1 · · · 𝐴 𝐹𝑘 ≤ P( 𝐴𝐹0 ).
+
+
+Proof. Let 𝑋0 ⊆ 𝑋 and 𝑌0 ⊆ 𝑌 be the set of endpoints of 𝐹0 .
+
+For each matching 𝑇 in 𝐾 𝑋,𝑌 , let
+
+M𝑇 = {complete matchings from 𝑋 to 𝑌 containing 𝑇 but not containing any of 𝐹1 , . . . , 𝐹𝑘 } .
+
+
+For the desired inequality, note that
+                                           M 𝐹0         M 𝐹0
+               𝐿𝐻𝑆 = P 𝐴𝐹0 𝐴 𝐹1 · · · 𝐴 𝐹𝑘 =       =Í
+                                             |M∅ |   𝑇 : 𝑋0 ↩→𝑌 |M𝑇 |
+
+where the sum is taken over all |𝑌 | (|𝑌 | − 1) · · · (|𝑌 | − |𝑋 | + 1) complete matchings 𝑇
+from 𝑋0 to 𝑌 (which we denote by 𝑇 : 𝑋0 ↩→ 𝑌 ), and
+
+                                                      1
+                           𝑅𝐻𝑆 = P( 𝐴𝐹0 ) =                       .
+                                               |{𝑇 : 𝑋0 ↩→ 𝑌 }|
+
+Thus to show that 𝐿𝐻𝑆 ≤ 𝑅𝐻𝑆, it suffices to prove
+
+                         M 𝐹0 ≤ |M𝑇 |      for every 𝑇 : 𝑋0 ↩→ 𝑌 .
+
+
+
+
+94
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                             6.5 Lopsided local lemma
+
+It suffices to construct an injection M 𝐹0 ↩→ M𝑇 . Let 𝑌1 be the set of endpoints of 𝑇
+in 𝑌 . Fix a permutation 𝜎 of 𝑌 such that
+    • 𝜎 fixes all elements of 𝑌 outside 𝑌0 ∪ 𝑌1 ; and
+    • 𝜎 sends 𝐹0 to 𝑇.
+Then 𝜎 induces a permutation on the set of complete matchings from 𝑋 to 𝑌 . It
+remains to show that if we start with a matching in M 𝐹0 , so that it avoids 𝐹𝑖 for all
+𝑖 ≥ 1, then it is sent to a matching that also avoids 𝐹𝑖 for all 𝑖 ≥ 1 (and hence lies in
+M𝑇 ). Indeed, this follows from the hypothesis that none of the edges in 𝐹𝑖 use any
+vertex from 𝑋0 or 𝑌0 .                                                                  □
+
+As an example, here is a quick application.
+
+Corollary 6.5.6 (Derangement lower bound)
+The probability that a uniform random permutation of [𝑛] has no fixed points is at
+least (1 − 1/𝑛) 𝑛 .
+
+
+Proof. In the random injection model, let 𝑋 = 𝑌 = [𝑛]. Let 𝑓 : 𝑋 → 𝑌 be a uniform
+random permutation. For each 𝑖 ∈ [𝑛], let 𝐹𝑖 be the single edge (𝑖, 𝑖), i.e., 𝐴𝐹𝑖 is the
+even that 𝑓 (𝑖) = 𝑖. Note that the canonical negative dependency graph is empty since
+no two 𝐹𝑖 ’s share a vertex. Since P( 𝐴𝑖 ) = 1 − 1/𝑛, we can set 𝑥𝑖 = 1 − 1/𝑛 for each 𝑖
+in the lopsided local lemma to obtain the conclusion
+                                                                     𝑛
+                                                                    1
+                 P( 𝑓 has no fixed points) = P( 𝐴1 · · · 𝐴𝑛 ) ≥ 1 −      .             □
+                                                                    𝑛
+
+Remark 6.5.7. A fixed-point free permutation is called a derangement. Using
+                                                                          Í𝑛
+inclusion-exclusion, one can deduce an exact answer to the above question: 𝑖=0 (−1) 𝑖 /𝑖!.
+This quantity converges to 1/𝑒 as 𝑘 → ∞, and the above lower bound (1 − 1/𝑛) 𝑛 also
+converges to 1/𝑒 and so is asymptotically optimal.
+
+
+Latin transversal
+A Latin square of order 𝑛 is an 𝑛 × 𝑛 array filled with 𝑛 symbols so that every symbol
+appears exactly once in every row and column. Example:
+                                       1   2   3
+                                       2   3   1
+                                       3   1   2
+These objects are called Latin squares because they were studied by Euler (1707–1783)
+who used Latin symbols to fill the arrays.
+
+
+
+                                                                                      95
+                      Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+Given an 𝑛 × 𝑛 array, a transversal is a set of 𝑛 entries with one in every row and
+column. A Latin transversal is a transversal with distinct entries. Example:
+                                              1    2   3
+                                              2    3   1
+                                              3    1   2
+Here are is a famous open conjecture about Latin transversals.1 (Do you see why the
+hypothesis on parity is necessary?)
+
+Conjecture 6.5.8 (Ryser 1967)
+Every odd order Latin square has a transversal.
+
+The conjecture should be modified for even order Latin squares.
+
+Conjecture 6.5.9 (Ryser-Brualdi-Stein conjecture)
+Every even order Latin square has a transversal containing all but at most one symbol.
+
+
+Remark 6.5.10. Keevash, Pokrovskiy, Sudakov and Yepremyan (2022) proved that
+every order 𝑛 Latin square contains a transversal containing all but 𝑂 (log 𝑛/log log 𝑛)
+symbols, improving an earlier bound of 𝑂 (log2 𝑛) by Hatami and Shor (2008).
+Recently, Montgomery announced a proof of the conjecture for all sufficiently large
+even 𝑛. The proof uses sophisticated techniques combining the semi-random method
+and the absorption method.
+
+The next result is the original application of the lopsided local lemma.
+
+Theorem 6.5.11 (Erdős and Spencer 1991)
+Every 𝑛×𝑛 array where every entry appears at most 𝑛/(4𝑒) times has a Latin transversal.
+
+
+Proof. Pick a transversal uniformly at random. This is the same as picking a permuta-
+tion 𝑓 : [𝑛] → [𝑛] uniformly at random. In Setup 6.5.4, the random injection model,
+transversals correspond to perfect matchings.
+For each pair of equal entries in the array not both lying in the same row or column,
+consider the bad event that the transversal contains both entries.
+The canonical negative dependency graph is obtained by joining an edge between two
+bad events if the four entries involved share some row or column.
+ 1 Not to be confused with another conjecture also known as Ryser’s conjecture concerning an inequality
+
+     between the covering number and the matching number of multipartite hypergraphs, as a generaliza-
+     tion of König’s theorem. See Best and Wanless (2018) for a historical commentary and a translation
+     of Ryser’s 1967 paper.
+
+
+
+
+96
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                            6.6 Algorithmic local lemma
+
+Let us count neighbors in this negative dependency graph. Fix a pair of equal entries
+in the array. Their rows and columns span fewer than 4𝑛 entries, and for each such
+entry 𝑧, there are at most 𝑛/(4𝑒) − 1 choices for another entry equal to 𝑧. Thus the
+maximum degree in the canonical negative dependence graph is
+                                      𝑛     𝑛(𝑛 − 1)
+                         ≤ (4𝑛 − 4)       −1 ≤         − 1.
+                                       4𝑒        𝑒
+We can now apply the symmetric lopsided local lemma to conclude that with positive
+probability, none of the bad events occur.                                       □
+
+
+
+6.6 Algorithmic local lemma
+Consider an instance of a problem in the random variable setting (e.g., 𝑘-CNF) for
+which the local lemma guarantees a solution. Can one find a satisfying assignment
+efficiently?
+The local lemma tells you that some good configuration exists, but the proof is non-
+constructive. The probability that a random sample avoids all the bad events is often
+very small (usually exponentially small, e.g., in the case of a set of independent bad
+events). It had been an open problem for a long time whether the local lemma can be
+made algorithmic.
+Moser (2009), during his PhD, achieved a breakthrough by coming up with the first
+efficient algorithmic version of the local lemma for finding a satisfying assignment
+for 𝑘-CNF formulas. Moser and Tardos (2010) later extended the algorithm for the
+general local lemma in the random variable model.
+
+Remark 6.6.1 (Too hard in general). The Moser–Tardos algorithm works in the ran-
+dom variable model (there are subsequent work that concern other models such as
+the random injection model). Some assumption on the model is necessary since the
+problem can be computationally hard in general.
+For example, let 𝑞 = 2 𝑘 , and 𝑓 : [𝑞] → [𝑞] be some fixed bĳection (with an explicit
+description and easy to compute). Consider the computational task of inverting 𝑓 :
+given 𝑦 ∈ [𝑞], find 𝑥 such that 𝑓 (𝑥) = 𝑦 (we would like an algorithm with running
+time polynomial in 𝑘).
+If 𝑥 ∈ [𝑞] is chosen uniformly, then 𝑓 (𝑥) ∈ [𝑞] is also uniform. For each 𝑖 ∈ [𝑘], let
+𝐴𝑖 be the event that 𝑓 (𝑥) and 𝑦 disagree on 𝑖-th bit. Then 𝐴1 , . . . , 𝐴 𝑘 are independent
+events. Also, 𝑓 (𝑥) = 𝑦 if and only if no event 𝐴𝑖 occurs. So a trivial version of the
+local lemma (with empty dependency graph) implies the existence of some 𝑥 such that
+ 𝑓 (𝑥) = 𝑦.
+
+
+
+
+                                                                                         97
+                    Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+On the other hand, it is believed that there exist functions 𝑓 that is easy to compute but
+hard to invert. Such functions are called one-way functions, and they are a fundamental
+building block in cryptography. For example, let 𝑔 be a multiplicative generator of F𝑞 ,
+and let 𝑓 : F𝑞 → F𝑞 be given by 𝑓 (0) = 0 and 𝑓 (𝑥) = 𝑔 𝑥 and for 𝑥 ≠ 0. Then inverting
+𝑓 is the discrete logarithm problem, which is believed to be computationally difficult.
+The computational difficulty of this problem is the basis for the security of important
+public key cryptography schemes, such as the Diffie–Hellman key exchange.
+
+
+Moser–Tardos algorithm
+The algorithm is surprisingly simple.
+
+Algorithm 6.6.2 (Moser–Tardos “fix-it”)
+  input : a set of variables and events in the random variable model
+  output : an assignment of variables avoiding all bad events
+  Initialize by setting all variables to arbitrary values;
+  while there is some violated event do
+      Pick an arbitrary violated event and uniformly resample its variables;
+
+(We can make the algorithm more precise by specifying a way to pick an “arbitrary” choice, e.g., the
+lexicographically first choice.)
+
+
+
+Theorem 6.6.3 (Moser and Tardos 2010)
+In Algorithm 6.6.2, letting 𝐴1 , . . . , 𝐴𝑛 denote the bad events, suppose there are
+𝑥 1 , . . . , 𝑥 𝑛 ∈ [0, 1) such that
+                                           Ö
+                              P( 𝐴𝑖 ) ≤ 𝑥𝑖   (1 − 𝑥 𝑗 ) for all 𝑖 ∈ [𝑛],
+                                       𝑗 ∈𝑁 (𝑖)
+
+then for each 𝑖,
+                                                                                𝑥𝑖
+             E[number of times that 𝐴𝑖 is chosen for resampling] ≤                   .
+                                                                              1 − 𝑥𝑖
+
+We won’t prove the general theorem here. The proof in Moser and Tardos (2010) is
+beautifully written and not too long. I highly recommend it reading it. In the next
+subsection, we will prove the correctness of the algorithm in a special case using a
+neat idea known as entropy compression.
+
+Remark 6.6.4 (Las Vegas versus Monte Carlo). Here are some important classes of
+randomized algorithms:
+
+
+
+
+98
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                          6.6 Algorithmic local lemma
+
+    • Monte Carlo algorithm (MC): a randomized algorithm that terminates with an
+      output, but there is a small probability that the output is incorrect;
+    • Las Vegas algorithm (LV): a randomized algorithm that always returns a correct
+      answer, but may run for a long time (or possibly forever).
+The Moser–Tardos algorithm is a LV algorithm whose expected runtime is bounded by
+Í
+ 𝑖 𝑥𝑖 /(1 − 𝑥𝑖 ), which is usually at most polynomial in the parameters of the problem.
+
+We are usually interested in randomized algorithms whose running time is small (e.g.,
+at most a polynomial of the input size).
+We can convert an efficient LV algorithm into an efficient MC algorithm as follows:
+suppose the LV algorithm has expected running time 𝑇, and now we run the algorithm
+but if it takes more than 𝐶𝑇 time, then halt and declare a failure. Markov’s inequality
+then shows that the algorithm fails with probability ≤ 1/𝐶.
+However, it is not always possible to convert an efficient MC algorithm into an efficient
+LV algorithm. Starting with an MC algorithm, one might hope to repeatedly run it
+until a correct answer has been found. However, there might not be an efficient way to
+check the answer.
+For example, consider the problem of finding a Ramsey coloring, specifically, 2-
+edge-coloring of 𝐾𝑛 without a monochromatic clique of size ≥ 100 log2 𝑛. A uniform
+random coloring works with overwhelming probability, as can be checked by a simple
+union bound (see Theorem 1.1.2). However, we do not have an efficient way to check
+whether the random edge-coloring indeed has the desired property. It is a major open
+problem to find an LV algorithm for finding such an edge-coloring.
+
+
+Entropy compression argument
+We now give a simple and elegant proof for a special case of the above algorithm, due
+to Moser (2009). Actually, the argument in his paper is quite a bit more complicated.
+Moser presented a version of the proof below in a conference, and his ideas were
+popularized by Fortnow and Tao. (Fortnow called Moser’s talk “one of the best STOC
+talks ever”). Tao introduced the phase entropy compression argument to describe
+Moser’s influential idea. (We won’t use the language of entropy here, and instead use a
+more elementary argument involving counting and the pigeonhole principle. We will
+discuss entropy in Chapter 10.)
+To keep the argument simple, we work in the setting of 𝑘-CNFs. Recall from Ex-
+ample 6.1.6 that a 𝒌-CNF formula (conjunctive normal form) consist of a logical
+conjunction (i.e., and, ∧) of clauses, where each clause is a disjunction (i.e., or, ∨)
+of exactly 𝑘 literals. We shall require that the 𝑘 literals of each clause use distinct
+
+
+
+
+                                                                                      99
+                    Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+variables (𝑥 1 , . . . , 𝑥 𝑁 ), and each variable appears either in its positive 𝑥𝑖 or negative
+form 𝑥𝑖 . For example, here is a 3-CNF with 4 clauses on 6 variables:
+
+           (𝑥 1 ∨ 𝑥 2 ∨ 𝑥 3 ) ∧ (𝑥 1 ∨ 𝑥2 ∨ 𝑥 4 ) ∧ (𝑥 2 ∨ 𝑥4 ∨ 𝑥 5 ) ∧ (𝑥 3 ∨ 𝑥5 ∨ 𝑥 6 ).
+
+The problem is to find a satisfying assignment with boolean variables so that the
+expression output to TRUE.
+
+Algorithm 6.6.5 (Moser “fix-it”)
+    input : a 𝑘-CNF
+    output : a satisfying assignment
+1 Initialize by setting all variables to arbitrary values;
+2 while there is some violated clause 𝐶 do
+3     fix (𝐶);
+4 Subroutine fix (clause 𝐶) :
+5    Resample the variables in 𝐶 uniformly at random;
+6    while there is some violated clause 𝐷 that shares a variable with 𝐶 do
+7       fix (𝐷);
+
+(We can make the algorithm more well defined by specifying a way to pick an “arbitrary” choice, e.g.,
+the lexicographically first choice. Also, in Line 6, we allow taking 𝐷 = 𝐶.)
+
+
+
+Theorem 6.6.6 (Correctness of Moser’s algorithm)
+Given a 𝑘-CNF where every clause shares variables with at most 2 𝑘−3 other clauses,
+Algorithm 6.6.5 output a satisfying assignment with expected running time at most
+polynomial in the number of variables and clauses.
+
+Note that the Lovász local lemma guarantees the existence of a solution if each clause
+shares variables with at most 2 𝑘 /𝑒 − 1 clauses (each clause is violated with probability
+exactly 2−𝑘 in a uniform random assignment of variables). So the theorem above is
+tight up to an unimportant constant factor.
+
+Lemma 6.6.7 (Outer while loop)
+Each clause of the 𝑘-CNF appears at most once as a violated clause in the outer while
+loop (Line 2).
+
+
+Proof. Given an assignment of variables, by calling fix(𝐶) for any clause 𝐶, any
+clause that was previously satisfied remains satisfied after the completion of the execu-
+tion of fix(𝐶). Furthermore, 𝐶 becomes satisfied after the function call. Thus, once
+fix(𝐶) is called, 𝐶 can never show up again as a violated clause in Line 2.            □
+
+
+
+100
+                  Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                           6.6 Algorithmic local lemma
+
+
+Lemma 6.6.8 (The number of recursive calls to fix)
+Fix a 𝑘-CNF on 𝑛 variables where every clause shares variables with at most 2 𝑘−3
+other clauses. Also fix a clause 𝐶0 and some assignment of variables. Then, in an
+execution of fix(𝐶0 ), for any positive integer ℓ,
+
+           P(there are at least ℓ recursive calls to fix in Line 7) ≤ 2−ℓ+𝑛+1 .
+
+It follows that the expected number of recursive calls to fix is 𝑛 + 𝑂 (1). Thus, in
+the Moser algorithm (Algorithm 6.6.5), the expected total number of calls to fix is
+𝑚𝑛 + 𝑂 (𝑚), where 𝑛 is the number of variables and 𝑚 is the number of clauses. This
+proves the correctness of the algorithm (Theorem 6.6.6).
+
+Proof. Let us formalize the randomness in the algorithm by first initializing a random
+string of bits. Specifically, let 𝑥 ∈ {0, 1} 𝑘ℓ be generated uniformly at random. When-
+ever the a clause in resampled in Line 5, one replaces the variables in the clause by
+the next 𝑘 bits from 𝑥. Furthermore, if the line Line 7 is called for the ℓ-th time, we
+halt the algorithm and declare a failure (as we would have run out of random bits to
+resample had we continued).
+At the same time, we keep an execution trace which keeps track of which clauses got
+called fix, and also when the inner while loop Line 6 ends. Note that the very first
+call to fix(𝐶0 ) is not included in the execution trace since it is already given as fixed
+and so we don’t need to include this information. Here is an example of an execution
+trace, writing C7 for the 7th clause in the 𝑘-CNF:
+
+fix(C7) called
+fix(C4) called
+fix(C7) called
+while loop ended
+fix(C2) called
+while loop ended
+while loop ended
+...
+
+For illustration, here is the example of how clause variables could intersect:
+
+C2: ****
+C4:   ****
+C7:      ****
+
+It is straightforward to deduce which while loop ended corresponds to which fix
+call by reading the execution trace and keeping track of a first-in-first-out stack.
+
+
+
+                                                                                      101
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+Encoding the execution trace as a bit string. We fix at the beginning some canonical
+order of all clauses (e.g., lexicographic). It would be too expensive to refer to each
+clause in its absolute position in this order (this is an important point!). Instead, we
+note that every clause shares variables with at most 2 𝑘−3 other clauses, and only these
+≤ 2 𝑘−3 could be called in the inner while loop in Line 6. So we can record which one
+got called using a 𝑘 − 3 bit string.
+      • fix(𝐷) called: suppose this was called inside an execution of fix(𝐶), and
+        𝐷 is the 𝑗-th clause among all clauses sharing a variable with 𝐶, then record in
+        the execution trace bit string 0 followed by exactly ℓ − 3 bits giving the binary
+        representation of 𝑗 (prepended by zeros to get exactly ℓ − 3 bits).
+      • while loop ended: record 1 in the execution trace bit string.
+Note that one can recover the execution trace from the above bit string encoding.
+Now, suppose the algorithm terminates as a failure due to fix being called the ℓ-th
+time. Here is the key claim.
+
+Key claim (recovering randomness). At the moment right before the ℓ-th recur-
+sive call to fix on Line 7, we can completely recover 𝑥 from the current variable
+assignments and the execution trace.
+
+Note that all ℓ𝑘 random bits in 𝑥 have been used up at this point.
+To see the key claim, note that from the execution trace, we can determine which clauses
+were resampled and in what order. Furthermore, if fix(𝐷) was called on Line 7, then
+𝐷 must have been violated right before the call, and there is a unique possibility for
+the violating assignment to 𝐷 right before the call (e.g., if 𝐷 = 𝑥 1 ∨ 𝑥2 ∨ 𝑥 3 , then the
+only violating assignment is (𝑥 1 , 𝑥2 , 𝑥3 ) = (0, 0, 1)). We can then rewind history, and
+put the reassigned values to 𝐷 back into the random bit string 𝑥 to complete recover 𝑥.
+How long can the execution bit string be? It has length ≤ ℓ(𝑘 − 1). Indeed, each of the
+≤ ℓ recursive calls to fix produces 𝑘 − 2 bits for the call to fix and 1 bit for ending
+the while loop. So the total number of possible execution strings is ≤ 2ℓ(𝑘−1)+1 (the
++1 accounts for variable lengths, though it can removed with a more careful analysis).
+Thus, the key claim implies that each 𝑥 ∈ {0, 1}ℓ𝑘 that leads to a failed execution
+produces a unique pair (variable assignment, execution bit string). Thus
+
+ P(≥ ℓ recursive calls to fix) 2ℓ𝑘 = |{𝑥 ∈ {0, 1}𝑛 leading to failure}| ≤ 2𝑛 2ℓ(𝑘−1)+1 .
+
+Therefore, the failure probability is ≤ 2−ℓ+𝑛+1 .                                        □
+
+Remark 6.6.9 (Entropy compression). Tao use the phrase “entropy compression” to
+describe this argument. The intuition is that the recoverability of the random bit string
+
+
+
+102
+                   Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                              6.6 Algorithmic local lemma
+
+𝑥 means that we are somehow “compressing” a ℓ𝑘-bit random string into a shorter
+length losslessly, but that would be impossible. Each call to fix uses up 𝑘 random bits
+and converts it to 𝑘 − 1 bits to the execute trace (plus at most 𝑛 bits of extra information,
+namely the current variables assignment, and this is viewed as a constant amount of
+information), and this conversion is reversible. So we are “compressing entropy.” The
+conservation of information tells us that we cannot losslessly compress 𝑘 random bits
+to 𝑘 − 1 bits for very long.
+
+Remark 6.6.10 (Relationship between the two proofs of the local lemma?). The
+above proof, along with extensions of these ideas in Moser and Tardos (2010), seems
+to give a completely different proof of the local lemma than the one we saw at the
+beginning of the chapter. Is there some way to relate these seemingly completely
+different proofs? Are they secretly the same proof? We do not know. This is an
+interesting open-ended research problem.
+
+
+
+Exercises
+                                                                      √
+   1. Show that it is possible to color the edges of 𝐾𝑛 with at most 3 𝑛 colors so that
+      there are no monochromatic triangles.
+   2. Prove that it is possible to color the vertices of every 𝑘-uniform 𝑘-regular hyper-
+      graph using at most 𝑘/log 𝑘 colors so that every color appears at most 𝑂 (log 𝑘)
+      times on each edge.
+   3. ★ Hitting thin rectangles. Prove that there is a constant 𝐶 > 0 so that for every
+      sufficiently small 𝜀 > 0, one can choose exactly one point inside each grid square
+      [𝑛, 𝑛 + 1) × [𝑚, 𝑚 + 1) ⊂ R2 , 𝑚, 𝑛 ∈ Z, so that every rectangle of dimensions
+      𝜀 by (𝐶/𝜀) log(1/𝜀) in the plane (not necessarily axis-aligned) contains at least
+      one chosen point.
+   4. List coloring. Prove that there is some constant 𝑐 > 0 so that given a graph and
+      a set of 𝑘 acceptable colors for each vertex such that every color is acceptable
+      for at most 𝑐𝑘 neighbors of each vertex, there is always a proper coloring where
+      every vertex is assigned one of its acceptable colors.
+   5. Prove that, for every 𝜀 > 0, there exist ℓ0 and some (𝑎 1 , 𝑎 2 , . . . ) ∈ {0, 1}N
+      such that for every ℓ > ℓ0 and every 𝑖 > 1, the vectors (𝑎𝑖 , 𝑎𝑖+1 , . . . , 𝑎𝑖+ℓ−1 ) and
+      (𝑎𝑖+ℓ , 𝑎𝑖+ℓ+1 , . . . , 𝑎𝑖+2ℓ−1 ) differ in at least ( 21 − 𝜀)ℓ coordinates.
+   6. Avoiding periodically colored paths. Prove that for every Δ, there exists 𝑘 so
+      that every graph with maximum degree at most Δ has a vertex-coloring using 𝑘
+      colors so that there is no path of the form 𝑣 1 𝑣 2 . . . 𝑣 2ℓ (for any positive integer
+
+
+
+
+                                                                                          103
+                     Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+6 Lovász Local Lemma
+
+       ℓ) where 𝑣 𝑖 has the same color as 𝑣 𝑖+ℓ for each 𝑖 ∈ [ℓ]. (Note that vertices on a
+       path must be distinct.)
+  7. Prove that every graph with maximum degree Δ can be properly edge-colored
+     using 𝑂 (Δ) colors so that every cycle contains at least three colors.
+       (An edge-coloring is proper if it never assigns the same color to two edges sharing a vertex.)
+
+  8. ★ Prove that for every Δ, there exists 𝑔 so that every bipartite graph with maximum
+     degree Δ and girth at least 𝑔 can be properly edge-colored using Δ + 1 colors so
+     that every cycle contains at least three colors.
+  9. ★ Prove that for every positive integer 𝑟, there exists 𝐶𝑟 so that every graph with
+     maximum degree Δ has a proper vertex coloring using at most 𝐶𝑟 Δ1+1/𝑟 colors
+     so that every vertex has at most 𝑟 neighbors of each color.
+ 10. Vertex-disjoint cycles in digraphs. (Recall that a directed graph is 𝑘-regular if
+     all vertices have in-degree and out-degree both equal to 𝑘. Also, cycles cannot
+     repeat vertices.)
+         a) Prove that every 𝑘-regular directed graph has at least 𝑐𝑘/log 𝑘 vertex-
+            disjoint directed cycles, where 𝑐 > 0 is some constant.
+         b) ★ Prove that every 𝑘-regular directed graph has at least 𝑐𝑘 vertex-disjoint
+            directed cycles, where 𝑐 > 0 is some constant.
+                                                                          Hint: split in two and iterate
+
+ 11.     a) Generalization of Cayley’s formula. Using Prüfer codes, prove the identity
+                                                                ∑︁
+                    𝑥1 𝑥 2 · · · 𝑥 𝑛 (𝑥 1 + · · · + 𝑥 𝑛 ) 𝑛−2 =    𝑥1𝑑𝑇 (1) 𝑥 2𝑑𝑇 (2) · · · 𝑥 𝑛𝑑𝑇 (𝑛)
+                                                               𝑇
+
+             where the sum is over all trees 𝑇 on 𝑛 vertices labeled by [𝑛] and 𝑑𝑇 (𝑖) is
+             the degree of vertex 𝑖 in 𝑇.
+         b) Let 𝐹 be a forest with vertex set [𝑛], with components having 𝑓1 , . . . , 𝑓𝑠
+            vertices so that 𝑓1 + · · · + 𝑓𝑠 = 𝑛. Prove that the number of trees on the
+                                                               ( 𝑓𝑖 /𝑛 𝑓𝑖 −1 ).
+                                                          Î𝑠
+            vertex set [𝑛] that contain 𝐹 is exactly 𝑛𝑛−2 𝑖=1
+         c) Independence property for uniform spanning tree of 𝐾𝑛 . Show that if 𝐻1
+            and 𝐻2 are vertex-disjoint subgraphs of 𝐾𝑛 , then for a uniformly random
+            spanning tree 𝑇 of 𝐾𝑛 , the events 𝐻1 ⊆ 𝑇 and 𝐻2 ⊆ 𝑇 are independent.
+         d) ★ Packing rainbow spanning trees. Prove that there is a constant 𝑐 > 0
+            so that for every edge-coloring of 𝐾𝑛 where each color appears at most
+            𝑐𝑛 times, there exist at least 𝑐𝑛 edge-disjoint spanning trees, where each
+            spanning tree has all its edges colored differently.
+
+
+
+
+104
+                Probabilistic Methods in Combinatorics — Yufei Zhao
+
+
+                                                            6.6 Algorithmic local lemma
+
+         (In your submission, you may assume previous parts without proof.)
+
+    The next two problems use the lopsided local lemma.
+12. Packing two copies of a graph. Prove that there is a constant 𝑐 > 0 so that if 𝐻
+    is an 𝑛-vertex 𝑚-edge graph with maximum degree at most 𝑐𝑛2 /𝑚, then one can
+    find two edge-disjoint copies of 𝐻 in the complete graph 𝐾𝑛 .
+13. ★ Packing Latin transversals. Prove that there is a constant 𝑐 > 0 so that every
+    𝑛 × 𝑛 matrix where no entry appears more than 𝑐𝑛 times contains 𝑐𝑛 disjoint
+    Latin transversals.
+
+
+
+
+                                                                                   105
+Probabilistic Methods in Combinatorics — Yufei Zhao
+

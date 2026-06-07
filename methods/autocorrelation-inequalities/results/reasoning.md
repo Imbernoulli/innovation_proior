@@ -120,7 +120,7 @@ $$\frac{2\langle f,K_w f\rangle}{\langle f,H_\lambda f\rangle}=\frac{2\langle g,
 
 so with $M_\lambda:=2A_\lambda^{-1}K_wA_\lambda^{-1}$ (symmetric), the *unconstrained* maximum is just $\lambda_{\max}(M_\lambda)$, by the spectral theorem — and the power method finds it in $O(N^2)$ per iteration, fast, with the eigenvalue itself as a certificate.
 
-Except — I dropped the cone constraint $f\ge0$ to get here. Does it bite? Let me just compute the unconstrained top eigenvector for $w=\chi$ and see. It is sign-changing, and its Rayleigh value is far above the scale suggested by the known nonnegative examples. So the constraint absolutely binds; the unconstrained spectrum overshoots because it exploits cancellation that a nonnegative $f$ can't use. I can't just take $\lambda_{\max}(M_\lambda)$.
+Except — I dropped the cone constraint $f\ge0$ to get here. That is not a harmless relaxation. A sign-changing vector can reduce the rank-one part of the denominator by cancellation in $\langle 1,f\rangle$ while still producing a large quadratic numerator, and that vector is not an admissible autocorrelation test function. So the unconstrained spectrum is a subroutine, not the answer. I can't just take $\lambda_{\max}(M_\lambda)$.
 
 So how do I honor $f\ge0$ without losing the eigenvalue structure? The constraint is an inequality, infinitely many of them — this smells like it needs an active-set / LP-flavored argument rather than a clean eigensolve. Discrete Riesz rearrangement still applies, so among discrete maximizers there is one that's symmetric and non-increasing — a single contiguous bump. Take $f^\star$ to be such a maximizer of *minimal support*. On the interior of its support, $f^\star>0$, so the positivity constraint is *inactive* there — the only active constraints are at the support boundary, where $f^\star$ hits zero. On the interior, then, $f^\star$ satisfies the *unconstrained* stationarity: it's an eigenvector of $K_w$ restricted to the support block. And it must be the *top* eigenvector of that block, and the unique one — if there were a second eigenvector $g^\star$ on the same support, then $g^\star-\alpha f^\star$ would also be a maximizer with strictly smaller support for the right $\alpha$, contradicting minimality.
 
@@ -149,7 +149,7 @@ def gaussian_weight(t):       # w = exp(-pi t^2) -> Gaussian-mean problem
 
 # --- triangular-smoothed cell kernel ---
 # tw(s) = delta^-2 int_{s-delta}^{s+delta} w(t)(delta - |t-s|) dt.
-def discretize_weight(w, delta, max_offset):
+def prepare_weight_grid(w, delta, max_offset):
     tw = {}
     for k in range(-max_offset, max_offset + 1):
         s = k * delta
@@ -162,24 +162,27 @@ def discretize_weight(w, delta, max_offset):
         tw[k] = val / delta**2
     return tw
 
-def kernel_matrix(tw, n):                       # symmetric Toeplitz K_w on n cells
-    K = np.empty((n, n))
-    for i in range(n):
-        for j in range(n):
-            K[i, j] = tw[i - j]
+def build_operator(weight_data, n_cells):       # symmetric Toeplitz K_w on n cells
+    K = np.empty((n_cells, n_cells))
+    for i in range(n_cells):
+        for j in range(n_cells):
+            K[i, j] = weight_data[i - j]
     return K
 
 # --- rank-one whitening: A_lambda^2 = lambda I + lambda^{-1} |1><1| (delta-weighted) ---
-def whitening(lam, n, delta):
-    a = n * delta / 2.0                         # half support length; <1,1> = 2a
+def prepare_search_form(search_value, n_cells, delta):
+    lam = search_value
+    a = n_cells * delta / 2.0                   # half support length; <1,1> = 2a
     # 2*sqrt(lam)*b + 2a*b^2 = 1/lam, unique positive root
     b = (-2*np.sqrt(lam) + np.sqrt(4*lam + 8*a/lam)) / (4*a)
-    one = np.ones(n)
-    A    = np.sqrt(lam) * np.eye(n) + b * delta * np.outer(one, one)
+    one = np.ones(n_cells)
+    A    = np.sqrt(lam) * np.eye(n_cells) + b * delta * np.outer(one, one)
     Ainv = np.linalg.inv(A)
     return A, Ainv
 
-def power_top(M, iters=2000, tol=1e-13):        # top eigenpair of symmetric M
+def leading_symmetric_eigenpair(M, options):    # top eigenpair of symmetric M
+    iters = options.get("iters", 2000)
+    tol = options.get("tol", 1e-13)
     v = np.random.default_rng(0).standard_normal(M.shape[0]); v /= np.linalg.norm(v)
     mu = 0.0
     for _ in range(iters):
@@ -194,15 +197,16 @@ def power_top(M, iters=2000, tol=1e-13):        # top eigenpair of symmetric M
 # --- c_{lambda,delta}: maximize the H_lambda-normalized form over nonnegative step fns ---
 # constraint f>=0 handled exactly: extremizer is a single contiguous bump (discrete Riesz),
 # so sweep the support length and keep the largest admissible (nonneg) eigenvector.
-def c_lambda_delta(K_full, lam, delta, n_full):
+def solve_finite_problem(K_full, search_value, delta, n_full, options):
+    lam = search_value
     best_val, best_f = 0.0, None
     for L in range(1, n_full + 1):              # contiguous support of L cells
         lo = (n_full - L) // 2
         K = K_full[lo:lo+L, lo:lo+L]
-        A, Ainv = whitening(lam, L, delta)
+        A, Ainv = prepare_search_form(lam, L, delta)
         # With the delta-weighted dot product, the convolution operator is delta*K.
         M = 2.0 * (Ainv @ (delta * K) @ Ainv)
-        mu, g = power_top(M)
+        mu, g = leading_symmetric_eigenpair(M, options)
         f = Ainv @ g                            # back to the original variable
         if f.min() < 0: f = -f                  # eigenvector sign is free
         if f.min() >= -1e-9 and mu > best_val:  # admissible & better
@@ -210,37 +214,41 @@ def c_lambda_delta(K_full, lam, delta, n_full):
     return best_val, best_f
 
 # --- original (undiscretized-denominator) quotient: an honest lower bound on C_opt ---
-def original_quotient(f, K_full, lo, delta):
+def evaluate_test_function(f, K_full, lo, delta):
     n = len(f); K = K_full[lo:lo+n, lo:lo+n]
     num = delta**2 * (f @ (K @ f))              # <f, K_w f>
     l1  = delta * f.sum()
     l2  = np.sqrt(delta * (f * f).sum())
     return num / (l1 * l2)
 
-def certified_lambda_upper(c_ld, lam, delta):
+def make_upper_certificate(c_ld, search_value, delta):
+    lam = search_value
     err = 16 * delta**2 / (np.pi**2 * lam**2)
     return 0.5 * (c_ld + np.sqrt(c_ld*c_ld + 4*err))
 
-def extremal_constant(w, delta, support_radius, lam_grid):
+def estimate_constant(w, delta, support_radius, search_grid, options):
     n_full = int(round(2 * support_radius / delta))
-    tw = discretize_weight(w, delta, n_full)
-    K_full = kernel_matrix(tw, n_full)
+    weight_data = prepare_weight_grid(w, delta, n_full)
+    K_full = build_operator(weight_data, n_full)
     upper, lower = 0.0, 0.0
-    for lam in lam_grid:
-        c_ld, f = c_lambda_delta(K_full, lam, delta, n_full)
+    for lam in search_grid:
+        c_ld, f = solve_finite_problem(K_full, lam, delta, n_full, options)
         if f is None: continue
-        upper = max(upper, certified_lambda_upper(c_ld, lam, delta))
+        upper = max(upper, make_upper_certificate(c_ld, lam, delta))
         # lower bound: the admissible eigenvector is a feasible test function
         lo = (n_full - len(f)) // 2
-        lower = max(lower, original_quotient(f, K_full, lo, delta))
-    grid_err = 0.5 * np.max(np.diff(lam_grid)) if len(lam_grid) > 1 else 0.0
-    tail_upper = max(2 * lam_grid[0], 2 / lam_grid[-1])
+        lower = max(lower, evaluate_test_function(f, K_full, lo, delta))
+    grid_err = 0.5 * np.max(np.diff(search_grid)) if len(search_grid) > 1 else 0.0
+    tail_upper = max(2 * search_grid[0], 2 / search_grid[-1])
     return lower, max(upper + grid_err, tail_upper)
 
 if __name__ == "__main__":
-    lam_grid = np.arange(0.35, 2.81, 0.02)       # tails use c_lambda <= min(2*lambda, 2/lambda)
+    search_grid = np.arange(0.35, 2.81, 0.001)  # tails use c_lambda <= min(2*lambda, 2/lambda)
+    options = {}
     for name, w in [("indicator", indicator_weight), ("gaussian", gaussian_weight)]:
-        lo, hi = extremal_constant(w, delta=2e-3, support_radius=4.0, lam_grid=lam_grid)
+        lo, hi = estimate_constant(w, delta=1.45e-3, support_radius=4.0,
+                                   search_grid=search_grid,
+                                   options=options)
         print(name, "C_opt in", (round(lo, 6), round(hi, 6)))
 ```
 

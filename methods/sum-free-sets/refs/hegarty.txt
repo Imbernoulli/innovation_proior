@@ -1,0 +1,371 @@
+S UPPLEMENTARY L ECTURE N OTES ON THE P ROBABILISTIC M ETHOD
+Sum-free sets.
+D EFINITION 1: A subset A of an abelian group (G, +) is said to be sum-free if A ∩
+(A + A) = φ, in other words, if there are no solutions in A to the equation x = y + z.
+The abelian groups which are of most interest to number theorists are Z and the groups
+Zp , where p is a prime.
+E XAMPLE 1: Let n ∈ N and let A be a sum-free subset of {1, ..., n}. If a is the
+largest element of A, and
+B := {a − a1 : a1 ∈ A, a1 6= a},
+then A and B are disjoint subsets of {1, ..., n}. It follows that |A| ≤ ⌈n/2⌉. There are
+essentially two different examples of a sum-free subset of this size, namely
+³n i
+,n .
+A1 = {odd numbers in [1, n]}, A2 =
+2
+E XAMPLE 2: Let p be a prime, say p = 3k + i, where k ∈ N0 and i ∈ {0, 1, 2}. If
+i ∈ {0, 1}, then A := {k + 1, ..., 2k} is a sum-free set modulo p, whereas if i = 2, then
+A := {k + 1, ..., 2k + 1} is sum-free modulo p. Thus, if p ≡ 2 (mod 3), there exists
+a sum-free set A in Zp such that |A| = p+1
+. This is best-possible, but a proof is not as
+3
+simple as in Example A. It is an easy consequence of the Cauchy-Davenport theorem,
+which is also in this week’s lecture notes. We will now apply a probabilistic argument
+to prove the following result, which apparently was first proven by Erdős in 1965 and
+rediscovered by Alon and Kleitman in 1990:
+Theorem 1.1. Let S be any finite subset of Z, not containing zero. Then there exists a
+sum-free subset A of S such that |A| ≥ |S|+1
+.
+3
+Proof. Let S be given and choose a prime p satisfying the following two conditions :
+(i) p > maxs∈S |s|,
+(ii) p ≡ 2 (mod 3).
+Corollary 7.3(i) in the notes for Week 47 guarantees the existence of such a prime.
+Say p = 3k + 2 and let C := {k + 1, ..., 2k + 1}. As noted in Example 2 above,
+the set C is sum-free modulo p. We shall work in the probability space (Ω, µ), where
+Ω = {1, 2, ..., p − 1} and µ is uniform measure. For each s ∈ S let fs : Ω → Ω be the
+map given by
+fs : ω 7→ ωs (mod p).
+The choice of p (property (i)) guarantees that each of the maps fs is one-to-one. Let
+Xs := Xfs ,C . Then for every s we have
+E[Xs ] =
+
+1
+|C|
+> .
+p−1
+3
+1
+
+2
+
+Let X =
+
+P
+
+s∈S Xs . By linearity of expectation,
+
+|S|
+.
+3
+Hence there exists some ω ∈ Ω such that X(ω) > |S|/3. But, unwinding the definitions, we see that
+X(ω) = #{s ∈ S : ωs (mod p) ∈ C}.
+(1.1)
+E[X] >
+
+Let A be the subset of S on the right of (1.1). This is a sum-free subset of S, since a
+dilation of it lies, modulo p, entirely within C, and hence is sum-free. Since |A| > |S|/3
+and |A| is an integer, we must have |A| ≥ (|S| + 1)/3.
+¤
+Remark 1.2. One can reformulate the above argument in non-probabilistic language,
+in which case it basically employs the well-known method in combinatorics of counting
+pairs. In the proof, we are basically counting in two different ways the ordered pairs
+(ω, s) which satisfy (i) ω ∈ Ω (ii) s ∈ S (iii) ωs ∈ C (mod p). I leave it as a voluntary
+exercise to fill out the details.
+Remark 1.3. As shown in Example 2, the set C employed in the above proof is a sumfree subset of Zp of maximum size. Hence, it is natural to conjecture that Theorem
+1.1 cannot be improved upon. It turns out that this is not the case, but it seems to be
+non-trivial to show it. In a long and difficult paper, Bourgain [1] showed that, for any
+finite S ⊆ Z, not containing zero, one can always find a sum-free subset A of S such
+. Nothing better than this is known, I think.
+that |A| ≥ |S|+2
+3
+For upper bounds, it suffices to find examples of sets S ≤ N without large sum-free
+subsets. I believe the current record is due to Lewko [2], who found, via computer
+search, a set of 28 positive integers with no sum-free subset of size 12. From such
+a single example, one can construct (I leave it as another exercise to determine how)
+arbitrarily large, finite sets S ⊆ N for which there are no sum-free subsets of size
+11
+exceeding 28
+|S|. The gap between 1/3 and 11/28 is a significant open problem.
+
+R EFERENCES
+[1] J. Bourgain, Estimates related to sumfree subsets of sets of integers, Israel J. Math.
+97 (1997), no.1, 71–92.
+[2] M. Lewko, An improved upper bound for the sum-free subset constant, J. Integer
+Seq. 13 (2010), no.8, Article 10.8.3, 15pp (electronic).
+Second moment method and distinct subset sums.
+Proposition 1.4. Let X be a non-negative real-valued random variable, and α ≥ 1.
+Then
+1
+P(X ≥ λE[X]) ≤ .
+(1.2)
+λ
+Proof. Simple exercise. This result is called Markov’s inequality.
+¤
+D EFINITION 2: Let X be a random variable. The variance of X, written as Var[X],
+is defined as
+Var[X] := E[(X − E[X])2 ].
+
+3
+
+The square root of the variance is called the standard deviation.
+Using linearity of expectation, it’s easy to show that (exercise, if you have never done it
+before !)
+Var[X] = E[X 2 ] − E[X]2 .
+(1.3)
+p
+N OTATION : E[X] := µX , Var[X] := σX . We drop the subscripts when there can be
+no confusion about what random variable is being considered.
+
+Remark 1.5. At this point it is worth clarifying the terminology second moment method.
+Let X be a random variable. The exponential generating function of X is the random
+variable eX . Thus
+∞
+X
+Xk
+X
+.
+e =
+k!
+k=0
+Under suitable convergence conditions, linearity of expectation yields that
+∞
+X
+E[X k ]
+X
+E[e ] =
+.
+k!
+k=0
+
+The quantity E[X k ]/k! in this expression is called the k:th moment of the random variable X. From (1.3) we see that the variance of X involves its second moment, hence
+the name.
+A rough analogy to studying the 2nd moment of a random variable is to study the
+second derivative of a smooth function in calculus. And just as it is pretty hard to find
+a real-life situation where one is interested in the third derivative of a smooth function,
+so in probability theory it is pretty rare to study the third moment of a random variable.
+Basically, if you can’t get a handle on the second moment, then you’re probably in a
+whole lot of trouble !
+Finally, it should now not come as a great shock that the term first moment method is
+applied when one just studies the expectation of a random variable itself. So this is the
+method we’ve been using in the applications up to now.
+The basic concentration estimate involving variance is Chebyshev’s inequality:
+Proposition 1.6. Let X be a random variable with mean µ and standard deviation σ.
+Let λ ≥ 1. Then
+1
+(1.4)
+P(|X − µ| ≥ λσ) ≤ 2 .
+λ
+Proof. Define a new random variable Y by Y := |X − µ|2 . Then the left-hand side of
+(1.4) is just, by definition of variance, P(Y ≥ λ2 E[Y ]). Markov’s inequality (1.2) now
+gives the result immediately.
+¤
+We now specialise to the case where
+X = X1 + · · · + Xn
+
+is a sum of indicator variables. We do not assume the Xi to be identically distributed
+though. Indeed let us denote by Ai the event indicated by Xi and pi := P(Ai ). Thus
+½
+1,
+with probability pi ,
+Xi =
+0, with probability 1 − pi .
+
+4
+
+Also denote µi := E[Xi ], σi2 := Var[Xi ]. Clearly, µi = pi . Also, by (1.3) and the fact
+that Xi2 = Xi since Xi only takes on the values 0 and 1, we have
+We thus have the inequality
+
+σi2 = pi − p2i = pi (1 − pi ).
+
+(1.5)
+
+σi2 ≤ µi .
+(1.6)
+Since in applications the individual probabilities pi are usually very small (even if the
+number of events Ai is usually very large), one does not lose much information in using
+(1.6).
+We want an expression for the variance of X. Using (1.3) and several applications of
+linearity of expectation, we obtain that
+n
+X
+X
+2
+σ =
+σi2 +
+Cov(Xi , Xj ),
+(1.7)
+i=1
+
+i6=j
+
+where the covariance of Xi and Xj is defined by
+
+Cov(Xi , Xj ) = E[Xi Xj ] − E[Xi ]E[Xj ].
+
+Since the Xi are indicator variables, we have
+
+E[Xi Xj ] − E[Xi ]E[Xj ] = P(Ai ∩ Aj ) − P(Ai )P(Aj ).
+
+Hence Cov(Xi , Xj ) = 0 if the events Ai and Aj are independent. In this case, (1.7)
+simplifies to
+n
+X
+σ2 =
+σi2 , when the Xi are independent.
+(1.8)
+i=1
+
+We now describe an application of the second moment method to a problem in number theory. It is a relatively simple application from a theoretical viewpoint, in that it
+only uses Chebyshev’s inequality and (1.8).
+D EFINITION 3: Let A = {a1 , ..., ak } be a finite set of integers. A is said to have
+P distinct
+subset sums if, for every two distinct subsets I, J of {1, ..., k}, the sums i∈I ai and
+P
+1
+j∈J aj have different values .
+Let f (n) be the maximum possible size of a subset of {1, ..., n} which has distinct
+subset sums.
+L OWER B OUNDS:
+Take n = 2k and A = {2i : 0 ≤ i ≤ k}. This example shows that f (n) ≥ 1 + ⌊log2 n⌋.
+Erdős offered 500 dollars for a proof that there exists a universal constant C such that
+f (n) ≤ log2 n + C. Note that he’s not asking here for a computation of the optimal
+C or even a decent estimate of it, just a proof that some such constant exists, in other
+words that f (n) = log2 n + O(1). The base-2 example shows that C ≥ 1. If we
+confine ourselves to integer C then a number of authors, starting with John Conway
+1
+
+If I is the empty set, the sum is assigned the value zero. The definition extends to infinite sets, but
+the notation will just become a bit more complicated.
+
+5
+
+and Richard Guy in 1969, have produced examples showing that C ≥ 2. The point
+here is that the powers-of-2 example is not optimal. Note that, in order to get a better
+lower bound on C, it suffices to do so for a single n, because of the following trick: if
+A = {a1 , ..., ak } is a subset of {1, ..., n} with distinct subset sums, and u is any odd
+number s.t. 1 ≤ u ≤ 2n, then A′ = {2a1 , ..., 2ak , u} is a subset of {1, ..., 2n} with
+distinct subset sums and one additional element. This means that if f (n) > log2 n + C
+then f (N ) > log2 N + C for every N of the form N = 2t n.
+One can then use a computer to help find individual examples ... For up-to-date
+information on lower bounds see, for example,
+http://garden.imacs.sfu.ca/?q=op/sets− with− distinct− subset− sums
+U PPER B OUNDS:
+k
+If A has size k andn is contained in {1,
+o ..., n} then there are 2 distinct subset sums
+and each is among 0, ..., nk − k(k−1)
+. Thus
+2
+
+2f (n) ≤ 1 + nf (n) −
+
+f (n)(f (n) − 1)
+.
+2
+
+Taking base-2 logs, we have
+f (n) ≤ log2 n + log2 f (n) + O(1),
+
+which leads to a bound of the form
+
+f (n) ≤ log2 n + log2 log2 n + O(1).
+
+(1.9)
+
+Erdős improved this to the following
+Theorem 1.7.
+
+1
+log2 log2 n + O(1).
+(1.10)
+2
+Proof. The idea is to refine the basic counting argument which leads to (1.9) by using
+the fact that theh2k subset sumsifor a set A = {a1 , ..., ak } are not “uniformly distributed”
+, but that there is a higher concentration of sums close
+in the interval 0, nk − k(k−1)
+2
+to the mean. To make this precise requires a second moment analysis, which we now
+perform in detail.
+f (n) ≤ log2 n +
+
+Let A = {a1 , ..., ak } be a subset of {1, ..., n} with distinct subset sums. For each
+i = 1, ..., k, let Xi be the r.v. given by
+½
+ai , with probability 1/2,
+Xi =
+(1.11)
+0, with probability 1/2.
+P
+The Xi :s are assumed to be independent, and we let X := ki=1 Xi . In words, X is
+the value of a subset sum of A, where the subset is chosen uniformly at random from
+all 2k subsets of A. Though it is of no interest for the proof, note that, by linearity of
+expectation,
+!
+Ã k
+1 X
+ai .
+(1.12)
+µ = E[X] =
+2 i=1
+
+6
+
+What we are interested in is the variance. By (1.5) and (1.8), we have
+Ã k
+!
+X
+1
+kn2
+σ 2 = Var(X) =
+a2i ≤
+,
+4 i=1
+4
+√
+hence σ ≤ n k/2. Now let λ ≥ 1. By Chebyshev’s inequality,
+Ã
+√ !
+1
+λn k
+≤ 2.
+P |X − µ| ≥
+2
+λ
+This is equivalent to saying that
+Ã
+
+√ !
+λn k
+1
+P |X − µ| <
+≥ 1 − 2.
+2
+λ
+
+(1.13)
+
+Now, on√the one hand, X is integer-valued, and the number of integers satisfying |X −
+√
+µ| < λn2 k is less than 1+λn k. On the other hand, (1.13) says that the probability that
+a uniformly randomly chosen subset sum satisfies this inequality is at least 1 − 1/λ2 .
+Since there are 2k subset
+¢ kand they are assumed to be all distinct, it follows that
+¡ sums,
+1
+there must be at least 1 − λ2 2 integers satisfying the inequality. We conclude that
+µ
+¶
+p
+1
+1 − 2 2f (n) < 1 + λn f (n).
+λ
+Taking base-2 logs, we have
+1
+f (n) ≤ log2 n + log2 f (n) + O(1),
+2
+where the O(1)-term depends on λ. From this one easily deduces (1.10).
+¤
+
+

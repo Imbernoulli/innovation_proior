@@ -1,0 +1,121 @@
+MATHEMATICS OF COMPUTATION
+VOLUME 44. NUMBER 170
+APRIL. 19X5. PACIES 519-521
+
+
+
+
+           Modular Multiplication Without Trial Division
+                                    By Peter L. Montgomery
+
+     Abstract. Let N > 1. We present a method for multiplying two integers (called N-residues)
+     modulo N while avoiding division by N. N-residues are represented in a nonstandard way, so
+     this method is useful only if several computations are done modulo one N. The addition and
+     subtraction algorithms are unchanged.
+
+
+  1. Description. Some algorithms [1], [2], [4], [5] require extensive modular arith-
+metic. We propose a representation of residue classes so as to speed modular
+multiplication without affecting the modular addition and subtraction algorithms.
+  Other recent algorithms for modular arithmetic appear in [3], [6].
+  Fix N > 1. Define an A'-residue to be a residue class modulo N. Select a radix R
+coprime to N (possibly the machine word size or a power thereof) such that R > N
+and such that computations modulo R are inexpensive to process. Let R~l and N' be
+integers satisfying 0 < R'x < N and 0 < N' < R and RRX - NN' = 1.
+   For 0 < i < N, let /' represent the residue class containing iR~x mod N. This is a
+complete residue system. The rationale behind this selection is our ability to quickly
+compute TRl mod N from T if 0 < T < RN, as shown in Algorithm REDC:
+
+function REDC(r)
+  m «- iTmod R)N' mod R [so 0 < m < R]
+  t <-(T+ mN)/R
+  if t > N then return t - N else return t          ■
+
+  To validate REDC, observe mN = TN'N = -Tmod R, so t is an integer. Also,
+tR = Tmod N so t = TR'Xmod N. Thirdly, 0 < T + mN < RN + RN, so 0 < t <
+2N.
+   If R and N are large, then T + mN may exceed the largest double-precision value.
+One can circumvent this by adjusting m so -R < m < 0.
+   Given two numbers x and y between 0 and N - 1 inclusive, let z = REDC(xy).
+Then z = (xy)R~x mod N, so (xR-l)(yR~x) = zRx mod N. Also, 0 < z < N, so z is
+the product of x and y in this representation.
+   Other algorithms for operating on N-residues in this representation can be derived
+from the algorithms normally used. The addition algorithm is unchanged, since
+xR~x + yR~x = zR~x mod N if and only if x + y = z mod N. Also unchanged are
+
+
+
+
+ Received December 19, 1983.
+ 1980 Mathematics Subject Classification. Primary 10A30; Secondary 68C05.
+ Key words and phrases. Modular arithmetic, multiplication.
+
+                                                                 ©1985 American   Mathematical   Society
+                                                                   0025-5718/85 $1.00 + $.25 per page
+                                                 519
+520                                   PETER L. MONTGOMERY
+
+
+the algorithms for subtraction, negation, equality/inequality test, multiplication by
+an integer, and greatest common divisor with N.
+   To convert an integer x to an ^-residue, compute xR mod N. Equivalently,
+compute REDC((xmod N)(R2mod N)). Constants and inputs should be converted
+once, at the start of an algorithm. To convert an ^-residue to an integer, pad it with
+leading zeros and apply Algorithm REDC (thereby multiplying it by R'1 mod N).
+  To invert an TV-residue, observe (xR~x)~l = zR'1 mod N if and only if z =
+R2x~l mod N. For modular division, observe (xR~l)(yR~x)~l = zR~x mod N if and
+only if z = «(REDCi»)-1 mod JV.
+  The Jacobi symbol algorithm needs an extra negation if (R/N) = -1, since
+(xR~x/N) = (x/N)(R/N).
+  Let M|N. A change of modulus from N (using R = R(N)) to M (using R = R(M))
+proceeds normally if R(M) = R(N). If R(M) ¥=R(N), multiply each jV-residue by
+(R(N)/R(M))~x         mod M during the conversion.
+
+   2. Multiprecision Case. If N and R are multiprecision, then the computations of
+m and mN within REDC involve multiprecision arithmetic. Let b be the base
+used for multiprecision arithmetic, and assume R = b", where n > 0. Let T =
+iT2„-iT2„_2 ■• • T0)h satisfy 0 < T < RN. We can compute TR~l mod N with n
+single-precision multiplications modulo R, n multiplications of single-precision
+integers by N, and some additions:
+  c^O
+  for z := 0 step 1 to n - 1 do
+      W+.-i         ••• 7/)» «-(0W,        ••• T,)h+N*(T,N'mod R)
+      {cTl+H)b<-c      + d+Tl+H
+      [Tis a multiple of b' +x]
+      [T + cb' + n+x is congruent mod N to the original T]
+      [0 < T < (R + b')N]
+  end for
+  ¡f(cr2M_, ■•• T„)h>Nthen
+     return (cT2„_x ■■• T„)b-         N
+  else
+      return (T2n_x •■■ T„)b
+  end if
+
+Here variable c represents a delayed carry—it will always be 0 or 1.
+
+   3. Hardware Implementation. This algorithm is suitable for hardware or software.
+A hardware implementation can use a variation of these ideas to overlap the
+multiplication and reduction phases. Suppose R = 2" and N is odd. Let x =
+ixn-ixn-2    '■' xo)2> where each x¡ is 0 or 1. Let 0 < y < N. To compute
+xyR~l mod N, set S0 = 0 and Si+1 to (S, + x,y)/2         or (5, + x¡y + N)/2, whichever
+is an integer, for i = 0,1,2,...,«        — 1. By induction, 2'S, = (x,_x ■■■ x0)ymod   N
+and 0 < Si < N + y < 2N. Therefore xyR1 mod N is either S„ or S„ - N.
+System Development    Corporation
+2500 Colorado Avenue
+Santa Monica, California 90406
+                       MODULAR MULTIPLICATION WITHOUT TRIAL DIVISION                                     521
+
+
+  1. J. M. Pollard,    "Theorems   on factorization   and primality testing," Proc. Cambridge Philos. Soc, v.
+76, 1974, pp. 521-528.
+  2. J. M. Pollard, "A Monte Carlo method for factorization," BIT, v. 15,1975, p. 331-334.
+  3. George     B. Purdy, "A carry-free algorithm for finding the greatest common divisor of two integers,"
+Comput. Math. Appl. v. 9,1983, pp. 311-316.
+  4. R. L. Rivest, A. Shamir & L. Adleman, "A method for obtaining digital signatures and public-key
+cryptosystems," Comm. ACM, v. 21, 1978, pp. 120-126; reprinted in Comm. ACM, v. 26, 1983, pp.
+96-99.
+  5. J. T. Schwartz,     "Fast probabilistic algorithms for verification of polynomial identities," J. Assoc.
+Comput. Mach., v. 27, 1980,pp. 701-717.
+  6. Gustavus     J. Simmons, "A redundant number system that speeds up modular arithmetic," Abstract
+801-10-427,Abstracts Amer. Math. Soc, v. 4, 1983, p. 27.
+

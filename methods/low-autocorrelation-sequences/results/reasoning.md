@@ -1,6 +1,6 @@
 OK, let me set this up from the pain. I want length-`n` sequences of `±1` whose off-peak aperiodic autocorrelations `C(u) = sum_{i} a_i a_{i+u}` are collectively tiny — concretely, I want the merit factor `F = n^2 / (2 sum_{u≥1} C(u)^2)` to be large, and not just at one cute length but for a whole infinite family as `n → ∞`. The peak `C(0) = n` is fixed; all the action is in pushing the energy `sum_{u≥1} C(u)^2` down toward its floor.
 
-First, how good is "nothing"? Take a random `±1` sequence. The expected `1/F` over all `2^n` of them works out to `(n-1)/n`, which goes to `1`. So a generic sequence sits at `F ≈ 1`, and any family I'd be proud of has to beat that decisively. The trouble is that just hill-climbing in the `2^n` cube — flip a bit, recompute `F`, accept if better — is exactly what people have hammered for decades (it's the same "low-autocorrelation binary string" ground-state problem the spin-glass people grind on), and for large `n` it stubbornly refuses to climb past about `F = 6`, drowning in local optima. So search isn't going to *tell me the answer*; if I want to know the asymptotic value I need a sequence I can *write down* and an `F` I can *compute in closed form*. Structure, then proof.
+How good is "nothing"? Take a random `±1` sequence. The expected `1/F` over all `2^n` of them works out to `(n-1)/n`, which goes to `1`. So a generic sequence sits at `F ≈ 1`, and any family I'd be proud of has to beat that decisively. The trouble is that just hill-climbing in the `2^n` cube — flip a bit, recompute `F`, accept if better — is exactly what people have hammered for decades (it's the same "low-autocorrelation binary string" ground-state problem the spin-glass people grind on), and for large `n` it stubbornly refuses to climb past about `F = 6`, drowning in local optima. So search isn't going to *tell me the answer*; if I want to know the asymptotic value I need a sequence I can *write down* and an `F` I can *compute in closed form*. Structure, then proof.
 
 So where could structure come from? Stare at the energy I'm minimizing. The aperiodic `C(u)` is a sum over a *window* `i = 0 … n-1-u` — it's a truncated correlation, and truncated sums are analytically nasty; there's no group acting on them. But there's a cousin that *is* tame: the periodic autocorrelation `R(u) = sum_{i=0}^{n-1} a_i a_{(i+u) mod n}`, a genuine cyclic-group object. And these two are related by
 
@@ -30,15 +30,15 @@ and by multiplicativity `(i+s | p)(i+u+s | p) = ((i+s)(i+u+s) | p)`, a quadratic
 
 As `r` slides the window, the favorable cancellations come and go smoothly, and `sum_u C(u)^2` (hence `1/F`) should be a smooth function of `r` over each half-period. If the only surviving terms after character-sum cancellation are the overlap lengths of intervals, those lengths are linear in `r`, and their squares will make `1/F` quadratic. The window of evaluation looks most balanced when it is centered a quarter-turn away — `r = 1/4` — so that is the offset I expect the calculation to select.
 
-I need the character-sum calculation to tell me which overlap terms actually survive. I can organize the whole `sum_u C(u)^2` in the Fourier domain. Evaluate the polynomial `X_p(z) = 1 + sum_{j=1}^{p-1} (j|p) z^j` at the `p`-th roots of unity `ζ_k = e^{2πi k/p}`. Then `X_p(ζ_k) - 1 = sum_{j=1}^{p-1} (j|p) ζ_k^{jk}` is a **quadratic Gauss sum**, and its modulus is exactly `p^{1/2}` for `k ≠ 0` (with the explicit phase `i^{(p-1)^2/4}` that I won't need). So in the frequency domain the Legendre sequence has *perfectly flat* magnitude `p^{1/2}` at every nonzero frequency — that's the spectral face of the difference-set property. The merit factor of any rotation/truncation is built out of fourth moments of these frequency values, which I package as
+I need the character-sum calculation to tell me which overlap terms actually survive. I can organize the whole `sum_u C(u)^2` in the Fourier domain. Evaluate the polynomial `X_p(z) = 1 + sum_{j=1}^{p-1} (j|p) z^j` at the `p`-th roots of unity `ζ_k = e^{2πi k/p}`. Then `X_p(ζ_k) - 1 = sum_{j=1}^{p-1} (j|p) ζ_k^{jk}` is a **quadratic Gauss sum**, equal to `(k|p) i^{(p-1)^2/4} p^{1/2}` for `k ≠ 0`. So the nonconstant character part has exactly flat magnitude `p^{1/2}` at every nonzero frequency, and the extra `1` from the `x_0 := 1` convention is small enough to be carried as an error term. The merit factor of any rotation/truncation is built out of fourth moments of these frequency values, which I package as
 
-  `L_A(a,b,c) = (1/n^3) sum_{k} A(ζ_k) A(ζ_{k+a}) A(ζ_{k+b}) A(ζ_{k+c})`.
+  `L_A(a,b,c) = (1/n^3) sum_{k} A(ζ_k) A(ζ_{k+a}) \overline{A(ζ_{k+b})} \overline{A(ζ_{k+c})}`.
 
 The point of `L_A` is that `1 + 1/F(A_r)` is an *exact* linear functional of `L_A` — when I expand `sum_u C(u)^2` and pass to frequencies, every term is one of these four-fold products. So if I can show `L_{X_p}(a,b,c)` is close to the "ideal" pattern
 
   `I(a,b,c) = 1` when one of `a,b,c` is `0` and the other two are equal, else `0`,
 
-then the merit factor must converge to whatever the ideal pattern dictates. For the Legendre sequence, substitute the Gauss-sum values: each `X_p(ζ_k) - 1` has modulus `p^{1/2}`, and the multiplicativity of the symbol collapses the four-fold frequency product into a *single* character sum over `F_p`,
+then the merit factor must converge to whatever the ideal pattern dictates. For the Legendre sequence, substitute the Gauss-sum values at the nonzero frequencies, and the multiplicativity of the symbol collapses the four-fold frequency product into a *single* character sum over `F_p`,
 
   `L_{X_p}(a,b,c) = (1/p) sum_{x in F_p} ( x(x+a)(x+b)(x+c) | p ) + Δ`,   with `|Δ| ≤ 15 p^{-1/2}`,
 
@@ -76,7 +76,7 @@ so the two-variable expression collapses to the old parabola when there is no ap
 
   `F_a = 6.342061…`,  the largest root of `29 x^3 - 249 x^2 + 417 x - 27`,
 
-attained at `T = 1.057827…` (the middle root of `4 x^3 - 30 x + 27`) and `R = 3/4 - T/2`. So the difference-set idea, pushed through appending, genuinely clears `6` — the quarter-rotation `6` was a local landmark, not the ceiling. The related periodic and negaperiodic product constructions, using the short masks `(+,+,-,+)` and `(+,+,-,-)`, are governed by the same `g` after a fixed shift in `R`; at the same optimum, the resulting sequences are skew-symmetric. If I repeat the append/periodic-mask analysis for the additive Galois family, the rotation dependence disappears and the limiting function is `h(T)` with `1/h(T) = 1 - 2T/3 + 4 sum_{m∈N} max(0, 1 - m/T)^2`; its maximum is `F_b = 3.342065…`, the largest root of `7 x^3 - 33 x^2 + 33 x - 3`. The multiplicative Legendre side is the one that reaches `F_a`.
+attained at `T = 1.057827…` (the middle root of `4 x^3 - 30 x + 27`) and `R = 3/4 - T/2` when I choose the representative `0 ≤ R < 1/2`. So the difference-set idea, pushed through periodic extension, genuinely clears `6` — the quarter-rotation `6` was a local landmark, not the ceiling. The related periodic and negaperiodic product constructions, using the short masks `(+,+,-,+)` and `(+,+,-,-)`, are governed by the same `g` after a fixed shift in `R`; when I force skew-symmetry through Jacobi sequences with all prime factors `1 mod 4`, the same point is naturally written as `R = 1/4 - T/2`, which is congruent modulo the half-period of `g`. If I repeat the append/periodic-mask analysis for the additive Galois family, the rotation dependence disappears and the limiting function is `h(T)` with `1/h(T) = 1 - 2T/3 + 4 sum_{m∈N} max(0, 1 - m/T)^2`; its maximum is `F_b = 3.342065…`, the largest root of `7 x^3 - 33 x^2 + 33 x - 3`. The multiplicative Legendre side is the one that reaches `F_a`.
 
 Let me write the construction and the analysis down as code, building straight from the definitions and checking the formulas I derived. The construction fills the algebraic sequence slot; the closed-form function fills the `g(R,T)` slot.
 
@@ -84,20 +84,33 @@ Let me write the construction and the analysis down as code, building straight f
 import math
 import numpy as np
 
-def quadratic_residue_sign(i, p):
-    # Quadratic character away from zero; the caller chooses the zero convention.
-    if i % p == 0:
-        return None
-    return 1 if pow(i % p, (p - 1) // 2, p) == 1 else -1
+def is_prime(n):
+    if n < 2:
+        return False
+    if n % 2 == 0:
+        return n == 2
+    d = 3
+    while d * d <= n:
+        if n % d == 0:
+            return False
+        d += 2
+    return True
+
+def valid_length(n):
+    # Paley/Legendre periodic autocorrelation is exactly -1 in this prime case.
+    return n % 4 == 3 and is_prime(n)
+
+def algebraic_sign(i, n):
+    # Legendre sequence: x_0 := +1 and x_i := (i | n) for 0 < i < n.
+    j = i % n
+    if j == 0:
+        return 1
+    return 1 if pow(j, (n - 1) // 2, n) == 1 else -1
 
 def build_sequence(n):
-    # Legendre sequence for a prime n == 3 mod 4: x_0 := +1, x_i := (i | n).
-    if n < 3 or n % 4 != 3:
-        raise ValueError("n must be an odd prime with n % 4 == 3")
-    return np.array(
-        [1 if i == 0 else quadratic_residue_sign(i, n) for i in range(n)],
-        dtype=np.int64,
-    )
+    if not valid_length(n):
+        raise ValueError("n must be a prime with n % 4 == 3")
+    return np.array([algebraic_sign(i, n) for i in range(n)], dtype=np.int64)
 
 def rotate(A, r):
     # Rotation preserves periodic autocorrelation but changes aperiodic windows.
@@ -156,4 +169,4 @@ if __name__ == "__main__":
     print(round(asymptotic_merit_factor(R, T), 6))  # 6.342061...
 ```
 
-The causal chain, start to finish: search can't decide the asymptotic question, so I need an explicit family with a computable merit factor → the only analyzable handle is the *periodic* autocorrelation, which is flat (`= -1`) exactly for difference-set sequences, and the quadratic residues (Legendre symbol) give such a set *and* hand me Gauss sums → but flat periodic only pins the *pair sums* `C(u) + C(n-u) = -1`, so the bare sequence is stuck at `F = 3/2` → the periodic property is rotation-invariant while the aperiodic energy is not, so I rotate and optimize, and the windowed quadratic-character sums (Gauss sum for flat spectrum, Weil bound to kill everything off the ideal pattern `I`) yield `1/F = 1/6 + 8(r - 1/4)^2`, minimized at the quarter turn for `F → 6` → the same machinery shows the recursive (Rudin–Shapiro) and additive-character (m-sequence) families cap at `3`, marking `6` as special to the quadratic-residue structure, and it extends to Jacobi/twin-prime → appending introduces a total length fraction `T`, and balancing the spread-out gains against the aligned `u = n` obstruction gives `g(R,T)`, whose optimum is `F_a = 6.342061…` at `T = 1.057827…`, `R = 3/4 - T/2`, while the additive Galois analogue tops out at `F_b = 3.342065…`.
+The causal chain, start to finish: search can't decide the asymptotic question, so I need an explicit family with a computable merit factor → the only analyzable handle is the *periodic* autocorrelation, which is flat (`= -1`) exactly for difference-set sequences, and the quadratic residues (Legendre symbol) give such a set *and* hand me Gauss sums → but flat periodic only pins the *pair sums* `C(u) + C(n-u) = -1`, so the bare sequence is stuck at `F = 3/2` → the periodic property is rotation-invariant while the aperiodic energy is not, so I rotate and optimize, and the windowed quadratic-character sums (Gauss sum for flat spectrum, Weil bound to kill everything off the ideal pattern `I`) yield `1/F = 1/6 + 8(r - 1/4)^2`, minimized at the quarter turn for `F → 6` → the same machinery shows the recursive (Rudin–Shapiro) and additive-character (m-sequence) families cap at `3`, marking `6` as special to the quadratic-residue structure, and it extends to Jacobi/twin-prime → appending introduces a total length fraction `T`, and balancing the spread-out gains against the aligned `u = n` obstruction gives `g(R,T)`, whose optimum is `F_a = 6.342061…` at `T = 1.057827…`, `R = 3/4 - T/2` modulo the half-period symmetry of `g`, while the additive Galois analogue tops out at `F_b = 3.342065…`.

@@ -1,0 +1,557 @@
+                   An O~ n2 Algorithm for Minimum Cuts
+                                     
+
+
+
+
+                        David R. Karger                               Cli ord Steiny
+                 Department of Computer Science                  Department of Math and CS
+                       Stanford University                           Dartmouth College
+                     karger@cs.stanford.edu                        cliff@cs.dartmouth.edu
+
+
+
+Abstract                                                      weight of edges crossing between them. Throughout
+                                                              this paper, the graph is assumed to be connected,
+A minimum cut is a set of edges of minimum weight             since otherwise the problem is trivial. We also require
+whose removal disconnects a given graph. Minimum              that all edge weights be non-negative, since otherwise
+cut algorithms historically applied duality with max-         the problem is NP -complete by a trivial transforma-
+imum ows and thus had the same (mn) running                   tion from the maximum-cut problem. The problem
+time as maximum ow algorithms. More recent algo-              actually has two variants: in the s-t min-cut prob-
+rithms which are not based on maximum ows also                lem, we require that the two speci ed vertices s and
+require (mn) time.                                            t be on opposite sides of the cut; in what we call the
+   In this paper, we present the rst algorithm that           min-cut problem there is no such restriction. Observe
+breaks the (mn) \max- ow barrier" for nding                   that the value of the minimum cut in a graph is equal
+minimum cuts in weighted undirected graphs. We                to the minimum, taken over all pairs of vertices s and
+give a strongly polynomial randomized algorithm               t, of the s-t minimum cut.
+which nds a minimum cut with high probability in                 Particularly on unweighted graphs, the min-cut
+O(n2 log3 n) time. This suggests that the min-cut             problem is sometimes referred to as nding the con-
+problem might be fundamentally easier to solve than           nectivity of a graph, that is, determining the min-
+the maximum ow problem. Our algorithm can be                  imum number of edges (or minimum total edge
+implemented in RNC using only n2 processors|this              weight) that must be removed to disconnect the
+is the rst ecient RNC algorithm for the min-cut              graph.
+problem. Our algorithm is simple and uses no com-
+plicated data structures.                                     1.2 Applications
+                                                              The min-cut problem has applications in many elds.
+1 Introduction                                                The problem of determining the connectivity of a net-
+                                                              work arises frequently in issues of network design and
+1.1 The Problem                                               network reliability (Karger [Kar93] demonstrates an
+                                                              extremely tight connection between the minimum cut
+This paper studies the min-cut problem. Given a               and network reliability). For weighted graphs, Picard
+graph with n vertices and m (possibly weighted)               and Querayne [PQ82] survey numerous applications
+edges, we wish to partition the vertices into two non-        of minimum cuts, including graph partitioning prob-
+empty sets so as to minimize the number or total              lems, the study of project networks, and partitioning
+    Supported by a National Science FoundationGraduateFel-
+                                                              items in a database.
+lowship, by NSF Grant CCR-9010517, and grants from Mit-          Minimum cuts also arise in other combinatorial
+subishi and OTL.                                              optimization problems|for example in the traveling
+   y Support provided by a Walter Burke Research Initiation   salesman problem. The currently best methods for
+Award and a Dartmouth College Research Initiation Award.        nding exact solutions to large traveling salesman
+                                                              problems are all cutting-plane based algorithms. This
+                                                              means that they work by generating the space of fea-
+               (Paste copyright notice here.)                 sible tours and then repeatedly generating inequali-
+                                                              ties that cut o part of the space. The inequalities
+                                                              that turn out to be most useful are subtour elimina-
+
+
+
+
+                                                                                                             Page 1
+tion constraints, rst introduced by Dantzig, Fulker-      and Westbrook runs in O(mn logm=n n) time provided
+son and Johnson [DFJ54]. The problem of identify-         m > n log2 n [PW92]. The fastest randomized al-
+ing a subtour elimination constraint can be rephrased     gorithm runs in O(mn + n2 log2 n) time (Cheriyan,
+as the problem of nding a minimum cut in a graph          Hagerup, and Maheshwari [CHM90]). Finding a min-
+with real-valued edge weights. Thus, these algorithms     imumcut by directly applying any of these algorithms
+for the traveling salesman problem must solve a large     in the Gomory-Hu approach requires (mn2 ) time.
+number of min-cut problems (see [LLKS85] for a sur-          There have also been successful e orts to speed up
+vey of the area). Padberg and Rinaldi [PR90] re-          the series of maximum ow computations that arise
+cently reported that the solution of min-cut problems     in computing a minimum cut. The basic technique
+was the computational bottleneck in their state-of-       is to pass information among the various ow com-
+the-art cutting-plane based algorithm. They also re-      putations, so that computing all n maximum ows
+ported that min-cut problems are the bottleneck in        together takes less time than separately computing
+many other cutting-plane based algorithms for com-        them. Podderyugin [Pod73], Karzanov and Timo-
+binatorial problems whose solutions induce connected      feev [KT86], and Matula [Mat87] independently dis-
+graphs. Applegate [App92] made similar observations       covered several methods for determining edge connec-
+and also noted that an algorithm to nd all small cuts     tivity in unweighted graphs in O(mn) time. These
+might be even more useful.                                algorithms all rely on the fact that the graph is un-
+                                                          weighted. Hao and Orlin [HO92] extended this idea
+1.3 Background                                            to weighted graphs. They showed that the series of
+                                                          n 1 related maximum ow computations needed to
+The rst known algorithm for the min-cut problem             nd a minimum cut can all be performed in roughly
+used the duality between s-t minimum cuts and s-t         the same amount of time that it takes to perform one
+maximum ows [FF56, EFS56]. An s-t maximum                 maximum ow computation, provided the maximum
+  ow algorithm can be used to  nd an s-t minimum           ow algorithm used is a non-scaling push-relabel al-
+cut, and minimizing over all n2 possible choices of s     gorithm. They use the fastest such algorithm, that
+and t yields a minimum cut. In 1961, Gomory and           of Goldberg and Tarjan, to nd a minimum cut in
+Hu [GH61] introduced the concept of a ow equiva-          O(mn log(n2 =m)) time.
+lent tree and showed that the minimum cut could be           Recently, two approaches that nd minimum
+found by solving only n 1 maximum ow problems.            cuts without computing any maximum ows have
+The algorithmic result was accompanied by an insight      been developed. One approach, developed by
+into the structure of minimum cuts, as they showed       Gabow [Gab91], is based on a matroid characteriza-
+that among the n2 di erent s-t minimum cuts, there        tion of the min-cut problem. He uses that approach
+are only n 1 unique cut values. In their classic book     to nd the minimum cut of an unweighted graph in
+Flows in Networks [FF62], Ford and Fulkerson com-         time O(m+c2n log(n2 =m)) time, where c is the value
+ment on the method of Gomory and Hu:                      of the minimum cut.
+     Their procedure involved the successive so-             The second new approach is based on repeatedly
+     lution of precisely n 1 maximal ow prob-             identifying and contracting edges that are not in the
+     lems. Moreover, many of these problems in-           minimum cut until the minimum cut becomes appar-
+     volve smaller networks than the original one.        ent. It applies only to undirected graphs, but they
+     Thus one could hardly ask for anything bet-          may be weighted. Nagamochi and Ibaraki [NI92] give
+     ter.                                                 a procedure which identi es and contracts an edge
+                                                          that is not in the minimumcut in O(m+n log n) time.
+This attitude in uenced the development of min-cut        This yields an algorithm that computes the minimum
+algorithms for 25 years. The prevailing belief was that   cut in O(mn + n2 log n) time. Karger [Kar93] de-
+the best way to develop a faster min-cut algorithm        veloped the Contraction Algorithm, which uses uni-
+was to develop a better maximum ow algorithm or           form random selection to choose an edge to contract.
+a better method of performing a series of maximum         This algorithm can be used to nd a minimum cut in
+  ow computations.                                        O(n2 m log n) time and is the basis of our new work.
+   Maximum ow algorithms have become progres-                Less work has been done on parallel solutions
+sively faster. Currently, the fastest deterministic al-   to the min-cut problem. For unweighted graphs,
+gorithms are based on the work of Goldberg and Tar-       the RNC matching algorithms of Karp, Upfal, and
+jan [GT88]. One developed by King, Rao, and Tar-          Wigderson [KUW86] or Mulmuley, Vazirani, and
+jan runs in O(mn + n2+ ) time [KRT92] (and has           Vazirani [MVV87] can be combined with a reduc-
+since been improved), and one developed by Phillips       tion of s-t maximum ow to matching [KUW86] to
+
+
+
+
+                                                                                                        Page 2
+               min-cut bounds                 unweighted                  weighted
+                                     undirected        directed  undirected       directed
+          sequential time previous             c2n log nm
+                                                        2
+                                                                mn + n2 logn mn log nm             2
+
+
+                                                [Gab91]            [NI92]          [HO92]
+                          this paper n log n
+                                       2    3
+                                                                  n log n
+                                                                   2    3
+
+                                                           4:37
+          processors      previous       cn3
+                                                         n          mn2         P -complete
+          used in RNC                 [Kar93] [KUW86, GP85]       [Kar93]         [GSS82]
+                          this paper     n2                          n2
+
+                                 Figure 1: Bounds For the Min-Cut Problem
+
+yield RNC algorithms for s-t minimum cuts. We can       algorithm, it in fact nds all minimum cuts. The
+  nd a minimum cut by performing n of these com-        sequential version runs in O(n2 log3 n) time and thus
+putations in parallel. Unfortunately, the processor     improves on previous running times by a ~ (m=n) fac-
+bounds are quite large|the best bound, using Galil      tor. The parallel version takes polylogarithmic time
+and Pan's [GP85] adaptation of [KUW86], is n4:37.       using n2 processors on a PRAM. It is thus the rst
+   These unweighted graph algorithms can be ex-         ecient RNC algorithm for the min-cut problem in
+tended to work for weighted graphs by represent-        that the total work it performs is within a polyloga-
+ing an edge of weight w by w parallel edges. If         rithmic factor of that performed by the best sequen-
+W is the sum of the weights of all the edges then       tial algorithm (namely, the one presented here). We
+the number of processors needed is proportional to      give a slightly faster algorithm for a class of graphs
+W ; hence the problem is not in RNC unless the          which includes all planar graphs.
+edge weights are given in unary. Even if we combine        Our algorithm is extremely simple and, unlike the
+these algorithms with the scaling ideas of Edmonds      best ow-based approaches, does not rely on any com-
+and Karp [EK72], as suggested by Karp, Upfal and        plicated data structures such as dynamic trees. The
+Wigderson [KUW86], the running times are propor-        most time consuming steps of the sequential version
+tional to logW and hence the algorithms are not in      are simple computations on lists, while the most time
+RNC unless W = O(nlogO n).(1)
+                                                        consuming steps in the parallel version are sorting
+   This lack of an RNC algorithm is unsurprising.       and computing connected components. All of these
+Goldschlager, Shaw, and Staples [GSS82] showed that     computations can be performed eciently.
+the s-t min-cut problem on weighted directed graphs        Our algorithm also improves on several other re-
+is P -complete. Karger [Kar93] gives a simple reduc-    sults of [Kar93]. The minimum weight r-way cut
+tion which proves that the directed min-cut problem     problem is the problem of identifying a minimum
+is also P -complete. On the other hand, he proves       weight set of edges whose removal divides the graph
+that on undirected graphs, the min-cut problem is in    into r nonempty pieces. We improve the algorithm
+RNC even with arbitrarily large edge weights. His       of [Kar93] to use ~O(n2(r 1) ) work, yielding the fastest
+algorithm uses mn2 processors.                          known sequential algorithm together with an ecient
+   While all of these algorithms are RNC algorithms,    RNC implementation. We also improve the best
+at least for unweighted graphs, they are not ecient.   known algorithms for nding all approximately min-
+Of the above algorithms, that of Karger does the        imum cuts and for nding the cactus representation
+least work, O(mn2 log3 n), but this still exceeds by    of all minimum cuts.
+an (n) factor the work done by the best sequen-            Section 2 reviews the Contraction Algorithm. Sec-
+tial min-cut algorithms. These results, along with      tions 3, 4, and 5 contain our new results. Section 6
+our new bounds, are summarized in the Figure 1 (c       concludes with some discussion and open problems.
+denotes the value of the minimum cut).
+
+1.4 Our contribution                                    2 The Contraction Algorithm
+We present the most ecient known minimum cut           We begin by restricting our attention to unweighted
+algorithm. It is an improved implementation of          multigraphs (i.e., graphs which may have multiple
+Karger's Contraction Algorithm [Kar93]. Like that       edges between vertices), and presenting an abstract
+
+
+
+
+                                                                                                         Page 3
+version of the Contraction Algorithm. Although cer-          Direct implementation of the Contraction Algo-
+tain changes must be made to allow an ecient im-         rithm as described above is undesirable. Such an im-
+plementation, this version of the algorithm is partic-    plementation would require complex data structures
+ularly intuitive and easy to analyze. A more detailed     to support contraction of vertices and would apply
+exposition may be found in [Kar93].                       only to unweighted graphs. However, these prob-
+   Assume initially that we are given a multigraph        lems can be circumvented. Graphs with integer edge
+G(V; E) with n vertices and m edges. The Contrac-         weights can be viewed as compact representations of
+tion Algorithm uses one fundamental operation, con-       multigraphs, where an edge of weight w corresponds
+traction of graph vertices. To contract two vertices v1   to w parallel multigraph edges. By working directly
+and v2, replace them by a new vertex v, and let the       with this compact representation, Karger [Kar93] de-
+set of edges incident on v be the union of the sets of    scribes how to implement contraction to k vertices in
+edges incident on v1 and v2. We do not merge edges        O(m) time on unweighted graphs, and in O(m log2 n)
+from v1 and v2 which have the same other endpoint;        time on weighted graphs. He also shows how the Con-
+instead, we create multiple instances of those edges.     traction Algorithm can be parallelized to run in RNC
+However, we remove edges which connect v1 and v2          using m processors.
+to eliminate self loops. The Contraction Algorithm is        The most direct application of the Contraction Al-
+described in Figure 2.                                    gorithm is as follows: since a particular minimum
+                                                          cut has an (n 2 ) probability of surviving contrac-
+repeat until two vertices remain                          tion to two vertices, we perform O(n2 logn) indepen-
+                                                          dent runs of the Contraction Algorithm to get a high
+    choose an edge at random                              probability of nding that minimum cut at the end
+    contract its endpoints                                of one of them. Each contraction takes O(m log2 n)
+                                                          time, so the total running time of this approach is
+        Figure 2: The Contraction Algorithm               (mn2 log3 n). This is the algorithm of [Kar93].
+  When the Contraction Algorithm terminates, each
+original vertex has been contracted into one of the       3 Faster Implementation of the
+two remaining \metavertices." This de nes a cut
+of the original graph in an obvious way: each side          Contraction Algorithm
+corresponds to the vertices contained in one of the       A rst step towards our improved algorithm is an
+metavertices.                                             improvement in the running time of the Contraction
+Theorem 2.1 A particular minimum cut in G is              Algorithm from O(m log2 n) to (n2 ). Though this
+produced by the Contraction Algorithm with probabil-      may appear to be a step backwards, it is useful for
+ity (n 2 ).                                               our future application of the Contraction Algorithm
+                                                          to graphs which may have (n2 ) edges.
+Proof: Details may be found in [Kar93]. The key              An algorithm is said to be strongly polynomial if
+idea is that a graph with r vertices and minimum cut      the number of operations it performs can be bounded
+c must have minimum degree c, and thus rc=2 edges.        independent of the size of the input numbers. The
+It follows that a randomly chosen edge is in the min-     algorithm we present here does not have this property,
+imum cut with probability at most 2=r. The proba-         since it generates random numbers of size equal to the
+bility that we never contract a min-cut edge through      sum of the edge weights. However, Karger [Kar93]
+all n 2 contractions is thus at least                     shows how to round and scale a graph's edge weights
+                                     1                  so as to reduce to a problem in which all edge weights
+ (1 n2 )(1 n 2 1 )    (1 23 ) = n2 = (n 2 ):           are polynomial in n. That reduction works equally
+                                                          well in this new algorithm (see Section 5), so for the
+ 2                                                        remainder of this discussion we can assume that all
+   The Contraction Algorithm can be halted when k         edge weights are polynomially bounded.
+vertices remain. We refer to this as contraction to k        We use a particularly simple data structure to im-
+vertices. The following result is an easy corollary of    plement the contraction algorithm: an n  n weighted
+Theorem 2.1:                                              adjacency matrix, which we denote by W. The entry
+                                                          W(u; v) contains the weight of edge (u; v), which can
+Corollary 2.2 A particular minimum cut survives           equivalently be viewed as the number of multigraph
+contraction to k vertices with probability at least k(k   edges connecting u and v. If (u; v) is not an edge, ei-
+1)=n(n 1), which is ((k=n)2).                             ther because it was not in the initial graph or because
+
+
+
+
+                                                                                                         Page 4
+it was contracted, then W(u; v) = 0. We also main-         Procedure to contract edge (u; v)
+tain the total (weighted)  degree S(u) of each vertex
+                 P
+u, thus S(u) = v W(u; v). When parallel edges are         Let S(u) S(u) + S(v) 2W(u; v)
+created by a contraction, we immediately replace the      Let S(v) 0
+two edges by one new edge whose weight is the sum
+of the weights of the two parallel edges.                 Let W(u; v) W(v; u) 0
+   We rst consider the problem of nding an edge to
+contract. Our goal is to choose an edge (u; v) with       For each vertex w except u and v
+probability proportional to W(u; v). To do so, sim-           Let W(u; w) W(u; w) + W(v; w)
+ply choose a rst endpoint u with probability propor-
+tional to S(u), and then choose a second endpoint v           Let W(w; u) W(w; u) + W (w; v)
+with probability proportional to W(u;P
+                                        v). To choose         Let W(v; w) W(w; v) 0
+a rst enpoint, we compute  = v S(v), choose
+a random integer r uniformly at random between 0                     Figure 3: Contracting an Edge
+and ,Puand then compute the smallest index u such
+that v=1  r. We then choose an edge incident to
+u by applying an analogous procedure to the values        time we can choose an edge and contract it. In order
+W(u; v). Thus an edge can be selected in O(n) time.       to contract to k vertices we only need to contract an
+   The following lemma, similar to one used by Klein,     edge n k  n times. This yields the following result:
+Plotkin, Stein and Tardos [KPST91], proves the cor-       Corollary 3.2 The Contraction Algorithm can be
+rectness of this procedure.                               implemented to run in O(n2) time.
+Lemma 3.1 If an edge is chosen as described, then            Observe that if the Contraction Algorithm has run
+Pr[(u; v) is chosen] / W(u; v):                           to completion, leaving just two vertices u and v, then
+Proof: Recall  = Pv S(v).                                we can determine the weight of the implied cut by
+                                                          inspecting W(u; v).
+ Pr[choose(u; v)]                                            For the rest of this paper, we will use the Contrac-
+   = Pr[choose u]  Pr[choose (u; v) j chose u]           tion Algorithm as a subroutine Contract(G; k), which
+                                                          accepts a weighted graph G and a parameter k and,
+          + Pr[choose v]  Pr[choose (u; v) j chose v]    in O(n2) time, returns a contraction of G to k ver-
+   =   W(u;
+       S(u)
+                S(u)
+                    v) + S(v)  W(u; v)
+                                 S(v)
+                                                          tices. With probability at least k(k 1)=(n(n 1)),
+                                                          a particular minimum cut of the original graph will
+       2W(u;   v)                                         be preserved in the contracted graph. In other words
+   =                                                     no vertices on opposite sides of this minimum cut will
+   / W(u; v):                                             have been merged, so there will be a minimum cut in
+                                                          the contracted graph corresponding to the particular
+2                                                         minimum cut of the original graph.
+   We now show how to implement a contraction.
+Given W and S, which represent a graph G, we ex-
+plain how to update W and S to re ect the contrac-        4 Recursive Application of the
+tion of a particular edge (u; v). Call the new graph
+G0 and compute its representation via the algorithm
+                                                            Contraction Algorithm
+of Figure 3. This algorithm replaces row u with the       We now make the more signi cant improvement, and
+sum of row u and row v, and replaces column u with        show how to share work among the di erent trials of
+the sum of column u and column v. It then sets row        the Contraction Algorithm so as to reduce the run-
+v and column v to zero. Intuitively, it moves all edges   ning time of the Contraction Algorithm to O(n ~ 2).
+incident on v to u. W and S now represent G0, since          Consider the contractions performed in one trial of
+any edge that was incident to u or v is now incident      the Contraction Algorithm. The rst contraction has
+to u and any two edges of the form (u; w) and (v; w)      a reasonably low probability of contracting a cut edge,
+for some w have had their weights added. Further-         namely 2=n. On the other hand, the last contraction
+more, the only vertices whose total weighted degrees      has a much higher probability of contracting a cut
+have changed are u and v, and S(u) and S(v) are           edge, namely 2=3. This suggests that the Contrac-
+updated accordingly. Clearly, this procedure can be       tion Algorithm works well initially, but has somewhat
+implemented in O(n) time. Summarizing, in O(n)            poorer performance later on. We might improve our
+
+
+
+
+                                                                                                         Page 5
+chances of success if, after partially contracting the      Observe that since this recurrence is meant to apply
+graph, we switched to a (possibly slower) algorithm      to the contracted graphs as well, it is impossible to
+with a better chance of success on what remains.         determine the number of edges in the graph we are
+   One possibility is to use one of the determinis-      working with. Therefore n2 is the only bound we can
+tic min-cut algorithms, and this indeed yields some      put on the number of edges in the graph, and thus on
+improvement|for example, if we contract to m1=3          the running time of the Contraction Algorithm. This
+vertices and then run the Nagamochi-Ibaraki algo-        is the reason we modi ed the Contraction Algorithm
+rithm, then the running time (given the repetitions      to run in O(n2) time rather than O(m log n) time.
+needed to ensure a high probability of success) im-         The space needed to support the recursion is also
+proves to O(n2 m1=3). However, a better observation      simple to determine: we have to store one graph at
+is that an algorithm which is more likely to succeed     each level of the recursion,
+                                                                                  p where the graph at the
+than the Contraction Algorithm is two trials of the      kth level has nk = n= 2k vertices. Since at each
+Contraction Algorithm.                                   level the graph has no more than n2k edges and can be
+   This suggests the Recursive Contraction Algorithm     stored using O(n2k ) space, the total storage needed is
+                                                         P
+RC described in Figure 4. As can be seen, we perform        k O(nk ) = O(n ). We now analyze the probability
+                                                                  2        2
+
+two independent trials. In each, we rst partially con-   that the algorithm nds the particular minimum cut
+tract the graph, but not so much that the likelihood     we are looking for.
+of the cut surviving p
+                     is too small. By contracting the
+graph until it has n= 2 vertices, we ensure a roughly    Lemma 4.2 The Recursive Contraction Algorithm
+50% probability of not contracting a min-cut edge, so    RC nds a particular minimum cut with probability
+that the expected number of successful contractions       (1= logn).
+during the two trials is 1. We then recursively apply
+the Recursive Contraction Algorithm on the partially     Proof: Suppose that this minimum cut has sur-
+contracted graph.                                        vived up to some particular level in the recursion. It
+                                                         will survive to be output if two criteria are met: it
+Algorithm RC(G; n)                                       must survive one of the graph contractions at this
+                                                         level, and it must be output by the recursive call fol-
+input A graph G of size n.                               lowing the contraction. Thus, each of the two trials
+                                                         has a success probability equal to the product of the
+if n = 2                                                 probability that the cut survives the contraction and
+then examine the implied cut of the original graph       the probability that the recursive call nds the cut.
+                                                         The probability that the cut survives the contraction
+else repeat twice                                        is, by Corollary 2.2, at least
+                                 p                                    p        p
+           G0 Contract(G;
+                    p     n= 2)                                   (n= 2)(n= 2 1) = 1 O(1=n):
+           RC(G0; n= 2).                                                n(n 1)           2
+  Figure 4: The Recursive Contraction Algorithm          This yields a recurrence P(n) for a lower bound on
+                                                         the probability of success on a graph of size n:
+                                                                                        
+Lemma 4.1 The Recursive Contraction Algorithm                  P(n) = 1 1 12 P pn
+                                                                                               2
+                                                                                                   O(1=n):
+RC runs in O(n2 log n) time.                                                              2
+Proof:     One level of recursion consistspof two in-    It can be shown that the O(1=n) is negligible, so we
+dependent trials of contraction of G to n= 2 vertices    ignore it in this sketch of the solution. We solve this
+followed by two recursive calls. This yields the fol-    recurrencep through a change of variables. Letting
+lowing recurrence for the running time:                  pk = P( 2k ), the recurrence above can be rewrit-
+                                                     ten and simpli ed as
+            T(n) = 2 n2 + T pn :                  (1)
+                                   2                                        pk+1 = pk 41 p2k :
+This recurrence is solved by
+                                                         Let zk = 4=pk 1, so pk = 4=(zk + 1). Plugging this
+                T (n) = O(n2 log n);                     into the above recurrence and solving for zk+1 yields
+and the depth of the recursion is 2 log2 n. 2                             zk+1 = zk + 1 + 1=zk :
+
+
+
+
+                                                                                                        Page 6
+It follows by induction that                              Theorem 4.4 The min-cut problem can be solved in
+                                                          RNC using n processors.
+                                                                        2
+
+                k < zk < k + Hk 1 + 3;
+                                                          The space required is now the space needed to store
+where Hk is the kth harmonic number. Thus zk =            the entire tree. The sequential running time recur-
+k + O(log k) and pk = (1=k). It follows that             rence T (n) also provides a recursive upper bound on
+                                                          the space needed to store the tree. Thus the space
+           P(n) = p2 log n = (1= logn):                  required is O(n2 log3 n) (on the assumption that we
+                                                          perform all O(log2 n) trials of the Recursive Contrac-
+                         2
+
+
+In other words, one trial of the Recursive Contraction    tion Algorithm in parallel).
+Algorithm nds any particular minimum cut with
+probability (1= log n). 2
+  Now observe that this analysis holds regardless of      5 Other results
+which minimum cut we x our attention on initially.
+We have therefore proven the following:                   The techniques used in this paper can be combined
+                                                          with ideas from [Kar93] to give the best known algo-
+Theorem 4.3 All minimum cuts in an arbitrarily            rithms for other related problems. The proofs of the
+weighted undirected graph of n vertices can be found      following theorems follow easily from various proofs
+with high probability in O(n2 log3 n) time and O(n2 )     in [Kar93].
+space.                                                    Theorem 5.1 The minimum r-way cut problem
+Proof: Repeating the Recursive Contraction Algo-          (that of minimizing the weight of edges cut when par-
+rithm O(log n) times gives a high success probability.
+            2                                             titioning the graph into r groups) can be solved in
+2                                                         O(n2(r 1) log3 n) time, or in RNC using n2(r 1) pro-
+   It is noteworthy that unlike the best algorithms       cessors.
+for maximum ow this algorithm uses no non-trivial         Theorem 5.2 All cuts with weight within a multi-
+data structures. We believe that the algorithm will       plicative factor of the minimum cut can be found
+be practical and easy to code.                            in O(n2 log3 n) time.
+   We now take a more careful look at the compu-                                                         p
+tation performed by the algorithm. We can express         Proof:
+                                                          p            Change the reduction factor from 2 to
+the running of the algorithm as a binary computa-         2
+                                                             2 in the Recursive Contraction Algorithm. 2
+tion tree, where each vertex represents a graph with         Because of this theorem, we can apply the weight
+some of its edges contracted and
+                               p each edge represents     rounding technique of [Kar93] to make the Recursive
+a contraction by a factor of 2. A leaf in the tree is     Contraction Algorithm strongly polynomial. Essen-
+a contracted graph with 2 metavertices and de nes a       tially, we round the edge weights in such a way that
+cut, potentially a minimum cut. The depth of this         no cut changes in value by more than a small amount;
+tree is 2 log2 n, and it thus has n2 leaves. This shows   it follows that the minimum cut in the original graph
+that the improvement over the algorithm of [Kar93]        must be a nearly minimum cut in the new graph.
+comes not from generating a smaller tree (the trials      Thus an algorithm which nds all approximate min-
+there also de ned a \tree" of depth 1 with n2 leaves),    imum cuts will nd the original minimum cut. It is
+but from being able to amortize the cost of the con-      arranged that the parameter = 1+1=n, so that the
+tractions used to produce a particular leaf.              running time is changed only by a constant factor.
+   This algorithm can be parallelized to yield the rst       Naor and Vazirani [NV91] give a parallel algorithm
+ecient RNC algorithm for the min-cut problem.            that computes the concise cactus representation of all
+Consider the computation tree just described. The         min-cuts in a graph. The dominant step of their al-
+sequential algorithm examines this computation tree       gorithm is a procedure to enumerate all the mini-
+using a depth- rst traversal of the vertices. To solve    mum cuts in a graph. They use an algorithm based
+the problem in parallel, we instead do a breadth- rst     on [MVV87], discussed in Section 1. Replacing that
+traversal. Karger [Kar93] shows how to perform a          step with the Recursive Contraction Algorithm re-
+contraction to k vertices in RNC . We can therefore       duces the processor cost.
+evaluate our computation tree in a breadth- rst fash-        We also observe that our algorithm runs faster
+ion, taking only polylogarithmic time to advance one      on graphs with excluded dense minors. Assume
+level. Since the depth of the tree is logarithmic, and    that we have a graph such that all r-vertex mi-
+since the total size of all subproblems at a particular   nors have O(r2  ) edges for some some positive con-
+level of the tree is O(n2), we deduce:                    stant . Then we can be sure that at all times dur-
+
+
+
+
+                                                                                                         Page 7
+ing the execution of the Recursive Contraction algo-        The min-cut algorithm of Gomory and Hu [GH61]
+rithm the contracted graphs of nk vertices will never    not only found the minimum cut, but found a ow
+have more than n2k  edges. Therefore if we use the                    which succinctly represented the val-
+                                                         equivalent tree
+O(m log n) running time implementation of the Con-       ues of the n2 minimum cuts. No algorithm is known
+traction Algorithm from [Kar93], we can be sure that     that computes a ow equivalent tree or the slightly
+the running time of the Contraction Algorithm will       stronger Gomory-Hu tree in time that is less than
+be O(n2k  log n). We can make this substitution in      the time for n maximum ows. An intruiging open
+the recurrence of Equation 1 and prove the following     question is whether the methods in this paper can be
+result:                                                  extended to produce a Gomory-Hu tree.
+Theorem 5.3 Let G have the property that all n-
+vertex minors have O(n2 ) edges for some some pos-
+itive constant . Then with high probability the Re-
+                                                         Acknowledgements
+cursive Contraction algorithm nds a minimum cut          We thank David Applegate for providing us with
+of G in O(n2 log2 n) time.                               timely information about cutting plane based algo-
+  Planar graphs fall into this class, as all r-vertex    rithms for the traveling salesman problems. We also
+minors have O(r) edges.                                  thank Tom Cormen and Philip Klein for helpful con-
+                                                         versations, and Daphne Koller for her comments.
+6 Conclusion
+We have given ecient and simple algorithms for the
+                                                         References
+min-cut problem, yet several interesting open ques-      [App92] D. Applegate, 1992. personal communica-
+tions remain. One desirable result would be to nd a              tion.
+deterministic version of the algorithm with the same
+time bounds. Another would be to nd a faster ran-        [CHM90] J. Cheriyan, T. Hagerup, and Kurt
+domized algorithm. There are several probably un-                Mehlhorn Can a maximum ow be com-
+necessary logarithmic factors in the running time of             puted in o(nm) time? ICALP, 1990.
+the Recursive Contraction Algorithm. However, it         [DFJ54] G. B. Dantzig, D. R. Fulkerson, and
+seems unlikely that the techniques presented here will           S. M. Johnson. Solution of a large-scale
+yield an o(n2 ) algorithm, as our algorithm nds not              traveling-salesman problem. Operations
+just one minimum cut, but all of them. As there can              Research, 2:393{410, 1954.
+be (n2 ) minimum cuts in a graph, any algorithm
+that nds a minimum cut in o(n2 ) time will either        [EFS56] P. Elias, A. Feinstein, and C. E. Shan-
+have to somehow break the symmetry of the problem                non. Note on maximum ow through a
+and avoid nding all the minimum cuts, or will have               network. IRE Transactions on Informa-
+to produce a concise representation (for instance the            tion Theory IT-2, pages 117{199, 1956.
+cactus representation) of all of them. The ideal, of
+course, would be an algorithm that did this in linear    [EK72] J. Edmonds and R.M. Karp. Theoreti-
+(O(m)) time.                                                     cal improvements in algorithmic eciency
+   Since we are now able to nd a minimum cut faster              for network ow problems. Journal of the
+than a maximum ow, it is natural to ask whether                  ACM, 19:248{264, 1972.
+it is any easier to compute a maximum ow given           [FF56] L. R. Ford and D. R. Fulkerson. Maximal
+a minimum cut. Ramachandran [Ram87] has shown                      ow through a network. Canad. J. Math.,
+that knowing the s-t minimum cut is not helpful in               8:399{404, 1956.
+  nding an s-t maximum ow. However, the question
+of whether a minimum cut may help one nd an s-t          [Gab91] Harold N. Gabow. A matroid approach to
+maximum ow remains open.                                           nding edge connectivity and packing ar-
+   Another obvious question is whether any of these              borescences. Proceedings of the 23rd An-
+results can be extended to directed graphs. It is un-              nual ACM Symposium on Theory of Com-
+likely that the Contraction Algorithm, with its inher-             puting, May 1991.
+ent parallelism, could be applied to the P -complete
+directed minimum cut problem. However, the ques-         [GH61]    R. E. Gomory and T. C. Hu. Multi-
+tion of whether it is easier to nd a minimumcut than               terminal network ows. J. SIAM, 9:551{
+a maximum ow in directed graphs remains open.                      570, 1961.
+
+
+
+
+                                                                                                      Page 8
+[GP85]    Z. Galil and V. Pan. Improved proces-        [KUW86] R. Karp, E. Upfal, and A. Wigderson.
+          sor bounds for algebraic and combinato-               Constructing a perfect matching is in ran-
+          rial problems in RNC. Proceedings of                  dom N C. Combinatorica, 6:35{48, 1986.
+          the 26th Annual Symposium on Founda-
+          tions of Computer Science, pages 490{495,    [LLKS85] E.L. Lawler, J.K. Lenstra, A.H.G. Rinooy
+          1985. To appear in Journal of the ACM.                Kan, and D.B. Shmoys, editors. The Trav-
+                                                                eling Salesman Problem. John Wiley and
+[GSS82] L. Goldschlager, R. Shaw, and J. Staples.               Sons, 1985.
+         The maximum ow problem is log-space           [Mat87] D. W. Matula. Determining edge con-
+         complete for P . Theoretical Computer Sci-             nectivity in o(nm). Proceedings of the
+         ence, 21:105{111, 1982.                                28th Annual Symposium on Foundations
+[GT88] A. V. Goldberg and R. E. Tarjan. A new                   of Computer Science, pages 249{251, Oc-
+         approach to the maximum ow problem.                    tober 1987.
+         Journal of the ACM, 35:921{940, 1988.         [MVV87] K. Mulmuley, U.V. Vazirani, and V.V.
+[HO92] J. Hao and J. B. Orlin. A faster algo-                   Vazirani. Matching is as easy as matrix
+         rithm for nding the minimum cut in a                   inversion. Combinatorica, 7(1):105{113,
+         graph. Proceedings of the 3rd ACM-SIAM                 1987.
+         Symposium on Discrete Algorithms, pages       [NI92] Hiroshi Nagamochi and Toshihde Ibaraki.
+         165{174, January 1992.                                 Computing edge connectivity in multi-
+[FF62] L. R. Ford Jr. and D. R. Fulkerson. Flows                graphs and capacitated graphs.
+         in networks. Princeton University Press,               SIAM Journal on Discrete Mathematics,
+         1962.                                                  5(1):54{66, February 1992.
+                                                       [NV91] D. Naor and V. Vazirani. Representing
+[Kar93] D. Karger. Global min-cuts in RNC, and                  and enumerating edge connectivity cuts in
+         other rami cations of a simple min-cut al-             RNC. Proceedings of the Second Work-
+         gorithm. Proceedings of the 4th ACM-                   shop on Algorithms and Data Structures,
+         SIAM Symposium on Discrete Algorithms,                 pages 273{285, 1991. Published as Lecture
+         January 1993.                                          Notes in Computer Science 519, Springer-
+[KPST91] P. Klein, S. A. Plotkin, C. Stein, and E .            Verlag.
+         Tardos. Faster approximation algorithms       [Pod73] V. D. Podderyugin. An algorithm for nd-
+         for the unit capacity concurrent ow prob-              ing the edge connectivity of graphs. Vopr.
+         lem with applications to routing and nd-               Kibern., 2:136, 1973.
+         ing sparse cuts. Technical Report 961,
+         School of Operations Research and In-         [PQ82] J.C. Picard and M. Querayne. Selected
+         dustrial Engineering, Cornell University,              applications of minimum cuts in networks.
+         1991. A preliminary version of this paper              INFOR., 20:394{422, November 1982.
+         appeared in Proceedings of the 22nd An-       [PR90] M. Padberg and G. Rinaldi. An e-
+          nual ACM Symposium on Theory of Com-                  cient algorithm for the minimum capacity
+          puting, pages 310{321, 1990. To appear in             cut problem. Mathematical Programming,
+        SIAM J. Computing.                                      47:19{39, 1990.
+[KRT92] V. King, S. Rao, and R. Tarjan. A              [PW92] S. Phillips and J. Westbrook. Online load
+        faster deterministic maximum ow algo-                   balancing and network ow. To appear
+        rithm. Proceedings of the 3rd ACM-SIAM                  in Proceedings of the 25th Annual ACM
+        Symposium on Discrete Algorithms, pages                 Symposium on the Theory of Computing,
+        157{164, January 1992.                                  1993.
+[KT86] A. V. Karzanov and E. A. Timofeev. Ef-          [Ram87] V. Ramachandran. Flow value, minimum
+          cient algorithm for nding all minimal                 cuts and maxmium ows, 1987. Unpub-
+        edge cuts of a non-oriented graph. Kiber-               lished manuscript.
+        netika, 22:8{12, 1986. Translation in Cy-
+        bernetics 22, 1986, pages 156{162.
+
+
+
+
+                                                                                                   Page 9
+

@@ -1,0 +1,608 @@
+The Tammes problem for N=14
+Oleg R. Musin∗ and Alexey S. Tarasov
+
+arXiv:1410.2536v2 [math.MG] 1 Jul 2015
+
+Abstract
+The Tammes problem is to find the arrangement of N points on a unit sphere which
+maximizes the minimum distance between any two points. This problem is presently
+solved for several values of N , namely for N = 3, 4, 6, 12 by L. Fejes Tóth (1943); for
+N = 5, 7, 8, 9 by Schütte and van der Waerden (1951); for N = 10, 11 by Danzer (1963)
+and for N = 24 by Robinson (1961). Recently, we solved the Tammes problem for
+N = 13.
+The optimal configuration of 14 points was conjectured more than 60 years ago.
+In the paper, we give a solution of this long-standing open problem in geometry. Our
+computer-assisted proof relies on an enumeration of the irreducible contact graphs.
+
+1
+
+Introduction
+
+1.1
+
+The kissing number and thirteen spheres problem
+
+The kissing number k(n) is the highest number of equal non-overlapping spheres in Rn that
+touch another sphere of the same size. In three dimensions the kissing number problem asks
+how many white billiard balls can kiss (i.e. touch) a black ball.
+The most symmetrical configuration, 12 balls around another, is achieved if the 12 balls
+are placed at positions corresponding to the vertices of a regular icosahedron concentric with
+the central ball. However, these 12 outer balls do not kiss one another and each may be
+moved freely. This space between the balls prompts the question: If you moved all of them
+to one side, would a 13th ball fit?
+This problem was the subject of the famous discussion between Isaac Newton and David
+Gregory in 1694. Most reports say that Newton believed the answer was 12 balls, while
+Gregory thought that 13 might be possible.
+This problem is often called the thirteen spheres problem. The problem was finally solved
+by Schütte and van der Waerden in 1953 [29]. A subsequent two-page sketch of an elegant
+proof was given by Leech [16] in 1956. Leech’s proof was presented in the first edition of the
+well-known book by Aigner and Ziegler [1]; the authors removed this chapter from the second
+edition because a complete proof would have to include too much spherical trigonometry.
+∗
+
+This research is partially supported by the NSF grant DMS-1400876 and the RFBR grant 15-01-99563.
+
+1
+
+The thirteen spheres problem continues to be of interest, and new proofs have been
+published in the last several years by Hsiang [15], Maehara [18, 19] (this proof is based on
+Leech’s proof), Böröczky [5], Anstreicher [2], and Musin [20].
+Note that for n > 3, the kissing number problem is currently solved only for n = 8, 24
+[17, 24], and for n = 4 [21] (see [26] for a beautiful exposition of this problem).
+
+1.2
+
+The Tammes problem
+
+If N unit spheres kiss the unit sphere in Rn , then the set of kissing points is an arrangement
+on the central sphere such that the (Euclidean) distance between any two points is at least 1.
+This observation allows us to state the kissing number problem in another way: How many
+points can be placed on the surface of Sn−1 so that the angular separation between any two
+points be at least 60◦ ?
+It leads to an important generalization. A finite subset X of Sn−1 is called a spherical
+ψ-code if for every pair (x, y) of X with x 6= y its angular distance dist(x, y) is at least ψ.
+Let X be a finite subset of S2 . Denote
+ψ(X) := min {dist(x, y)}, where x 6= y.
+x,y∈X
+
+The set X is then a spherical ψ(X)-code.
+Denote by dN the largest angular separation ψ(X) with |X| = N that can be attained in S2 ,
+i.e.
+dN := max2 {ψ(X)}, where |X| = N.
+X⊂S
+
+In other words, how are N congruent, non-overlapping circles distributed on the sphere when
+the common radius of the circles has to be as large as possible?
+This question is also known as the problem of the “inimical dictators”, namely Where
+should N dictators build their palaces on a planet so as to be as far away from each other as
+possible? The problem was first asked by the Dutch botanist Tammes [30] (see [9, Section 1.6:
+Problem 6]), while examining the distribution of openings on the pollen grains of different
+flowers.
+The Tammes problem is presently solved for several values of N , namely for N = 3, 4, 6, 12
+by L. Fejes Tóth [13]; for N = 5, 7, 8, 9 by Schütte and van der Waerden [28]; for N = 10, 11
+by Danzer [12] (for N = 11 see also Böröczky [4]); and for N = 24 by Robinson [27].
+
+1.3
+
+The Tammes problem for N = 13
+
+The Tammes problem for N = 13 is of particular interest due to its relation to both the
+kissing problem and the Kepler conjecture [6, 14]. Actually, this problem is equivalent to the
+strong thirteen spheres problem, which asks to find the maximum radius of and an arrangement for 13 equal size non-overlapping spheres in R3 touching the unit sphere.
+It is clear that the equality k(3) = 12 implies d13 < 60◦ . Böröczky and Szabó [6] proved
+that d13 < 58.7◦ . Bachoc and Vallentin [8] have shown that d13 < 58.5◦ .
+2
+
+We solved the Tammes’ problem for N = 13 in 2012 [22]. We proved that
+the arrangement P13 of 13 points in S2 is the best possible, the maximal arrangement is
+unique up to isometry, and d13 = ψ(P13 ) ≈ 57.1367◦ .
+In this paper, using very similar method we present a solution to the Tammes’ problem
+for N = 14.
+
+1.4
+
+The Tammes problem for N = 14
+
+We note that there is an arrangement of 14 points on S2 such that the distance between
+any two points of the arrangement is at least 55.67057◦ (see [14, Ch. VI, Sec. 4] and
+http://neilsloane.com/packings/dim3/pack.3.14.txt). This arrangement is shown in Fig. 1.
+4
+3
+13
+2
+9
+14
+1
+6
+11
+12
+7
+10
+
+Γ014
+
+8
+5
+
+Figure 1: P14 and its contact graph Γ14 . ψ(P14 ) ≈ 55.67057◦ .
+The first upper bound d14 < 58.6809◦ was found in [13, 14]. Actually, this value is the
+famous Fejes Tóth bound
+
+
+
+
+πN
+cN
+dN ≤ arccos
+, where cN := cos
+,
+1 − cN
+3N − 6
+for N = 14.
+Böröczky and Szabó [7] improved the Fejes Tóth bound and proved that d14 < 58◦ .
+Bachoc and Vallentin [8] using the SDP method have shown that d14 < 56.58◦ .
+
+2
+
+Main theorem
+
+Theorem 1. The arrangement P14 of 14 points in S2 gives a solution of the Tammes problem,
+moreover the maximal arrangement for N = 14 is unique up to isometry and d14 = ψ(P14 ) ≈
+55.67057◦ .
+
+3
+
+2.1
+
+Basic definitions
+
+Contact graphs. Let X be a finite set in S2 . The contact graph CG(X) is the graph with
+vertices in X and edges (x, y), x, y ∈ X such that dist(x, y) = ψ(X).
+Shift of a single vertex. We say that a vertex x ∈ X can be shifted, if, in any open
+neighbourhood of x there is a point x0 ∈ S2 such that
+dist(x0 , X \ {x}) > dist(x, X \ {x}),
+where for a point p ∈ S2 and a finite set Y ⊂ S2 by dist(p, Y ) we denote the minimum
+distance between p and points in Y .
+Danzer’s flip. Danzer [12, Sec. 1] defined the following flip. Let x, y, z be vertices of CG(X)
+with dist(x, y) = dist(x, z) = ψ(X). We say that x is flipped over yz if x is replaced by its
+mirror image x0 relative to the great circle yz (see Fig. 2). We say that this flip is Danzer’s
+flip if dist(x0 , X \ {x, y, z}) > ψ(X).
+z
+
+x0
+
+x
+
+y
+
+Figure 2: Danzer’s flip
+Irreducible contact graphs. We say that a graph CG(X) is irreducible provided it does
+not allow Danzer’s flip and no vertex in X can be shifted.
+The concept of irreducible contact graphs was invented by Schütte - van der Waerden
+[28, 29], Fejes Tóth [14], and Danzer [12]. Actually, in these papers as well as in our paper [22]
+this concept has been used for solutions of the Tammes problem with N = 7, 8, 9, 10, 11, 13.
+Recently, we enumerated all of the irreducible contact graphs (with and without Danzer’s
+flip) for N ≤ 11 [23].
+P14 and Γ14 . Denote by P14 the arrangement of 14 points in Fig. 1. Let Γ14 := CG(P14 ). It
+is not hard to see that the graph Γ14 is irreducible.
+Maximal graphs G14 . Let X be a subset of S2 with |X| = 14 and ψ(X) = d14 . Denote by
+G14 the graph CG(X). Actually, this definition does not assume that G14 is unique. We use
+this designation for some CG(X) with ψ(X) = d14 .
+(i)
+
+(i)
+
+Graphs Γ14 . Let us define five planar graphs Γ13 (see Fig. 3), where i = 0, 1, 2, 3, 4, and
+(0)
+(i)
+Γ14 := Γ14 . Note that Γ14 , i > 0, is obtained from Γ14 by removing certain edges.
+4
+
+Γ014
+
+Γ114
+
+Γ314
+
+Γ214
+
+Γ414
+(i)
+
+Figure 3: Graphs Γ14 .
+
+2.2
+
+Main lemmas
+(i)
+
+Lemma 1. G14 is isomorphic to Γ14 with i = 0, 1, 2, 3, or 4.
+(0)
+
+Lemma 2. G14 is isomorphic to Γ14 and d14 = ψ(P14 ).
+It is clear that Lemma 2 yields Theorem 1. Now our goal is to prove these lemmas.
+
+3
+
+Proof of Lemma 1
+
+Here we give a sketch of our computer assisted proof. For more details see
+http://dcs.isa.ru/taras/tammes14/∼.
+
+3.1
+
+Combinatorial and geometric properties of G14
+
+The combinatorial properties of GN have previously been considered [ [12], [14, Chap. VI],
+[6, 7] and [22, 23] ]. In particular, for N = 14 we have:
+Proposition 3.1.
+1. G14 is a planar graph with 14 vertices;
+2. Any vertex of G14 is of degree 0, 3, 4, or 5;
+3. Any face of G14 is a polygon with 3, 4, 5 or 6 vertices;
+5
+
+4. If G14 contains an isolated vertex v, then v lies in a hexagonal face. Moreover, a
+hexagonal face of G14 cannot contain two or more isolated vertices.
+In our papers [22, 23] the main relations between these parameters were considered ([22,
+Propositions 3.6–3.11], [23, Proposition 4.11]). Let us list those results here.
+Proposition 3.2. Let G = CG(X) be an irreducible contact graph in S2 with faces Fk . Let
+d = ψ(X). Denote by uki , i = 1, . . . , mk the set of its angles. Here mk denotes the number
+of vertices of Fk .
+1. uki < π for all i and k.
+2. uki ⩾ α(d) for all i and k, where
+
+α(d) := arccos
+
+cos d
+1 + cos d
+
+
+
+is the angle of the equilateral spherical triangle with side length d.
+P
+3.
+τ ∈I(v) uτ = 2π for all vertices v of G. Here I(v) denotes the set of angles with the
+vertex in v.
+4. If mk = 3 then Fk is an equilateral triangle with angles
+uk1 = uk2 = uk3 = α(d).
+5. In the case mk = 4, Fk is a spherical rhombus and uk1 = uk3 , uk2 = uk4 . Moreover, we
+have the equality:
+uk1
+uk2
+cot
+cot
+= cos d.
+2
+2
+6. In the case mk > 3, Fk is a convex equilateral spherical polygon with angles uk1 , . . . , umk .
+Denote by A1 , A2 , . . . , Amk vertices of Fk . The polygon Fk is uniquely defined (up to
+isometry) by its s := mk − 3 angles and d. Then functions gi and ζij , where uki =
+gi (uk1 , . . . , uks , d) and dist(Ai , Aj ) = ζi,j (uk1 , . . . , uks , d) are also uniquely defined. It
+follows that
+(a) uki = gi (uk1 , . . . , uks , d) for i = mk − 2, mk − 1, mk ; and
+(b) ζi,j (uk1 , . . . , uks , d) ⩾ d for all i 6= j.
+7. Now consider the case when there is an isolated vertex inside Fk . (It is only if mk > 5.)
+Define
+λ(uk1 , . . . , uks , d) := max min{dist(p, Ai )}.
+p∈Fk
+
+Then λ(uk1 , . . . , uks , d) > d.
+
+6
+
+i
+
+3.2
+
+Sketch of a proof
+
+Our proof of Lemma 1 consists of two parts:
+(I) Create the list L14 of all graphs with 14 vertices that satisfy Proposition 3.1;
+(II) Using linear approximations and linear programming remove from the list L14 all graphs
+that do not satisfy the known geometric properties of G14 (Proposition 3.2).
+(I). To create L14 we use the program plantri (see [25]).1 This program is the isomorphfree generator of planar graphs, including triangulations, quadrangulations, and convex polytopes. (Brinkmann and McKay’s paper [10] describes plantri’s principles of operation, the
+basis for its efficiency, and recursive algorithms behind many of its capabilities.)
+The program generates about 1.5 billion graphs in L14 , i.e. graphs that satisfy Proposition 3.1. Namely, L14 contains 409 771 114 graphs with triangular and quadrilateral faces;
+797 728 634 with at least one pentagonal face and with triangular and quadrilaterals;
+242 401 773 with at least one hexagonal face which do not contain isolated vertices.
+The list of graphs with one and more isolated vertices relies on graphs in LN with N < 14
+that contain at least 14 − N hexagons. For instance, the list of graphs in L14 with exactly
+one isolated vertex consists of 2 083 967 graphs. However, this list may contain isomorphic
+graphs.
+(II). Let X ⊂ S2 be a finite point set such that its contact graph CG(X) is irreducible.
+Properties (i)-(iv) are combinatorial properties of CG(X). There are several geometric properties.
+Note that all faces of CG(X) are convex. Since all edges of CG(X) have the same length,
+ψ(X), all its faces are spherical equilateral convex polygon with number of vertices at most
+b2π/ψ(X)c.
+Consider now a planar graph G with given faces {Fk } that satisfy Corollary 2.1. We are
+going consider embeddings of this graph into S2 as an irreducible contact graph CG(X) for
+some X ⊂ S2 .
+Any embedding of G in S2 is uniquely defined by the following list of parameters (variables):
+(i) The edge length d;
+(ii) The set of all angles uki , i = 1, . . . , mk of faces Fk . Here by mk we denote the number of
+vertices of Fk .
+Let us consider a graph G from L14 . We start from the level of approximation ` = 1. Now
+using Proposition 3.2 we write the linear equalities and inequalities below.
+(a) From Proposition 3.2(3) we have 14 linear equalities
+X
+uτ = 2π.
+τ ∈I(v)
+◦
+
+(b) Since 55.67057 = 0.9716 ≤ d14 < 0.9875 = 56.58◦ , from Proposition 3.2(2) we have
+1.2019 ≤ α14 < 1.2077,
+1
+
+The authors of this program are Gunnar Brinkmann and Brendan McKay.
+
+7
+
+where α14 := α(d14 ).
+(c) For a quadrilateral F with angles u1 , u2 , u3 , u4 we have the equalities
+u3 = u1 , u4 = u2 ,
+and inequalities
+α14 ≤ ui ≤ 2α13 , i = 1, 2.
+(d) For a quadrilateral F we also have the linear inequalities
+3.6057 ≤ u1 + u2 ≤ 3.7294.
+These inequalities follow from Proposition 3.2(5). We have
+u2 = ρ(u1 , d) := 2 cot−1 (tan (u1 /2) cos d).
+If we consider the maximum and minimum of u1 + u2 = u1 + ρ(u1 , d) with u1 ∈ [α(d), 2α(d)]
+and d ≥ 0.9716, then we obtain these inequalities.
+So from these linear equalities and inequalities we can obtain maximum and minimum
+values for each variable. It gives us a domain D1 which contains all solutions of this system
+if they there exist. If D1 is empty, then we can remove G from the list L14 .
+The first step, ` = 1, “kills” almost all graphs. After this first step all that remained were
+173207 graphs without isolated vertices, 2822 graphs with one isolated vertex, and no graphs
+with two and more isolated vertices.
+Next we consider ` = 2. In this step D1 is divided into two domains and for both we can
+add the same linear constraints as we did when ` = 1. Moreover, for this step we add new
+linear constraints for polygons with five and higher vertices.
+In this level we obtain the parameterdomain D2 . If this domain is empty, then G cannot
+be embedded to S2 and it can be removed from L14 .
+Actually, for ` = 3 we can repeat the previous step, divide D2 into two domains and
+obtain additional constraints as we did when ` = 2 for both parts independently.
+We can repeat this procedure again and again. In fact, by increasing ` we increase the
+number of sub-cases. However, in practically every step some sub-cases vanish.
+We repeat this process for ` = 1, 2, ..., m and obtain a chain of embedded domains:
+Dm ⊂ . . . ⊂ D2 ⊂ D1 .
+If this chain is ended by the empty set, then G can be removed from L14 .
+In the case that a graph G after m steps still “survives”, i. e. Dm 6= ∅, then it is checked
+by numerical methods, namely by the so called nonlinear “solvers”. (We used, in particular,
+ipopt.) If a solution there exists, then G is declared as a graph that can be embedded, and
+if not, then G is then removed from L14 .
+In [23] are given some numerical details for this algorithm.
+8
+
+4
+
+Proof of Lemma 2
+
+In this section we present a proof of Lemma 2. Actually, two approaches are considered here
+- geometric and analytic. Both methods are rely on the geometric properties of G14 . The
+first method we already applied to prove Lemma 2 in our solution of the Tammes problem
+for N = 13 [22]. In this method by using the symmetries of a graph G = GN we find certain
+relations between the variables and using them we prove that δN := ψ(PN ) = dN .
+The geometric method is elementary, but it is not trivial and is relatively tricky. For
+(i)
+G = Γ14 , i = 1, 2, we found a proof that is based on the geometric approach. However, for
+(i)
+the cases G = Γ14 , i = 3, 4, we could not find a simple geometric proof. For those cases we
+apply the analytic approach.
+The idea of the analytic approach is very similar to the Connelly’s “stress matrix” method
+[11]. Perhaps, this method is not as elementary and explicit as the geometric approach,
+however it works for all cases and can be applied with a computer assistant.
+Proof. In Section 3 we substitute all nonlinear equations by certain linear inequalities. Note
+that a statement d14 ≈ δ14 is a by-product of this approximation. Our goal is to prove that
+d14 = ψ(P14 ) = d(Γ14 ).
+(i)
+Lemma 1 says that G14 = Γ14 , where i = 0, 1, 2, 3, or 4. We are going to prove that if
+(i)
+CG(X) = Γ14 with i > 0, then ψ(X) < δ14 .
+
+Γ214
+(2)
+
+Figure 4: Γ14
+(i)
+
+4.1. Geometric approach: the case Γ14 , i = 1, 2. Let G = GN . Proposition 3.2(3,4,5)
+allows us to prove some equalities for variables ui . Namely, assume that two vertices, A and
+B, of G are adjacent to two triangles and two quadrilaterals. Then deg(A) = deg(B) = 4.
+We denote the correspondent angles by ui , uj , u0 , u0 and uk , u` , u0 , u0 respectively. (Here, as
+above, u0 denote the angle of the equilateral triangle.) We have
+ui + uj + 2u0 = 2π, uk + u` + 2u0 = 2π, i. e. ui + uj = uk + u` .
+If additionally, A and B are the opposite vertices of a quadrilateral F in G, then the equality
+ui = uk (see Proposition 3.2.5) implies the equality uj = u` .
+9
+
+(2)
+
+It is not hard to see that for the case G = Γ14 we have the equalities that we show in
+Fig. 4. For this graph, we have the following list of equations:
+u0 = α(d) (i)
+u1 + u2 + 2u0 = 2π (ii)
+u3 = ρ(u1 , d) (iii)
+u4 = ρ(u2 , d) (iv)
+u5 + u3 + 2u0 = 2π (v)
+u6 + u4 + 2u0 = 2π (vi)
+u7 = ρ(u5 , d) (vii)
+u8 = ρ(u6 , d) (viii)
+u1 + u13 + 2u7 = 2π (ix)
+u2 + u12 + 2u8 = 2π (x)
+u15 = ρ(u13 , d) (xi)
+u14 = ρ(u12 , d) (xii)
+u5 + u15 + u11 = 2π (xiii)
+u6 + u14 + u11 = 2π (xiv) u0 + u10 + u7 + u8 = 2π (xv) u12 + u13 + 2u10 = 2π (xvi)
+Let us consider two variables: d and x, where x := (u2 − u1 )/2. The equations (i–xvi)
+show that all angles ui are uniquely defined by x and d.
+From (i–viii) we have:
+u7 = f7 (x, d) := ρ(2π − 2α(d) − ρ(π − α(d) − x, d), d),
+u8 = f8 (x, d) := ρ(2π − 2α(d) − ρ(π − α(d) + x, d), d).
+Equations (ii), (ix), (x) and (xvi) yield
+0 = −(u1 +u2 +2u0 −2π)+(u1 +u13 +2u7 −2π)+(u2 +u12 +2u8 −2π)−(u13 +u12 +2u10 −2π)
+= 2u7 + 2u8 − 2u0 − 2u10
+Therefore, u7 + u8 = u0 + u10 and (xv) implies that u7 + u8 = π. We obtain the equation:
+f7 (x, d) + f8 (x, d) = π.
+
+(4.1)
+
+It is not hard to prove that if x ∈ [−a, a], where a > 0 is sufficiently small, then d is
+uniquelly defined, i.e. there is a continuous function θ(x) on [−a, a] such that d = θ(x). Since
+f7 (−x, d) = f8 (x, d), if (x, d) is a solution of (4.1), then (−x, d) is also a solution. It implies
+that the function θ(x) is even, i. e. θ(−x) = θ(x). We present this function in Fig. 4.
+Now we show that if u0 ≥ δ14 , then u13 = u12 = u0 .
+From (ii) we have u0 + u1 + x = π. Then u1 = π − x − α(d). Therefore, (ix) yields
+u13 = f13 (x) := 2π − u1 − 2u7 = π + x + α(θ(x)) − 2f7 (x, θ(x)).
+Note that f13 (0) = δ14 . From Fig. 6 we can see that f13 (x) < f13 (0) for x > 0. Therefore,
+0
+u13 < δ14 ≤ u0 . It can be rigorously proved. Indeed, f13
+(0) ≈ −2.4587 which means that the
+function f13 (x) is monotonically decreasing. Since all ui ≥ u0 , we obtain x ≤ 0.
+Using the same reasoning, we can prove that the function f12 (x) is monotonically increasing. Therefore, if x < 0, then u12 < u0 . Thus, u13 = u12 = u0 = δ14 .
+(2)
+(1)
+(1)
+Note that the graph Γ14 is a subgraph of Γ14 . Then Γ14 also can not be a maximal graph
+of G14 .
+(i)
+
+4.2. Analytic approach: the case Γ14 , i = 3, 4.
+10
+
+Figure 5: The graph of the function d = θ(x).
+Suppose that X = {x1 , . . . , xN } is a configuration of N points in the sphere S2 such
+that CG(X) is the maximal graph. Then points in X cannot to get closer together. So any
+slight motion of points in X cannot increase the minimal distance ψ(X). Therefore, X is an
+infinitesimally rigid configuration [11].
+We say that an N × N symmetric matrix (ωij ) is the equilibrium stress matrix if to each
+pair of distinct vertices {i, j} of GN := CG(X) we have ωij ≥ 0, ωij = 0 when {i, j} is not
+an edge of GN , and for each i, the equilibrium equation
+X
+ωij eij = 0
+(4.2)
+Fi :=
+j, j6=i
+
+holds. Here eij is the unit tangent vector at the point xi to the great circle that passes
+through the points xi and xj .
+Actually, these conditions for the equilibrium stress matrix can be derived from the
+Karush-Kuhn-Tucker conditions [8, p. 244], where stresses ωij correspond to Lagrange multipliers and the equilibrium equation corresponds to the stationary condition. Note that, the
+inequality ωij ≥ 0 holds because dist(xi , xj ) = ψ(X) cannot be increased.
+Now using conditions (4.2) we set up a system of linear inequalities. Since the linear
+(i)
+programming shows that this system has no solution, we obtain that Γ14 , i = 3, 4, cannot
+be maximal graphs.
+11
+
+Figure 6: The graph of the function u13 = f13 (x).
+Denote by J(i) the set of all indexes j : ωij 6= 0, i. e. ωij > 0. We have
+X
+ωij eij = 0.
+
+(4.3)
+
+j∈J(i)
+(i)
+
+In fact, after computations we have approximation intervals for all parameters of Γ14 .
+Therefore, we can compute intervals also for all cij and sij , where
+eij = (cij , sij ) and c2ij + s2ij = 1.
+Let cij ∈ [pij , qij ] and sij ∈ [uij , vij ]. Here qij − pij and vij − uij are sufficiently small numbers.
+Thus, (4.3) implies
+X
+X
+X
+X
+ωij pij ≤ 0,
+ωij uij ≤ 0,
+ωij qij ≥ 0, and
+ωij vij ≥ 0.
+(4.4)
+j∈J(i)
+
+j∈J(i)
+
+j∈J(i)
+
+j∈J(i)
+
+Now let us add to (4.4) the normalization condition:
+X
+ωij = 1.
+i,j
+(3)
+
+(4)
+
+As we mentioned above this system has no solution. Thus, Γ14 and Γ14 cannot be maximal
+graphs.
+
+Acknowledgment. We wish to thank James Maissen for his helpful comments and
+corrections on this written work.
+12
+
+References
+[1] M. Aigner and G.M. Ziegler, Proofs from THE BOOK, Springer, 1998 (first ed.) and
+2002 (second ed.)
+[2] K. Anstreicher, The thirteen spheres: A new proof, Discrete Comput. Geom. 31(2004),
+613-625.
+[3] C. Bachoc and F. Vallentin, New upper bounds for kissing numbers from semidefinite
+programming, J. Amer. Math. Soc. 21 (2008), 909-924.
+[4] K. Böröczky, The problem of Tammes for n = 11, Studia. Sci. Math. Hungar. 18 (1983)
+165-171.
+[5] K. Böröczky, The Newton-Gregory problem revisited, In: Discrete Geometry, A. Bezdek
+(ed.), Dekker, 2003, 103-110.
+[6] K. Böröczky and L. Szabó, Arrangements of 13 points on a sphere, In: Discrete Geometry, A. Bezdek (ed.), Dekker, 2003, 111-184.
+[7] K. Böröczky and L. Szabó, Arrangements of 14, 15, 16 and 17 points on a sphere, Studi.
+Sci. Math. Hung. 40 (2003), 407-421.
+[8] S. Boyd and L. Vandenberghe, Convex Optimization. Cambridge: Cambridge University
+Press, 2004.
+[9] P. Brass, W.O.J. Moser, J. Pach, Research problems in discrete geometry, SpringerVerlag, 2005.
+[10] G. Brinkmann and B. D. McKay, Fast generation of planar graphs (expanded edition),
+http://cs.anu.edu.au/∼bdm/papers/plantri-full.pdf
+[11] R. Connelly, Generic global rigidity, Discrete Comput. Geom. 33 (2005), no.4, 549-563.
+[12] L. Danzer, Finite point-sets on S2 with minimum distance as large as possible, Discr.
+Math., 60 (1986), 3-66.
+[13] L. Fejes Tóth, Über die Abschätzung des kürzesten Abstandes zweier Punkte eines
+auf einer Kugelfläche liegenden Punktsystems, Jber. Deutch. Math. Verein. 53 (1943),
+66-68.
+[14] L. Fejes Tóth, Lagerungen in der Ebene, auf der Kugel und in Raum, Springer-Verlag,
+1953; Russian translation, Moscow, 1958
+[15] W.-Y. Hsiang, Least action principle of crystal formation of dense packing type and
+Kepler’s conjecture, World Scientific, 2001.
+13
+
+[16] J. Leech, The problem of the thirteen spheres, Math. Gazette 41 (1956), 22-23.
+[17] V.I. Levenshtein, On bounds for packing in n-dimensional Euclidean space, Sov. Math.
+Dokl. 20(2), 1979, 417-421.
+[18] H. Maehara, Isoperimetric theorem for spherical polygons and the problem of 13 spheres,
+Ryukyu Math. J., 14 (2001), 41-57.
+[19] H. Maehara, The problem of thirteen spheres - a proof for undergraduates, European
+Journal of Combinatorics, 28 (2007), 1770-1778.
+[20] O. R. Musin, The kissing problem in three dimensions, Discrete Comput. Geom., 35
+(2006), 375-384.
+[21] O. R. Musin, The kissing number in four dimensions, Ann. of Math., 168 (2008), 1-32.
+[22] O. R. Musin and A. S. Tarasov, The strong thirteen spheres problem, Discrete Comput.
+Geom., 48 (2012), 128–141.
+[23] O. R. Musin and A. S. Tarasov, Enumeration of irreducible contact graphs on the sphere,
+Fundam. Prikl. Mat., 18:2 (2013), 125-145 [J. Math. Sci. 203 (2014), 837–850].
+[24] A.M. Odlyzko and N.J.A. Sloane, New bounds on the number of unit spheres that can
+touch a unit sphere in n dimensions, J. of Combinatorial Theory A, 26 (1979), 210-214.
+[25] plantri and fullgen, http://cs.anu.edu.au/∼bdm/plantri/
+[26] F. Pfender and G.M. Ziegler, Kissing numbers, sphere packings, and some unexpected
+proofs, Notices Amer. Math. Soc., 51(2004), 873-883.
+[27] R.M. Robinson, Arrangement of 24 circles on a sphere, Math. Ann. 144 (1961), 17-48.
+[28] K. Schütte and B.L. v. d. Waerden, Auf welcher Kugel haben 5,6,7,8 oder 9 Punkte mit
+Mindestabstand 1 Platz? Math. Ann. 123 (1951), 96-124.
+[29] K. Schütte and B.L. van der Waerden, Das Problem der dreizehn Kugeln, Math. Ann.
+125 (1953), 325-334.
+[30] R.M.L. Tammes, On the Origin Number and Arrangement of the Places of Exits on the
+Surface of Pollengrains, Rec. Trv. Bot. Neerl. 27 (1930), 1-84.
+
+O. R. Musin, University of Texas at Brownsville.
+E-mail: oleg.musin@utb.edu
+A. S. Tarasov, IITP RAS
+E-mail: tarasov.alexey@gmail.com
+14
+
+

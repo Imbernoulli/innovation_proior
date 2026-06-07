@@ -1,0 +1,220 @@
+\subsection{Max Flow}
+This proposition and the max flow event are crucially used in the analysis of the bottom-bottom case in the payment theorem (\cref{thm:payment-main}). See \cref{ex:bottombottom} and the preceding discussion for more high-level intuition. The main consequences of this section are \cref{lem:bottompaymentprob} and \cref{lem:bottompayment-polyprob}. 
+\begin{proposition}\label{lem:maxflow}
+Let $\mu:2^{E} \to\R_{\geq 0}$ be a homogeneous SR distribution. For any $330\eps <\zeta < 0.002$ and disjoint sets $A,B\subseteq E$ such that  $\E{A_T},\E{B_T} \in [1-\eps,1+\eps]$ (where $T\sim\mu$) there is an event $\cE_{A,B}(T)$ such that $\P{\cE_{A,B}(T)}\geq 0.0246\zeta^2(1-\zeta/2.1-\eps)$  
+and %$\P{\cE}\geq 0.1(\zeta/3)^2(1-(\zeta/3)-\eps)/4$ 
+it satisfies the following three properties.
+\begin{enumerate}[i)]
+	\item $\P{A_T=B_T=1 | \cE_{A,B}(T)}=1$,
+	\item $\sum_{e\in A} |\P{e} - \P{e| \cE_{A,B}(T)}| \leq \zeta$, and
+	\item $\sum_{e\in B} |\P{e} - \P{e | \cE_{A,B}(T)}|\leq \zeta$.
+\end{enumerate}	
+% from the previous lemma.
+\end{proposition}
+In other words, under event $\cE _{A,B}$ which has a constant probability, $A_T=B_T=1$ and the marginals of all edges in $A,B$ are preserved up to total variation distance $\zeta$. 
+We also remark that above statement holds for a much larger value of $\zeta$ at the expense of a smaller lower bound on $\P{\cE_{A,B}(T)}$.
+
+Before, proving the above statement we prove the following lemma.
+\begin{lemma}\label{lem:A'B'ABalpha}
+Let $\mu:2^E \to\R_{\geq 0}$ be a homogeneous SR distribution. Let $A,B\subseteq E$ be two disjoint sets such that $ \E{A_T},\E{B_T} \in [1-\eps,1+\eps]$ (where $T\sim\mu$),  $A'\subset A$ and $B'\subseteq B$  and $\E{A'_T\cup B'_T}\geq 1+\alpha$ for some $\alpha>100\eps$. If $\alpha < 0.001$, we have
+$$ \P{{A'_T}={B'_T}=A_T=B_T=1}\geq 0.11 \alpha^3.$$ 
+\end{lemma}
+\begin{proof}
+	First, condition on $(A\smallsetminus A')_T=(B\smallsetminus B')_T=0$. This happens with probability at least $\alpha-2\eps \ge 0.98 \alpha$ because $\E{A_T}+\E{B_T}\leq 2+2\eps$ and $\E{A'_T}+\E{B'_T}\geq 1+\alpha$. Call this measure $\nu$. %From now on we argue in this conditional measure. It follows that in this measure we have 
+	It follows by negative association that  
+	\begin{equation}\label{eq:ABpTflow} \EE{\nu}{A'_T},\EE{\nu}{B'_T}\in [\alpha-\eps, 2+3\eps - \alpha].	
+ \end{equation}
+%	Let $\gamma \le \P{A'_T \le 1}, \P{B'_T \le 1}$. By 4.27, we have
+%	$$\P{A'_T=B'_T=1} \ge \frac{1}{6}\P{A'_T+B'_T=2}\gamma(\alpha/2)$$
+%	Now there are two cases: 
+	\begin{itemize}
+	\item {\bf Case 1: $\EE{\nu}{A'_T+B'_T} > 1.5$.} 
+Since $\EE{\nu}{A'_T+B'_T}\leq 2+2\eps$, by \cref{thm:rayleigh_expectconstprob}, 
+$\PP{\nu}{A'_T+B'_T=2} \geq  0.25$.
+Furthermore,
+\begin{align*}
+&\PP{\nu}{A'_T\geq 1},\PP{\nu}{B'_T\geq 1} \geq 1-e^{-(\alpha-\eps)}\geq 0.98\alpha \tag{\cref{lem:SR>=}, $\alpha<0.001$}\\
+& \PP{\nu}{A'_T\leq 1},\PP{\nu}{B'_T\leq 1} \geq \alpha/2-1.5\eps	\tag{Markov's Inequality}
+\end{align*}
+%Also, by  $\E{A'_T},\E{B'_T}$ we have $\gamma \ge (1-(2 - \alpha/2)/2) \ge \alpha/4$ simply by expectation. Therefore we obtain a probability of $\frac{\alpha^2}{192}$. 
+Therefore, by \cref{lem:SRA=nA} and using $\alpha\leq 0.001$, $\P{A'_T=1 | A'_T+B'_T=2} \geq 0.45\alpha^2$.
+It follows that 
+$$\P{A_T=B_T=A'_T=B'_T=1} \geq (0.98\alpha)\PP{\nu}{A'_T=B'_T=1}\geq (0.98\alpha)0.25(0.45\alpha^2) \ge 0.11\alpha^3.$$
+
+	\item {\bf Case 2: $\E{A'_T+B'_T}\leq 1.5$.}
+Since $\EE{\nu}{A'_T+B'_T}\geq 1+\alpha$, by \cref{thm:rayleigh_expectconstprob},  $\P{A'_T+B'_T=2} \ge \alpha e^{-\alpha}\geq 0.99\alpha$. But now $\E{A'_T},\E{B'_T}\leq 1.5$ and therefore by Markov's Inequality, 
+$$\PP{\nu}{A'_T\leq 1},\PP{\nu}{B'_T\leq 1}\geq 0.25.$$ 
+On the other hand, by \cref{lem:SR>=} (similar to case 1) $\PP{\nu}{A'_T\geq 1},\PP{\nu}{B'_T\geq 1} \geq 1-e^{-\alpha+\eps}\geq 0.98\alpha$.
+It follows by \cref{lem:SRA=nA} that 
+$\P{A'_T=1 | A'_T+B'_T=2} \geq 0.2\alpha$.  Therefore,
+$$ \P{A_T=B_T=A'_T=B'_T=1} \geq (0.98\alpha)\PP{\nu}{A'_T=B'_T=1}\geq (0.98\alpha)(0.2\alpha)(0.99\alpha)\geq 0.11\alpha^3$$
+as desired.
+	\end{itemize}
+\end{proof}
+
+It is worth noting that $\alpha^3$ dependency is necessary in the above example. For an explicit Strongly Rayleigh distribution consider the following product distribution:
+	$$ (\alpha x_1 + (1-\alpha)y_2) (\alpha y_1 + (1-\alpha) z_2)(\alpha z_1 + (1-\alpha)x_2),$$
+	and let $A=\{x_1,x_2\}$, $B'=B=\{y_1,y_2\}$, and $A'=\{x_1\}$.
+	Observe that 
+	$$\P{A_T=B_T=A'_T=B'_T=1} = \P{x_1=1,y_1=1,z_1=1}=\alpha^3.$$
+%	Note that $\E{X}=\E{Y}=\E{Z}=1$. Say $S=\{1\}$ and $\alpha=\E{X_S}$. So we are interested in $\P{X_1=1 \wedge X_2=0 \wedge Y_1=1}$ The probability of this  event is $\alpha^3$.
+
+
+
+\begin{proof}[Proof of \cref{lem:maxflow}]
+	To prove the lemma, we construct an instance of the max-flow, min-cut problem. Consider the following graph with vertex set $\{s,A,B,t\}$. For any $e\in A, f\in B$ connect $e$ to $f$ with a directed edge of capacity $y_{e,f}=\P{e,f\in T| A_T=B_T=1}$. 
+	For any $e \in E$, let $x_e := \P{e \in T}$. Connect $s$ to $e\in A$ with an arc of capacity $\beta x_e$ and similarly connect $f\in B$ to $t$ with arc of capacity $\beta x_f$, where $\beta$ is a parameter that we choose later. We claim that the min-cut of this graph is at least $\beta(1-\eps-\zeta/2.1)$. Assuming this, we can prove the lemma as follows: let $\bf{z}$ be the maximum flow, where $z_{e,f}$ is the flow on the edge from $e$ to $f$. We define the event $\cE_{A,B}(T) = \cE(T)$ to be the union of events $z_{e,f}$. More precisely, conditioned on $A_T=B_T=1$ the events $e,f\in T | A_T=B_T=1$ are disjoint for different pairs $e\in A, f\in B$, so we know that we  have a specific $e,f$ in the tree $T$ with probability $y_{e,f}$. And, of course, $\sum_{e\in A,f\in B} y_{e,f}=1$. So, for $e\in A, f\in B$ we include a $z_{e,f}$ measure of trees, $T$, such that $A_T=B_T=1, e,f\in T$.
+	%for each set of trees such that $e,f\in T, A_T=B_T=1$ we include a random sample of measure $z_{e,f}$ in $\cE$.
+		First, observe that  
+		\begin{equation}
+		\label{cEdefn}	
+		\P{\cE}=\sum_{e\in A,f\in B} z_{e,f} \P{A_T=B_T=1}\geq \beta(1-\zeta/2.1-\eps)\P{A_T=B_T=1}.
+		\end{equation}
+		Part (i) of the proposition follows from the definition of $\cE$. Now, we check part (ii): Say  $z=\sum_{e\in A,f\in B} z_{e,f}$, and the flow into $e$ is $z_e$. Then,
+		$$ \sum_{e\in A} |x_e-\P{e\in T | \cE}|=\sum_{e\in A} \left|x_e - \sum_f \frac{z_{e,f}}{z}\right| = \sum_{e\in A} |x_e -\frac{z_e}{z}|  $$
+		Note that both $x$ and $z_e/z$ define a probability distribution on edges in $A$; so the RHS is just the total variation distance between these two distributions. 
+		We can write
+		\begin{eqnarray*}\sum_{e\in A} |x_e-\P{e\in T | \cE}|&=&2\sum_{e\in A: z_e/z>x_e} \left(\frac{z_e}{z} -x_e \right)\\
+		&\leq& 2\sum_{e\in A: z_e/z > x_e} \left(\frac{\beta x_e}{\beta(1-\zeta/2.1-\eps)} - x_e\right) \\
+		&\leq& 2 \cdot \sum_e x_e \frac{\zeta/2.1+\eps}{1-\zeta/2.1-\eps}\leq 2\frac{(1+\eps)(\zeta/2.1+ \eps)}{1-\zeta/2.1- \eps} \le  \zeta.	
+		\end{eqnarray*}
+		The first inequality uses that the max-flow is at least $\beta(1-\zeta/2.1-\epsilon)$ and that the incoming flow of $e$ is at most $\beta x_e$, and the last inequality follows by $\zeta<0.003$ and $\eps<\zeta/330$.
+		(iii) follows by the same argument.
+	
+	
+	It remains to lower-bound the max-flow or equivalently the min-cut.
+	Consider an $s,t$-cut $S,\overline{S}$, i.e., assume $s\in S$ and $t\notin S$. Define $S_A=A\cap S$, $S_B=B\cap S$, and similarly $\oS_A = A \cap \bar{S}$, $\oS_B = B \cap \overline{S}$. We write
+	\begin{eqnarray*}
+		\text{cap}(S,\oS) &=& \beta x(\oS_A) + \beta x(S_B) + \sum_{e\in S_A, f\in \oS_B} y_{e,f}\\
+		&= & \beta x(\oS_A\cup S_B) + \P{(S_A)_T=(\oS_B)_T=1 | A_T=B_T=1}
+		%&\geq & \beta x(\oS_A\cup S_B) + \E{S_A | A=B=1} - \E{S_B | A=B=1}\\
+		%&\geq & \beta x(\oS_A) + \beta x(S_B) + \zeta/3 x(S_A) - e^2 x(S_B)\\
+		%&\geq & 
+	\end{eqnarray*}
+	If $x(S_B)\geq x(S_A)-\zeta/2.1$, then 
+	$$\text{cap}(S,\oS) \geq \beta x(\oS_A\cup S_B)\geq \beta(x(\oS_A\cup S_A)-\zeta/2.1) \geq \beta (1-\eps-\zeta/2.1),$$
+    and we are done.
+	Otherwise, say $x(S_B) +\gamma= x(S_A)$, for some $\gamma>\zeta/2.1$. So, 
+	
+    $$x(\oS_B) + x(S_A) = x(\oS_B) + x(S_B)+\gamma \geq 1-\eps+\gamma$$
+	So, by \cref{lem:A'B'ABalpha} with ($\alpha = \gamma-\eps > \zeta/2.1 - \eps > 100\eps$) %(for $\zeta/3=\gamma-\eps$), 
+	$$\P{(S_A)_T=(\oS_B)_T=1 | A_T=B_T=1} \geq \frac{\P{(S_A)_T=(\oS_B)_T=A_T=B_T=1}}{ \P{A_T=B_T=1}}\geq \frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}}.$$
+	It follows that 
+	\begin{eqnarray*}\text{cap}(S,\oS) &\geq& \beta x(\oS_A\cup S_B) +\frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}}\\
+	&\geq &	 \beta (x(\oS_A \cup S_A) - \gamma)+\frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}}\\
+	&\geq & \beta(1-\eps-\gamma)+\frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}}
+	\end{eqnarray*}
+
+	To prove the lemma we just need to choose $\beta$ such that RHS is at least $\beta(1-\eps-\zeta/2.1)$. Or equivalently,
+	$$ \frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}} \geq \beta(\gamma-\zeta/2.1).$$
+	In other words, it is enough to choose $\beta \leq \frac{0.11(\gamma-\eps)^3}{\P{A_T=B_T=1}(\gamma-\zeta/2.1)}$. Since $\gamma > \zeta/2.1$ and $\zeta>330\eps$, we have $\gamma-\eps \geq 0.473\zeta$. Therefore, we can set $\beta=\frac{0.11(0.473\zeta)^2}{\P{A_T=B_T=1}}$. Finally, this plus \eqref{cEdefn} gives
+	$$ \P{\cE} \geq (1-\zeta/2.1-\eps)\beta \P{A_T=B_T=1} = 0.11(0.473\zeta)^2(1-\zeta/2.1-\eps) \ge 0.0246\zeta^2(1-\zeta/2.1-\eps)$$
+	as desired.
+%	
+%	\anna{Last bit should be:
+%	Therefore, we can set $\beta=\frac{0.1\zeta^2/3^2}{4\P{A=B=1}}$. Finally, this plus \eqref{cEdefn} gives
+%	$$ \P{\cE} \geq (1-\zeta/3-\eps)\beta \P{A=B=1} = 0.1(\zeta ^2/3^2)(1-\zeta/3-\eps)/4 \ge  0.01\zeta^2(1-\zeta/3-\eps)/4$$
+%	as desired.}
+%
+\end{proof}
+
+\begin{definition}[Max-flow Event]\label{def:max-flow-event}
+\hypertarget{tar:max-flow-event}{For a polygon cut $S\in\cH$ with polygon partition  $A,B,C$, let $\nu$ be the max-entropy distribution conditioned on $S$ is a tree and $C_T=0$. By \cref{lem:treeconditioning}, we can write $\nu: \nu_{S} \times \nu_{G/S}$, where $\nu_S$ is supported on trees in $E(S)$ and $\nu_{G/S}$ on trees in $E(G/S)$.
+%	Then we define the {\em max-flow event ${\cal E}_S$} to be an event over the support of $\mu_2$ such that:
+	For a sample $(T_S,T_{G/S})\sim \nu_S\times \nu_{G/S}$, we say $\cE_S$ occurs if  $\cE_{A,B}(T_{G/S})$ occurs, where $\cE_{A,B}(.)$ is the event defined in \cref{lem:maxflow} for sets $A,B$ and $\zeta=\eps_M:=\frac1{4000}$ and $\eps=2\eps_\eta$. }
+\end{definition}
+
+\begin{corollary}\label{cor:poly-reduction}
+For a polygon cut $S\in\cH$ with polygon partition $A,B,C$, we have, 
+\begin{enumerate}[i)]
+\item $\P{{\cal E}_S} \ge 0.0245\eps_M^2.$
+\item For any set $F\subseteq \delta(S)$ 	conditioned on ${\cal E}_S$ marginals of edges in $F$ are preserved up to $\eps_M+\eps_\eta$ in total variation distance.
+\item For any $F\subseteq E(S)\cup \delta(S)$ where either $F \cap A=\emptyset$ or $F\cap B=\emptyset$, there is some $q\in x(F)\pm (\eps_M + 2\eps_\eta)$ such that the law of $F_T | \cE_S$ is the same as a $BS(q)$.
+\end{enumerate}
+\end{corollary}
+\begin{proof}
+Condition $S$ to be a tree and $C_T=0$ and let $\nu$ be the resulting measure. 
+%call the resulting SR distribution $\nu$, which we decompose into $\nu_S \times \nu_{G/S}$ such that $\nu_S$ is supported on $E(S)$ and $\nu_{G/S}$ on $E(G/S)$. 
+%Now we apply \cref{lem:maxflow} to $\nu = \mu_1 \times \mu_2$ with $\eps = 2\eps_\eta$ and $\zeta = \eps_M - \eps_\eta$. 
+It follows that  
+$$\P{{\cal E}_S}  = \PP{\nu}{\cE_S} \P{C_T=0,S\text{ tree}}\geq 0.0246 \eps_M^2(1-\eps_M/2.1-\eps)\P{C_T=0,S\text{ tree}} \geq 0.0245\eps_M^2,$$
+using $\epsilon = 2\epsilon_\eta$ and $\eps_M = 1/4000$, which proves (i). 
+
+Now, we prove (ii). By \cref{lem:maxflow}, the marginals of edges in $\delta(S)$ are preserved up to a total variation distance of $\eps_M$, so
+$$\EE{\nu}{(F\cap \delta(S))_T | \cE_{A,B}(T_{G/S})} = \EE{\nu}{(F\cap \delta(S))_T}\pm \eps_M.$$
+Since $x(C)\leq \eps_\eta$ and $x(\delta(S)) \le 2+\eps_\eta$, by negative association, 
+$$x(F\cap \delta(S))-\eps_\eta/2\leq \EE{\nu}{(F\cap \delta(S))_T} \leq x(F\cap \delta(S)) + \eps_\eta.$$
+%\anna{Why not $-\eps_\eta/2$?}
+This proves (ii).
+Also observe that since conditioned on $\cE_S$, we choose at most one edge of $F\cap \delta(S)$, $(F\cap \delta(S))_T$ is a $BS(q_{G/S})$ for some 
+%$q_{G/S}=\EE{\nu}{(F\cap \delta(S))_T}\pm \eps_M$.
+ $q_{G/S}=x(F \cap \delta(S))\pm(\eps_M+\eps_\eta)$.
+
+On the other hand, observe that conditioned on $\cE_S$, $S$ is a tree, so 
+$$x(F\cap E(S))\leq \E{(F\cap E(S))_T | \cE_S} \leq x(F\cap E(S))+\eps_\eta/2.$$
+Since the distribution of $(F\cap E(S))_T$ under $\nu | \cE_S$ is SR,  there is a random variable $BS(q_S)=(F\cap E(S))_T$  where $x(F\cap E(S))\leq q_S\leq x(F\cap E(S))+\eps_\eta/2$.
+
+Finally, $F_T|\cE_S$ is exactly $BS(q_S)+BS(q_{G/S}) = BS(q)$ for $q=x(F)\pm(\eps_M+2\eps_\eta)$.
+%$\delta (u) \cap \delta (S_i)$
+%Furthermore, these two sets are independent and the law of each of them is a Bernoulli Sum random variable. Since $F_T$ is just the sum of these two Bernoulli Sums the lemma follows.
+%Since $x(C) \le \eps_\eta$ and $x(\delta(S)) \le 2+\eps_\eta$, 
+% $$1-2\eps_\eta \le \EE{\nu}{A_T},\EE{\nu}{B_T} \le 1+2\eps_\eta.$$
+%with total variation distance $\eps_M-\eps_\eta$ (again from $\nu$) in $A,B$. Since $\nu$ occurs with probability at least $(1-2\eps_\eta)$ and changes marginals in $A,B$ by at most $\eps_\eta$, the claim follows.
+\end{proof}
+
+
+
+%Recall $BS(q)$ as given in \cref{def:BS}.
+
+%\begin{lemma}
+%If $16\eps_\eta \leq \eps_M\leq 0.0005$, then for any  polygon $S$ and any set $F\subseteq E(S)\cup\delta(S)$ of edges, there is some $\alpha\in x(F_T)\pm (\eps_M + \eps_\eta/2)$ such that the law of $F_T | S \text{ reduced}$ is the same as a $BS(\alpha)$.
+%\end{lemma}
+
+%\begin{proof}
+%We have to make payment to the bottom edge (bundle) $E_i$ if it is  reduced and $|T\cap\delta(u)|$ is odd. 
+%First, recall the reduction rule in ??
+%: Say bottom $\beta_i$ edges are part of the polygon or a triangle $S_i$. We reduce $\beta_i$ when $S_i$ induces a tree and the max-flow event for the $\alpha$ given in the statement of the lemma  in \cref{lem:maxflow} is satisfied.
+%Let $x_{>i} :=x_{\delta (u) \cap \delta (S_i)}$.
+%Conditioned on $S$ being reduced, 
+%%we know that  $(\delta (u) \cap \delta (S_i))_T \le 1$,
+%$S$ is a tree, so 
+%$$x(F\cap E(S))\leq E{(F\cap E(S))_T | S\text{ reduced}} \leq x(F\cap E(S))+\eps_\eta/2.$$
+%On the other hand, by \cref{lem:maxflow}, the marginals of edges in $\delta(S)$ are preserved up to a total variation distance of $\eps_M$, so
+%$$\E{(F\cap \delta(S))_T | S\text{ reduced}} = x(F\cap \delta(S))\pm \eps_M$$
+%%$\delta (u) \cap \delta (S_i)$
+%Furthermore, these two sets are independent and the law of each of them is a Bernoulli Sum random variable. Since $F_T$ is just the sum of these two Bernoulli Sums the lemma follows.
+%\end{proof} 
+
+Normally, conditioning on $\delta(S)_T$ for a polygon $S \in \cH$ may dramatically change the distribution of any random variable $\delta(u)_T$ for any $u$ which is an ancestor of $S$ and for which $\delta(u) \cap \delta(S) \not= \emptyset$. For example, it may essentially determine the parity of $\delta(u)_T$. 
+On the other hand, the following two corollaries show that after conditioning on $\cE_S$ the probability $\delta(u)$ is even remains a (large) constant. So in some sense, conditioning on the max-flow event $\cE_S$ decouples the random variables $\delta(S)_T$ and $\delta(u)_T$.
+
+\begin{corollary}	\label{lem:bottompaymentprob}
+%Suppose that $16\eps_\eta\leq \eps_M\leq 0.0005$ and let $u$ be an atom in the hierarchy. %, where $x_{\delta^{\uparrow}(u)}=h$. % (and $x(\delta^{\rightarrow}(S))=2h$).
+%	 Suppose that  $S$ is a polygon which is an ancestor of $u$. Then,
+For $u\in \cH$ and a polygon cut $S\in \cH$ that is an ancestor of $u$,
+	 $$\P{\delta(u)_T\text{ odd} | \cE_S}\leq  0.5678.$$
+\end{corollary}
+\begin{proof}
+First, notice by \cref{obs:childofSD}, $\delta(u)\cap\delta(S)$ is either a subset of $A$, $B$, or $C$. Therefore, by (iii) of \cref{cor:poly-reduction} we can write $\delta(u)_T | \cE_S$ as a $BS(q)$ for $q\in 2\pm [0.001]$ (where we use that $\eps_M+3\eps_\eta<0.001$). Furthermore,  since $\delta(u)_T\neq 0$ with probability $1$, we can write this as a $1+BS(q-1)$. 
+Therefore, by \cref{cor:bernoullisumeven},
+$$\P{\delta(u)_T \text{ odd} | \cE_S} = \P{BS(q-1)\text{ even}}\leq \frac12(1+e^{-2(q-1)})\leq \frac12(1+e^{-1.999})\leq 0.5678$$
+as desired.
+\end{proof}
+
+\begin{corollary}\label{lem:bottompayment-polyprob}
+%If $0.00005>\eps_M>16\eps_\eta$ and let 
+For a polygon cut $u\in \cH$  and a polygon cut $S\in \cH$ that is an ancestor of $u$,
+	 $$\P{u \text{ not left happy} | \cE_S}\leq  0.56797.$$
+	 and the same follows for right happy. 
+\end{corollary}
+\begin{proof}
+Let $A,B,C$ be the polygon partition of $u$. Recall that for $u$ to be left-happy, we need $C_T=0$ and $A_T$  odd.
+Similar to the previous statement, we can write $A_T | \cE_S$ as a $BS(q_A)$ for $q_A\in 1\pm [0.00026]$ (where we used that $\eps_M=1/4000$ and $\eps_\eta\leq \eps_M/300$).
+ Therefore, by \cref{cor:bernoullisumeven},
+$$\P{A_T \text{ even} | \cE_S} \leq \frac12(1+e^{-2q_A})\leq  \frac12(1+e^{-1.99948})\leq 0.56771$$
+Finally, $\E{C_T | \cE_S}\leq x(C_T)+\eps_M+2\eps_\eta \leq 0.00026$. 
+Now using the union bound, 
+$$\P{u \text{ not left happy} \mid \cE_S} \le 0.56771 + 0.00026 \le 0.56797$$
+as desired.
+\end{proof}
+

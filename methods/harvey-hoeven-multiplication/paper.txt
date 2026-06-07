@@ -1,0 +1,3632 @@
+Integer multiplication in time O(n log n)
+David Harvey, Joris Van Der Hoeven
+
+To cite this version:
+David Harvey, Joris Van Der Hoeven. Integer multiplication in time O(n log n). 2019. <hal-02070778>
+
+HAL Id: hal-02070778
+https://hal.archives-ouvertes.fr/hal-02070778
+Submitted on 18 Mar 2019
+
+HAL is a multi-disciplinary open access
+archive for the deposit and dissemination of scientific research documents, whether they are published or not. The documents may come from
+teaching and research institutions in France or
+abroad, or from public or private research centers.
+
+L’archive ouverte pluridisciplinaire HAL, est
+destinée au dépôt et à la diffusion de documents
+scientifiques de niveau recherche, publiés ou non,
+émanant des établissements d’enseignement et de
+recherche français ou étrangers, des laboratoires
+publics ou privés.
+
+Integer multiplication in time O(n log n)
+David Harvey and Joris van der Hoeven
+Abstract. We present an algorithm that computes the product of two n-bit
+integers in O(n log n) bit operations.
+
+1. Introduction
+Let M(n) denote the time required to multiply two n-bit integers. We work in
+the multitape Turing model, in which the time complexity of an algorithm refers
+to the number of steps performed by a deterministic Turing machine with a fixed,
+finite number of linear tapes [34]. The main results of this paper also hold in
+the Boolean circuit model [40, Sec. 9.3], with essentially the same proofs. We write
+f (n) = O(g(n)) (respectively f (n) = Ω(g(n))) to indicate that there exist constants
+C > 0 and n0 such that f (n) ⩽ Cg(n) (respectively f (n) ⩾ Cg(n)) for all n ⩾ n0 ,
+and f (n) = Θ(g(n)) to mean that both f (n) = O(g(n)) and f (n) = Ω(g(n)) hold.
+Schönhage and Strassen conjectured in 1971 that the true complexity of integer
+multiplication lies in Θ(n log n) [39], and in the same paper established their famous
+upper bound M(n) = O(n log n log log n). In 2007 their result was sharpened by
+∗
+Fürer to M(n) = O(n log n K log n ) [12, 13] for some unspecified constant K > 1,
+where log∗ n denotes the iterated logarithm, i.e., log∗ x := min{k ⩾ 0 : log◦k x ⩽ 1}.
+∗
+Prior to the present work, the record stood at M(n) = O(n log n 4log n ) [22].
+The main result of this paper is a verification of the upper bound in Schönhage
+∗
+and Strassen’s conjecture, thus completely closing the remaining 4log n gap:
+Theorem 1.1. There is an integer multiplication algorithm achieving
+M(n) = O(n log n).
+If the Schönhage–Strassen conjecture is correct, then Theorem 1.1 is asymptotically optimal. Unfortunately, no super-linear lower bound for M(n) is known.
+Perhaps the best available evidence in favour of the conjecture is the Ω(n log n)
+lower bound [6, 35] that has been proved for the “on-line” variant of the problem,
+in which the k-th bit of the product must be written before the (k + 1)-th bits of
+the multiplicands are read. Again, the true complexity of on-line multiplication
+is
+√
+not known:
+currently,
+the
+best
+known
+upper
+bound
+is
+O(n
+log
+n
+exp(C
+log
+log
+n))
+√
+for C = 2 log 2 + o(1) [29].
+Theorem 1.1 has many immediate consequences, as many computational problems may be reduced to integer multiplication. For example, the theorem implies
+that quotients and k-th roots of real numbers may be computed to a precision of n
+significant bits in time O(n log n), and that transcendental functions and constants
+such as ex and π may be computed to precision n in time O(n log2 n) [5].
+Harvey was supported by the Australian Research Council (grant FT160100219).
+1
+
+2
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Another interesting application is to the problem of computing DFTs (discrete
+Fourier transforms) over C. Given a transform length m ⩾ 2 and a target accuracy
+of p = Ω(log m) bits, it was pointed out in [20, 25] that one may use Bluestein’s
+trick [2] followed by Kronecker substitution [14, Corollary 8.27] to reduce a given
+DFT of length m to an integer multiplication problem of size O(mp). Theorem
+1.1 then implies that the DFT may be evaluated in time O(mp log(mp)). This
+compares favourably with the traditional FFT (fast Fourier transform) approach,
+which requires O(m log m) operations in C, and thus time O(m log m M(p)) =
+O(mp log m log p) in the Turing model.
+All of the algorithms presented in this paper can be made completely explicit,
+and all implied big-O constants are in principle effectively computable. On the other
+hand, we make no attempt to minimise these constants or to otherwise exhibit a
+practical multiplication algorithm. Our aim is to establish the theoretical O(n log n)
+bound as directly as possible.
+We will actually describe two new multiplication algorithms. The first one depends on an unproved hypothesis concerning the least prime in an arithmetic progression. This hypothesis is much weaker than standard conjectures in this area,
+but somewhat stronger than the best unconditional results currently available. We
+give only a brief sketch of this algorithm (see Section 1.2.1). A detailed treatment
+is given in the companion paper [24], which also presents an analogue of this algorithm for multiplication in Fq [x]. The bulk of the present paper (Sections 2–5)
+concentrates on working out the details of the second algorithm, which is technically
+more involved, but has the virtue of reaching the O(n log n) bound unconditionally.
+In the remainder of Section 1, we review the literature on integer multiplication
+(Section 1.1), and give an overview of the new algorithms (Section 1.2).
+1.1. Survey of integer multiplication algorithms. The first improvement on
+the classical M(n) = O(n2 ) bound was found by Karatsuba in 1962. Significant
+progress was made during the 1960s by Toom, Cook, Schönhage and Knuth; see
+[25, Sec. 1.1] for further historical details and references for this period. FFTs were
+brought into the picture by Schönhage and Strassen [39] soon after the publication
+of the FFT by Cooley and Tukey [7]; see [28] for more on the history of the FFT.
+The multiplication algorithms published since [39] may be roughly classified into
+four families:
+(1) Schönhage–Strassen’s first algorithm [39] is, in hindsight, the most straightforward FFT-based integer multiplication algorithm imaginable. By splitting the
+n-bit multiplicands into chunks of size Θ(log n), they reduce to the problem of multiplying polynomials in Z[x] of degree Θ(n/ log n) and coefficient size Θ(log n). The
+product in Z[x] is handled by means of FFTs over C, i.e., evaluating the polynomials at suitable roots of unity, multiplying their values pointwise in C, and then
+interpolating to obtain the product polynomial. Elements of C are represented
+approximately, with a precision of Θ(log n) bits. Arithmetic operations in C (such
+as multiplication) are reduced to arithmetic in Z by scaling by a suitable power of
+two. This leads to the recursive estimate
+M(n) = O(n M(n0 )) + O(n log n),
+
+n0 = O(log n),
+
+whose explicit solution is
+∗
+
+∗
+
+M(n) = O(K log n n log n log log n · · · log◦((log n)−1) n)
+
+Integer multiplication in time O(n log n)
+
+3
+
+for some constant K > 0. The algorithm achieves an exponential size reduction at
+each recursion level, from n to O(log n), and the number of levels is log∗ n + O(1).
+Pollard suggested a similar algorithm at around the same time [36], working over
+a finite field rather than C. He did not analyse the bit complexity, but with some
+care one can prove essentially the same complexity bound as for the complex case
+(some technical difficulties arise due to the cost of finding suitable primes; these
+may be resolved by techniques similar to those discussed in [25, Sec. 8.2]).
+(2) Schönhage–Strassen’s second algorithm is the more famous and arguably
+the more ingenious of the two algorithms presented in [39]. It is probably the
+most widely used large-integer multiplication algorithm in the world today, due to
+the highly optimised implementation included in the free GNU Multiple Precision
+Arithmetic Library (GMP) [17, 15], which underlies the large-integer capabilities
+of all of the major contemporary computer algebra systems.
+The basic recursive problem is taken to be multiplication in Z/(2n +1)Z, where n
+is a power of two. Let n0 := 2d(log2 2n)/2e = Θ(n1/2 ) and T := 2n/n0 = Θ(n1/2 ), so
+that (n0 )2 ∈ {2n, 4n} and T | n0 ; then by splitting the inputs into chunks of size n0 /2,
+0
+the problem is reduced to multiplication in R[x]/(xT + 1) where R := Z/(2n + 1)Z.
+The powers of 2 in R are sometimes called “synthetic” roots of unity, as they
+have been synthesised algebraically, or “fast” roots of unity, as one can multiply
+an element of R by an arbitrary power of 2 in linear time, i.e., in time O(n0 ).
+0
+Consequently, for ω := 2n /T , one may evaluate a polynomial at ω, ω 3 , . . . , ω 2T −1
+(the roots of xT +1) via the FFT in time O((n0 log n0 )n0 ) = O(n log n). The original
+multiplication problem is thus reduced to T pointwise multiplications in R, which
+are handled recursively. Writing M1 (n) for the cost of a product in Z/(2n + 1)Z,
+one obtains the recurrence
+2n
+n0 = O(n1/2 ).
+(1.1)
+M1 (n) < 0 M1 (n0 ) + O(n log n),
+n
+Unlike the first Schönhage–Strassen algorithm, this algorithm performs only a geometric size reduction, from n to O(n1/2 ), at each recursion level, and the number
+of recursion levels is log2 log n + O(1) = O(log log n).
+The constant 2 in (1.1), which arises from zero-padding in the initial splitting
+stage, plays a crucial role in the complexity analysis: it ensures that at each recursion level, the total cost of the “fast” FFTs remains O(n log n), with the same
+implied constant at each level. The overall cost is thus M1 (n) = O(n log n log log n).
+(3) Fürer’s algorithm [12, 13] combines the best features of the two Schönhage–
+Strassen algorithms: the exponential size reduction from the first algorithm, and
+the fast roots of unity from the second one. The overall strategy is similar to
+the first algorithm, but instead of working over C, one uses a bivariate splitting
+to reduce to a polynomial multiplication problem over R := C[y]/(y r + 1), where
+r = Θ(log n) is a power of two. This ring contains a synthetic root of unity y of
+order 2r, but also inherits higher-order roots of unity from C. Elements of C are
+represented approximately, with a precision of O(log n) bits; thus an element of R
+occupies O((log n)2 ) bits.
+Fürer’s key insight is to apply the Cooley–Tukey FFT decomposition in radix 2r
+instead of radix two. He decomposes each “long” transform of length Θ(n/(log n)2 )
+into many “short” transforms of length 2r, with one round of expensive “twiddle
+factor” multiplications interposed between each layer of short transforms. The short
+
+4
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+transforms take advantage of the synthetic roots of unity, and the twiddle factor
+multiplications are handled recursively (via Kronecker substitution). This leads to
+the recurrence
+
+
+n log n
+0
+M(n) = O
+M(n
+)
++ O(n log n),
+n0 = O((log n)2 ),
+n0 log n0
+∗
+
+and then to the explicit bound M(n) = O(n log n K log n ) for some constant K > 1.
+Fürer did not give a specific value for K, but it is argued in [25, Sec. 7] that careful
+optimisation of his algorithm leads to the value K = 16.
+Several authors have given variants of Fürer’s algorithm that also achieve M(n) =
+∗
+O(n log n K log n ), using essentially the same idea but working over different rings.
+De, Kurur, Saha and Saptharishi [10] replace C by a p-adic ring Qp ; this has the
+benefit of avoiding numerical analysis over C, but the value of K becomes somewhat
+larger. Covanov and Thomé give another variant that achieves K = 4, conditional
+on a conjecture on the distribution of generalised Fermat primes [8].
+(4) The Harvey–van der Hoeven–Lecerf algorithm [25] follows Fürer in decomposing a “long” transform into many “short” transforms of exponentially smaller
+length. However, instead of working over a ring containing fast roots of unity, one
+works directly over C (as in the first Schönhage–Strassen algorithm), and converts
+the short transforms back to multiplication problems via Bluestein’s trick [2]. These
+short products are then handled recursively.
+∗
+The first version given in [25] achieved M(n) = O(n log n K log n ) with K = 8.
+The value of K was improved gradually over a sequence of papers [18, 19, 21],
+reaching K = 4 in [22]. All of these algorithms perform exponential size reduction,
+and the number of recursion levels is log∗ n + O(1).
+An interesting feature of these algorithms — related to the fact that they dispense
+with the need for fast roots of unity — is that they can be adapted to prove bounds
+∗
+of the form O(n log n K log n ) for the cost of multiplying polynomials in Fq [x] of
+degree n (for fixed q). This was first established with the constant K = 8 in [26],
+and improved to K = 4 in [23]. As mentioned previously, the first of the two new
+algorithms presented in this paper may be adapted to obtain an O(n log n) bound
+for the Fq [x] case [24], but unfortunately this result is still conditional and so does
+∗
+not yet supersede the unconditional O(n log n 4log n ) bound given in [23].
+1.2. Overview of new algorithms. Our new algorithms are motivated by the
+observation that certain multivariate polynomial rings admit particularly efficient
+multiplication algorithms. Let r be a power of two, and for d ⩾ 2 consider the ring
+(1.2)
+
+t
+
+d−1
+R[x1 , . . . , xd−1 ]/(xt11 − 1, . . . , xd−1
+− 1),
+
+R := C[y]/(y r + 1),
+
+where ti | 2r for all i. One may multiply in this ring by first using FFTs to
+evaluate each xi at the synthetic ti -th roots of unity (the powers of y 2r/ti ), then
+multiplying pointwise in R, and finally performing inverse FFTs. Such transforms
+were studied extensively by Nussbaumer in the late 1970s (see for example [31]),
+and are sometimes known as fast polynomial transforms. They consist entirely of
+additions and subtractions in C, and require no multiplications in C whatsoever.
+In Sections 1.2.1 and 1.2.2 below, we outline two different ways of fashioning
+an integer multiplication algorithm from the polynomial multiplication algorithm
+just described. The key issue is to show how to transport an integer multiplication
+problem, which is intrinsically one-dimensional, to a ring of the type (1.2).
+
+Integer multiplication in time O(n log n)
+
+5
+
+In both cases, we begin with the following setup. Suppose that we wish to multiply two n-bit integers. We choose a dimension parameter d ⩾ 2 and distinct primes
+s1 , . . . , sd ≈ (n/ log n)1/d , subject to certain conditions that will be explained in
+Sections 1.2.1 and 1.2.2. Just as in the first Schönhage–Strassen algorithm, we
+split the inputs into around n/ log n chunks of roughly log n bits, thereby reducing
+the problem to multiplication in Z[x]/(xs1 ···sd − 1). Now, following a technique
+described by Agarwal and Cooley [1] (which is closely related to the Good–Thomas
+FFT algorithm [16, 41]), we observe that the Chinese remainder theorem induces an
+s
+isomorphism Z[x]/(xs1 ···sd −1) ∼
+= Z[x1 , . . . , xd ]/(xs11 −1, . . . , xdd −1), so the problem
+amounts to computing a product in the latter ring. For this, it suffices to show how
+to efficiently compute a multidimensional complex DFT of size s1 × · · · × sd , i.e.,
+with respect to the complex si -th roots of unity, to an accuracy of O(log n) bits.
+1.2.1. A conditional algorithm — Rader’s trick. Suppose that we are able to choose
+the primes s1 , . . . , sd so that si = 1 (mod r), where r is a power of two, and
+where the si are not much larger than r. We may then deploy a multidimensional
+generalisation of Rader’s algorithm [37] to reduce the given DFT of size s1 ×· · ·×sd
+to a multiplication problem in the ring C[x1 , . . . , xd ]/(x1s1 −1 − 1, . . . , xdsd −1 − 1)
+(together with some lower-dimensional multiplication problems of negligible cost).
+Crucially, the convolution lengths have been reduced from si to si − 1. Writing
+si − 1 = qi r, where the qi are “small”, we may further reduce this product to a
+collection of complex DFTs of size q1 × · · · × qd , plus a collection of multiplication
+problems in C[x1 , . . . , xd ]/(xr1 − 1, . . . , xrd − 1). After replacing xd with eπi/r y, we
+see that the latter products are exactly of the type (1.2). As discussed previously,
+we may use synthetic FFTs to reduce such a product to a collection of pointwise
+products in R = C[y]/(y r +1). These in turn are converted to integer multiplication
+problems via Kronecker substitution, and then handled recursively.
+The main sticking point in the above algorithm is the cost of the auxiliary DFTs
+of size q1 × · · · × qd . There are various options available for evaluating these DFTs,
+but to ensure that this step does not dominate the complexity, the key issue is to
+keep the size of the qi under control. What we are able to prove is the following.
+For positive, relatively prime integers m and a, define
+P (a, m) := min{q > 0 : q prime and q = a mod m},
+and put P (m) := maxa P (a, m). Linnik’s theorem states that there is an absolute
+constant L > 1 such that P (m) = O(mL ). The best published value for L is
+currently L = 5.18 [42], and under the Generalised Riemann Hypothesis one may
+take L = 2 + ε for any ε > 0 [27]. In the companion paper [24], we prove that if
+1
+, and if we take d near 106 , then the
+Linnik’s theorem holds for some L < 1 + 303
+cost of the auxiliary DFTs can be controlled and one does in fact obtain an overall
+M(n) = O(n log n) bound. (Actually, in [24] we work over a finite field, but the
+same method should work over C, possibly with a different threshold for L.)
+On the other hand, it is widely expected that the bound P (m) = O(mL ) should
+hold for any L > 1. For this reason, we strongly suspect that the algorithm
+sketched above does run in time O(n log n), despite us being unable to supply a
+proof. For further discussion, and examples of even stronger bounds for P (m) that
+are expected to hold, see [24].
+
+6
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Figure 1. Torus (R/Z)2 with 13 × 11 source array (white circles)
+superimposed over 16 × 16 target array (black circles)
+Remark 1.2. The idea of evaluating a multidimensional transform via a combination of Rader’s algorithm and polynomial transforms was previously suggested in
+a different context by Nussbaumer and Quandalle [32, p. 141].
+1.2.2. An unconditional algorithm — Gaussian resampling. The rest of the paper
+is devoted to the second method. Here we choose the primes s1 , . . . , sd in such a
+way that each si is slightly smaller than a power of two ti , and so that t1 · · · td =
+O(s1 · · · sd ). Finding such primes is easily accomplished using the prime number
+theorem with a suitable error term (see Lemma 5.1).
+Assume as before that we wish to compute a complex multidimensional DFT of
+size s1 × · · · × sd , to an accuracy of O(log n) bits. Our key innovation is to show
+that this problem may be reduced directly to the problem of computing a complex
+multidimensional DFT of size t1 × · · · × td .
+The idea of the reduction is as follows. Suppose that we are given as input an
+s1 × · · · × sd array of complex numbers u = (uj1 ,...,jd )0⩽ji <si . We may regard this
+array as lying inside the d-dimensional unit torus (R/Z)d : we imagine the coefficient
+uj1 ,...,jd to be plotted at coordinates (j1 /s1 , . . . , jd /sd ) in the torus (see Figure 1).
+We construct from u an intermediate t1 ×· · ·×td array v = (vk1 ,...,kd )0⩽ki <ti . Again,
+we think of vk1 ,...,kd as being plotted at coordinates (k1 /t1 , . . . , kd /td ) in the torus.
+The coefficients of v are defined to be certain linear combinations of the coefficients
+of u. The weights are essentially d-dimensional Gaussians, so each coefficient of v
+depends mainly on the “nearby” coefficients of u within the torus.
+This construction has two crucial properties. First, the rapid decay of the Gaussians allows us to compute (i.e., approximate) the coefficients of v very quickly from
+those of u; indeed, the cost of this step is asymptotically negligible compared to the
+cost of the DFTs themselves. Second, using the fact that the Fourier transform of a
+Gaussian is a Gaussian, we will show that û and v̂ (the DFTs of u and v) are related
+by a fairly simple system of linear equations. In fact, the matrix of this system is
+of the same type as the matrix relating u and v. The system is somewhat overdetermined, because t1 · · · td > s1 · · · sd . Provided that the ratios ti /si are not too
+close to 1, we will show that this system may be solved in an efficient and numerically stable manner, and that we may therefore recover û from v̂. This procedure
+forms the core of our “Gaussian resampling” method, and is developed in detail in
+
+Integer multiplication in time O(n log n)
+
+7
+
+Section 4. It is closely related to the Dutt–Rokhlin algorithm for non-equispaced
+FFTs [11]; see Section 4.4.3 for a discussion of the similarities and differences.
+We have therefore reduced to the problem of computing v̂ from v, and we are free
+to do this by any convenient method. Note that this is a DFT of size t1 × · · · × td
+rather than s1 × · · · × sd . In Section 3 we will show how to use a multivariate
+generalisation of Bluestein’s algorithm [2] to reduce this DFT to a multiplication
+problem in a ring of the form (1.2). As already pointed out, such a product may
+be handled efficiently via synthetic FFTs; the details of this step are also discussed
+in Section 3.
+Analysis of this algorithm leads to a recurrence inequality of the form
+(1.3)
+
+M(n) <
+
+Kn
+M(n0 ) + O(n log n),
+n0
+
+1
+
+n0 = n d +o(1) ,
+
+where both K and the big-O constant are absolute, and in particular, do not depend
+on d. (In Section 5 we establish (1.3) with the explicit constant K = 1728, and
+in Section 5.4 we list some optimisations that improve it to K = 8.) The first
+term arises from pointwise multiplications in a ring of the type R = C[y]/(y r + 1),
+and the second term from the fast FFTs and other auxiliary operations, including
+computing v from u and recovering û from v̂.
+We stress here the similarity with the corresponding bound (1.1) for the second
+Schönhage–Strassen algorithm; the difference is that we are now free to choose d.
+In Section 5, we will simply take d := 1729 (any constant larger than K would do),
+and then it is easy to see that (1.3) implies that M(n) = O(n log n). (A similar
+analysis holds for the conditional algorithm sketched in Section 1.2.1, for different
+values of K and d.)
+It is striking that for fixed d, the new algorithm performs only a geometric size
+reduction at each recursion level, just like the second Schönhage–Strassen algorithm, and unlike the first Schönhage–Strassen algorithm or any of the post-Fürer
+algorithms. In the new algorithm, the total cost of the FFTs actually decreases
+by the constant factor d/K > 1 at each subsequent recursion level, unlike in the
+second Schönhage–Strassen algorithm, where it remains constant at each level, or
+any of the other algorithms mentioned, where it increases by a constant factor at
+each level.
+Actually, with some care it is possible to allow d to grow with n, so as to achieve
+size reduction faster than geometric, and still reach the desired O(n log n) bound,
+but we will not carry out this analysis.
+Finally, we mention that our reduction from a DFT of size s1 × · · · × sd to one of
+size t1 × · · · × td is highly non-algebraic, and depends heavily on the archimedean
+property of R. Consequently, we do not know how to give an analogue of this
+algorithm for multiplication in Fq [x].
+
+2. DFTs, convolutions and fixed-point arithmetic
+In the Turing model we cannot compute with elements of C exactly. In this section we introduce a framework for systematic discussion of DFTs and convolutions
+in the setting of fixed-point arithmetic. (This framework is loosely based on the
+presentation in [25, Sec. 3].)
+
+8
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+2.1. Integer arithmetic. Integers are assumed to be stored in the standard binary representation. We briefly recall several well-known results concerning integer
+arithmetic; see [5, Ch. 1] for further details and literature references.
+Let p ⩾ 1, and assume that we are given as input x, y ∈ Z such that |x| , |y| ⩽ 2p .
+We may compute x + y and x − y in time O(p). For multiplication, we will often
+use the crude estimate M(p) = O(p1+δ ), where for the rest of the paper δ denotes a
+small, fixed positive quantity; for definiteness, we assume that δ < 81 . If y > 0, then
+we may compute the quotients bx/yc and dx/ye in time O(p1+δ ). More generally,
+for a fixed positive rational number a/b, and assuming x, y > 0, we may compute
+b(x/y)a/b c and d(x/y)a/b e in time O(p1+δ ).
+2.2. Fixed-point coordinate vectors. Fix a precision parameter p ⩾ 100. Let
+C◦ := {u ∈ C : |u| ⩽ 1} denote the complex unit disc, and set
+C̃◦ := (2−p Z[i]) ∩ C◦ = {2−p (x + iy) : x, y ∈ Z and x2 + y 2 ⩽ 22p }.
+In the Turing model, we represent an element z = 2−p (x + iy) ∈ C̃◦ by the pair of
+integers (x, y). It occupies O(p) bits of storage, as |x| , |y| ⩽ 2p . The precision p is
+always known from context and does not need to be stored alongside z.
+We define a round-towards-zero function ρ : C → C as follows. First, define
+ρ0 : R → Z by ρ0 (x) := bxc for x ⩾ 0, and ρ0 (x) := dxe for x < 0. Then define
+ρ0 : C → Z[i] by setting ρ0 (x +√iy) := ρ0 (x) + iρ0 (y) for x, y ∈ R. Observe that
+|ρ0 (u)| ⩽ |u| and |ρ0 (u) − u| < 2 for any u ∈ C. Finally, set
+ρ(u) := 2−p ρ0 (2p u),
+u ∈ C.
+√
+Thus |ρ(u)| ⩽ |u| and |ρ(u) − u| < 2 · 2−p for any u ∈ C. Clearly ρ(C◦ ) ⊂ C̃◦ .
+Now let V be a finite-dimensional vector space over C. In this paper, every
+such V is understood to come equipped with a privileged choice of ordered basis
+BV = {b0 , . . . , bm−1 }, where m = dimC V . For the special case V = Cm , we always
+take the standard basis; in particular, for V = C the basis is simply {1}.
+We define a norm k · k : V → [0, ∞) in terms of the basis BV by setting
+kλ0 b0 + · · · + λm−1 bm−1 k := max |λj | ,
+j
+
+λj ∈ C.
+
+This norm satisfies ku + vk ⩽ kuk+kvk and kλuk = |λ| kuk for any u, v ∈ V , λ ∈ C.
+The unit ball in V is defined to be
+V◦ := {u ∈ V : kuk ⩽ 1} = {λ0 b0 + · · · + λm−1 bm−1 : λj ∈ C◦ },
+and we also define
+Ṽ◦ := {λ0 b0 + · · · + λm−1 bm−1 : λj ∈ C̃◦ }.
+We extend ρ to a function ρ : V → V by acting componentwise, i.e., we put
+X
+ρ(λ0 b0 + · · · + λm−1 bm−1 ) :=
+ρ(λj )bj ,
+λj ∈ C.
+j
+
+√
+
+Then kρ(u)k ⩽ kuk and kρ(u) − uk < 2 · 2−p for any u ∈ V . Clearly ρ(V◦ ) ⊂ Ṽ◦ .
+In the special case V = C we have simply kuk = |u| for any u ∈ C, and the
+notations C◦ , C̃◦ and ρ : C → C all agree with their previous definitions.
+In the Turing model, an element u ∈ Ṽ◦ is represented by its coordinate vector
+with respect to BV , i.e., as a list of m elements of C̃◦ , so u occupies O(mp) bits of
+storage.
+
+Integer multiplication in time O(n log n)
+
+9
+
+For u ∈ V◦ , we systematically use the notation ũ ∈ Ṽ◦ to indicate a fixed-point
+approximation for u that has been computed by some algorithm. We write
+ε(ũ) := 2p kũ − uk
+for the associated error, measured as a multiple of 2−p (the “unit in the last place”).
+For example, we have the following result for addition and subtraction in V .
+Lemma 2.1 (Addition/subtraction). Given as input u, v ∈ Ṽ◦ , in time O(mp) we
+may compute an approximation w̃ ∈ Ṽ◦ for w := 12 (u ± v) ∈ V◦ such that ε(w̃) < 1.
+Proof. Consider first the case m = 1, i.e., assume that V = C. Let u = 2−p a and
+v = 2−p b where a, b ∈ Z[i] and |a| , |b| ⩽ 2p . Since the denominators of the real
+and imaginary parts of 2p w = 12 (a ± b) are at most 2, we have |ρ0 (2p w) − 2p w| ⩽
+(( 21 )2 +( 12 )2 )1/2 = √12 . Define w̃ := ρ(w) = 2−p ρ0 (2p w). We may clearly compute w̃
+in time O(p), and ε(w̃) = 2p kρ(w) − wk ⩽ √12 < 1. The general case (m ⩾ 1)
+follows by applying the same argument in each coordinate.
+
+Occasionally we will encounter a situation in which we have computed an approximation ũ ∈ Ṽ◦ for some u ∈ V , and we wish to compute an approximation
+for cu, where c ⩾ 1 is a fixed integer scaling factor for which it is known that
+cu ∈ V◦ . A typical example is the final scaling step in an inverse FFT. Unfortunately, the obvious approximation cũ might lie just outside V◦ . We deal with this
+minor technical nuisance as follows.
+Lemma 2.2 (Scaling). Let u ∈ V and let c be an integer such that 1 ⩽ c ⩽ 2p .
+Assume that kuk ⩽ c−1 , and let v := cu ∈ V◦ . Given as input c and an approximation ũ ∈ Ṽ◦ , in time O(mp1+δ ) we may compute an approximation ṽ ∈ Ṽ◦ such
+that ε(ṽ) < 2c · ε(ũ) + 3.
+Proof. Again it suffices to handle the case m = 1, V = C.
+We first compute 2−p (x + iy) := cũ in time O(p1+δ ). Note that cũ might not lie
+in C̃◦ , but x and y are certainly integers with O(p) bits.
+Next we compute a := x2 + y 2 in time O(p1+δ ), so that a1/2 = 2p |cũ|. If a ⩽ 22p
+then already cũ ∈ C̃◦ , so we may simply take ṽ := cũ, and then ε(ṽ) = 2p |ṽ − v| =
+2p |cũ − cu| = c · ε(ũ) < 2c · ε(ũ) + 3.
+Suppose instead that a > 22p (i.e., cũ ∈
+/ C̃◦ ). We then compute b := da1/2 e > 2p ,
+1+δ
+p
+again in time O(p ). Let z := 2 cũ/b = (x + iy)/b and ṽ := ρ(z). Note that
+ṽ = 2−p (x0 + iy 0 ) where x0 = ρ0 (2p x/b) and y 0 = ρ0 (2p y/b), so we may compute ṽ
+in time O(p1+δ ). We have |ṽ| ⩽ |z| = 2p |cũ| /b ⩽ 2p |cũ| /a1/2 = 1, so indeed
+ṽ ∈ C̃◦ . Moreover,
+|ṽ − v| ⩽ |ṽ − z| + |z − cũ| + |cũ − v| = |ρ(z) − z| + |z| |1 − 2bp | + c |ũ − u| ,
+√
+so ε(ṽ) < 2 + |2p − b| + c · ε(ũ). We also have 2p < b < a1/2 + 1 = 2p |cũ| + 1, so
+0 < b − 2p < 2p |cũ| − 2p + 1 ⩽ 2p |cu| − 2p + 2p |cũ − cu| + 1 ⩽ c · ε(ũ) + 1.
+√
+We conclude that |2p − b| < c·ε(ũ)+1, and therefore ε(ṽ) < 2c·ε(ũ)+(1+ 2). 
+2.3. Coefficient rings. By a coefficient ring we mean a finite-dimensional commutative C-algebra R with identity (together with a privileged basis BR ). We are
+chiefly interested in the following two examples:
+
+10
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+(1) Complex case: C itself, with the basis {1}.
+(2) Synthetic case: for any r ⩾ 1, the ring R := C[y]/(y r + 1), with the basis
+{1, y, . . . , y r−1 }.
+Let R be a coefficient ring of dimension r with basis BR , and let n ⩾ 1. Then
+Rn is a vector space of dimension nr over C. We associate to Rn the “nested” basis
+formed by concatenating n copies of BR . In particular, we have kuk = maxj kuj k
+for u = (u0 , . . . , un−1 ) ∈ Rn . In place of the awkward expressions (Rn )◦ and
+(R˜n )◦ , we write more compactly R◦n and R̃◦n . In the Turing model, an element of
+R̃◦n occupies O(nrp) bits of storage.
+Now let d ⩾ 1 and n1 , . . . , nd ⩾ 1. We write ⊗di=1 Rni , or just ⊗i Rni when d
+is understood, for the tensor product Rn1 ⊗R · · · ⊗R Rnd . It is a free R-module of
+rank n1 · · · nd , and also a vector space over C of dimension n1 · · · nd r. An element
+u ∈ ⊗i Rni may be regarded as a d-dimensional array of elements of R of size
+n1 × · · · × nd . For indices j1 , . . . , jd where 0 ⩽ ji < ni , we write uj1 ,...,jd ∈ R for
+the (j1 , . . . , jd )-th component of u.
+We associate to ⊗i Rni the nested basis consisting of n1 · · · nd copies of BR
+arranged in lexicographical order, i.e., listing the coordinates of u in the order
+(u0,...,0 , u0,...,1 , . . . , un1 −1,...,nd −1 ). Observe then that kuk = maxj1 ,...,jd kuj1 ,...,jd k.
+Instead of (⊗i Rni )◦ and (⊗i ˜Rni )◦ , we write ⊗i R◦ni and ⊗i R̃◦ni . In the Turing
+model, an element of ⊗i R̃◦ni occupies O(n1 · · · nd rp) bits of storage.
+Let u ∈ ⊗i Rni . By an i-slice of u we mean a one-dimensional sub-array of u,
+consisting of the entries uj1 ,...,jd where j1 , . . . , ji−1 , ji+1 , . . . , jd are held fixed and
+ji varies over {0, . . . , ni − 1}. We will occasionally wish to apply a given algorithm
+separately to each of the n1 · · · ni−1 ni+1 · · · nd distinct i-slices of some u ∈ ⊗i R̃◦ni .
+To accomplish this in the Turing model, we must first rearrange the data so that
+each i-slice is stored contiguously. In the lexicographical order specified above, this
+amounts to performing n1 · · · ni−1 matrix transpositions of size ni × (ni+1 · · · nd ).
+This data rearrangement may be performed in time O(n1 · · · nd rp log ni ) using a
+fast matrix transposition algorithm [4, Appendix].
+2.4. DFTs and convolutions. Let R be a coefficient ring and let n ⩾ 1. Throughout the paper we adopt the convention that for a vector u = (u0 , . . . , un−1 ) ∈ Rn
+and an integer j, the expression uj always means uj mod n . For u, v ∈ Rn , we define
+the pointwise product u · v ∈ Rn and the convolution product u ∗ v ∈ Rn by
+(u · v)j := uj vj ,
+
+(u ∗ v)j :=
+
+n−1
+X
+
+uk vj−k ,
+
+0 ⩽ j < n.
+
+k=0
+
+Then (Rn , · ) and (Rn , ∗) are both commutative rings, isomorphic respectively to
+the direct sum of n copies of R, and the polynomial ring R[x]/(xn − 1).
+A principal n-th root of unity in R is an element ω ∈ R such that ω n = 1,
+Pn−1
+j k
+k=0 (ω ) = 0 for every integer j 6= 0 (mod n), and kωuk = kuk for all u ∈ R.
+We define an associated R-linear DFT map Fω : Rn → Rn by the formula
+n−1
+
+(Fω u)j :=
+
+1 X −jk
+ω
+uk ,
+n
+
+u ∈ Rn ,
+
+0 ⩽ j < n.
+
+k=0
+
+It is immediate that ω −1 (= ω n−1 ) is also a principal n-th root of unity in R, and
+that kFω uk ⩽ kuk for all u ∈ Rn .
+
+Integer multiplication in time O(n log n)
+
+11
+
+Lemma 2.3 (Convolution formula). For any u, v ∈ Rn we have
+1
+u ∗ v = nFω−1 (Fω u · Fω v).
+n
+Proof. For each j, the product (Fω u)j (Fω v)j is equal to
+n−1 n−1
+
+n−1
+
+1 X X −j(s+t)
+1 X −jk
+ω
+ω
+u
+v
+=
+s
+t
+n2 s=0 t=0
+n2
+k=0
+
+X
+
+us vt =
+
+s+t=k (mod n)
+
+1
+Fω (u ∗ v)j ,
+n
+
+so Fω (u ∗ v) = nFω u · Fω v. On the other hand, for any w ∈ Rn we have
+
+n−1
+n−1
+n−1  n−1
+1 X sj X −st
+1 X X s(j−t)
+1
+ω
+ω wt = 2
+(Fω−1 (Fω w))j = 2
+ω
+wt = wj ,
+n s=0
+n
+n
+t=0
+t=0
+s=0
+so Fω−1 Fω w = n1 w. Taking w := u ∗ v, we obtain the desired result.
+
+
+
+For the two coefficient rings mentioned earlier, we choose ω as follows:
+(1) Complex case. For R = C, let n ⩾ 1 be any positive integer, and put
+ω := e2πi/n . We denote Fω in this case by Fn : Cn → Cn . Explicitly,
+n−1
+
+1 X −2πijk/n
+(Fn u)j =
+e
+uk ,
+n
+
+u ∈ Cn ,
+
+0 ⩽ j < n.
+
+k=0
+
+We also write Fn∗ : Cn → Cn for Fω−1 .
+(2) Synthetic case. For R = R = C[y]/(y r + 1), let n be any positive divisor
+of 2r. Then ω := y 2r/n is a principal n-th root of unity in R. We denote
+Fω in this case by Gn : R n → R n . Explicitly,
+n−1
+
+(Gn u)j =
+
+1 X −2rjk/n
+y
+uk ,
+n
+
+u ∈ Rn,
+
+0 ⩽ j < n.
+
+k=0
+
+We also write Gn∗ : R n → R n for Fω−1 .
+All of the concepts introduced above may be generalised to the multidimensional
+setting as follows. For u, v ∈ ⊗i Rni , we define the pointwise product u · v ∈ ⊗i Rni
+and the convolution product u ∗ v ∈ ⊗i Rni by
+(u · v)j1 ,...,jd := uj1 ,...,jd vj1 ,...,jd ,
+(u ∗ v)j1 ,...,jd :=
+
+nX
+1 −1
+k1 =0
+
+···
+
+nX
+d −1
+
+uk1 ,...,kd vj1 −k1 ,...,jd −kd .
+
+kd =0
+
+Then (⊗i Rni , · ) is isomorphic to the direct sum of n1 · · · nd copies of R, and
+(⊗i Rni , ∗) is isomorphic to R[x1 , . . . , xd ]/(xn1 − 1, . . . , xnd − 1).
+Let ω1 , . . . , ωd ∈ R be principal roots of unity of orders n1 , . . . , nd . We define an
+associated R-linear d-dimensional DFT map by taking the tensor product (over R)
+of the corresponding one-dimensional DFTs, that is,
+Fω1 ,...,ωd := ⊗i Fωi : ⊗i Rni → ⊗i Rni .
+Explicitly, for u ∈ ⊗i Rni we have
+(Fω1 ,...,ωd u)j1 ,...,jd =
+
+n −1
+
+n −1
+
+k1 =0
+
+kd =0
+
+1
+d
+X
+X −j k
+1
+···
+ω1 1 1 · · · ωd−jd kd uk1 ,...,kd .
+n1 · · · nd
+
+12
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+The multidimensional analogue of Lemma 2.3 is
+1
+(2.1)
+u ∗ v = n1 · · · nd Fω−1 ,...,ω−1 (Fω1 ,...,ωd u · Fω1 ,...,ωd v),
+1
+d
+n1 · · · nd
+and is proved in exactly the same way.
+In particular, in the “complex case” we obtain the d-dimensional transform
+Fn1 ,...,nd := ⊗i Fni : ⊗i Cni → ⊗i Cni
+(take ωi := e2πi/ni ), and in the “synthetic case” the d-dimensional transform
+Gn1 ,...,nd := ⊗i Gni : ⊗i R ni → ⊗i R ni
+(where each ni is a divisor of 2r, and ωi := y 2r/ni ). We define similarly Fn∗1 ,...,nd :=
+⊗i Fn∗i and Gn∗1 ,...,nd := ⊗i Gn∗i .
+Any algorithm for computing Fn may easily be adapted to obtain an algorithm
+for computing Fn∗ , by adjusting signs appropriately. A similar remark applies to Gn ,
+and to the multidimensional generalisations of these maps. For the rest of the paper,
+we make use of these observations without further comment.
+2.5. Fixed-point multiplication. We now consider the complexity of multiplication in the coefficient rings R = C and R = R. In both cases we reduce the
+problem to integer multiplication. For the case R = R (Lemma 2.5) we will express the complexity in terms of M(·) itself, as this eventually feeds into the main
+recurrence inequality for M(·) that we prove in Section 5.3. For the case R = C
+(Lemma 2.4) we do not need the best possible bound; to simplify the subsequent
+complexity analysis, we prefer to use the crude estimate M(p) = O(p1+δ ).
+Lemma 2.4 (Multiplication in C). Given as input u, v ∈ C̃◦ , in time O(p1+δ ) we
+may compute an approximation w̃ ∈ C̃◦ for w := uv ∈ C◦ such that ε(w̃) < 2.
+√
+Proof. We take w̃ := ρ(w), so that ε(w̃) = 2p kρ(w) − wk < 2 < 2. Writing u =
+2−p a and v = 2−p b where a, b ∈ Z[i] and |a| , |b| ⩽ 2p , we have w̃ = 2−p ρ0 (2−p ab).
+Thus w̃ may be computed in time O(p1+δ ) by multiplying out the real and imaginary
+parts of a and b, and then summing and rounding appropriately.
+
+For the case R = R, observe first that for any u, v ∈ R we have kuvk ⩽ r kuk kvk,
+as each coefficient of uv = (u0 + · · · + ur−1 y r−1 )(v0 + · · · + vr−1 y r−1 ) mod y r + 1
+is a sum of exactly r terms of the form ±ui vj . In particular, if u, v ∈ R◦ , then
+uv/r ∈ R◦ .
+Lemma 2.5 (Multiplication in R). Assume that r is a power of two and that
+r < 2p−1 . Given as input u, v ∈ R̃◦ , in time 4 M(3rp) + O(rp) we may compute an
+approximation w̃ ∈ R̃◦ for w := uv/r ∈ R◦ such that ε(w̃) < 2.
+Proof. Write 2p u = U0 (y) + i U1 (y) and 2p v = V0 (y) + i V1 (y) where Uj and Vj are
+polynomials in Z[y] of degree less than r and whose coefficients lie in the interval
+[−2p , 2p ]. Then 22p rw = W0 (y) + i W1 (y) where
+W0 := (U0 V0 − U1 V1 ) mod y r + 1,
+
+W1 := (U0 V1 + U1 V0 ) mod y r + 1.
+
+We use the following algorithm, which is based on the well-known Kronecker substitution technique [14, Corollary 8.27].
+(1) Pack coefficients. Evaluate Uj (23p ), Vj (23p ) ∈ Z for j = 0, 1. As the input
+coefficients have at most p bits, this amounts to concatenating the coefficients with
+
+Integer multiplication in time O(n log n)
+
+13
+
+appropriate zero-padding (or one-padding in the case of negative coefficients), plus
+some carry and sign handling. The cost of this step is O(rp).
+(2) Multiply in Z. Let Wj,k := Uj Vk ∈ Z[y] for j, k ∈ {0, 1}. Compute the four
+integer products Wj,k (23p ) = Uj (23p )Vk (23p ). The cost of this step is 4 M(3rp).
+(3) Unpack coefficients. For each pair (j, k), the coefficients of Wj,k ∈ Z[y] are
+bounded in absolute value by r(2p )2 < 23p−1 , so Wj,k may be recovered from the
+integer Wj,k (23p ) in time O(rp). (In more detail: the constant term of Wj,k lies in
+the interval (−23p−1 , 23p−1 ), so it is easily read off the last 3p bits of Wj,k (23p ). After
+stripping off this term, one proceeds to the linear term, and so on.) We then deduce
+the polynomials W0 = (W0,0 −W1,1 ) mod y r +1 and W1 = (W0,1 +W1,0 ) mod y r +1
+in time O(rp).
+(4) Scale and round. Let c` := (W0 )` + i(W1 )` ∈ Z[i] for ` ∈ {0, . . . , r − 1}. Then
+w = (22p r)−1 (c0 + · · · + cr−1 y r−1 ), so |c` | ⩽ 22p r for each `. In time O(rp) we
+Pr−1
+may compute w̃ := ρ(w) = 2−p j=0 ρ0 ((2p r)−1 cj )y j ∈ R̃◦ (each division by 2p r
+√
+
+amounts to a bit-shift), and as usual ε(w̃) = 2p kρ(w) − wk < 2 < 2.
+2.6. Linear and bilinear maps. Let A : V → W be an C-linear map between
+finite-dimensional vector spaces V and W . We define the operator norm of A to be
+kAk := sup kAvk .
+v∈V◦
+
+For example, the normalised DFT maps Fω defined in Section 2.4 all have norm
+exactly 1.
+Assume now that kAk ⩽ 1. By a numerical approximation for A we mean a
+function Ã : Ṽ◦ → W̃◦ that is computed by some algorithm, typically via fixedpoint arithmetic. The error of the approximation is defined to be
+ε(Ã) := max 2p kÃv − Avk .
+v∈Ṽ◦
+
+We write C(Ã) for the time required to compute Ãv from v (taking the maximum
+over all possible inputs v ∈ Ṽ◦ ).
+Lemma 2.6 (Error propagation). Let A : V → W be a C-linear map such that
+kAk ⩽ 1, and let v ∈ V◦ . Let Ã : Ṽ◦ → W̃◦ be a numerical approximation for A,
+and let ṽ ∈ Ṽ◦ be an approximation for v. Then w̃ := Ãṽ ∈ W̃◦ is an approximation
+for w := Av ∈ W◦ such that ε(w̃) ⩽ ε(Ã) + ε(ṽ).
+Proof. We have
+ε(w̃) = 2p kÃṽ − Avk ⩽ 2p kÃṽ − Aṽk + 2p kAṽ − Avk
+⩽ ε(Ã) + 2p kAk kṽ − vk ⩽ ε(Ã) + ε(ṽ).
+
+
+
+Lemma 2.6 yields the following estimate for compositions of linear maps.
+Corollary 2.7 (Composition). Let A : U → V and B : V → W be C-linear maps
+such that kAk , kBk ⩽ 1. Let Ã : Ũ◦ → Ṽ◦ and B̃ : Ṽ◦ → W̃◦ be numerical approximations. Then C˜ := B̃ Ã : Ũ◦ → W̃◦ is a numerical approximation for C :=
+˜ ⩽ ε(B̃) + ε(Ã).
+BA : U → W such that ε(C)
+Proof. For any u ∈ Ũ◦ , if we set v := Au ∈ V◦ and ṽ := Ãu ∈ Ṽ◦ , then
+2p kB̃ Ãu − BAuk = 2p kB̃ṽ − Bvk ⩽ ε(B̃) + ε(ṽ) ⩽ ε(B̃) + ε(Ã).
+
+
+
+14
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+The above definitions and results may be adapted to the case of a C-bilinear
+map A : U × V → W as follows. We define
+kAk :=
+
+kA(u, v)k .
+
+sup
+u∈U◦ , v∈V◦
+
+If kAk ⩽ 1, then a numerical approximation for A is a function Ã : Ũ◦ × Ṽ◦ → W̃◦
+that is computed by some algorithm. The error of the approximation is
+ε(Ã) :=
+
+2p kÃ(u, v) − A(u, v)k ,
+
+max
+u∈Ũ◦ , v∈Ṽ◦
+
+and C(Ã) denotes the time required to compute Ã(u, v) from u and v. Lemma 2.6
+has the following analogue in the bilinear case.
+Lemma 2.8 (Bilinear error propagation). Let A : U × V → W be a C-bilinear
+map with kAk ⩽ 1, and let u ∈ U◦ , v ∈ V◦ . Let Ã : Ũ◦ × Ṽ◦ → W̃◦ , ũ ∈ Ũ◦ ,
+ṽ ∈ Ṽ◦ be approximations. Then w̃ := Ã(ũ, ṽ) ∈ W̃◦ is an approximation for
+w := A(u, v) ∈ W◦ such that ε(w̃) ⩽ ε(Ã) + ε(ũ) + ε(ṽ).
+Proof. We have
+ε(w̃) ⩽ 2p (kÃ(ũ, ṽ) − A(ũ, ṽ)k + kA(ũ, ṽ) − A(u, ṽ)k + kA(u, ṽ) − A(u, v)k)
+= 2p (kÃ(ũ, ṽ) − A(ũ, ṽ)k + kA(ũ − u, ṽ)k + kA(u, ṽ − v)k)
+⩽ ε(Ã) + 2p kAk kũ − uk kṽk + 2p kAk kuk kṽ − vk
+⩽ ε(Ã) + ε(ũ) + ε(ṽ).
+
+
+
+The following application of Lemma 2.8 will frequently be useful.
+Corollary 2.9. Let u, v ∈ C◦ , and let w := uv ∈ C◦ . Given as input approximations ũ, ṽ ∈ C̃◦ , in time O(p1+δ ) we may compute an approximation w̃ ∈ C̃◦ such
+that ε(w̃) < ε(ũ) + ε(ṽ) + 2.
+Proof. Define a bilinear map A : C × C → C by A(u, v) := uv. Then kAk ⩽ 1, and
+Lemma 2.4 yields an approximation Ã : C̃◦ × C̃◦ → C̃◦ such that ε(Ã) < 2 and
+C(Ã) = O(p1+δ ). Applying Lemma 2.8 to A and Ã yields the desired result.
+
+2.7. Tensor products. The following result is used to construct numerical approximations for tensor products of linear maps over a coefficient ring.
+Lemma 2.10 (Tensor products). Let R Q
+be a coefficient ring of dimension r, and
+let m1 , . . . , md , n1 , . . . , nd ⩾ 1. Put M := i max(mi , ni ), and assume that M ⩾ 2.
+For i ∈ {1, . . . , d}, let Ai : Rmi → Rni be an R-linear map with kAi k ⩽ 1, and let
+Ãi : R̃◦mi → R̃◦ni be a numerical approximation. Let A := ⊗i Ai : ⊗i Rmi → ⊗i Rni
+(note that automatically kAk ⩽ 1).
+Then we may construct a numerical approximation Ã : ⊗i R̃◦mi → ⊗i R̃◦ni such
+P
+that ε(Ã) ⩽ i ε(Ãi ) and
+C(Ã) ⩽ M
+
+X C(Ãi )
+i
+
+mi
+
++ O(M rp log M ).
+
+Proof. For i ∈ {0, 1, . . . , d}, let
+U i := Rn1 ⊗ · · · ⊗ Rni−1 ⊗ Rni ⊗ Rmi+1 ⊗ · · · ⊗ Rmd .
+
+Integer multiplication in time O(n log n)
+
+15
+
+In particular, U 0 = ⊗i Rmi and U d = ⊗i Rni . The map A : U 0 → U d admits a
+decomposition A = Bd · · · B1 where Bi : U i−1 → U i is given by
+Bi := In1 ⊗ · · · ⊗ Ini−1 ⊗ Ai ⊗ Imi+1 ⊗ · · · ⊗ Imd
+(here Ik denotes the identity map on Rk ). In other words, Bi acts by applying
+Ai separately on each i-slice. Explicitly, for any u ∈ U i−1 we have (Bi u)j1 ,...,jd =
+(Ai v)ji where v ∈ Rmi is the vector defined by vk := uj1 ,...,ji−1 ,k,ji+1 ,...,jd .
+We may define an approximation B̃i : Ũ◦i−1 → Ũ◦i by mimicking the above formula
+for Bi ; i.e., for u ∈ Ũ◦i−1 we define (B̃i u)j1 ,...,jd := (Ãi v)ji , where v ∈ R̃◦mi is given
+by vk := uj1 ,...,ji−1 ,k,ji+1 ,...,jd . We may evaluate B̃i by first rearranging the data so
+that each i-slice is stored contiguously (see Section 2.3), then applying Ãi to each
+i-slice, and finally rearranging the data back into the correct order. We then define
+Ã := B̃d · · · B̃1 .
+We clearly have ε(B̃i ) = ε(Ãi ) for all i, so by Corollary 2.7 we obtain ε(Ã) ⩽
+P
+P
+i ε(B̃i ) =
+i ε(Ãi ). The cost of the data rearrangement at stage i is
+O(n1 · · · ni−1 ni mi+1 · · · md rp log ni ) + O(n1 · · · ni−1 mi mi+1 · · · md rp log mi )
+= O(M rp (log ni + log mi )),
+so the total over all i is O(M rp log M ) (here we have used the hypothesis that
+M ⩾ 2). The total cost of the invocations of Ãi is
+X
+X
+n1 · · · ni−1 mi+1 · · · md C(Ãi ) ⩽
+(M/mi ) C(Ãi ).
+
+i
+
+i
+
+2.8. Exponential functions. The next three results concern the approximation
+of real and complex exponentials. We give only a sketch of the proofs, omitting
+routine details of the error analysis. We use the fact that the constants π and log 2
+may be approximated to within an error of 2−p in time O(p1+δ ), and that for z
+lying in any fixed bounded subset of C, we may approximate ez to within an error
+of 2−p in time O(p1+δ ) (in fact, in time O(M(p) log p); see [3, Ch. 6–7] or [5, Ch. 4]).
+Lemma 2.11 (Complex exponentials). Let k ⩾ 1 and j be integers such that
+0 ⩽ j < k, and let w := e2πij/k ∈ C◦ . Given j and k as input, we may compute an
+approximation w̃ ∈ C̃◦ such that ε(w̃) < 2 in time O(max(p, log k)1+δ ).
+Proof. Temporarily increasing the working precision to p0 := p + C for a suitable
+constant C > 0, we first compute a p0 -bit approximation for 2πj/k ∈ R in time
+0
+O(max(p, log k)1+δ ), then approximate exp(−2−p + 2πij/k) ∈ C◦ in time O(p1+δ )
+0
+(the 2−p term ensures that the approximation lies within in the unit circle). We
+finally round towards zero to obtain an element of C̃◦ at the original precision p. 
+Lemma 2.12 (Real exponentials, negative case). Let k ⩾ 1 and j ⩾ 0 be integers, and let w := e−πj/k ∈ C◦ . Given j and k as input, we may compute an
+approximation w̃ ∈ C̃◦ such that ε(w̃) < 2 in time O(max(p, log(|j| + 1), log k)1+δ ).
+Proof. We first check whether j > kp in time O(max(log p, log(|j| + 1), log k)1+δ ).
+If so, then e−πj/k < e−πp < 2−p , so we may simply take w̃ := 0.
+Otherwise, we may assume that 0 ⩽ j/k ⩽ p. In this case, we first compute an
+integer τ ⩾ 0 such that τ ⩽ logπ 2 j/k ⩽ τ + 2 in time O(max(log p, log k)1+δ ) (note
+that τ = O(p)). Temporarily increasing the precision to p0 := p + dlog2 pe + C,
+we now compute an approximation for z := τ log 2 − πj/k ∈ [−2 log 2, 0] in time
+
+16
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+O(max(p, log k)1+δ ) and then for ez = 2τ e−πj/k ⩽ 1 in time O(p1+δ ). We finally
+divide by 2τ and round towards zero to obtain an approximation for e−πj/k in C̃◦
+at the original precision p.
+
+Lemma 2.13 (Real exponentials, positive case). Let k ⩾ 1, j ⩾ 0 and σ ⩾ 0 be
+integers, and assume that eπj/k ⩽ 2σ and σ ⩽ 2p. Let w := 2−σ eπj/k ∈ C◦ . Given
+j, k and σ as input, we may compute an approximation w̃ ∈ C̃◦ such that ε(w̃) < 2
+in time O(max(p, log k)1+δ ).
+Proof. The hypotheses automatically ensure that j < kp. We now proceed along
+similar lines to the proof of Lemma 2.12: we first compute an integer τ ⩾ 0 near
+σ − logπ 2 j/k, and then at suitably increased precision we approximate successively
+z := (τ − σ) log 2 + πj/k and ez = 2τ −σ eπj/k , and finally divide by 2τ and round
+towards zero to obtain an approximation for 2−σ eπj/k at precision p.
+
+3. Complex transforms for power-of-two sizes
+Let p ⩾ 100 be the working precision as defined in Section 2. The goal of this section is to construct an efficiently computable approximation for the d-dimensional
+complex transform Ft1 ,...,td : ⊗i Cti → ⊗i Cti in the special case that the ti are
+powers of two. The following theorem is proved at the end of the section.
+Theorem 3.1 (Power-of-two complex transforms). Let d ⩾ 2 and let t1 , . . . , td be
+powers of two such that td ⩾ · · · ⩾ t1 ⩾ 2. Let T := t1 · · · td and assume that T < 2p .
+Then we may construct a numerical approximation F̃t1 ,...,td : ⊗i C̃t◦i → ⊗i C̃t◦i for
+Ft1 ,...,td such that ε(F̃t1 ,...,td ) < 8T log2 T and
+C(F̃t1 ,...,td ) <
+
+4T
+M(3td p) + O(T p log T + T p1+δ ).
+td
+
+Throughout this section we set
+r := td ,
+
+R := C[y]/(y r + 1).
+
+The basic idea of the proof of Theorem 3.1 is to use Bluestein’s method [2] to reduce
+the DFT to the problem of computing a (d − 1)-dimensional cyclic convolution of
+size t1 ×· · ·×td−1 over R, and then to perform that convolution by taking advantage
+of the synthetic roots of unity in R. The M(·) term in the complexity bound arises
+from the pointwise multiplications in R. The O(T p log T ) terms covers the cost
+of the synthetic FFTs over R, and the O(T p1+δ ) term covers various auxiliary
+operations.
+d−1
+For the rest of this section, ⊗i R ti always means ⊗i=1
+R ti , and ⊗i Cti always
+d
+ti
+means ⊗i=1 C .
+3.1. Transforms and convolutions over R. We begin with the one-dimensional
+case. Recall that we have defined a synthetic transform Gt : R t → R t for each
+positive divisor t of 2r, i.e., for t ∈ {1, 2, 4, . . . , 2r}.
+Lemma 3.2 (FFT over R). For t ∈ {1, 2, 4, . . . , 2r}, we may construct a numerical approximation G̃t : R̃◦t → R̃◦t for Gt such that ε(G̃t ) ⩽ log2 t and C(G̃t ) =
+O(trp log 2t).
+
+Integer multiplication in time O(n log n)
+
+17
+
+Proof. For the case t = 1, observe that G1 : R → R is the identity map, and admits
+the trivial approximation G̃1 : R̃◦ → R̃◦ given by G̃1 u := u. This satisfies ε(G̃1 ) = 0
+and C(G̃1 ) = O(rp).
+t/2
+t/2
+Now let t ∈ {2, 4, . . . , 2r}, and assume that G̃t/2 : R̃◦ → R̃◦ has already been
+constructed. Given as input u ∈ R̃◦t , we will use the well-known Cooley–Tukey
+algorithm [7] to approximate Gt u ∈ R◦t .
+For any j ∈ {0, . . . , t − 1}, observe that
+t
+
+t−1
+
+−1
+
+t
+
+−1
+
+2
+2
+t
+1X
+1 X −2rjk/t
+1X
+y −2rjk/t uk +
+y −2rj(k+ 2 )/t uk+ 2t
+(Gt u)j =
+y
+uk =
+t
+t
+t
+
+k=0
+
+k=0
+
+k=0
+
+t
+2 −1
+
+=
+
+j
+
+1 X −2rjk/t uk + (−1) uk+ 2t
+y
+,
+t/2
+2
+k=0
+
+where we have used the fact that y r = −1. For ` ∈ {0, . . . , 2t − 1} this implies that
+t/2
+(Gt u)2` = (Gt/2 v)` and (Gt u)2`+1 = (Gt/2 w)` , where v, w ∈ R◦ are given by
+vk := 21 (uk + uk+ 2t ),
+
+wk := 12 y −2rk/t (uk − uk+ 2t ),
+
+0 ⩽ k < t/2.
+
+We may therefore use the following algorithm.
+(1) Butterflies. For k ∈ {0, . . . , 2t − 1}, we use Lemma 2.1 to compute approximations ṽk , w̃k0 ∈ R̃◦ for vk and wk0 := 12 (uk − uk+ 2t ) such that ε(ṽk ), ε(w̃k0 ) < 1.
+
+We then compute an approximation w̃k ∈ R̃◦ for wk = y −2rk/t wk0 ; as y r = −1, this
+amounts to cyclically permuting the coefficients of w̃k0 (and adjusting signs), and
+clearly ε(w̃k ) = ε(w̃k0 ) < 1. The cost of this step is O(trp).
+(2) Recurse. We compute G̃t/2 ṽ and G̃t/2 w̃ using the previously constructed
+map G̃t/2 , and interleave the results (at a further cost of O(trp)) to obtain the
+output vector G̃t u ∈ R̃◦t defined by (G̃t u)2` := (G̃t/2 ṽ)` and (G̃t u)2`+1 := (G̃t/2 w̃)`
+for ` ∈ {0, . . . , 2t − 1}.
+By Lemma 2.6 and induction we have
+2p k(G̃t u)2` − (Gt u)2` k = 2p k(G̃t/2 ṽ)` − (Gt/2 v)` k
+⩽ ε(G̃t/2 ) + ε(ṽ) ⩽ log2 (t/2) + 1 = log2 t.
+A similar argument applies for (G̃t u)2`+1 . Therefore ε(G̃t ) ⩽ log2 t. As for the
+complexity, the above discussion shows that C(G̃t ) < 2 C(G̃t/2 ) + O(trp). This
+immediately yields the bound C(G̃t ) = O(trp log t) for t ⩾ 2.
+
+Combining Lemmas 3.2 and 2.10, we obtain the following approximation for the
+multidimensional transform Gt1 ,...,td−1 : ⊗i R ti → ⊗i R ti .
+Proposition 3.3 (Multivariate FFT over R). Let t1 , . . . , td and T be as in Theorem
+3.1. We may construct a numerical approximation G̃t1 ,...,td−1 : ⊗i R̃◦ti → ⊗i R̃◦ti for
+Gt1 ,...,td−1 such that ε(G̃t1 ,...,td−1 ) < log2 T and C(G̃t1 ,...,td−1 ) = O(T p log T ).
+Proof. We apply Lemma 2.10 (with d replaced by d − 1), taking R := R, mi := ti ,
+ni := ti , Ai := Gti for i ∈ {1, . . . , d − 1}. The quantity M defined in Lemma 2.10
+is given by M = t1 · · · td−1 = T /r. Using the approximations G̃ti constructed in
+
+18
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Lemma 3.2, we obtain
+ε(G̃t1 ,...,td−1 ) ⩽
+
+d−1
+X
+
+ε(G̃ti ) ⩽
+
+i=1
+
+d−1
+X
+
+log2 ti = log2 (T /r) < log2 T
+
+i=1
+
+and
+d−1
+
+C(G̃t1 ,...,td−1 ) ⩽
+
+T X C(G̃ti )
++ O((T /r)rp log(T /r))
+r i=1 ti
+d−1
+
+=
+
+T X
+O(rp log 2ti ) + O(T p log T ) = O(T p log T ).
+r i=1
+
+
+
+Next we will use the above result to approximate the normalised (d − 1)-dimensional convolution map MR : ⊗i R ti × ⊗i R ti → ⊗i R ti defined by
+1
+u ∗ v,
+u, v ∈ ⊗i R ti .
+T
+Note that kMR k ⩽ 1; indeed, each component of u ∗ v is a sum of t1 · · · td−1 = T /r
+terms of the form uj1 ,...,jd−1 vk1 ,...,kd−1 , and we saw earlier that kabk ⩽ r kak kbk for
+all a, b ∈ R.
+MR (u, v) :=
+
+Proposition 3.4 (Convolution over R). Let t1 , . . . , td and T be as in Theorem 3.1.
+We may construct a numerical approximation M̃R : ⊗i R̃◦ti × ⊗i R̃◦ti → ⊗i R̃◦ti for
+MR such that ε(M̃R ) < 3T log2 T + 2T + 3 and
+C(M̃R ) <
+
+4T
+M(3rp) + O(T p log T + T p1+δ ).
+r
+
+Proof. We are given as input u, v ∈ ⊗i R̃◦ti . Let w := MR (u, v) = T1 u ∗ v ∈ ⊗i R◦ti
+be the exact (normalised) convolution. According to (2.1) we have
+1
+u ∗ v = (t1 · · · td−1 )Gt∗1 ,...,td−1 ((Gt1 ,...,td−1 u) · (Gt1 ,...,td−1 v)).
+t1 · · · td−1
+Dividing both sides by r = td , we obtain w = (T /r)w0 where
+
+w0 := Gt∗1 ,...,td−1 1r (Gt1 ,...,td−1 u) · (Gt1 ,...,td−1 v) ∈ ⊗i R◦ti .
+We use the following algorithm.
+(1) Forward transforms. We invoke Proposition 3.3 to compute approximations
+ũ0 , ṽ 0 ∈ ⊗i R̃◦ti for u0 := Gt1 ,...,td−1 u ∈ ⊗i R◦ti and v 0 := Gt1 ,...,td−1 v ∈ ⊗i R◦ti , with
+ε(ũ0 ), ε(ṽ 0 ) < log2 T . The cost of this step (and step (3) below) is O(T p log T ).
+(2) Pointwise multiplications. Let A : R × R → R be the normalised multiplication map defined by A(a, b) := ab/r; then Lemma 2.5 yields an approximation
+Ã : R̃◦ × R̃◦ → R̃◦ such that ε(Ã) < 2 (note that r = td ⩽ T /2 < 2p−1 ). Applying
+Ã to each component of ũ0 and ṽ 0 , we obtain an approximation z̃ ∈ ⊗i R̃◦ti for
+z := 1r u0 · v 0 ∈ ⊗i R◦ti . This step requires time
+T
+4T
+(4 M(3rp) + O(rp)) =
+M(3rp) + O(T p),
+r
+r
+and by Lemma 2.8 we have
+ε(z̃) ⩽ ε(Ã) + ε(ũ0 ) + ε(ṽ 0 ) < 2 + log2 T + log2 T = 2 log2 T + 2.
+
+Integer multiplication in time O(n log n)
+
+19
+
+(3) Inverse transform. We use Proposition 3.3 again to compute an approximation w̃0 ∈ ⊗i R̃◦ti for w0 = Gt∗1 ,...,td−1 z ∈ ⊗i R◦ti ; by Lemma 2.6 we obtain
+ε(w̃0 ) ⩽ ε(G̃t∗1 ,...,td−1 ) + ε(z̃) < log2 T + (2 log2 T + 2) = 3 log2 T + 2.
+(4) Scaling. Recall that w = (T /r)w0 and that kwk ⩽ 1. We may therefore apply
+Lemma 2.2 (with c := T /r ⩽ 2p ) to compute an approximation w̃ ∈ ⊗i R̃◦ti such
+that
+ε(w̃) < 2(T /r)ε(w̃0 ) + 3 ⩽ T (3 log2 T + 2) + 3
+(here we have used the hypothesis that r = td ⩾ 2). The cost of this scaling step is
+O(T p1+δ ). Finally we take M̃R (u, v) := w̃.
+
+3.2. Transforms and convolutions over C. We now transfer the results of the
+previous section from R to C. Consider the normalised d-dimensional convolution
+map MC : ⊗i Cti × ⊗i Cti → ⊗i Cti defined by
+MC (u, v) :=
+
+1
+u ∗ v,
+T
+
+u, v ∈ ⊗i Cti .
+
+As before we have kMC k ⩽ 1.
+Proposition 3.5 (Convolution over C). Let t1 , . . . , td and T be as in Theorem 3.1.
+We may construct a numerical approximation M̃C : ⊗i C̃t◦i × ⊗i C̃t◦i → ⊗i C̃t◦i for
+MC such that ε(M̃C ) < 3T log2 T + 2T + 15 and
+C(M̃C ) <
+
+4T
+M(3rp) + O(T p log T + T p1+δ ).
+r
+
+Proof. Let ζ := eπi/r and consider the C-linear map S : Cr → R defined by
+S(u0 , . . . , ur−1 ) := u0 + ζu1 y + · · · + ζ r−1 ur−1 y r−1 .
+Then S is a isomorphism of rings between (Cr , ∗) and R; in fact, recalling that
+(Cr , ∗) ∼
+= C[x]/(xr − 1), we may regard S as the map sending x to ζy. Moreover, S
+induces an isomorphism of rings
+d−1
+T : (⊗di=1 Cti , ∗) → (⊗i=1
+R ti , ∗).
+
+Indeed, identifying these rings respectively as C[x1 , . . . , xd ]/(xt11 − 1, . . . , xtdd − 1)
+td−1
+and C[x1 , . . . , xd−1 , y]/(xt11 − 1, . . . , xd−1
+− 1, y r + 1), the isomorphism T sends
+u(x1 , . . . , xd−1 , xd ) to u(x1 , . . . , xd−1 , ζy). Writing U := T −1 for the inverse isomorphism, we obtain
+MC (u, v) = U(MR (T u, T v)),
+
+u, v ∈ ⊗i Cti .
+
+Now we construct numerical approximations for the maps just introduced. We
+may construct an approximation S̃ : C̃r◦ → R̃◦ by first using Lemma 2.11 to compute
+an approximation ζ̃j ∈ C̃◦ for each ζj := ζ j = eπij/r ∈ C◦ , and then using Corollary 2.9 to compute an approximation ṽj ∈ C̃◦ for each product vj := ζj uj ∈ C◦ .
+We obtain ε(ζ̃j ) < 2 and then ε(ṽj ) < ε(ζ̃j ) + 2 < 4. Hence ε(S̃) < 4 and C(S̃) =
+jd−1
+O(rp1+δ ). Then, applying S̃ separately to the coefficient of each xj11 · · · xd−1
+,
+d−1
+d
+ti
+ti
+we obtain an approximation T̃ : ⊗i=1 C̃◦ → ⊗i=1 R̃◦ such that ε(T̃ ) < 4 and
+C(T̃ ) = O((T /r)rp1+δ ) = O(T p1+δ ). The inverse is handled similarly; we obtain an
+ti
+d
+ti
+1+δ
+approximation Ũ : ⊗d−1
+).
+i=1 R̃◦ → ⊗i=1 C̃◦ such that ε(Ũ) < 4 and C(Ũ) = O(T p
+
+20
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Finally, given as input u, v ∈ ⊗i C̃t◦i , we define M̃C (u, v) := Ũ(M̃R (T̃ u, T̃ v)).
+Then Lemma 2.6, Lemma 2.8 and Proposition 3.4 together imply that
+ε(M̃C ) ⩽ ε(Ũ) + ε(M̃R ) + ε(T̃ ) + ε(T̃ ) < (3T log2 T + 2T + 3) + 4 + 4 + 4,
+and the estimate for C(M̃C ) follows immediately from Proposition 3.4.
+
+
+
+Finally we use Bluestein’s trick [2] to prove the main result of this section.
+Proof of Theorem 3.1. We are given as input u ∈ ⊗i C̃t◦i . We wish to approximate
+its transform v := Ft1 ,...,td u ∈ ⊗i Ct◦i , which is given explicitly by
+vj1 ,...,jd =
+
+t −1
+
+t −1
+
+k1 =0
+
+kd =0
+
+1
+d
+X
+1 X
+···
+e−2πi(j1 k1 /t1 +···+jd kd /td ) uk1 ,...,kd ,
+T
+
+0 ⩽ ji < ti .
+
+For any j1 , . . . , jd ∈ Z set
+2
+
+2
+
+aj1 ,...,jd := eπi(j1 /t1 +···+jd /td ) ∈ C◦ .
+
+(3.1)
+
+The identity −2jk = (j − k)2 − j 2 − k 2 implies that
+(3.2)
+
+t −1
+
+t −1
+
+k1 =0
+
+kd =0
+
+d
+X
+X
+1 1
+···
+aj1 −k1 ,...,jd −kd (āk1 ,...,kd uk1 ,...,kd ),
+vj1 ,...,jd = āj1 ,...,jd
+T
+
+where ¯· denotes complex conjugation. Moreover, we observe that aj1 ,...,jd is periodic
+2
+2
+2
+in each ji with period ti , as eπi(ji +ti ) /ti = eπiji /ti (eπi )2ji +ti = eπiji /ti (using the
+fact that ti is even). Therefore, regarding (3.1) as defining a vector a ∈ ⊗i Ct◦i , we
+may rewrite (3.2) in the form
+v = ā · ( T1 a ∗ (ā · u)).
+We now use the following algorithm.
+(1) Compute a. Recalling that each ti divides r, we may write
+r
+r
+aj1 ,...,jd = e2πiηj1 ,...,jd /2r ,
+ηj1 ,...,jd := j12 + · · · + jd2 (mod 2r).
+t1
+td
+Iterating over the tuples (j1 , . . . , jd ) in lexicographical order, we may compute
+ηj1 ,...,jd in amortised time O(log r) = O(p) per tuple (for example by precomputing a table of squares modulo 2r), and then use Lemma 2.11 to compute an
+approximation ãj1 ,...,jd ∈ C̃◦ such that ε(ãj1 ,...,jd ) < 2 in time O(p1+δ ). We thus
+obtain ã ∈ ⊗i C̃t◦i with ε(ã) < 2 in time O(T p1+δ ).
+(2) Pre-multiply. We use Corollary 2.9 to compute an approximation b̃ ∈ ⊗i C̃t◦i
+for b := ā · u with ε(b̃) < ε(ã) + 2 < 4 in time O(T p1+δ ).
+(3) Convolution. We use Proposition 3.5 to compute an approximation c̃ ∈ ⊗i C̃t◦i
+for c := T1 a ∗ b. This requires time (4T /r) M(3rp) + O(T p log T + T p1+δ ), and by
+Lemma 2.8 we have
+ε(c̃) ⩽ ε(M̃C ) + ε(ã) + ε(b̃) < 3T log2 T + 2T + 21.
+(4) Post-multiply. We invoke Corollary 2.9 again to compute an approximation
+ṽ ∈ ⊗i C̃t◦i for v = ā · c such that
+ε(ṽ) ⩽ ε(ã) + ε(c̃) + 2 < 3T log2 T + 2T + 25
+1+δ
+
+in time O(T p ). We have 2T + 25 < 5T log2 T (because T ⩾ t1 t2 ⩾ 4), so
+ε(ṽ) < 8T log2 T . Finally we take F̃t1 ,...,td u := ṽ.
+
+
+Integer multiplication in time O(n log n)
+
+21
+
+Remark 3.6. In the algorithm developed in this section, it is essential that the multidimensional complex transform be performed “all at once”. If instead we decompose it into one-dimensional transforms in the usual way, and then use Bluestein’s
+method to convert each of these to a one-dimensional convolution over R, we would
+increase the number of multiplications in R by a factor of O(d), leading to an extraneous factor of O(d) on the right hand side of (1.3).
+Remark 3.7. An alternative method for reducing multidimensional complex transforms to synthetic transforms was described in [33]. Briefly, given as input u ∈
+td−1
+C[x1 , . . . , xd−1 , y]/(xt11 − 1, . . . , xd−1
+− 1, y r + 1), assume that we wish to evaluate
+each xi at the complex ti -th roots of unity, and y at the “odd” complex 2r-th roots
+of unity (i.e., roots of y r + 1). We first use (d − 1)-dimensional synthetic transforms to compute the polynomials ui1 ,...,id−1 (y) := u(y 2ri1 /t1 , . . . , y 2rid−1 /td−1 , y) ∈
+C[y]/(y r + 1), for all ik ∈ {0, . . . , tk − 1}. It then suffices to compute the onedimensional complex DFT of each ui1 ,...,id−1 (y), which could be done for example
+by Bluestein’s method.
+4. Gaussian resampling
+Let p ⩾ 100 be the working precision as defined in Section 2. The aim of this
+section is to show how to reduce the problem of approximating a multidimensional
+complex transform Fs1 ,...,sd : ⊗i Csi → ⊗i Csi , for a given “source” size s1 ×· · ·×sd ,
+to the problem of approximating another transform Ft1 ,...,td : ⊗i Cti → ⊗i Cti for
+a somewhat larger “target” size t1 × · · · × td . (In Section 5 we will specialise to the
+case that the si are primes and the ti are powers of two.) The following theorem is
+proved at the end of Section 4.3. It may be strengthened in various ways; see the
+discussion in Section 4.4.
+Theorem 4.1 (Gaussian resampling). Let d ⩾ 1, let s1 , . . . , sd and t1 , . . . , td be
+integers such that 2 ⩽ si < ti < 2p and gcd(si , ti ) = 1, and let T := t1 · · · td . Let α
+be an integer in the interval 2 ⩽ α < p1/2 . For each i, let θi := ti /si − 1, and
+assume that θi ⩾ p/α4 .
+Then there exist linear maps A : ⊗i Csi → ⊗i Cti and B : ⊗i Cti → ⊗i Csi , with
+kAk , kBk ⩽ 1, such that
+Fs1 ,...,sd = 2γ BFt1 ,...,td A,
+
+γ := 2dα2 .
+
+Moreover, we may construct numerical approximations Ã : ⊗i C̃s◦i → ⊗i C̃t◦i and
+B̃ : ⊗i C̃t◦i → ⊗i C̃s◦i such that ε(Ã), ε(B̃) < dp2 and
+C(Ã), C(B̃) = O(dT p3/2+δ α + T p log T ).
+This theorem shows that to approximate a transform of size s1 × · · · × sd , one
+may first apply Ã, then compute a transform of size t1 × · · · × td , then apply B̃, and
+finally multiply by 2γ . The dT p3/2+δ α term in the complexity bound arises from
+the numerical computations at the heart of the “Gaussian resampling” method.
+The T p log T term covers the cost of various data rearrangements in the Turing
+model (this term would not appear if we worked in the Boolean circuit model). In
+the application in Section 5, the parameters will be chosen so that the first term is
+negligible compared to the O(T p log T ) cost of evaluating F̃t1 ,...,td .
+
+22
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+ 0.5000
+ 0.3142
+ 0.0779
+
+ 0.0076
+
+ 2.9e-4
+
+ 4.4e-6
+
+ 2.7e-8
+
+ 2.7e-8
+
+ 4.4e-6
+
+ 2.9e-4
+
+ 0.0076
+
+0.0779
+0.3142
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.0000
+3.4e-6
+1.4e-22
+7.6e-50
+4.7e-88
+3.6e-137
+3.3e-197
+3.3e-197
+3.6e-137
+4.7e-88
+7.6e-50
+1.4e-22
+3.4e-6
+
+0.2280
+0.4795
+0.3982
+0.1305
+0.0169
+8.6e-4
+1.7e-5
+1.3e-7
+5.3e-9
+1.0e-6
+9.2e-5
+0.0032
+0.0428
+
+5.9e-10
+0.3227
+0.0021
+1.6e-16
+1.6e-40
+1.9e-75
+2.7e-121
+4.8e-178
+2.4e-217
+4.9e-154
+1.2e-101
+3.6e-60
+1.3e-29
+
+0.0216
+0.1522
+0.4230
+0.4642
+0.2011
+0.0344
+0.0023
+6.1e-5
+6.5e-7
+3.5e-9
+2.3e-7
+2.6e-5
+0.0012
+1.2e-37
+1.0e-14
+0.0108
+0.1339
+2.0e-11
+3.6e-32
+8.1e-64
+2.2e-106
+7.2e-160
+2.8e-224
+7.1e-172
+3.3e-116
+1.8e-71
+
+4.2e-4
+0.0100
+0.0934
+0.3432
+0.4977
+0.2849
+0.0644
+0.0057
+2.0e-4
+2.8e-6
+1.5e-8
+4.7e-8
+7.1e-6
+
+1.7e-6
+1.3e-4
+0.0043
+0.0527
+0.2561
+0.4908
+0.3714
+0.1109
+0.0131
+6.0e-4
+1.1e-5
+8.1e-8
+8.9e-9
+
+2.9e-9
+3.9e-7
+4.0e-5
+0.0017
+0.0274
+0.1757
+0.4452
+0.4452
+0.1757
+0.0274
+0.0017
+4.0e-5
+3.9e-7
+
+1.7e-6
+8.9e-9
+8.1e-8
+1.1e-5
+6.0e-4
+0.0131
+0.1109
+0.3714
+0.4908
+0.2561
+0.0527
+0.0043
+1.3e-4
+
+9.8e-84
+1.2e-46
+1.9e-20
+3.7e-5
+0.8819
+2.4e-7
+8.5e-25
+3.5e-53
+1.8e-92
+1.1e-142
+8.4e-204
+1.0e-190
+9.2e-132
+
+2.6e-148
+5.3e-97
+1.3e-56
+3.8e-27
+1.3e-8
+0.6049
+3.2e-4
+2.0e-18
+1.6e-43
+1.5e-79
+1.8e-126
+2.5e-184
+1.6e-210
+
+5.2e-231
+8.1e-166
+3.0e-111
+1.3e-67
+7.7e-35
+5.2e-13
+0.0432
+0.0432
+5.2e-13
+7.7e-35
+1.3e-67
+3.0e-111
+8.1e-166
+
+2.6e-148
+1.6e-210
+2.5e-184
+1.8e-126
+1.5e-79
+1.6e-43
+2.0e-18
+3.2e-4
+0.6049
+1.3e-8
+3.8e-27
+1.3e-56
+5.3e-97
+
+4.2e-4
+7.1e-6
+4.7e-8
+1.5e-8
+2.8e-6
+2.0e-4
+0.0057
+0.0644
+0.2849
+0.4977
+0.3432
+0.0934
+0.0100
+9.8e-84
+9.2e-132
+1.0e-190
+8.4e-204
+1.1e-142
+1.8e-92
+3.5e-53
+8.5e-25
+2.4e-7
+0.8819
+3.7e-5
+1.9e-20
+1.2e-46
+
+0.0216
+0.0012
+2.6e-5
+2.3e-7
+3.5e-9
+6.5e-7
+6.1e-5
+0.0023
+0.0344
+0.2011
+0.4642
+0.4230
+0.1522
+
+0.2280
+0.0428
+0.0032
+9.2e-5
+1.0e-6
+5.3e-9
+1.3e-7
+1.7e-5
+8.6e-4
+0.0169
+0.1305
+0.3982
+0.4795
+
+1.2e-37
+1.8e-71
+3.3e-116
+7.1e-172
+2.8e-224
+7.2e-160
+2.2e-106
+8.1e-64
+3.6e-32
+2.0e-11
+0.1339
+0.0108
+1.0e-14
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5.9e-10
+1.3e-29
+3.6e-60
+1.2e-101
+4.9e-154
+2.4e-217
+4.8e-178
+2.7e-121
+1.9e-75
+1.6e-40
+1.6e-16
+0.0021
+0.3227
+
+Figure 2. Matrices of S and T for s = 10, t = 13, α = 2. The
+maximal entries in each column are shown in bold.
+Throughout this section we use the notation
+[x] := bx + 21 c,
+
+hxi := x − [x],
+
+x ∈ R.
+
+Thus [x] is the nearest integer to x, rounding upwards in case of a tie, and hxi is
+the corresponding fractional part with − 21 ⩽ hxi < 21 .
+4.1. The resampling identity. Throughout Sections 4.1 and 4.2, let s and t > s
+be positive integers such that gcd(s, t) = 1, and let α ∈ (0, ∞).
+Define “resampling maps” S : Cs → Ct and T : Cs → Ct by
+X
+j 2
+−2 2 k
+(Su)k := α−1
+e−πα s ( t − s ) uj ,
+u ∈ Cs , 0 ⩽ k < t,
+j∈Z
+
+(T u)k :=
+
+X
+
+2 2 k
+
+j 2
+
+e−πα t ( t − s ) uj ,
+
+u ∈ Cs ,
+
+0 ⩽ k < t.
+
+j∈Z
+2
+
+These sums certainly converge due to the rapid decay of the function e−x . Each
+entry (Su)k and (T u)k is a weighted linear combination of u0 , . . . , us−1 , with the
+largest weightings given to those uj for which j/s is closest to k/t modulo 1. Figure 2
+shows examples of the matrices of S and T . They have relatively large entries near
+the “diagonal” of slope t/s, and the entries decay rapidly away from the diagonal
+according to a Gaussian law. The parameter α controls the rate of decay.
+We also define permutation maps Ps : Cs → Cs and Pt : Ct → Ct by
+(Ps u)j := utj ,
+(Pt u)k := u−sk ,
+
+u ∈ Cs ,
+
+0 ⩽ j < s,
+
+t
+
+0 ⩽ k < t.
+
+u∈C,
+
+Then we have the following fundamental identity, which uses S and T to transform
+Fs into Ft .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Integer multiplication in time O(n log n)
+
+23
+
+Theorem 4.2 (Resampling identity). We have T Ps Fs = Pt Ft S. In other words,
+the following diagram commutes:
+Fs
+
+Cs
+
+Ps
+
+Cs
+
+Cs
+
+S
+
+T
+Ft
+
+Ct
+
+Pt
+
+Ct
+
+Ct
+
+Proof. Given u ∈ Cs , define a smooth, 1-periodic function fu : R → C by
+X
+−2 2 2
+g(x) := e−πα s x .
+fu (x) :=
+uj g(x − sj ),
+j∈Z
+
+It has an absolutely and uniformly convergent Fourier expansion
+X
+fu (x) =
+fˆu (r)e2πirx ,
+r∈Z
+
+where the Fourier coefficients are given by
+Z 1
+fˆu (r) =
+e−2πirx fu (x) dx
+0
+
+=
+
+Z 1X
+0 j∈Z
+
+=
+
+uj e−2πirx g(x − sj ) dx
+
+Z 1X
+s−1 X
+0 j=0 q∈Z
+
+=
+
+=
+
+s−1
+X
+
+Z ∞
+uj
+
+uj e−2πirx g(x − q − sj ) dx
+e−2πirx g(x − sj ) dx
+
+j=0
+
+−∞
+
+s−1
+X
+
+−2πirj/s
+
+uj e
+
+Z ∞
+
+e−2πirx g(x) dx.
+
+−∞
+
+j=0
+
+Using the well-known fact that the Fourier transform of g(x) on R is given by
+Z ∞
+2 −2 2
+e−2πiyx g(x) dx = αs−1 e−πα s y ,
+y ∈ R,
+−∞
+
+we obtain
+2 −2 2
+fˆu (r) = αe−πα s r (Fs u)r ,
+
+By definition (Su)` = α
+have
+
+−1
+
+r ∈ Z.
+
+fu (`/t) for any ` ∈ Z, so for any k ∈ {0, . . . , t − 1} we
+
+(Pt Ft Su)k = (Ft Su)−sk
+= α−1 t−1
+
+t−1
+X
+
+e2πisk`/t fu (`/t)
+
+`=0
+
+= α−1 t−1
+
+t−1
+X
+`=0
+
+e2πisk`/t
+
+X
+r∈Z
+
+fˆu (r)e2πir`/t
+
+24
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+X
+
+= α−1
+
+fˆu (r)
+
+r=−sk mod t
+2 −2 2
+
+X
+
+=
+
+e−πα s
+
+r
+
+(Fs u)r
+
+r=−sk mod t
+
+=
+
+X
+
+2 −2
+
+e−πα s
+
+(tj−sk)2
+
+(Fs u)tj−sk
+
+j∈Z
+
+=
+
+X
+
+2 2 j
+
+k 2
+
+e−πα t ( s − t ) (Ps Fs u)j
+
+j∈Z
+
+= (T Ps Fs u)k .
+
+
+
+Remark 4.3. Another interpretation of the above proof is that the measure fu (x) dx
+Ps−1
+P
+is the convolution of the measures
+j=0 uj δj/s and
+j∈Z g(x − j) dx on R/Z,
+where δx means a unit mass concentrated at x. The key point is that the Fourier
+transform maps convolution of measures to pointwise multiplication of their Fourier
+coefficients.
+We conclude this section with a straightforward bound for kSk.
+Lemma 4.4. We have kSk < 1 + α−1 .
+Proof. For any u ∈ Cs◦ and k ∈ {0, . . . , t − 1}, we have
+X
+X
+X
+j 2
+−2 2 k
+−2
+sk 2
+|(Su)k | ⩽ α−1
+e−πα s ( t − s ) = α−1
+e−πα (j− t ) = α−1
+G(η + j),
+j∈Z
+
+j∈Z
+
+j∈Z
+
+−2
+
+2
+
+1 1
+:= e−πα x .
+where η := h −sk
+t i ∈ [− 2 , 2 ] and G(x)
+1
+First suppose that η ∈ [− 2 , 0]. Then G(x) is increasing on (−∞, η) and decreasing on (η + 1, ∞), so
+Z η
+Z ∞
+−1
+∞
+X
+X
+G(η + j),
+G(η + j).
+G(x) dx >
+G(x) dx >
+−∞
+
+η+1
+
+j=−∞
+
+j=2
+
+For the remaining interval (η, η + 1), we observe that G(x) ⩾ G(η + 1) for x ∈
+(0, η + 1) and G(x) ⩾ G(η) for x ∈ (η, 0); but we have additionally G(η) ⩾ G(η + 1)
+because |η| ⩽ 21 ⩽ |η + 1|, so in fact G(x) ⩾ G(η +1) on the whole interval (η, η +1).
+R η+1
+This implies that η G(x) dx ⩾ G(η + 1), and adding the three integrals yields
+Z ∞
+X
+X
+G(η + j) = G(η) +
+G(η + j) < 1 +
+G(x) dx = 1 + α.
+j∈Z
+
+j6=0
+
+−∞
+
+A symmetrical argument yields the same bound for the case η ∈ [0, 21 ]. We conclude
+that |(Su)k | < α−1 (1 + α) = 1 + α−1 , and hence kSk < 1 + α−1 .
+
+4.2. Solving the system. We wish to use Theorem 4.2 to express Fs in terms
+of Ft . To do this, we must show how to solve a system of the form T x = y. This
+system is overdetermined, as t > s. For fixed α, it turns out that the system
+is numerically unstable if t/s is too close to 1, or in other words, if the quantity
+θ := t/s − 1 is too close to zero. On the other hand, we will show that imposing
+the condition θ ⩾ 1/α2 is enough to ensure that the system becomes numerically
+tractable, and in this case we may even construct an explicit left inverse for T .
+
+Integer multiplication in time O(n log n)
+9.6e-923
+ 3.4e-6
+
+ 7.6e-50
+
+ 4.7e-88
+
+ 3.6e-137
+
+ 3.3e-197
+ 3.6e-137
+
+ 4.7e-88
+
+ 7.6e-50
+3.4e-6
+
+
+1.8e-9
+1.7e-880
+5.2e-16
+5.0e-40
+5.9e-75
+1.5e-177
+7.6e-217
+1.5e-153
+3.8e-101
+4.1e-29
+
+9.5e-37
+7.9e-14
+2.7e-866
+1.5e-10
+2.7e-31
+1.6e-105
+5.3e-159
+2.1e-223
+5.3e-171
+1.3e-70
+
+1.1e-83
+1.4e-46
+4.3e-5
+7.4e-909
+2.8e-7
+4.0e-53
+2.0e-92
+1.2e-142
+9.5e-204
+1.0e-131
+
+4.4e-148
+8.8e-97
+6.3e-27
+2.2e-8
+1.1e-894
+3.4e-18
+2.7e-43
+2.5e-79
+3.0e-126
+2.7e-210
+
+1.2e-229
+1.8e-164
+3.2e-66
+1.7e-33
+1.2e-11
+4.2e-852
+1.2e-11
+1.7e-33
+3.2e-66
+1.8e-164
+
+25
+
+4.4e-148
+2.7e-210
+3.0e-126
+2.5e-79
+2.7e-43
+5.3e-4
+1.1e-894
+2.2e-8
+6.3e-27
+8.8e-97
+
+1.1e-83
+1.0e-131
+9.5e-204
+1.2e-142
+2.0e-92
+9.7e-25
+2.8e-7
+7.4e-909
+4.3e-5
+1.4e-46
+
+9.5e-37
+1.3e-70
+5.3e-171
+2.1e-223
+5.3e-159
+6.0e-63
+2.7e-31
+1.5e-10
+2.7e-866
+7.9e-14
+
+1.8e-9
+4.1e-29
+3.8e-101
+1.5e-153
+7.6e-217
+8.6e-121
+5.9e-75
+5.0e-40
+5.2e-16
+1.7e-880
+
+Figure 3. Matrix of E for s = 10, t = 13, α = 2.
+The function ` 7→ [t`/s] maps {0, . . . , s − 1} (injectively) into {0, . . . , t − 1}, so
+we may define a map C : Ct → Cs by the formula
+u ∈ Ct ,
+
+(Cu)` := u[t`/s] ,
+
+0 ⩽ ` < s.
+
+We then set
+T 0 := CT : Cs → Cs .
+Note that the matrix of T 0 is obtained by deleting t − s rows from the matrix of T .
+If we can show that T 0 is invertible, then a left inverse for T is given by (T 0 )−1 C.
+The entries of T 0 u are given explicitly by
+X
+X
+j 2
+2 tj
+2 2 1 t`
+t` 2
+e−πα ( s −[ s ]) uj
+(T 0 u)` = (T u)[t`/s] =
+e−πα t ( t [ s ]− s ) uj =
+j∈Z
+
+j∈Z
+
+=
+
+X
+
+2 th
+
+2
+
+e−πα ( s +β` ) u`+h ,
+
+h∈Z
+
+where
+β` := t`
+s −
+
+ t` 
+s
+
+=
+
+t`
+s
+
+,
+
+` ∈ Z.
+
+Observe that β` depends only on ` modulo s, and that |β` | ⩽ 12 for all `.
+We normalise T 0 as follows. Let D : Cs → Cs be the diagonal map defined by
+2
+2 2
+(Du)` := d` u` , where d` := eπα β` for ` ∈ Z. Since β`2 ⩽ 14 we have 1 ⩽ d` ⩽ eπα /4 ,
+and in particular
+2
+
+kDk ⩽ eπα /4 .
+
+(4.1)
+Define
+
+N := T 0 D : Cs → Cs .
+In other words, the matrix of N is obtained by multiplying the `-th column of the
+matrix of T 0 by d` . Explicitly,
+X
+X
+2 th
+2
+2
+2
+2
+th
+(N u)` =
+e−πα ( s +β` ) d`+h u`+h =
+e−πα (( s +β` ) −β`+h ) u`+h .
+h∈Z
+
+h∈Z
+
+In this last expression, the h = 0 term is simply u` . Therefore, setting E := N − I,
+where I : Cs → Cs is the identity map, we have
+X
+2
+2
+2
+th
+u ∈ Cs , 0 ⩽ ` < s.
+(Eu)` =
+e−πα (( s +β` ) −β`+h ) u`+h ,
+h6=0
+
+An example of the matrix of E is shown in Figure 3.
+The following estimate is crucial for establishing left-invertibility of T and for
+obtaining a fast algorithm for solving the system T x = y.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+26
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Lemma 4.5. Assume that α2 θ ⩾ 1. Then
+2
+
+2
+
+kEk < 2.01 · e−πα θ/2 < 2−α θ .
+Proof. For any u ∈ Cs◦ , the above formula for (Eu)` implies that
+X
+2
+2
+2
+th
+|(Eu)` | ⩽
+e−πα (( s +β` ) −β`+h ) ,
+0 ⩽ ` < s.
+h6=0
+1
+2
+
+t
+th
+th
+t
+1
+2s , we have | s + β` | ⩾ | s | − |β` | > s (|h| − 2 ).
+
+Since |β` | ⩽ <
+have |h| − 21 ⩾ 12 > 0, so
+
+For h 6= 0 we
+
+2
+2
+2
+1 2
+1
+( th
+s + β` ) − β`+h > (t/s) (|h| − 2 ) − 4
+
+= (1 + θ)2 (|h| − 21 )2 − 14
+⩾ (1 + 2θ)(|h| − 12 )2 − 41
+= (|h| − 12 )2 − 14 + 2θ(|h| − 12 )2
+⩾ 2θ(|h| − 21 )2 .
+Therefore
+|(Eu)` | <
+
+X
+
+2
+
+1 2
+
+e−2πα θ(|h|− 2 ) = 2(w1/4 + w9/4 + w25/4 + · · · )
+
+h6=0
+2
+
+where w := e−2πα θ . Since α2 θ ⩾ 1 we have w ⩽ e−2π < 0.002, so
+2
+
+2
+
+|(Eu)` | < 2w1/4 (1 + w2 + w6 + · · · ) < 2.01 · w1/4 = 2.01 · e−πα θ/2 < 2−α θ ,
+where we have used the fact that 2.01 · e−πx/2 < 2−x for all x ⩾ 1.
+
+
+
+Under the hypothesis of Lemma 4.5, we see that kEk < 21 , so N is invertible,
+with inverse given by N −1 = I − E + E 2 − · · · . Moreover, DN −1 C is the promised
+left inverse for T , as
+(4.2)
+
+(DN −1 C)T = D(T 0 D)−1 T 0 = I.
+
+4.3. Proof of the theorem. We may now prove the following special case of
+Theorem 4.1.
+Proposition 4.6 (Gaussian resampling in one dimension). Let s and t be integers
+such that 2 ⩽ s < t < 2p and gcd(s, t) = 1. Let α be an integer in the interval
+2 ⩽ α < p1/2 . Let θ := t/s − 1 > 0, and assume that θ ⩾ p/α4 . Then:
+(i) There exist linear maps A : Cs → Ct and B : Ct → Cs with kAk , kBk ⩽ 1
+2
+such that Fs = 22α BFt A.
+(ii) We may construct numerical approximations Ã : C̃s◦ → C̃t◦ and B̃ : C̃t◦ → C̃s◦
+such that ε(Ã), ε(B̃) < p2 and C(Ã), C(B̃) = O(tp3/2+δ α + tp log t).
+Proof of (i). We apply the results of Sections 4.1–4.2 with the given s, t and α.
+Lemma 4.4 implies that kSk < 23 . The hypotheses α < p1/2 and θ ⩾ p/α4 imply
+that α2 θ ⩾ 1, so Lemma 4.5 yields kEk < 2.01 · e−π/2 < 0.42. In particular,
+N = I + E is invertible and kN −1 k < 1 + 0.42 + (0.42)2 + · · · < 47 .
+Let J := N −1 , and define normalised maps
+S 0 := S/2,
+
+J 0 := J /2,
+
+2
+
+D0 := D/22α −2 .
+2
+
+2
+
+Then kS 0 k < 34 < 1 and kJ 0 k < 78 < 1. By (4.1) we have kDk ⩽ eπα /4 < 21.14α <
+2
+22α −2 , as 1.14x < 2x − 2 for all x ⩾ 4; hence also kD0 k < 1.
+
+Integer multiplication in time O(n log n)
+
+27
+
+Now define
+A := S 0 ,
+
+B := Ps−1 D0 J 0 CPt .
+
+It is clear that kPt k = kPs−1 k = kCk = 1, so kAk < 1 and kBk < 1. Moreover, by
+(4.2) and Theorem 4.2 we have
+2
+
+2
+
+22α BFt A = Ps−1 (22α −2 D0 )(2J 0 )CPt Ft (2S 0 )
+= Ps−1 (DN −1 C)(Pt Ft S)
+= Ps−1 (DN −1 C)(T Ps Fs ) = Ps−1 Ps Fs = Fs .
+
+
+
+We break up the proof of (ii) into several lemmas. We begin with a straightforward algorithm for approximating D0 (Lemma 4.7). Next we give algorithms for
+approximating S 0 = S/2 and E (Lemmas 4.8 and 4.10); these amount to merely
+evaluating sufficiently many terms of the defining series, which converge quickly
+thanks to the rapid decay of the Gaussian weights. We then give an algorithm for
+approximating J 0 = N −1 /2, using the series N −1 = I −E +E 2 −· · · (Lemma 4.11);
+here the fast convergence is guaranteed by the bound on kEk given in Lemma 4.5.
+Lemma 4.7. We may construct a numerical approximation D̃0 : C̃s◦ → C̃s◦ for D0
+such that ε(D̃0 ) < 4 and C(D̃0 ) = O(tp1+δ ).
+Proof. We are given as input u ∈ C̃s◦ . For each ` ∈ {0, . . . , s − 1}, by definition
+(D0 u)` = d0` u` where
+2
+
+2
+
+2
+
+2
+
+d0` := eπα β` /22α −2 = d` /22α −2 ⩽ 1.
+2
+2
+2
+We may rewrite the rational part of the exponent of d0` as α2 β`2 = α2 h t`
+s i = α k` /s
+for some integer k` . As α, s, t and ` are all integers with O(p) bits (here we have used
+the hypotheses s, t < 2p and α < p1/2 ), we may compute α2 k` and s2 in O(p1+δ )
+bit operations. Feeding this as input to Lemma 2.13 (with σ := 2α2 − 2 < 2p), we
+obtain an approximation d˜0` ∈ C̃◦ such that ε(d˜0` ) < 2 in time O(p1+δ ). We then
+use Corollary 2.9 to compute an approximation z̃` ∈ C̃◦ for z` := d0` u` such that
+ε(z̃` ) < ε(d˜0` ) + 2 < 4 in time O(p1+δ ). Finally we set (D̃0 u)` := z̃` . The total cost
+over all ` is O(sp1+δ ) = O(tp1+δ ).
+
+
+Lemma 4.8. We may construct a numerical approximation S̃ 0 : C̃s◦ → C̃t◦ for S 0
+such that ε(S̃ 0 ) < 18p and C(S̃ 0 ) = O(tp3/2+δ α).
+Proof. We are given as input u ∈ C̃s◦ . For each k = 0, . . . , t − 1 in turn, we
+approximate (S 0 u)k as follows. By definition
+X1
+−2
+sk 2
+α−1 e−πα (j− t ) uj .
+(S 0 u)k = ( 12 Su)k =
+2
+j∈Z
+
+Let m := dp
+(4.3)
+
+1/2
+
+eα and consider the truncated sum
+X 1
+−2
+sk 2
+Tk :=
+α−1 e−πα (j− t ) uj .
+2
+sk
+|j− t |<m
+
+There are at most 2m terms in this sum. Since kuk ⩽ 1 and α ⩾ 2 we have
+X 1
+−2
+−2
+sk 2
+sk 2
+1 X
+α−1 e−πα (j− t ) |uj | ⩽
+|(S 0 u)k − Tk | ⩽
+e−πα (j− t ) .
+2
+4
+sk
+sk
+|j− t |⩾m
+
+|j− t |⩾m
+
+28
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+−2
+
+Let w := e−πα
+
+< 1; then
+2
+
+2
+
+2
+
+|(S 0 u)k − Tk | ⩽ 12 (wm + w(m+1) + w(m+2) + · · · )
+2
+
+= 12 wm (1 + w2m+1 + w4m+4 + · · · ).
+Since α < p1/2 we have
+wm = e−πdp
+
+1/2
+
+e/α
+
+1/2
+
+⩽ e−πp
+
+/α
+
+< e−π < 0.05,
+
+so certainly 1 + w2m+1 + w4m+4 + · · · < 2. We conclude that
+2
+
+|(S 0 u)k − Tk | < wm ⩽ e−πdp
+
+1/2 2
+
+e
+
+⩽ e−πp < 2−p .
+
+Now we explain how to compute a suitable fixed-point approximation for Tk . Let
+−2
+2
+β := 12 α−1 , and for each j appearing in (4.3), let xj := e−πα (j−sk/t) , yj := βxj ,
+P
+zj := yj uj , so that Tk = j zj . We first compute β̃ := ρ(β) = 2−p ρ0 (2p−1 /α) ∈ C̃◦
+in time O(p1+δ ); certainly ε(β̃) < 2. Then for each j we perform the following
+steps. As s, t, j, k and α are all integers with O(p) bits, we may use Lemma 2.12
+to compute an approximation x̃j ∈ C̃◦ such that ε(x̃j ) < 2 in time O(p1+δ ). We
+then use Corollary 2.9 to compute an approximation ỹj ∈ C̃◦ such that ε(ỹj ) <
+ε(β̃) + ε(x̃j ) + 2 < 6, and again to obtain z̃j ∈ C̃◦ such that ε(z̃j ) < ε(ỹj ) + 2 < 8,
+P
+in time O(p1+δ ). Finally, we form the sum T̃k := j z̃j ; that is, writing z̃j = 2−p aj
+P
+P
+for integers aj , we compute j aj and set T̃k := 2−p j aj . Observe that
+2p |T̃k − (S 0 u)k | ⩽ 2p |T̃k − Tk | + 2p |Tk − (S 0 u)k |
+P
+< ( j 2p |z̃j − zj |) + 1 < (2m) · 8 + 1 = 16m + 1.
+As m < dp1/2 ep1/2 ⩽ p + p1/2 and p ⩾ 100, we find that
+2p |T̃k − (S 0 u)k | ⩽ 16p + 16p1/2 + 1 < 18p.
+Therefore
+|T̃k | ⩽ |T̃k − (S 0 u)k | + |(S 0 u)k | < 18p · 2−p + kS 0 k kuk ⩽ 10−26 + 34 · 1 < 1,
+confirming that T̃k ∈ C̃◦ . Defining (S̃ 0 u)k := T̃k , we have 2p |(S̃ 0 u)k − (S 0 u)k | < 18p
+as desired. The cost of the above procedure for each k is O(mp1+δ ) = O(p3/2+δ α),
+so the total over all k is O(tp3/2+δ α).
+
+Remark 4.9. The algorithm in the proof of Lemma 4.8 amounts to multiplying a
+vector by a matrix of the type shown in Figure 2, including only those entries that
+are numerically significant, i.e., a strip of width roughly 2m around the diagonal.
+To avoid excessive tape movements in the Turing model, one must arrange the data
+so that it is not necessary to “jump” between u0 and us−1 when the index j wraps
+around modulo s. One simple way to achieve this is to perform a preprocessing step
+that generates the extended array u−m , u−m+1 , . . . , us+m ; then the main algorithm
+operates on this array, working from left to right, with a sliding window of width 2m.
+Similar remarks apply to the proof of Lemma 4.10 below.
+
+Integer multiplication in time O(n log n)
+
+29
+
+Lemma 4.10. We may construct a numerical approximation Ẽ : C̃s◦ → C̃s◦ for E
+such that ε(Ẽ) < 13 p and C(Ẽ) = O(tp3/2+δ α−1 ).
+Proof. The argument is similar to the proof of Lemma 4.8. Given as input u ∈ C̃s◦ ,
+for each ` = 0, . . . , s − 1 we approximate (Eu)` as follows. By definition
+X
+2
+2
+2
+th
+(Eu)` =
+e−πα (( s +β` ) −β`+h ) u`+h .
+h6=0
+
+As in the proof of Lemma 4.5, for h 6= 0 we have
+2
+2
+2
+1 2
+1
+( th
+s + β` ) − β`+h > (t/s) (|h| − 2 ) − 4
+
+> (|h| − 21 )2 − 14 = |h| (|h| − 1) ⩾ (|h| − 1)2 .
+Let m := d(p/4α2 )1/2 e = dp1/2 /2αe ⩾ 1, and consider the truncated sum
+X
+2
+2
+2
+th
+(4.4)
+T` :=
+e−πα (( s +β` ) −β`+h ) u`+h .
+h6=0, |h|⩽m
+
+This sum has exactly 2m terms. As kuk ⩽ 1 we have
+X
+X
+2
+2
+2
+2
+2
+th
+|(Eu)` − T` | ⩽
+e−πα (( s +β` ) −β`+h ) |u`+h | <
+e−πα (|h|−1) .
+|h|>m
+
+|h|>m
+
+2
+
+Let w := e−πα ⩽ e−4π < 10−5 ; then wm < 10−5 and
+2
+
+2
+
+2
+
+|(Eu)` − T` | ⩽ 2(wm + w(m+1) + w(m+2) + · · · )
+2
+
+= 2wm (1 + w2m+1 + w4m+4 + · · · )
+2
+
+2
+
+2
+
+< 3wm ⩽ 3e−πα (p/4α ) = 3e−πp/4 < 3 · 2−p .
+Now we explain how to approximate T` . For each h appearing in (4.4), let
+P
+2
+2
+2
+th
+xh := e−πα (( s +β` ) −β`+h ) and zh := xh u`+h , so that T` = h zh . As in the proof
+of Lemma 4.8, we may use Lemma 2.12 to compute an approximation x̃h ∈ C̃◦ such
+that ε(x̃h ) < 2 in time O(p1+δ ). Using Corollary 2.9, we then compute z̃h ∈ C̃◦
+P
+such that ε(z̃h ) < ε(x̃h ) + 2 < 4. Finally we set T̃` := h z̃h . We have
+2p |T̃` − (Eu)` | ⩽ 2p |T̃` − T` | + 2p |T` − (Eu)` |
+P
+< ( h 2p |z̃h − zh |) + 3 < (2m) · 4 + 3 = 8m + 3.
+As m ⩽ 41 p1/2 + 1 and p ⩾ 100, we find that
+2p |T̃` − (Eu)` | < 2p1/2 + 11 < 31 p.
+Therefore
+|T̃` | ⩽ |T̃` − (Eu)` | + |(Eu)` | < 31 p · 2−p + kEk kuk < 10−28 + 12 · 1 < 1,
+so we may define (Ẽu)` := T̃` ∈ C̃◦ . The cost of the above procedure for each ` is
+O(mp1+δ ). The hypothesis α < p1/2 implies that m ⩽ 21 p1/2 α−1 + 1 = O(p1/2 α−1 ),
+so the total cost over all ` is O(tp3/2+δ α−1 ).
+
+
+30
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Lemma 4.11. We may construct a numerical approximation J˜0 : C̃s◦ → C̃s◦ for J 0
+such that ε(J˜0 ) < 34 p2 and C(J˜0 ) = O(tp3/2+δ α).
+Proof. We are given as input u ∈ C̃s◦ . Let v := u/2 ∈ Cs◦ , and define v (j) := E j v ∈
+2
+Cs◦ for j ⩾ 0 (recall that kEk < 2−α θ ⩽ 21 by Lemma 4.5). We wish to approximate
+J 0 u = (N −1 /2)u = N −1 v = v − Ev + E 2 v − · · · = v (0) − v (1) + v (2) − · · · .
+Let n := dp/α2 θe = dps/α2 (t − s)e ⩾ 1. We compute a sequence of approximations ṽ (0) , . . . , ṽ (n−1) ∈ C̃s◦ as follows. First set ṽ (0) := ρ(v (0) ) = 2−p ρ0 (2p−1 u) ∈
+C̃s◦ , so that ε(ṽ (0) ) < 2. Then compute in sequence ṽ (j) := Ẽ ṽ (j−1) ∈ C̃s◦ for
+j = 1, . . . , n − 1, using Lemma 4.10. We claim that ε(ṽ (j) ) < 32 p for each j. This is
+clear for j = 0, and for j ⩾ 1 it follows by induction as
+ε(ṽ (j) ) = 2p kṽ (j) − v (j) k ⩽ 2p kẼ ṽ (j−1) − E ṽ (j−1) k + 2p kE ṽ (j−1) − E j vk
+⩽ ε(Ẽ) + kEk ε(ṽ (j−1) ) < 31 p + 12 · 23 p = 23 p.
+Finally, define J˜0 u := ṽ (0) − ṽ (1) + · · · ± ṽ (n−1) . Then we have
+2p kJ˜0 u − J 0 uk ⩽
+
+n−1
+X
+
+2p kṽ (j) − v (j) k + 2p
+
+j=0
+
+∞
+X
+
+n
+
+kv (j) k < 23 np +
+
+j=n
+n
+
+2p kEk
+.
+2(1 − kEk)
+
+−α2 θn
+
+Observe that 2(1 − kEk) > 1 and kEk < 2
+⩽ 2−p ; also, as α2 θ ⩾ 1, we have
+n ⩽ p. Thus
+2p kJ˜0 u − J 0 uk < 23 p2 + 1 < 34 p2 .
+This also shows that J˜0 u ∈ C̃s◦ , as
+kJ˜0 uk ⩽ kJ 0 uk + kJ˜0 u − J 0 uk < kJ 0 k kuk + 34 p2 · 2−p < 78 · 1 + 10−26 < 1.
+In the algorithm above, the bulk of the work consists of n invocations of Ẽ. The
+hypothesis θ ⩾ p/α4 implies that
+p
+n ⩽ 2 + 1 ⩽ α2 + 1,
+α θ
+so the total cost is O(tnp3/2+δ α−1 ) = O(tp3/2+δ α).
+
+Now we may complete the proof of Proposition 4.6.
+Proof of Proposition 4.6(ii). For Ã we simply take Ã := S̃ 0 where S̃ 0 is as described
+in Lemma 4.8; then ε(Ã) < 18p < p2 , and C(Ã) = O(tp3/2+δ α).
+For B̃ we take B̃ := P̃s−1 D̃0 J˜0 C˜P̃t , where D̃0 and J˜0 are as described in Lemmas
+4.7 and 4.11, and where C˜: C̃t◦ → C̃s◦ , P̃s−1 : C̃s◦ → C̃s◦ and P̃t : C̃t◦ → C̃t◦ are the
+maps performing the obvious data rearrangements corresponding to C, Ps−1 and
+Pt , namely
+˜ ` := u[t`/s] ,
+(Cu)
+u ∈ C̃t◦ , 0 ⩽ ` < s,
+(P̃s−1 u)j := u(t−1 mod s)j ,
+(P̃t u)k := u−sk ,
+
+u ∈ C̃s◦ , 0 ⩽ j < s,
+u ∈ C̃t◦ , 0 ⩽ k < t.
+
+These do not perform any arithmetic in C̃◦ so ε( ˜
+C) = ε(P̃s−1 ) = ε(P̃t ) = 0. By
+Corollary 2.7 we obtain ε(B̃) ⩽ ε(D̃0 ) + ε(J˜0 ) < 4 + 43 p2 < p2 .
+As for the complexity, first observe that C˜ simply copies its input in order,
+˜ = O(tp). To compute P̃s−1 u for u ∈ C̃s◦ ,
+skipping t − s unwanted entries, so C(C)
+
+Integer multiplication in time O(n log n)
+
+31
+
+we use a “label-and-sort” algorithm: we first construct the list of ordered pairs
+(tj mod s, uj ) for j = 0, . . . , s − 1 in time O(tp) (each label occupies O(p) bits as
+s < 2p ), then sort the list by the first entry using merge sort in time O(tp log t) [30],
+and finally extract the second entries to obtain the desired output in time O(tp).
+Thus C(P̃s−1 ) = O(tp log t), and similarly C(P̃t ) = O(tp log t). Altogether we have
+C(B̃) = C(D̃0 ) + C(J˜0 ) + O(tp log t) = O(tp1+δ + tp3/2+δ α + tp log t).
+
+
+
+Finally we show how to deduce the general case from the one-dimensional case.
+Proof of Theorem 4.1. Let s1 , . . . , sd and t1 , . . . , td be as in the statement of the
+theorem. Applying Proposition 4.6 for each i, we obtain maps Ai : Csi → Cti
+2
+and Bi : Cti → Csi with kAi k , kBi k ⩽ 1 such that Fsi = 22α Bi Fti Ai , and approximations Ãi : C̃s◦i → C̃t◦i and B̃i : C̃t◦i → C̃s◦i such that ε(Ãi ), ε(B̃i ) < p2 and
+C(Ãi ), C(B̃i ) = O(ti p3/2+δ α + ti p log ti ).
+Now observe that
+2
+
+2
+
+Fs1 ,...,sd = ⊗i Fsi = 22dα (⊗i Bi )(⊗i Fti )(⊗i Ai ) = 22dα BFt1 ,...,td A,
+where A := ⊗i Ai : ⊗i Csi → ⊗i Cti and B := ⊗i Bi : ⊗i Cti → ⊗i Csi . Applying
+Lemma 2.10 (with R := C, r := 1, mi := si , ni := ti ), we may construct an
+P
+2
+approximation Ã : ⊗i C̃s◦i → ⊗i C̃t◦i such
+Qthat ε(Ã) ⩽ i ε(Ãi ) < dp . Moreover,
+let M be as in Lemma 2.10; then M = i max(si , ti ) = t1 · · · td = T , so
+C(Ã) < T
+
+X C(Ãi )
+i
+
+<T
+
+X
+
+ti
+
++ O(T p log T )
+
+O(p3/2+δ α + p log ti ) + O(T p log T )
+
+i
+
+= O(dT p3/2+δ α + T p log T ).
+We may similarly construct an approximation B̃ satisfying exactly the same error
+and cost bounds, and this completes the proof.
+
+4.4. Further remarks. Our presentation of the Gaussian resampling technique
+has been optimised in favour of giving the simplest possible proof of the main
+M(n) = O(n log n) bound. In this section we outline several ways in which these
+results may be improved and generalised, with an eye towards practical applications.
+4.4.1. Minor technical issues. In our presentation we insisted that α be an integer
+and that α ⩾ 2. Neither of these restrictions are essential; they were made for
+technical reasons to simplify certain proofs.
+Similarly, the assumption gcd(s, t) = 1 is not necessary. If g := gcd(s, t) > 1,
+then one can prove a variant of Theorem 4.1 in which the system corresponding
+to T x = y breaks up into g pieces that may be solved independently. In fact, the
+problem becomes slightly easier from a computational point of view.
+4.4.2. Faster system solving. The iterative method used in Lemma 4.11 to approximate J = N −1 (i.e., to solve the system T x = y) has complexity O(tp5/2+δ /α3 θ).
+To ensure that this step does not dominate the O(tp3/2+δ α) complexity of approximating S (Lemma 4.8), we were compelled to introduce the hypothesis θ ⩾ p/α4 .
+On the other hand, to make the target DFT of length t as cheap as possible, it
+is desirable for θ to be as close to zero as possible. Together, these considerations
+
+32
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+imply that we cannot take α smaller than about p1/4 . (Indeed, in Section 5, for
+fixed d, we do take α = Θ(p1/4 ) for this very reason.) For the choice α = Θ(p1/4 ),
+the overall complexity in Proposition 4.6 is O(tp7/4+δ ).
+A better complexity bound may be obtained by precomputing an LU (alternatively, Cholesky) decomposition for N , and then solving the system directly. The
+cost of the precomputation is O(tp2+δ /α2 ) (assuming classical matrix arithmetic),
+and then the cost of each application of J becomes O(tp3/2+δ /α). This allows us
+to relax the condition θ ⩾ p/α4 to merely θ ⩾ 1/α2 . Taking α = Θ(1), the overall
+complexity in Proposition 4.6 (discounting the precomputation) falls to O(tp3/2+δ ).
+We did not use this method in our presentation because the error analysis is considerably more intricate than for the iterative method.
+After making this modification, it would be interesting to investigate whether
+this method is competitive for practical computations of complex DFTs of length s
+when s is a large prime. One would choose a smooth transform length t somewhat
+larger than s, say 1.25s < t < 1.5s, and use the algorithm to reduce the desired
+DFT of length s to a DFT of length t; the latter could be handled via existing
+software libraries implementing the Cooley–Tukey algorithm. For large enough s,
+perhaps around 220 or 230 , we expect that the invocations of S̃ and J˜ would be
+quite cheap compared to the FFT of length t. Indeed, S̃ can be computed in a
+single pass over the input vector, and J˜ in two passes (one for each of the L and U
+matrices), so they have excellent locality. It is conceivable that a highly optimised
+implementation could outperform existing software libraries, which handle transforms of prime length by techniques such as Rader’s algorithm [37]. Such techniques
+introduce a large constant factor overhead that does not arise in the method just
+sketched.
+We also mention that it may be of interest to replace the Gaussian in the definition of S by some other smooth function g(x), and accordingly replace the Gaussian
+in the definition of T by its Fourier transform ĝ(y). The main requirement is that
+both of these functions should be strongly localised around zero. Different choices
+for g(x) may lead to various tradeoffs between numerical accuracy and computational complexity.
+4.4.3. Comparison with the Dutt–Rokhlin method. There is an enormous literature
+on “non-uniform FFTs” (sometimes called “non-equispaced FFTs”), going back to
+the seminal paper of Dutt and Rokhlin [11]. They consider transforms of the type
+(4.5)
+
+vj :=
+
+t−1
+X
+
+e2πiωk yj uk ,
+
+0 ⩽ j < t.
+
+k=0
+
+The ordinary “uniform” DFT may be regarded as the special case where ωk := k
+and yj := j/t, but the Dutt–Rokhlin algorithms may be applied in cases where
+the frequencies ωk are not necessarily integers, and/or the sample points yj are
+not necessarily integer multiples of 1/t. In these cases the algorithms reduce the
+problem to an ordinary FFT of length t (or in some variants, a small multiple of t).
+The complexity, counting floating-point operations, is O(t log t + tp), where p is the
+desired precision in bits.
+If we now take instead ωk := k and yj := j/s, where s is the “source” transform
+length, we see that (4.5) is exactly a DFT of length s (apart from some inconsequential zero-padding), so the Dutt–Rokhlin algorithms may be used to compute a
+
+Integer multiplication in time O(n log n)
+
+33
+
+DFT of length s by means of an FFT of length t. Inspection of their algorithms in
+this case reveals them to be essentially equivalent to our method in the special case
+that α = Θ(p1/2 ).
+For example, consider [11, Algorithm 2], which corresponds roughly to a “transposed” version of our algorithm. Step 3 of that algorithm is analogous to approximating S (see Lemma 4.8). For the choice α = Θ(p1/2 ), the complexity for this
+step is O(tp2+δ ) bit operations, corresponding to the O(tp) term in their complexity bound. Step 2 corresponds to our Ft , and yields the O(t log t) term. The most
+interesting point of comparison is Step 1, which corresponds roughly to solving the
+system T x = y. The choice α = Θ(p1/2 ) implies that this system is essentially diagonal, i.e., the off-diagonal entries of T decay so rapidly that for numerical purposes
+they may be discarded. Solving the system is therefore trivial: their Step 1 consists
+of simply dividing each coefficient by the corresponding diagonal entry of T (in the
+literature these are often called “scale factors”). This step contributes only O(t)
+floating-point operations.
+The reason that Dutt and Rokhlin are (in effect) unable to take α smaller than
+about p1/2 is essentially due to the approximation error committed when they
+truncate the Gaussian, for example in [11, Theorem 2.7]. Our Theorem 4.1 may
+be viewed as an “exact” replacement for that theorem. Rather than truncate the
+Gaussian, we take into account the effect of the Gaussian tail, which manifests as
+the off-diagonal entries of our T matrix. For α considerably smaller than p1/2 ,
+these entries are numerically significant and cannot be ignored.
+In our algorithm, assuming that we use the LU decomposition method mentioned
+in Section 4.4.2, as α decreases from Θ(p1/2 ) to Θ(1) we see that the complexity
+of approximating S decreases from O(tp) to O(tp1/2 ) floating-point operations,
+and the complexity of approximating J increases from O(t) to O(tp1/2 ). When
+α = Θ(1) they are balanced, and the overall complexity drops to O(t log t + tp1/2 );
+the last term improves on the Dutt–Rokhlin bound by a factor of p1/2 . Note
+that the Dutt–Rokhlin bound is not strong enough for our application to integer
+multiplication; using their bound, the error term in Proposition 5.2 would grow to
+O(n(log n)1+δ ) which is unacceptably large.
+Of course, our discussion has only considered the case corresponding to the DFT
+of length s, i.e., the choice yj := j/s. An interesting question is whether the bound
+O(t log t + tp1/2 ) can be proved for the general non-equispaced case, and if so,
+whether this method outperforms the Dutt–Rokhlin algorithm in practice.
+5. The main algorithm
+In this section we present the main integer multiplication algorithm. We actually
+give a family of algorithms, parameterised by a dimension parameter d ⩾ 2. Let
+12
+
+n0 := 2d
+
+⩾ 24096 ,
+
+and suppose that we wish to multiply integers with n bits. For n < n0 , we may
+use any convenient base-case multiplication algorithm, such as the classical O(n2 )
+algorithm. For n ⩾ n0 we will describe a recursive algorithm that reduces the
+problem to a collection of multiplication problems of size roughly n1/d . We will
+show that this algorithm achieves M(n) = O(n log n), provided that d ⩾ 1729.
+5.1. Parameter selection. Henceforth we assume that n ⩾ n0 . We first discuss
+the computation of several parameters depending on n that will be needed later.
+
+34
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Let
+b := dlog2 ne ⩾ d12 ⩾ 4096
+be the “chunk size”, and let the working precision be
+p := 6b = 6dlog2 ne ⩾ 6d12 ⩾ 24576 > 100.
+Define
+α := d(12d2 b)1/4 e.
+Clearly α ⩾ 2, and as d ⩽ b1/12 and b ⩾ 4096, we also have
+(5.1)
+
+α ⩽ d121/4 b7/24 e ⩽ 1.87 · b7/24 + 1 < 2b7/24 < p1/2 .
+
+As in Theorem 4.1, set
+(5.2)
+
+γ := 2dα2 < 2b1/12 · 4b7/12 = 8b2/3 .
+
+Let T be the unique power of two lying in the interval
+(5.3)
+
+4n/b ⩽ T < 8n/b,
+
+and let r be the unique power of two in the interval
+T 1/d ⩽ r < 2T 1/d .
+
+(5.4)
+We certainly have b ⩽ 4n1/2 , so
+(5.5)
+
+10
+
+r ⩾ (4n/b)1/d ⩾ n1/2d ⩾ 2d .
+
+We now construct a factorisation T = t1 · · · td satisfying the hypotheses of Theorem 3.1. Let d0 := log2 (rd /T ). As T ⩽ rd < 2d T we have 1 ⩽ rd /T < 2d and
+hence 0 ⩽ d0 < d. Define
+r
+t1 , . . . , td0 := ,
+td0 +1 , . . . , td := r.
+2
+Then td ⩾ · · · ⩾ t1 ⩾ 2 and
+0
+
+0
+
+0
+
+t1 · · · td = (r/2)d rd−d = rd /2d = T.
+Also
+T < 8n/b < n ⩽ 2b < 2p ,
+so the hypotheses of Theorem 3.1 are indeed satisfied. The parameters b, p, α, γ,
+T , r and t1 , . . . , td may all be computed in time (log n)O(1) .
+Our next task is to choose distinct primes s1 , . . . , sd that are slightly smaller
+than the corresponding t1 , . . . , td . In a moment we will use Theorem 4.1 to reduce
+a transform of size s1 × · · · × sd to a transform of size t1 × · · · × td ; to avoid excessive
+data expansion in this reduction, we must ensure that the ratio t1 · · · td /s1 · · · sd is
+not too large. On the other hand, to satisfy the requirements of the theorem, we
+must also ensure that the individual ratios ti /si are not too close to 1. We will
+achieve this by means of the following result.
+Lemma 5.1. Let η ∈ (0, 41 ) and let x ⩾ e2/η . Then there are at least 21 ηx/ log x
+primes q in the interval (1 − 2η)x < q ⩽ (1 − η)x.
+P
+Proof. Let ϑ(y) := q⩽y log q (sum taken over primes) denote the usual Chebyshev
+function. According to [38, Thm. 4], for all y ⩾ 563 we have
+y
+y
+y−
+< ϑ(y) < y +
+.
+2 log y
+2 log y
+
+Integer multiplication in time O(n log n)
+
+35
+
+As the function y/ log y is increasing for y ⩾ 563, we see that
+x
+x
+y−
+< ϑ(y) < y +
+,
+563 ⩽ y ⩽ x.
+2 log x
+2 log x
+Applying this result for y0 := (1 − 2η)x > x/2 > e8 /2 > 563, and then again for
+y1 := (1 − η)x > 3x/4 > 563, we obtain
+x
+x
+x
+x
+ηx
+ϑ(y1 ) − ϑ(y0 ) > y1 −
+− y0 −
+= ηx −
+⩾ ηx −
+=
+2 log x
+2 log x
+log x
+2/η
+2
+and hence
+X
+
+1⩾
+
+y0 <q⩽y1
+
+1
+log x
+
+X
+
+log q =
+
+y0 <q⩽y1
+
+ϑ(y1 ) − ϑ(y0 )
+ηx
+>
+.
+log x
+2 log x
+
+
+
+Let us apply Lemma 5.1 with
+η :=
+
+1
+1
+⩽
+4d
+8
+10
+
+and x := r/2, noting that (5.5) implies that r/2 ⩾ 2d
+that there are at least
+
+−1
+
+⩾ e8d = e2/η . We find
+10
+
+10
+
+2d
+1
+r/2
+1
+r
+1
+2d
+=
+·
+⩾
+·
+⩾
+·
+⩾ d ⩾ d0
+10
+d
+8d log(r/2)
+16d log r
+16d log(2 )
+(16 log 2)d11
+primes q in the interval
+r
+r
+< q ⩽ (1 − η) .
+2
+2
+We may find d0 such primes s1 , . . . , sd0 in time r1+o(1) = o(n). Applying Lemma 5.1
+again, with the same η but now with x := r ⩾ e2/η , we find that there are at least
+d ⩾ d − d0 primes q in the interval
+(1 − 2η)
+
+(1 − 2η)r < q ⩽ (1 − η)r.
+Again, we may find d − d0 such primes sd0 +1 , . . . , sd in time o(n). These two collections of primes are disjoint, as
+r
+3r
+r
+< <
+⩽ (1 − 2η)r.
+2
+2
+4
+In summary, we have found d distinct primes s1 , . . . , sd such that
+(1 − η)
+
+(1 − 2η)ti < si ⩽ (1 − η)ti ,
+
+i ∈ {1, . . . , d}.
+
+Setting S := s1 · · · sd < T , we see that
+(5.6)
+
+S
+> (1 − 2η)d =
+T
+
+
+d
+1
+1
+1−
+> ,
+2d
+2
+
+as (1 − x)d > 1 − dx for all x ∈ (0, 1).
+5.2. DFTs and convolutions for coprime sizes. The following result combines Theorems 3.1 and 4.1 to obtain an approximation for the complex transform
+Fs1 ,...,sd : ⊗i Csi → ⊗i Csi . Recall that the working precision was chosen to be
+p := 6b = 6dlog2 ne.
+
+36
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+Proposition 5.2. We may construct a numerical approximation F̃s1 ,...,sd : ⊗i C̃s◦i →
+⊗i C̃s◦i for Fs1 ,...,sd such that ε(F̃s1 ,...,sd ) < 2γ+5 T log2 T and
+C(F̃s1 ,...,sd ) <
+
+4T
+M(3rp) + O(n log n).
+r
+
+Proof. Let us verify the hypotheses of Theorem 4.1. We have already seen that
+2 ⩽ si < ti < 2p for all i, and that 2 ⩽ α < p1/2 . We certainly have gcd(si , ti ) = 1,
+as si is an odd prime and ti is a power of two. Let
+θi :=
+
+ti
+η
+1
+1
+−1⩾
+−1=
+>η=
+.
+si
+1−η
+1−η
+4d
+
+Then
+α 4 θi ⩾
+
+d
+12d2 b
+= 3db = · p ⩾ p,
+4d
+2
+
+so θi ⩾ p/α4 as required.
+Theorem 4.1 thus produces maps A : ⊗i Csi → ⊗i Cti and B : ⊗i Cti → ⊗i Csi
+such that Fs1 ,...,sd = 2γ AFt1 ,...,td B, and approximations Ã : ⊗i C̃s◦i → ⊗i C̃t◦i and
+B̃ : ⊗i C̃t◦i → ⊗i C̃s◦i . Applying Theorem 3.1 (whose hypotheses were verified earlier), we obtain furthermore an approximation F̃t1 ,...,td for Ft1 ,...,td . Now consider
+the scaled transform
+Fs0 1 ,...,sd := 2−γ Fs1 ,...,sd = AFt1 ,...,td B,
+and the approximation F̃s0 1 ,...,sd := ÃF̃t1 ,...,td B̃. By Corollary 2.7 we have
+ε(F̃s0 1 ,...,sd ) ⩽ ε(Ã) + ε(F̃t1 ,...,td ) + ε(B̃) < 2dp2 + 8T log2 T.
+As it is known that kFs1 ,...,sd k ⩽ 1, we obtain the desired approximation F̃s1 ,...,sd
+by applying Lemma 2.2 with c := 2γ to the output of F̃s0 1 ,...,sd (the condition c ⩽ 2p
+holds as γ < 8b2/3 < p; see (5.2)). We therefore obtain
+ε(F̃s1 ,...,sd ) < 2γ+1 ε(F̃s0 1 ,...,sd ) + 3
+< 2γ+1 (2dp2 + 8T log2 T ) + 3
+< 2γ+1 (3dp2 + 8T log2 T ).
+Since
+3dp2 ⩽ 108b1/12 b2 = 108dlog2 ne25/12 < n1/2 < T < 8T log2 T,
+we conclude that ε(F̃s1 ,...,sd ) < 2γ+5 T log2 T .
+The cost of the scaling is O(Sp1+δ ) = O(T p1+δ ), so the overall complexity is
+C(F̃s1 ,...,sd ) = C(Ã) + C(F̃t1 ,...,td ) + C(B̃) + O(T p1+δ )
+4T
+M(3rp) + O(dT p3/2+δ α + T p log T + T p1+δ ).
+=
+r
+Recalling (5.1) and the assumption δ < 81 , we see that
+dp3/2+δ α = O(p1/12 p3/2+δ p7/24 ) = O(p15/8+δ ) = O(p2 ).
+By definition p = O(log n), and (5.3) yields T = O(n/ log n). The bound for
+C(F̃s1 ,...,sd ) thus simplifies to (4T /r) M(3rp) + O(n log n).
+
+
+Integer multiplication in time O(n log n)
+
+37
+
+Next we construct an approximation for the scaled convolution map M : ⊗i Csi ×
+⊗i Csi → ⊗i Csi given by M(u, v) := S1 u ∗ v. Note that kMk ⩽ 1.
+Proposition 5.3. We may construct a numerical approximation M̃ : ⊗i C̃s◦i ×
+⊗i C̃s◦i → ⊗i C̃s◦i for M such that ε(M̃) < 2γ+8 T 2 log2 T and
+12T
+M(3rp) + O(n log n).
+(5.7)
+C(M̃) <
+r
+Proof. We are given as input u, v ∈ ⊗i C̃s◦i . Let w := M(u, v) = S1 u ∗ v ∈ ⊗i Csi .
+According to (2.1) we have w = Sw0 where w0 := Fs∗1 ,...,sd (Fs1 ,...,sd u · Fs1 ,...,sd v).
+We use the following algorithm (essentially the same as in the proof of Proposition
+3.4). We first compute an approximation w̃0 ∈ ⊗i C̃s◦i by using Proposition 5.2
+to handle the forward and inverse transforms, and Corollary 2.9 to handle the
+pointwise multiplications. Applying Lemma 2.6 in the usual way, we obtain
+ε(w̃0 ) ⩽ ε(F̃s1 ,...,sd ) + ε(F̃s1 ,...,sd ) + ε(F̃s∗1 ,...,sd ) + 2
+< 3 · 2γ+5 T log2 T + 2 < 72 · 2γ+5 T log2 T.
+Then we apply Lemma 2.2 (with c := S ⩽ T ⩽ 2p ) to obtain an approximation
+w̃ ∈ ⊗i C̃s◦i such that
+ε(w̃) < 2Sε(w̃0 ) + 3 < 7S · 2γ+5 T log2 T + 3 < 2γ+8 T 2 log2 T.
+The cost of the pointwise multiplications and scalings is O(Sp1+δ ) = O(n log n),
+and the constant 12 accounts for the three invocations of Proposition 5.2.
+
+5.3. Integer multiplication. We are now in a position to describe the recursive
+step of the main integer multiplication algorithm.
+Proposition 5.4. For n ⩾ n0 we have
+12T
+M(3rp) + O(n log n).
+(5.8)
+M(n) <
+r
+Proof. We are given as input positive integers f, g < 2n . The algorithm consists of
+the following series of reductions.
+(1) Reduce to one-dimensional convolution over Z. Let N := dn/be where b :=
+dlog2 ne as above. We split f and g into N chunks of b bits, i.e., we write f = F (2b )
+and g = G(2b ) where
+F (x) =
+
+N
+−1
+X
+
+Fj xj ∈ Z[x],
+
+j=0
+
+G(x) =
+
+N
+−1
+X
+
+Gj xj ∈ Z[x],
+
+0 ⩽ Fj , Gj < 2b .
+
+j=0
+b
+
+We have f g = (F G)(2 ), so it suffices to compute the polynomial product H(x) :=
+F (x)G(x) and then evaluate at x = 2b . The coefficients of H(x) lie in the interval
+0 ⩽ Hj < 22b N < 23b ; in particular, they have at most 3b = O(log n) bits, so the
+evaluation may be achieved via a straightforward overlap-add algorithm in time
+O(N log n) = O(n). By (5.3) and (5.6) we have
+2n
+T
+deg H ⩽ 2N − 2 ⩽
+⩽
+< S,
+b
+2
+so it suffices to compute F (x)G(x) (mod xS − 1).
+(2) Reduce to d-dimensional convolution over Z. We now use the Agarwal–
+Cooley method [1] to reduce to a multidimensional convolution. Consider the ring
+A := Z[x1 , . . . , xd ]/(xs11 − 1, . . . , xsdd − 1).
+
+38
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+As the integers s1 , . . . , sd are pairwise relatively prime, there is an isomorphism of
+rings Z[x]/(xS − 1) ∼
+= A induced by the Chinese remainder theorem (for instance,
+by sending x to x1 · · · xd ). Let F 0 , G0 , H 0 ∈ A be the images of F , G and H,
+so that H 0 = F 0 G0 . In the Turing model, F 0 , G0 and H 0 are represented as ddimensional arrays of integers of 3b bits, using a similar layout to the tensor products
+in Section 2.3. The isomorphism amounts to a data rearrangement, and may be
+computed in either direction in time
+O(bS log S) = O(bT log T ) = O(n log n)
+by attaching labels and sorting, as in the proof of Proposition 4.6(ii). (For an
+alternative algorithm that does not rely on sorting, see [23, Sec. 2.3].) We have
+thus reduced to the problem of computing H 0 = F 0 G0 in A .
+(3) Reduce to approximate d-dimensional convolution over C. Regarding A as
+a subring of
+C[x1 , . . . , xd ]/(xs11 − 1, . . . , xsdd − 1) ∼
+= (⊗i Csi , ∗),
+let F 00 , G00 , H 00 ∈ ⊗i Csi be the elements corresponding to F 0 , G0 and H 0 , so that
+H 00 = F 00 ∗ G00 . Let u := 2−b F 00 , v := 2−b G00 and w := M(u, v) = S1 u ∗ v. Then
+kuk , kvk , kwk ⩽ 1, and H 00 = 22b Sw. Recalling our choice of working precision p :=
+6dlog2 ne, we may use Proposition 5.3 to compute an approximation w̃ := M̃(u, v) ∈
+⊗i C̃s◦i such that ε(w̃) < 2γ+8 T 2 log2 T in time (12T /r) M(3rp) + O(n log n).
+Now observe that
+kH 00 − 22b S w̃k = 22b S kw − w̃k < 22b+γ+8−p T 3 log2 T.
+Since T < n ⩽ 2b and T log2 T ⩽ T log2 n ⩽ T b < 8n ⩽ 2b+3 , this yields
+kH 00 − 22b S w̃k < 25b+γ+11−p = 2−b+γ+11 .
+But γ < 8b2/3 < b − 13 (as b ⩾ 4096), so
+kH 00 − 22b S w̃k < 41 .
+In particular, we may recover H 00 in time O(Sp1+δ ) = O(n log n) by multiplying
+each coefficient of w̃ by 22b S and then rounding to the nearest integer.
+
+Corollary 5.5. Define T(n) := M(n)/(n log n) for n ⩾ 2. For n ⩾ n0 we have
+1728
+T(n) <
+T(3rp) + O(1).
+d − 12
+Proof. Dividing (5.8) by n log n yields
+T(n) <
+
+36T p log(3rp)
+·
+· T(3rp) + O(1).
+n
+log n
+
+By (5.3) we have 36T p/n = 216T b/n < 1728. By (5.4) we have r < 2T 1/d < 2n1/d ,
+so
+log(3rp)
+1 log(36b)
+1 log2 (36b)
+1 log2 (36b)
+< +
+= +
+⩽ +
+.
+log n
+d
+log n
+d
+log2 n
+d
+b−1
+Since b ⩾ 4096 we have
+log2 (36b)
+1
+1
+< 1/6 ⩽ 2 ,
+b−1
+2d
+2b
+and the result follows from the observation that
+
+
+
+−1
+1
+1
+1
+1
+1
+1
+1
++ 2 =
+1+
+<
+1−
+=
+.
+
+d 2d
+d
+2d
+d
+2d
+d − 12
+
+Integer multiplication in time O(n log n)
+
+39
+
+Finally we may prove the main result of the paper.
+Proof of Theorem 1.1. We take d := 1729. According to Corollary 5.5, there is an
+absolute constant A > 0 such that
+T(n) < 0.9998 · T(3rp) + A
+172912
+
+for all n ⩾ n0 = 2
+
+. Define
+
+B := max T(n),
+2⩽n<n0
+
+C := max(B, 5000A)
+
+(Recall that for n < n0 , we use any convenient base-case multiplication algorithm
+to define M(n), and hence T(n).)
+We prove by induction that T(n) ⩽ C for all n ⩾ 2. The choice of B ensures
+that the statement holds for n < n0 . Now assume that n ⩾ n0 . By (5.4) we have
+3rp < 6T 1/d p < 36n1/d b = 36n1/1729 dlog2 ne < n.
+By induction,
+T(n) < 0.9998C + A ⩽ 0.9998C + 0.0002C = C.
+Hence T(n) = O(1) and M(n) = O(n log n).
+
+
+
+5.4. Optimising the dimension threshold. It is possible to improve the factor
+K = 1728 appearing in Corollary 5.5, at the expense of introducing various technical
+complications into the algorithm. In this section we outline a number of such
+modifications that together reduce the constant to K = 8 + , so that the modified
+algorithm achieves M(n) = O(n log n) for any d ⩾ 9 (rather than d ⩾ 1729). The
+techniques described here are similar to those used in [25] to optimise the value
+∗
+of K in the Fürer-type bound M(n) = O(n log n K log n ).
+(1) We may increase the chunk size from b = Θ(log n) to b = Θ(log n log log n),
+and then take the working precision to be p = 2b + O(log n) = (2 + o(1))b
+rather than 6b. This improves K by a factor of 3. Note that the O(log n)
+term must be chosen large enough to ensure correct rounding at the end of
+the proof of Proposition 5.4. (We cannot take b as large as (log n)2 , as is
+done in [25], because then the Gaussian resampling becomes too expensive.)
+(2) The choice of b in the previous item allows us to improve the term 3rp in
+Lemma 2.5 to (2+o(1))rp, by packing the coefficients together more tightly
+in the Kronecker substitution step (the hypothesis r < 2p−1 must also be
+tightened somewhat). This improves K by a factor of 3/2.
+(3) In Bluestein’s algorithm (see proof of Proposition 3.1), the multiplicand a
+is invariant, i.e., does not depend on the input vector u. To take advantage
+of this, we change the basic problem from multiplication of two arbitrary
+integers to multiplication of an arbitrary integer by a fixed integer. Consequently we save one forward transform in the proof of Proposition 5.3,
+reducing the factor 12 in (5.7) to 8. This improves K by a factor of 3/2.
+(4) We may choose the primes si closer to ti , so that instead of T < 2S (see
+(5.6)) we have T < (1 + o(1))S. This improves K by a factor of 2. Some
+care is needed to avoid excessive precision loss in the Gaussian resampling
+step, due to the larger values of α and γ.
+(5) By allowing T to contain small odd prime factors, or alternatively by introducing flexibility into the choice of b, we may improve the choice of T
+to (4 + o(1))n/b (see (5.3)). This improves K by a factor of 2.
+
+40
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+(6) We may change the basic problem from multiplication in Z to multiplication
+in Z[i]. In step (1) of the proof of Proposition 5.4, the chunks Fj and Gj
+are taken in Z[i] instead of Z, and in step (1) of the proof of Lemma 2.5,
+the evaluations lie in Z[i] instead of Z. This improves K by a factor of 4,
+essentially by eliminating the factor 4 appearing in Lemma 2.5.
+(7) We may change the basic problem from multiplication in Z[i] to multiplication in Z[i]/(2n +1)Z[i]. Note that the Kronecker substitution in Lemma 2.5
+maps the multiplication modulo y r + 1 naturally onto this problem. This
+improves K by a factor of 2, because it avoids the degree growth in step (1)
+in the proof of Proposition 5.4. It also introduces a technical difficulty into
+that step: to reduce a multiplication modulo 2n + 1 to a polynomial multiplication modulo xS − 1 (or xS + 1), we must split an n-bit integer into S
+chunks, even though n will not in general be divisible by S. This may be
+addressed by means of the Crandall–Fagin algorithm [9].
+References
+1. R. Agarwal and J. Cooley, New algorithms for digital convolution, IEEE Transactions on
+Acoustics, Speech, and Signal Processing 25 (1977), no. 5, 392–410.
+2. L. I. Bluestein, A linear filtering approach to the computation of discrete Fourier transform,
+IEEE Transactions on Audio and Electroacoustics 18 (1970), no. 4, 451–455.
+3. J. M. Borwein and P. B. Borwein, Pi and the AGM, Canadian Mathematical Society Series
+of Monographs and Advanced Texts, John Wiley & Sons, Inc., New York, 1987, A study
+in analytic number theory and computational complexity, A Wiley-Interscience Publication.
+MR 877728
+4. A. Bostan, P. Gaudry, and É. Schost, Linear recurrences with polynomial coefficients and
+application to integer factorization and Cartier-Manin operator, SIAM J. Comput. 36 (2007),
+no. 6, 1777–1806. MR 2299425 (2008a:11156)
+5. R. P. Brent and P. Zimmermann, Modern computer arithmetic, Cambridge Monographs on
+Applied and Computational Mathematics, vol. 18, Cambridge University Press, Cambridge,
+2011. MR 2760886
+6. S. A. Cook and S. O. Aanderaa, On the minimum computation time of functions, Trans.
+Amer. Math. Soc. 142 (1969), 291–314. MR 0249212
+7. J. W. Cooley and J. W. Tukey, An algorithm for the machine calculation of complex Fourier
+series, Math. Comp. 19 (1965), 297–301. MR 0178586
+8. S. Covanov and E. Thomé, Fast integer multiplication using generalized Fermat primes, Math.
+Comp. 88 (2019), no. 317, 1449–1477. MR 3904152
+9. R. Crandall and B. Fagin, Discrete weighted transforms and large-integer arithmetic, Math.
+Comp. 62 (1994), no. 205, 305–324. MR 1185244
+10. A. De, P. Kurur, C. Saha, and R. Saptharishi, Fast integer multiplication using modular
+arithmetic, SIAM Journal on Computing 42 (2013), no. 2, 685–699.
+11. A. Dutt and V. Rokhlin, Fast Fourier transforms for nonequispaced data, SIAM J. Sci. Comput. 14 (1993), no. 6, 1368–1393. MR 1241591
+12. M. Fürer, Faster integer multiplication, STOC’07—Proceedings of the 39th Annual ACM
+Symposium on Theory of Computing, ACM, New York, 2007, pp. 57–66. MR 2402428
+(2009e:68124)
+, Faster integer multiplication, SIAM J. Comput. 39 (2009), no. 3, 979–1005.
+13.
+MR 2538847 (2011b:68296)
+14. J. von zur Gathen and J. Gerhard, Modern computer algebra, 3rd ed., Cambridge University
+Press, Cambridge, 2013. MR 3087522
+15. P. Gaudry, A. Kruppa, and P. Zimmermann, A GMP-based implementation of SchönhageStrassen’s large integer multiplication algorithm, ISSAC 2007, ACM, New York, 2007, pp. 167–
+174. MR 2396199
+16. I. J. Good, The interaction algorithm and practical Fourier analysis, J. Roy. Statist. Soc. Ser.
+B 20 (1958), 361–372. MR 0102888 (21 #1674)
+
+Integer multiplication in time O(n log n)
+
+41
+
+17. T. Granlund, The GNU Multiple Precision Arithmetic Library (Version 6.1.2), http://
+gmplib.org/.
+18. D. Harvey, Faster truncated integer multiplication, https://arxiv.org/abs/1703.00640,
+2017.
+19. D. Harvey and J. van der Hoeven, Faster integer and polynomial multiplication using cyclotomic coefficient rings, https://arxiv.org/abs/1712.03693, 2017.
+20.
+, On the complexity of integer matrix multiplication, J. Symbolic Comput. 89 (2018),
+1–8. MR 3804803
+21.
+, Faster integer multiplication using plain vanilla FFT primes, Math. Comp. 88 (2019),
+no. 315, 501–514. MR 3854069
+22.
+, Faster integer multiplication using short lattice vectors, Proceedings of the Thirteenth
+Algorithmic Number Theory Symposium, Open Book Series 2 (R. Scheidler and J. Sorenson,
+eds.), Mathematical Sciences Publishers, Berkeley, 2019, pp. 293–310.
+, Faster polynomial multiplication over finite fields using cyclotomic coefficient rings,
+23.
+to appear in Journal of Complexity, 2019.
+24.
+, Polynomial multiplication over finite fields in time O(n log n), preprint, 2019.
+25. D. Harvey, J. van der Hoeven, and G. Lecerf, Even faster integer multiplication, J. Complexity
+36 (2016), 1–30. MR 3530637
+, Faster polynomial multiplication over finite fields, J. ACM 63 (2017), no. 6, 52:1–
+26.
+52:23.
+27. D. R. Heath-Brown, Zero-free regions for Dirichlet L-functions, and the least prime in an
+arithmetic progression, Proc. London Math. Soc. (3) 64 (1992), no. 2, 265–338. MR 1143227
+(93a:11075)
+28. M. T. Heideman, D. H. Johnson, and C. S. Burrus, Gauss and the history of the fast Fourier
+transform, Arch. Hist. Exact Sci. 34 (1985), no. 3, 265–277. MR 815154 (87f:01018)
+29. J. van der Hoeven, Faster relaxed multiplication, ISSAC 2014—Proceedings of the 39th International Symposium on Symbolic and Algebraic Computation, ACM, New York, 2014,
+pp. 405–412. MR 3239953
+30. D. E. Knuth, The art of computer programming. Vol. 3, Addison-Wesley, Reading, MA, 1998,
+Sorting and searching, Second edition [of MR0445948]. MR 3077154
+31. H. J. Nussbaumer, Fast polynomial transform algorithms for digital convolution, IEEE Trans.
+Acoust. Speech Signal Process. 28 (1980), no. 2, 205–215. MR MR563380 (80m:94004)
+32. H. J. Nussbaumer and P. Quandalle, Computation of convolutions and discrete Fourier transforms by polynomial transforms, IBM J. Res. Develop. 22 (1978), no. 2, 134–144. MR 0471260
+, Fast computation of discrete Fourier transforms using polynomial transforms, IEEE
+33.
+Trans. Acoust. Speech Signal Process. 27 (1979), no. 2, 169–181. MR 523618
+34. C. H. Papadimitriou, Computational complexity, Addison-Wesley Publishing Company, Reading, MA, 1994. MR 1251285 (95f:68082)
+35. M. S. Paterson, M. J. Fischer, and A. R. Meyer, An improved overlap argument for on-line
+multiplication, (1974), 97–111. SIAM–AMS Proc., Vol. VII. MR 0423875
+36. J. M. Pollard, The fast Fourier transform in a finite field, Math. Comp. 25 (1971), 365–374.
+MR 0301966
+37. C. M. Rader, Discrete Fourier transforms when the number of data samples is prime, Proc.
+IEEE 56 (1968), no. 6, 1107–1108.
+38. J. B. Rosser and L. Schoenfeld, Approximate formulas for some functions of prime numbers,
+Illinois J. Math. 6 (1962), 64–94. MR 0137689
+39. A. Schönhage and V. Strassen, Schnelle Multiplikation grosser Zahlen, Computing (Arch.
+Elektron. Rechnen) 7 (1971), 281–292. MR 0292344 (45 #1431)
+40. M. Sipser, Introduction to the Theory of Computation, 2nd ed., Thomson Course Technology,
+2006.
+41. L. H. Thomas, Using computers to solve problems in physics, Applications of digital computers
+458 (1963), 42–57.
+42. T. Xylouris, On the least prime in an arithmetic progression and estimates for the zeros of
+Dirichlet L-functions, Acta Arith. 150 (2011), no. 1, 65–91. MR 2825574 (2012m:11129)
+
+42
+
+DAVID HARVEY AND JORIS VAN DER HOEVEN
+
+School of Mathematics and Statistics, University of New South Wales, Sydney NSW
+2052, Australia
+E-mail address: d.harvey@unsw.edu.au
+CNRS, Laboratoire d’informatique, École polytechnique, 91128 Palaiseau, France
+E-mail address: vdhoeven@lix.polytechnique.fr
+
+

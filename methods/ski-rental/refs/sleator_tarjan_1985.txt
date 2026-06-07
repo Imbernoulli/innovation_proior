@@ -1,0 +1,489 @@
+      RESEARCHCON:WBUTIONS
+
+
+      Programming
+      Techniques and
+      Data Structures:
+                                     Amortized Efficiency of List
+      Ellis Horowitz
+      Editor
+                                     Update and Paging Rules
+
+
+                                     DANIEL D. SLEATOR and ROBERT E. TARJAN
+
+
+
+
+      ABSTRACT: In this article we study the amortized                                   By amortization we mean averaging the running time
+       efficiency of the “move-to-front” and similar rules for                       of an algorithm over a worst-case sequence of execu-
+       dynamically maintaining a linear list. Under the assumption                   tions. This complexity measure is meaningful if succes..
+       that accessing the ith element from the front of the list takes               sive executions of the algorithm have correlated behav-
+      0(i) time, we show that move-to-front is within a consfant                     ior, as occurs often in manipulation of data structures.
+      factor of optimum among a wide class of list maintenance                       Amortized complexity analysis combines aspects of
+      rules. Other natural heuristics, such as the transpose and                     worst-case and average-case analysis, and for many
+      frequency count rules, da not share this property. We                          problems provides a measure of algorithmic efficiency
+      generalize our results to show that move-to-front is within a                  that is more robust than average-case analysis and
+      constant factor of optimum as long as the access cost is a                     more realistic than worst-case analysis.
+      convex function. We also study paging, a setting in which                          The article contains five sections. In Section 2 we
+      the access cost is not convex. The paging rule corresponding                   analyze the amortized efficiency of the move-to-front
+      to move-to-front is the “least recently used” (LRU)                            list update rule, under the assumption that accessing
+      replacement rule. We analyze the amortized complexity of                       the ith element from the front of the list takes e(i)
+      LRU, showing that its efficiency differs from that of the off-                 time. We show that this algorithm has an amortized
+      line paging rule (Belady’s MIN algorithm) by a factor that                     running time within a factor of 2 of that of the opti-
+      depends on the size of fast memory. No on-line paging                          mum off-line algorithm. This means that no algorithm,
+      algorithm has better amortized performance.                                    on-line or not, can beat move-to-front by more than a
+                                                                                     constant factor, on any sequence of operations. Other
+      1. INTRODUCTION                                                               common heuristics, such as the transpose and fre-
+      In this article we study the amortized complexity of                          quency count rules, do not share this approximate opti-
+      two well-known algorithms used in system software.                            mality.
+      These are the “move-to-front” rule for maintaining an                             In Section 3 we study the efficiency of move-to-front
+      unsorted linear list used to store a set and the “least                       under a more general measure of access cost. We show
+      recently used” replacement rule for reducing page                             that move-to-front is approximately optimum as long as
+      faults in a two-level paged memory. Although much                             the access cost is convex. In Section 4 we study paging,
+      previous work has been done on these algorithms, most                         a setting with a nonconvex access cost. The paging rule
+      of it is average-case analysis. By studying the amortized                     equivalent to move-to-front is the “least recently used”
+      complexity of these algorithms, we are able to gain                           (LRU) rule. Although LRU is not within a constant fac-
+      additional insight into their behavior.                                       tor of optimum, we are able to show that its amoritzed
+                                                                                    cost differs from the optimum by a factor that depends
+      A preliminary version of sxne of the results was presented at the Sixteenth
+      Annual ACM Symposium on Theory of Computing. held April 30-May 2,             on the size of fast memory, and that no on-line algo-
+      1984 in Washington. D.C.                                                      rithm has better amortized performance. Section 5 con-
+      0 1985 ACM OOOl-0782/S5/0200-0202      75~                                    tains concluding remarks.
+
+
+
+
+202   Communications of the ACM                                                                            February 1985   Volume 28 Number 2
+                                                                                                              ResearchContributions
+
+
+2. SELF-ORGANIZING          LISTS                              only accessesare permitted and exchanges are not
+The problem we shall study in this article is often            counted. For our purposes the most interesting results
+called the dictionary problem: Maintain a set of items         are the following. Suppose the accessesare independ-
+under an intermixed sequence of the following three            ent random variables and that the probability of access-
+kinds of operations:                                           ing item i is pi, For any Algorithm A, let E,+(p) be the
+                                                               asymptotic expected cost of an access, where p =
+          access(i): Locate item i in the set.                 (pl, p2, . . , p,). In this situation, an optimum algorithm,
+          insert(i):   Insert item i in the set.               which we call decreasing probability (DP), is to use a
+                                                               fixed list with the items arranged in nonincreasing or-
+          delete(i):   Delete item i from the set.             der by probability. The strong law of large numbers
+                                                               implies that EFC(~)/EDP( p) = 1 for any probability distri-
+   In discussing this problem, we shall use n to denote        bution p [8]. It has long been known that EIVIF(~)/EDP(p)
+the maximum number of items ever in the set at one             s 2 [3, 71. Rivest [8] showed that ET(~) 5 EMF(P), with
+time and m to denote the total number of operations.           the inequality strict unless n = 2 or pi = l/n for all i.
+We shall generally assume that the initial set is empty.       He further conjectured that transpose minimizes the
+   A simple way to solve the dictionary problem is to          expected access time for any p, but Anderson, Nash,
+represent the set by an unsorted list. To access an item,      and Weber [I] found a counterexample.
+we scan the list from the front until locating the item.          In spite of this theoretical support for transpose,
+To insert an item, we scan the entire list to verify that      move-to-front performs much better in practice. One
+the item is not already present and then insert it at the      reason for this, discovered by Bitner [4], is that move-
+rear of the list. To delete an item, we scan the list from     to-front converges much faster to its asymptotic behav-
+the front to find the item and then delete it. In addition     ior if the initial list is random. A more compelling rea-
+to performing access, insert, and delete operations, we        son was discovered by Bentley and McGeoch [3], who
+may occasionally want to rearrange the list by exchang-        studied the amortized complexity of list update rules.
+ing pairs of consecutive items. This can speed up later        Again let us consider the case of a fixed list of n items
+operations.
+                                                              on which only accessesare permitted, but let s be any
+   We shall only consider algorithms that solve the dic-
+                                                              sequence of access operations. For any Algorithm A, let
+tionary problem in the manner described above. We
+                                                              CA(s)be the total cost of all the accesses.Bentley and
+define the cost of the various operations as follows.
+                                                              McGeoch compared move-to-front, transpose, and fre-
+Accessing or deleting the ith item in the list costs i.
+                                                              queny count to the optimum static algorithm, called
+Inserting a new item costs i + 1, where i is the size of
+                                                              decreasing frequency (DF), which uses a fixed list with
+the list before the insertion. Immediately after an ac-
+                                                              the items arranged in nonincreasing order by access
+cess or insertion of an item i, we allow i to be moved at
+                                                              frequency. Among algorithms that do no rearranging of
+no cost to any position closer to the front of the list; we
+                                                              the list, decreasing frequency minimizes the total ac-
+call the exchanges used for this purpose free. Any other
+                                                              cess cost. Bentley and McGeoch proved that &F(S) 5
+exchange, called a paid exchange, costs 1.
+                                                              2&(s) if MF’s initial list contains the items in order by
+   Our goal is to find a simple rule for updating the list
+                                                              first access. Frequency count but not transpose shares
+(by performing exchanges) that will make the total cost
+                                                              this property. A counterexample for transpose is an ac-
+of a sequence of operations as small as possible. Three
+                                                              cess sequence consisting of a single access to each of
+rules have been extensively studied, under the rubric
+                                                              the n items followed by repeated accessesto the last
+of self-organizing linear lists:
+                                                              two items, alternating between them. On this sequence
+                                                              transpose costs mn - O(n’), whereas decreasing fre-
+Move-to-front (MF). After accessing or inserting an item,     quency costs 1.5m + O(d).
+move it to the front of the list, without changing the
+relative order of the other items.                                Bentley and McGeoch also tested the various update
+                                                              rules empirically on real data. Their tests show that
+Transpose (TJ After accessing or inserting an item, ex-       transpose is inferior to frequency count but move-to-
+change it with the immediately preceding item.                front is competitive with frequency count and some-
+                                                              times better. This suggests that some real sequences
+Frequency count (FC). Maintain a frequency count for          have a high locality of reference, which move-to-front,
+each item, initially zero. Increase the count of an item      but not frequency count, exploits. Our first theorem,
+by 1 whenever it is inserted or accessed; reduce its          which generalizes Bentley and McGeoch’s theoretical
+count to zero when it is deleted. Maintain the list so        results, helps to explain this phenomenon.
+that the items are in nonincreasing order by frequency            For any Algorithm A and any sequence of operations
+count.                                                        s, let CA(s) be the total cost of all the operations, not
+                                                              counting paid exchanges, let XA(S)be the number of
+    Bentley and McGeoch’s paper [3] on self-adjusting         paid exchanges, and let FA(s) be the number of free
+lists contains a summary of previous results. These deal      exchanges. Note that XMF(S) = XT(S) = XFC(S)= 0 and
+mainly with the case of a fixed set of n items on which       that FA(s) for any algorithm A is at most CA(S)- m.
+
+
+
+
+February 1985   Volume 28   Number 2                                                            Communications of the ACM      203
+Research Contributions
+
+
+         (After an access or insertion of the ith item there are at                                                          /
+                                                                           A           I          2                  1   i+l
+         most i - 1 free exchanges.)                                                                                      /
+
+
+         THEOREM     1.
+         For any Algor;ithm A and any sequence of operations s start-     Ml=
+         ing with the empty set,
+                                                                                  \                                                      /
+                         c,W(s) 5 2cA(s) + xA(s)   -   FA(s)   -   m.                                          k
+
+         PROOF.                                                         FIGURE1. Arrangement of A’s and MF’s lists in the proofs of
+         In this proof [land in the proof of Theorem 3 in the next      Theorems 1 and 4. The number of items common to both shaded
+         section) we shall use the concept of a potential function.     regions is x,.
+         Consider running Algorithms A and MF in parallel on s.
+         A potential function maps a configuration of A’s and
+         MF’s lists onto a real number a. If we do an operation          list. (See Figure 1.) Then the number of items preceding
+        that takes time t and changes the configuration to one           i in both lists is k - 1 - xi. Moving i to the front of MF’s
+        with potential V, we define the amortized time of the            list creates k - 1 - Xi inversions and destroys x8other
+        operation to be t + @’ - @.That is, the amortized time           inversions. The amortized time for the operation (the
+        of an operation is its running time plus the increase it         cost to MF plus the increase in the number of inver-
+        causes in the potential. If we perform a sequence of             sions) is therefore k + (k - 1 - Xi) - Xi = 2(k - Xi) - 1.
+        operations such that the ith operation takes actual time         But k - Xi : i since of the k - 1 items preceding i in
+        ti and has amortized time ai, then we have the follow-           MF’s list only i - 1 items precede i in A’s list. Thus the
+        ing relationship:                                                amortized time for the access is at most 2i - 1.
+                                f: ti = + - 9’ + 2 Ui                       The argument for an access applies virtually un-
+                                                 I                      changed to an insertion or a deletion. In the case of a
+         where @is the initial potential and @’ the final poten-        deletion no new inversions are created, and the amor-
+         tial. Thus we can estimate the total running time by           tized time is k - Xi 5 i.
+         choosing a potential function and bounding a, W, and               An exchange by A has zero cost to MF, so the amor-
+         a, for each i.
+                                                                        tized time of an exchange is simply the increase in the
+             To obtain the theorem, we use as the potential func-       number of inversions caused by the exchange. This in-
+         tion the number of inversions in MF’s list with respect        crease is at most 1 for a paid exchange and is -1 for a
+        to A’s list. For any two lists containing the same items,       free exchange.                                              Cl
+        an inversion in one list with respect to the other is an            Theorem 1 generalizes to the situation in which the
+         unordered pair of items, i, j, such that i occurs any-         initial set is nonempty and MF and A begin with differ-
+        where before j in one list and anywhere after j in the          ent lists. In this case the bound is &F(S) I 2&(s) +
+         other. With this potential function we shall show that         XA(S) + I - F,+(s)- m, where I is the initial number of
+         the amortized time for MF to access item i is at most          inversions, which is at most ($‘).We can obtain a result
+         2i - 1, the amortized time for MF to insert an item into       similar to Theorem 1 if we charge for an insertion not
+        a list of size i is at most Z(i + 1) - 1, and the amortized     the length of the list before the insertion but the posi-
+        time for MF to delete item i is at most i, where we             tion of the inserted item after the insertion.
+        identify an item by its position in A’s list. Furthermore,          We can use Theorem 1 to bound the cost of MF when
+        the amortized time charged to MF when A does an                 the exchanges it makes, which we have regarded as
+        exchange is -1 if the exchange is free and at most I if         free, are counted. Let the gross cost of Algorithm A on
+        the exchange is paid.                                           sequence s be TA(s) = CA(S) + FA(s) + XA(S).Then F&s)
+            The initial configuration has zero potential since the      5 C,,(s) - m and XMF(S)= 0, which implies by Theo-
+        initial lists are empty, and the final configuration has a      rem 1 that TMF(S) 5 4cA(S) + 2&(s) - 2F,&) - bI =
+                                                                        4T,q(S) - 2x,4(S)- 6F~(s) - bl.
+        nonnegative potential. Thus the actual cost to MF of a
+        sequence of operations is bounded by the sum of the                 The proof of Theorem 1 applies to any update rule in
+        operations’ amortized times. The sum of the amortized           which the accessed or inserted item is moved some
+        times is in turn bounded by the right-hand side of the          fixed fraction of the way toward the front of the list, as
+        inequality we wish to prove. (An access or an insertion         the following theorem shows.
+        has amortized time 2cA - 1, where CAis the cost of the
+        operation to A; the amortized time of a deletion is CA5         THEOREM         2.
+        2c.4- 1. The -l’s, one per operation, sum to -m.)               If MF(d) (d 2 1) is any rule that moves an accessed or
+            It remains for us to\bound the amortized times of the       inserted item at position k at least k/d - 1 units closer to
+        operations. Consider an access by A to an item i. Let k         the front of the list, then
+        be the position of i in MF’s list and let Xi be the number
+        of items that precede i in MF’s list but follow i in A’s                      cMF(dl(s)       5   d(2cA(S) + xA(s)       -   FA(s)   -   m).
+
+
+
+
+204     Communications of the ACM                                                                              February 1985         Volume 28 Number 2
+                                                                                                                     Research Contributions
+
+
+PROOF.                                                           sert n items and then repeatedly access the last two,
+The proof follows the same outline as that of Theorem            alternating between them. A counterexample for fre-
+1. The potential function we use is d times the number           quency count is to insert an item and access it k + n
+of inversions in MF(d)‘s list with respect to A’s list. We       times, insert a second item and access it k + n - 1
+shall show that the amortized time for MF(d) to access           times, and so on, finally inserting the nth item and
+an item i (in position i in A’s list) is at most d(2i - l),      accessing it k + 1 times. Here k is an arbitrary nonnega-
+the amortized time for MF(d) to insert an item into a            tive integer. On this sequence, frequency count never
+list of size .i is at most d(2i + 1) - 1, and the amortized      rearranges the list and has cost Q(kn*) = Q(mn), whereas
+time for MF(d) to delete item i is at most i. Further-           move-to-front has cost m + O(n*). The same example
+more, the amortized time charged to MF(d) when A                 with the insertions omitted shows that using a static list
+does an exchange is -d if the exchange is free and at            ordered by decreasing access frequency is not within a
+most d if the exchange is paid. These bounds are used            constant factor of optimal.
+as in the proof of Theorem 1 to give the result.                    Theorem 1 is a very strong result, which implies the
+    Consider an access to item i. Let k be the position of i     average-case optimality result for move-to-front men-
+in MF(d)‘s list, and let p be the number of items past           tioned at the beginning of the section. Theorem 1 states
+which MF(d) moves item i. Let x be the number of                 that on any sequence of operations, move-to-front is to
+these items that occur after i in A’s list. (See Figure 2.)      within a constant factor as efficient as any algorithm,
+The decrease in the number of inversions caused by               including algorithms that base their behavior on ad-
+this move is x, while the increase is p - x. Thus the            vance knowledge of the entire sequence of operations.
+potential increases by d(p - 2x), and the amortized time         If the operations must be performed on-line, such off-
+of the insertion is k + d(p - 2x). We want to show that          line algorithms are unusable. What this means is that
+this is less than d(2i - 1). We know k/d - 1 s p s x + i         knowledge of future operations cannot significantly
+- 1; the first inequality follows from the requirement           help to reduce the cost of current operations.
+on MF(d)‘s update rule, and the second is true since                More quantitatively, Theorem 1 provides us with a
+each of the items past which i moves is either one of            way to measure the inherent complexity of a sequence.
+the i - 1 items preceeding i in A’s list or one of the x         Suppose we begin with the empty set and perform a
+items following i in A’s list but preceding i in MF’s            sequence of insertions and accesses.We define the
+list. Multiplying by d and using transitivity we get             complexity of an access or insert operation on item i to
+k 5 d(x + i). Adding the second inequality multiplied by         be 1 plus the number of items accessed or inserted
+d gives k + dp 5 d(2x + 2i - l), which implies k +               since the last operation on i. The complexity of the
+d(p - 2x) YZd(2i - l), as desired.                               sequence is the sum of the complexities of its individ-
+    A similar argument applies to insertion. In the case of      ual operations. With this definition the complexity of a
+deletion, the amortized time is at most k - dx, where x          sequence is exactly the cost of move-to-front on the
+is defined as in Figure I. This is at most k - x, which in       sequence and is within a factor of 2 of the cost of an
+turn is no greater than i, as shown in the proof of              optimum algorithm.
+Theorem 1. Since i and d are at least 1, i 5 2i - 1 5
+d(2i - 1). Finally, a free exchange done by Algorithm A
+decreases the potential by d; a paid exchange increases           3. SELF-ORGANIZING LISTS WITH
+or decreases it by d. Note that the -d terms in the                   GENERALIZED ACCESS COST
+amortized times sum to give the -dm term in the theo-             In this section we explore the limits of Theorem I by
+rem.                                                        Cl    generalizing the cost measure. Let f be any nondecreas-
+   No analogous result holds for transpose or for fre-            ing function from the positive integers to the nonnega-
+quency count. For transpose, a variant of the example             tive reals. We define the cost of accessing the ith item
+mentioned previously is a counterexample; namely, in-             to be f(i), the cost of inserting an item to be f(i + 1) if
+                                                                 the list contains i items, and the cost of a paid exchange
+                                                                  of the ith and (i + l)st items to be A/(i) = f(i + 1) -f(i).
+                                                                  (We define free and paid exchanges just as in Section
+    A    I      2                                                2.) If A is an algorithm for a sequence of operations s,
+                                                                 we denote by CA(S)the total cost of A not counting paid
+                                                                 exchanges and by XA(S)the cost of the paid exchanges,
+                                                                 if any. To simplify matters we shall assume that there
+MF(d)                                                            are no deletions.
+                                                                     We begin by studying whether Af(i) is a reasonable
+                          k                                      amount to charge for exchanging the ith and (i + l)st
+                                                                 items. If we charge significantly less than Af(i) for an
+FIGURE2. Arrangement of A’s and MF(d)‘s lists in the proof of    exchange, then it may be cheaper to access an item by
+Theorem 2. The number of items common to both shaded regions     moving it to the front of the list, accessing it, and mov-
+is x.                                                            ing it back, than by accessing it without moving it. On
+
+
+
+
+February 1985   Volume 28 Number 2                                                                  Communications    of the ACM        205
+ResearchContributions
+
+
+       the other hand, if we charge at least Af(i) for an ex-          Since the initial configuration has zero potential and
+       change, then as the following theorem shows, paid ex-           the final configuration has nonnegative potential, the
+       changes do not reduce the cost of a sequence.                   actual cost of the sequence of operations is bounded by
+                                                                       the sum of the operations’ amortized times. The theo-
+       THEOREM 3.                                                      rem will therefore follow from a proof of the bou;ds in
+       l.et.A be an algorithm for a sequence s of insertions and       this paragraph.
+       accesses. Ther;’ there is another algorithm for s that is no       Consider an access of an item i. Let k be the position
+       more expensive than A and does no paid exchanges.              of i in MF’s list. The amortized time for the access is f(k)
+                                                                       (the actual cost) plus the increase in the potential
+       PROOF.                                                         caused by the access. The increase in potential can be
+       Note that this theorem does not require the initial set        divided into three parts: the increase due to items j > i,
+       to be empty. Also note that we can replace each inser-         that due to item i, and that due to items j < i. Let x, be
+       tion by an access without changing the cost. We do this        as defined just before the exchange. For j > i the value
+       by adding all the items to be inserted to the rear of the      xi does not change when i is moved to the front of MF’s
+       initial list, in order of insertion, and replacing each        list, and there is no corresponding change in the poten-
+       insert(i) operation by access(i). Thus we can assume           tial. The potential corresponding to item i changes from
+       without loss of generality that s contains only accesses.      f(i + xi) -f(i) to zero, an increase of f(i) - f(i + Xi). For
+           To eliminate the paid exchanges, we move them one          each item j < i, the value of Xj can increase by at most
+       by one after the accesses.Once this is done, we can            1, so the increase in potential for all j < i is at most
+       eliminate them. without increasing the cost. Consider
+                                                                      ,zi ( f( j + xj + 1) - f(j + xjll= ;i Af(i+ xi)5 c Af(j)
+       an exchange th.at occurs just before an access. Identify                                                              jci
+       the items by i heir positions just before the exchange.
+       Let i and i + :Lbe the items exchanged and let j be the                                          = f(i) - f(l).
+       item accessed. ‘There are three cases. If j 4 {i, i + l), we    Combining our estimates we obtain an amortized time
+       can move the exchange after the access without chang-          of at most f(k) + f(i) - f(i + Xi) + f(i) - j(1) = 2f(i) - f(l) +
+       ing the cost. IFj = i, we save Af(i) on the access by          f(k) - f(i + xi). Each of the k - 1 items preceding i in
+       performing the exchange afterwards. If j = i + 1, we           MF’s list either follows i in A’s list (there are Xi such
+       spend Af(i) extra on the access by postponing the ex-          items) or precedes i in A’s list (there are at most i - I
+       change, but we can then perform the exchange for free,         such items). Thus k 5 i + x[, and the amortized time for
+       saving Af(i). Thus, in no case do we increase the cost,        the access is at most 2f(i) - f(l).
+       and we either convert the paid exchange to a free ex-             As in the proof of Theorem 2, we can treat each
+       change or move it after an access. The theorem follows         insertion as an access if we regard all the unaccessed
+       by induction.                                              0   items as added to the rear of the list, in order of inser-
+          Theorem 3 holds for any nondecreasing cost function,        tion. The potential corresponding to each unaccessed
+       whereas our generalization of Theorem 1, which fol-            item is zero. Thus the argument for access applies as
+       lows, requires convexity of the cost function. We say f        well to insertions.
+       is convex if Af(i) 2 Af(i + 1) for all i.                         Consider an exchange done by A. The amortized time
+                                                                      charged to MF when A exchanges items i and i + 1 is
+       THEOREM 4.                                                     just the increase in potential, since the actual cost to
+       If f is convex and A is any algorithm for a sequence s of      MF is zero. This increase is
+       insertions and accesses starting with the empty set,
+                                                                       f(i + xl) - f(i + Xi) + f(i + 1 + X:+1) - f(i + 1 + Xi+l)r
+                        fC&.s) 5 2&(s) + X,4(s) - mf(1).
+                                                                      where the primes denote values after the exchange.
+       PROOF.                                                         Note that the exchange causes item i to become item
+      The proof is just like the proof of Theorem 1. We run A         i + 1 and vice-versa. If the original item i precedes the
+       and MF in parallel on s and use a potential function,          original item i + 1 in MF’s list, then xi = Xi+] + 1 and
+       defined as follows. At any time during the running of          x:+~ = xi, which means the amortized time for the ex-
+      the algorithms, we identify the items by their positions        change is Af(i + Xi) I Af(i). If the original item i follows
+      in A’s list. For each item i, let Xi be the number of items     the original item i + 1 in MF’s list, as is the case when
+      j > i preceding i in MF’s list. (See Figure 1.) The value       the exchange is free, then x/ = Xi+1and xi’+, = Xi - 1,
+      of the potential is xi (f(i + xi) - f(i)), where the sum is     which means the amortized time for the exchange is
+      over all the items in the lists.                                -Af(i + Xi+]) 5 0.                                           q
+          We shall show that the amortized time for MF to                As is true for Theorem 1, Theorem 4 can be general-
+      access item i is at most 2f(i) -f(l), the amortized time        ized to allow the initial set to be nonempty and the
+      to insert an item in a list of size i is at most 2f(i + 1) -    initial lists to be different. The effect is to add to the
+      f(l), and the amortized time charged to MF when A               bound on &P(S) a term equal to the initial potential,
+      exchanges items i and i + 1 is at most Af(i) if the             which depends on the inversions and is at most
+      exchange is paid, at most zero if the exchange is free.         C:=;’ (f(n) - f(i)). We can also obtain a result similar to
+
+
+
+
+206    Communications of the ACM                                                                 February 1985 Volume 28 Number 2
+                                                                                                                                   Research Contributions
+
+
+ Theorem 4 if we charge for an insertion not f(i + l),           vation. Least recently used paging is equivalent to
+where i is the length of the list before the insertion, but      move-to-front: least frequently used paging corresponds
+f(i), where i is the position of the inserted item after the     to frequency count. All the paging rules except longest
+insertion.                                                       forward distance are on-line algorithms: that is, they
+    Extending the results of this section to include dele-       require no knowledge of future accesses.Longest for-
+ tions is problematic. If we charge f(i) for a deletion in a     ward distance exactly minimizes the number of page
+list of size i, Theorem 4 holds if we allow deletions, and       faults [2], which is why it is known as the MIN algo-
+ the total deletion cost is bounded by the total insertion       rithm.
+ cost. We leave the discovery of an alternative way to              We shall compare various on-line algorithms to the
+ handle deletions to the ambitious reader.                       MIN algorithm. In making such a comparison, it is re-
+                                                                 vealing to let the two algorithms have different fast
+4. PAGING                                                        memory sizes. If A is any algorithm and s is any se-
+ The model of Section 3 applies to at least one situation        quence of m accesses,we denote by nA the number of
+ in which the access cost is not convex, namely paging.          pages in A’s fast memory and by FA(s)the number of
+ Consider a two-level memory divided into pages of               page faults made by A on s. When comparing A and
+ fixed uniform size. Let n be the number of pages of fast        MIN, we shall assume that nA 2 nMIN. Our first result
+ memory. Each operation is an accessthat specifies a             shows how poorly any on-line algorithm performs com-
+page of information. If the page is in fast memory, the          pared to MIN.
+ access costs nothing. If the page is in slow memory, we
+must swap it for a page in fast memory, at a cost of one         THEOREM 5.
+page fuulf. The goal is to minimize the number of page           Let A be any on-line algorithm. Then there are arbitrarily
+faults for a given sequence of accesses.                         long sequences s such that
+    Such a two-level memory corresponds to a self-organ-
+izing list with the following access cost: f(i) = 0 if i I n,                     FA(s) Z (nA/(nA       -   nMlN + ~IIFMJN(sI.
+f(i) = 1 if i > n. Since Af(i) = 0 unless i = II, the items in
+positions 1 through II may be arbitrarily reordered for          PROOF.
+free, as may the items in positions greater than n; thus         We shall define a sequence of nA accesseson which A
+the access cost at any time depends only on the set of           makes nA faults and MIN makes only nA - nMlN + 1
+items in positions 1 through n. The only difference be-          faults. The first nA - nMIN+ 1 accessesare to pages in
+tween the paging problem and the corresponding list              neither A’s nor MIN’s fast memory. Let S be the set of
+update problem is that a page in slow memory must be             nA + 1 pages either in MIN’s memory initially or among
+moved to fast memory when accessed, whereas the cor-             the nA - nM]N+ 1 newly accessed pages. Each of the
+responding list reordering is optional. To make our re-          next ~IMIN- 1 accessesis to a page in S not currently in
+sults easy to compare to previous work on paging, we             A’s fast memory. On the combined sequence of nA ac-
+shall, in this section, use standard paging terminology          cesses,A faults every time. Because MIN retains all
+and require that each accessed page be moved to fast             pages needed for the last nMlN - 1 accesses,it faults
+memory.                                                          only nA - nMIN + 1 times. This construction can be re-
+    As with list updating, most previous work on paging          peated as many times as desired, giving the theorem. q
+[Z, 5, 6, 91 is average-case analysis. Among paging rules
+that have been studied are the following:                        REMARK.
+                                                                 If n,4< nMIN, there are arbitrarily long sequences on
+Least recently used (LRU). When swapping is necessary,           which A always faults and MIN never faults.           q
+replace the page whose most recent access was earliest.             Our second result shows that the bound in Theorem
+First-in, first-out (FIFO). Replace the page that has been       5 is tight to within an additive term for LRU.
+in fast memory longest.
+                                                                 THEOREM 6.
+Lust-in, first-out (LIFO). Replace the page most recently        For any sequence s,
+moved to fast memory.
+                                                                     FLR&)    5    (nLRU/(nLRU      -   nMlN   $- 1))FMINtS)   +    nMIN.
+Least frequently used (LFU). Replace the page that has
+been accessed the least.                                         PROOF.
+Longest fonoard distance (MIN). Replace the page whose           After the first access, the fast memories of LRU and
+next access is latest.                                           MIN always have at least one page in common; namely
+                                                                 the page just accessed. Consider a subsequence t of s
+  All these rules use demand paging: They never move             not including the first access and during which LRU
+a page out of fast memory unless room is needed for a            faults f 5 nLaUtimes. Let p be the page accessed just
+newly accessed page. It is well known that premature             before t. If LRU faults on the same page twice during t,
+paging cannot reduce the number of page faults. Theo-            then t must contain accessesto at least nLRU+ 1 differ-
+rem 3 can be regarded as a generalization of this obser-         ent pages. This is also true if LRU faults on p during t. If
+
+
+
+
+February 1985   Volume 28   Number 2                                                                           Communications of the ACM              207
+Research Contributions
+
+
+         neither of these cases occurs, then LRU faults on at               McGeoch note, this contradicts the asymptotic average-
+         least f differe:nt pages, none of them p, during t. In any         case results, which favor transpose over move-to-front.
+         case, since f 2; iYLeo,MIN must fault at least f - nMlN+ 1         Our tentative conclusion is that amortized complexity
+         times during ,t.                                                   provides not only a more robust but a more realistic
+             Partition s into so, sl, . . . , sksuch that SOcontains the    measure for list update rules than asymptotic average-
+         first access and at most ?tLsufaults by LRU, and Si for            case complexity.
+         i=l,...,      k contains exactly fiLRofaults by LRLJ. On              We have generalized our result on move-to-front to
+         each of si, . . . , Sk,the ratio of LRU faults to MIN faults       any situation in which the access cost is convex. We
+         is at most YZLR~J/‘(~LR~  - ~MIN+ 1). During SO,if LRU             have also studied paging, a setting with a nonconvex
+         faults f. times, MIN faults at least j. - QIN times. This          access cost. Our results for paging can be interpreted
+         gives the theorem.                                            cl   either positively or negatively. On the one hand, any
+            The additive term of HM~Nin the bound of Theorem 6              on-line paging algorithm makes a number of faults in
+         merely reflects the fact that LRU and MIN may initially            the worst case that exceeds the minimum by a factor
+         have completely different pages in fast memory, which              equal to the size of fast memory. On the other hand,
+         can result in LR.U faulting ~MINtimes before MIN faults            even in the worst case both LRU and FIFO paging come
+         at all. If we allow LRU and MIN to have arbitrarily                within a constant factor of the number of page faults
+         different initial fast memory contents, then we can in-            made by the optimum algorithm with a constant factor
+        crease the lower bound in Theorem 4 by IIM~N.On the                 smaller fast memory. More precisely, for any constant
+        other hand, if we assume that LRU’s fast memory ini-                factor c > 1, LRU and FIFO with fast memory size rr
+        tially contains all the pages in MIN’s fast memory and              make at most c times as many faults as the optimum
+        no others more recently used, then we can decrease the              algorithm with fast memory size (1 - l/c)n. A similar
+        upper bound in Theorem 6 by I~M~N.In either case we                 result for LRU was proved by Franaszek and Wagner
+        get exactly matching upper and lower bounds.                        [6], but only on the average.
+            Essentially the same argument shows that Theorem 6
+        holds for FIFO. We merely refine the definition of so, ~1,
+                                                                            REFERENCES
+        . . . , skso that during si for i = 1, . . . , k, LRU faults         1. Andqrson, E.J., Nash, I’.. and Weber, R.R. A counterexample       to a
+        exactiy nLRotimes and also on the access just before Si.                conjecture on optimal list ordering. [. Appl. Prob.. to appear.
+        We can find such a partition by scanning s from back to              2. Belady, L.A. A study of replacement algorithms for virtual storage
+                                                                                computers. IBM Syst. J 5 (19&j), 78-101.
+        front. The rest of the proof is the same.                            3. Bentley, J.L., and McCeoch, C. Worst-case analysis of self-organizing
+            It is easy to construct examples that show that a                   seouential search heuristics. In Proceedings of 2Ofh Allerton Confcr-
+        result like Theorem 6 holds neither for LIFO nor for                    ence on Communication, Control, and Cornfifing, (Univ. Illinois,
+                                                                                Urbana-Champaign.       Oct. 6-8,1962), 1983.45~461.
+        LFU. A counterexample for LIFO is a sequence of nLiFo                4. Bitner. J.R. Heuristics that dynamically   organize data structures.
+        - 1 accessesto different pages followed by repeated                     SIAMJ. Comput. 8 (1979). 82-110.
+                                                                             5. Coffman. E.G.. and Denning, P.J. Operating Systems Theorlj, Prentice-
+        alternating accessesto two new pages. On such a se-                     Hall, Englewood Cliffs, NJ, 1973.
+        quence S, &I&S) = m, but &IN(S) = n~iro + 1 if I~MIN                 6. Franaszek, P.A.. and Wagner, T.J. Some distribution-free     aspects of
+        2 2. A countensxample for LFU is a sequence of k + 1                    paging performance. J. ACM 21, 1 (Jan. 1974), 31-39.
+                                                                             7. Knuth. DE. The Art of Computer Programming, Volume 3: Sorting and
+        accessesto each of nLFu - 1 pages, followed by 2k alter-                Searching Addison-Wesley,       Reading, MA, 1973.
+        nating accessesto two new pages, k to each, with this                8. Rivest. R. On self-organizing sequential search heuristics. Commun.
+        pattern repeated indefinitely (so that all but the initial              ACM 19, 2 [Feb. 1976), 63-67.
+                                                                             9. Spirn, J.R. Progam Behavior: Models and Measurements. Elsevier, New
+        nLFu - 1 pages have k accesses).On such a sequence,                     York. 1977. -
+        I&(S) = m - k(nLF” - l), but &IN(S) 5 m/k if ~MINL 2.
+                                                                                CR Categories and Subject Descriptors: D.4.2 [Operating Systems]:
+                                                                            Storage Management-swapping;        E.l [Data]: Data Structures--lists;
+        5. REMARKS.                                                         tables; F.2.2 [Analysis of Algorithms   and Problem Complexity]:        Nonnu-
+        We have studied the amortized complexity of the                     merical Algorithms and Problems-sorting        and searching
+        move-to-front rule for list updating, showing that on                   General Terms: Algorithms, Theory
+                                                                                Additional Key Words and Phrases: self-organizing, move-to-front,
+        any sequence of operations it has a total cost within a             least recently used. paging.
+        constant factor of minimum, among all possible updat-
+        ing rules, including off-line ones. The constant factor is          Received 3/83; revised 6/63: accepted t3/84
+        2 if we do not count the updating cost incurred by
+        move-to-front and 4 if we do. This result is much                   Authors’ Present Addresses: Daniel D. Sleator. Computing Science Re-
+                                                                            search Center, AT&T Bell Laboratories, 600 Mountain Avenue, Murray
+        stronger than p:revious average-case results on list up-            Hill, NJ 07974. Robert E. Tarjan. Mathematics and Statistics Research
+        date heuristics. Neither transpose nor frequency count              Center, AT&T Bell Laboratories, 600 Mountain Avenue, Murray Hill, NJ
+                                                                            07974.
+        shares this approximate optimality. Thus, even if one is
+        willing to incur the time and space overhead needed to              Permission to copy without fee all or part of this material is granted
+        maintain frequency counts, it may not be a good idea.               provided that the copies are not made or distributed for direct commer-
+           Our results lend theoretical support to Bentley and              cial advantage, the ACM copyright notice and the title of the publication
+                                                                            and its date appear, and notice is given that copying is by permission of
+        McGeoch’s experiments showing that move-to-front is                 the Association for Computing Machinery. To copy otherwise, or to
+        generally the best rule in practice. As Bentley and                 republish, requires a fee and/or specific permission.
+
+
+
+
+208     Communications of the ACM                                                                           February 1985       Volume 28 Number 2
+

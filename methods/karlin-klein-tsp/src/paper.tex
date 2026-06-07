@@ -1,0 +1,241 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[sc]{mathpazo}
+\usepackage{microtype}
+\usepackage{amsmath,xcolor}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{bm,float}
+\usepackage{dsfont}
+%\usepackage[inline]{showlabels}
+\usepackage{authblk}
+\usepackage{fullpage,caption,wrapfig}
+\usepackage{comment}
+\usepackage{mathtools}
+\usepackage[shortlabels]{enumitem}
+\usepackage{complexity}
+\usepackage[backend=bibtex, style=alphabetic, backref=true,maxbibnames=99, url=false]{biblatex} 
+\usepackage{bbm}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=violet,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=blue,
+    pdffitwindow=true,
+}\usepackage[capitalize, nameinlink]{cleveref}
+\usepackage{nag,tikz}
+\usetikzlibrary{calc}
+\usetikzlibrary{decorations.pathreplacing}
+
+%
+
+\usepackage{algorithm,algpseudocode}
+\usepackage{multicol}
+\usepackage[scaled]{helvet} % ss
+%\usepackage{courier} % tt
+%\normalfont
+%\usepackage[T1]{fontenc}
+\usepackage{thmtools} 
+
+
+% --- Theorems
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{fact}[theorem]{Fact}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{observation}[theorem]{Observation}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{assumption}[theorem]{Assumption}
+%\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+
+\newcommand{\old}[1]{}
+\def\cR{{\cal R}}
+\newcommand{\rank}{\text{rank}}
+\renewcommand{\poly}{\text{poly}}
+\newcommand{\OPT}{\textsf{OPT}}
+\newcommand{\st}{\text{s.t.}}
+
+
+% math notation
+\renewcommand{\R}{\ensuremath{\mathbb R}}
+\newcommand{\Z}{\ensuremath{\mathbb Z}}
+\newcommand{\mC}{\ensuremath{\mathbb C}}
+\newcommand{\N}{\ensuremath{\mathbb N}}
+\newcommand{\F}{\ensuremath{\mathcal F}}
+\newcommand{\SymGrp}{\ensuremath{\mathfrak S}}
+\newcommand{\hP}[1]{{\widehat{\bf P}}\left[#1\right]}
+\renewcommand{\P}[1]{{\mathbb{P}}\left[#1\right]}
+\renewcommand{\PP}[2]{{\mathbb{P}}_{#1}\left[#2\right]}
+\newcommand{\bP}[1]{{\bf P}\left[#1\right]}
+\newcommand{\sP}[1]{{\bf P}^* \left[#1\right]}
+\newcommand{\sPP}[2]{{\bf P}^{*}_{#1}\left[#2\right]}
+\newcommand{\hPP}[2]{{\widehat{\bf P}}_{#1}\left[#2\right]}
+\newcommand{\bPP}[2]{{\bf P}_{#1}\left[#2\right]}
+\newcommand{\kPPP}[3]{{\widehat{\bf P}}^{#2}_{#1}\left[#3\right]}
+\newcommand{\kEEE}[3]{{\widehat{\bf E}}^{#2}_{#1}\left[#3\right]}
+\newcommand{\I}[1]{ {\mathbb{I}}\left\{#1\right\} }
+
+\renewcommand{\E}[1]{{\mathbb{E}}\left[#1\right]}
+\renewcommand{\EE}[2]{{\mathbb{E}}_{#1}\left[#2\right]}
+\newcommand{\bE}[1]{{\bf E}\left[#1\right]}
+\newcommand{\hEE}[2]{{\widehat{\bf E}}_{#1}\left[#2\right]}
+\newcommand{\hE}[1]{{\widehat{\bf E}}\left[#1\right]}
+\newcommand{\bEE}[2]{{\bf E}_{#1}\left[#2\right]}
+\def\sK{{\bf K}^*}
+\newcommand{\size}[1]{\ensuremath{\left|#1\right|}}
+\newcommand{\ceil}[1]{\ensuremath{\left\lceil#1\right\rceil}}
+\newcommand{\floor}[1]{\ensuremath{\left\lfloor#1\right\rfloor}}
+\newcommand{\Cay}{\operatorname{Cay}}
+\newcommand{\ess}[1]{{ S_{0}, \ldots, S_{#1} }}
+\renewcommand{\path}[2]{{ S_{#1}, \ldots, S_{#2} }}
+\newcommand{\setvol}[1]{\vol(S_{#1})}
+\def\argmax{\textup{argmax}}
+% extra math
+\newcommand{\nE}[1]{{\mathbb{E}_{\nu}}\left[#1\right]}
+\newcommand{\tE}[1]{{\mathbb{E}_{\tau}}\left[#1\right]}
+\def\decrease{\beta}
+
+\newcommand{\anna}[1]{\textcolor{purple}{#1}}
+\def\nei{\text{nei}}
+\def\bzero{{\bf 0}}
+\def\ortho{\perp}
+\def\bone{{\bf 1}}
+%\def\vol{d}
+\def\reff{{\textup{Reff}}}
+\def\bpsi{{\bm{\pi}}}
+\def\b1{{\bf 1}}
+\def\1{{\bf 1}}
+\def\bx{{\bf x}}
+\def\bw{{\bf w}}
+\def\bzeta{{\bm{\zeta}}}
+\def\by{{\bf y}}
+\def\bz{{\bf z}}
+\def\br{{\bf r}}
+\def\ba{{\bf a}}
+\def\cB{{\cal B}}
+\def\oS{{\overline{S}}}
+\def\Benczur{Benczur}
+\def\bb{{\bf b}}
+\def\C{{\cal C}}
+\def\bK{{\bf K}}
+\def\hK{{\widehat{\bf K}}}
+\def\spsize{l}
+\def\bS{{\overline{S}}}
+\def\inside{\varphi}
+\def\phiin{\phi_{\text{in}}}
+\def\phiout{\phi_{\text{out}}}
+\def\eps{{\epsilon}}
+\def\cD{{\cal D}}
+\def\cI{{\cal I}}
+\def\cH{{\cal H}}
+\def\cT{{\cal T}}
+\def\bl{{\bf{\lambda}}}
+\def\cM{{\cal M}}
+\def\cF{{\cal F}}
+\def\cA{{\cal A}}
+\def\cN{{\cal N}}
+\def\nd{d^\diamond}
+\def\cE{{\cal E}}
+\def\cost{c}
+\def\cL{{\cal L}}
+\def\cS{{\cal S}}
+\def\cp{\tau}
+\def\setminus{-}
+\def\R{\mathbb{R}}
+\def\cR{{\mathcal{R}}}
+\def\G{{\cal G}}
+\def\mass{{\cal M}}
+\def\cP{{\cal P}}
+\def\cJ{{\cal J}}
+\def\con{\Delta}
+\def\atoms{\psi}
+\def\inatom{V_{\text{in}}}
+\def\outatom{V_{\out}}
+\def\girth{g}
+\def\cC{{\cal C}}
+\newcommand{\norm}[1]{\|#1\|}
+\def\bbe{{\bf e}}
+\def\bbf{{\bf f}}
+\def\bbg{{\bf g}}
+\def\bbh{{\bf h}}
+
+\def\gensam{{\textup{\texttt{GenerateSample}}}}
+\def\Evo{{\textup{\texttt{ParESP}}}}
+\def\SSE{{\textup{\texttt{Threshold}}}}
+\def\nibble{{\textup{\texttt{Nibble}}}}
+\def\targetset{A}
+\def\cactus{K}
+
+\newcommand{\SH}[1]{{\bf [[\textcolor{blue}{SH: #1}]]}}
+\newcommand{\sh}[1]{{\bf{\color{blue}#1}}}
+\newcommand{\ms}[1]{{\bf{\color{cyan}#1}}}
+\newcommand{\msout}[1]{{\sout{\color{red}#1}}}
+\newcommand{\candelete}[1]{{{\color{green}#1}}}
+
+
+\newcommand{\declareperson}[1]{\expandafter\newcommand\csname#1\endcsname[1]{\textcolor{orange}{#1: ##1}}}
+
+\declareperson{Anna}
+\declareperson{Shayan}
+\declareperson{Nathan}
+\addbibresource{tsp.bib}
+
+\title{A (Slightly) Improved Approximation Algorithm\\ for Metric TSP}
+\author{Anna R. Karlin\thanks{\href{mailto:karlin@cs.washington.edu}{karlin@cs.washington.edu}. Research supported by Air Force Office of Scientific Research grant FA9550-20-1-0212 and NSF grant CCF-1813135.}}
+\author{Nathan Klein\thanks{\href{mailto:nwklein@cs.washington.edu}{nwklein@cs.washington.edu}. Research supported in part by NSF grants CCF-1813135 and CCF-1552097.}}
+\author{Shayan Oveis Gharan\thanks{\href{mailto:shayan@cs.washington.edu}{shayan@cs.washington.edu}. Research supported by Air Force Office of Scientific Research grant FA9550-20-1-0212, NSF grants  CCF-1552097, CCF-1907845,  ONR YIP grant N00014-17-1-2429, and a Sloan fellowship.}} 
+\affil{University of Washington}
+
+
+\begin{document}
+\maketitle 
+\begin{abstract}
+For some $\eps > 10^{-36}$ we give a randomized $3/2-\eps$ approximation algorithm for metric TSP.
+\end{abstract}
+\thispagestyle{empty} 
+
+\newpage
+\tableofcontents
+\thispagestyle{empty}
+
+\newpage 
+\setcounter{page}{1}
+\input{introduction}
+
+\input{preliminaries}
+
+\input{overview}
+
+\input{polygons}
+
+\input{probabilistic}
+
+\input{matching}
+
+
+
+\input{payment}
+
+\printbibliography
+%\bibliographystyle{alpha}
+%\bibliography{tsp}
+
+
+\appendix
+\input{notation}
+\input{probabilistic-app}
+
+\end{document}

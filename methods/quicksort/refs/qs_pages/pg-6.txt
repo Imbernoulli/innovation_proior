@@ -1,0 +1,92 @@
+Quicksort
+
+The number of cycles of the innermost comparison loop large enough random-access store to make interna
+is close to the theoretical minimum, and the loop may sorting worth while.
+
+be made very fast. The amount of data movement
+
+within the store is kept within very reasonable bounds. Acknowledgement
+
+Quicksort is therefore likely to recommend itself as the This paper is published by kind permission of Elliott
+standard sorting method on most computers with a Brothers (London) Ltd.
+
+Reference
+
+Hoare, C. A. R. (1961). Algorithm 63, Partition; Algorithm 64, Quicksort; Communications of the ACM, Vol. 4, p. 321.
+
+Zero-Address Computers
+
+By P. Wegner
+
+The literature on digital computers makes a distinction arrays, need be specified only by a single “data descriptor”
+between one-address, two-address and three-address machines, in such a directory, the number of bits required to reference
+where the nature of the beast is determined by the number of such a directory will be smaller than the number of bits
+references to the main random access memory permitted in a required to reference the memory as a whole. An indirect
+single instruction of the basic machine code. After some addressing technique of this kind eliminates the need to refer
+initial confusion, the one-address machine emerged as the to operands explicitly in terms of the memory location which
+dominant type, and its pre-eminent position has been largely they occupy, so that data transmission instructions of this kind
+unchallenged during the past five years or so. may, in some sense, be regarded as zero-address instructions.
+
+I should like to draw attention to the fact that the position The principal remaining class of memory-address references
+of the one-address machine is being challenged by a new is that of labels. Labelling, and transfers to labels within a
+type of animal which, on the basis of the above classification, program, may also be dealt with by a program directory
+must be called a zero-address machine. technique. A machine like the Burroughs B 5000, which
+
+The basic arithmetic operations are of the three-operand references operands and labels through a program directory,
+type. For instance, the operation C = A —B has two may therefore be regarded as a zero-address computer.
+operands as input and one operand as output. Three-address Zero-address computers are more economical in_ their
+machines permit basic machine instructions to refer to the utilization of memory space for programs than one-address
+three operands explicitly. Two-address machines refer to two computers, since it is unnecessary to provide space in an
+operands explicitly, and one operand (usually the result) instruction for referencing a memory location. For instance,
+implicitly. One-address machines refer to one operand the B 5000 has 12-bit instructions and permits four instruc-
+explicitly, and assume that an arithmetic operation, such as tions to a computer word.
+
+ADD, finds its second operand in an independently specified Furthermore, the fact that arithmetic and logical opera-
+register and stores its result in a second, possibly identical, tions in such an instruction code are “pure” operations,
+independently specified register. unencumbered by operands, gives rise to a closer corre-
+
+A zero-address instruction can be defined as one where the spondence between mathematical source language and basic
+location of all relevant operands is specified by convention, machine code than is the case in one-address computers.
+so that no operand need be designated explicitly. Zero- The constituent + in a mathematical source language has a
+address logical and arithmetic operations are available in precise counterpart in the target language; and, in general.
+computers like the English Electric KDF 9 or the Burroughs source language constituents retain their identity in the target
+B 5000, in which all operands required as input to an arith- language, although the order of their appearance may be
+metic operation are previously stored in a group of temporary changed. This correspondence leads to simpler and faster
+storage registers with last-in-first-out properties, variously translation programs than in the case of one-address machines.
+known as a nesting store, a stack or a pushdown store. Further- To sum up, there are three principal advantages in a zero-
+more, the result of an arithmetic operation on operands in address basic machine code:
+
+the pushdown store is left in a register in the pushdown
+store from which it may immediately be used for further
+zero-address arithmetic operations. For instance, three-
+address operations, such as addition, perform the addition
+operation on the two top registers of the pushdown store,
+reduce the size of the pushdown store by deleting the top
+register, and store the result in the new top register (previously
+the second register), where it is available for immediate use
+for subsequent computation.
+
+By means of a pushdown store it is possible to specify
+
+1. Machine language instructions can be short, since no
+explicit reference to operands in a large random-access
+memory is required.
+
+2. The structure of the machine language is close to the
+structure of mathematical source languages, leading to
+fast translation procedures.
+
+3. Execution of sequences of arithmetic and logical opera-
+tions is speeded up since the number of references to
+random-access memory is reduced.
+
+arithmetic and logical operations without explicit reference In view of these advantages, computers with zero-address
+to an operand. However, a machine which is truly a zero- arithmetic and logical machine instructions operating through
+address machine, requires elimination of references to a pushdown store have probably come to stay. The case for
+operands for all operations, including data transmission zero-address operations for all classes of basic machine
+Operations typified by FETCH and STORE. This is accom- instructions is not quite as compelling. However, a con-
+plished in the Burroughs B 5000 by channelling all references sistent zero-address instruction code, permitting only indirect
+to operands through an operand directory known as the references to locations in the random-access memory, has a
+“Program Reference Table.’’ Since grouped data, such as great deal to be said for it.
+
+15

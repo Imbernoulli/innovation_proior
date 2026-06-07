@@ -1,0 +1,4267 @@
+Constructing Ramsey Graphs from Boolean Function Representations
+Parikshit Gopalan
+College of Computing,
+Georgia Institute of Technology,
+Atlanta, GA 30332, USA.
+parik@cc.gatech.edu
+
+Abstract
+Explicit construction of Ramsey graphs or graphs with
+no large clique or independent set, has remained a challenging open problem for a long time. While Erdős’ proba
+bilistic argument shows the existence of graphs on
+ver
+tices with no clique or independent set of size , the best
+explicit constructions achieve a far weaker bound. Constructing Ramsey graphs is closely related to polynomial
+representations of Boolean functions; a low degree representation for the OR function can be used to explicitly construct Ramsey graphs [17].
+We generalize the above relation by proposing a new
+framework. We propose a new definition of OR representations: a pair of polynomials represent the OR function if
+
+the union of their zero sets contains all points in  
+except the origin. We give a simple construction of a Ramsey graph using such polynomials. Furthermore, we show
+that all the known algebraic constructions, ones to due to
+Frankl-Wilson [12], Grolmusz [17] and Alon [2] are captured by this framework; they can all be derived from vari
+ous OR representations of degree 
+based on symmetric polynomials.
+Thus the barrier to better Ramsey constructions through
+such algebraic methods appears to be the construction of
+lower degree representations. Using new algebraic techniques, we show that better bounds cannot be obtained using symmetric polynomials.
+
+1 Introduction
+This paper studies a problem at the intersection of combinatorics and computational complexity.
+The combinatorial problem is that of explicitly constructing Ramsey graphs. Ramsey’s theorem shows that ev
+vertices has either a clique or an indepenery graph on
+
+Supported by NSF grant CCR-3606B64
+
+
+dent set of size
+. In his seminal 1947 paper introducing the probabilistic method, Erdős showed that there exist
+
+
+! #"%$ &
+graphs with
+vertices where  
+
+
+[11]. He posed the question of constructing such Ramsey
+graphs explicitly and offered a prize of '( ) for it. This is
+a central open problem in explicit combinatorial constructions; the best known constructions to date are far from the
+probabilistic bound. The first breakthrough on this problem
+was due to Frankl and Wilson in 1981 [12]; their construc
+,.- / 0 132 
+tion gives *+ &+
+. For over two decades,
+there was no improvement on this bound despite much effort. However there were other constructions known due to
+Grolmusz and Alon [17, 2] that achieved exactly the same
+bound, and also extended to the problem of constructing
+multi-color Ramsey graphs, which is to 4 -color the edges
+of the complete graph so that there is not large monochromatic clique. At first sight, the construction of Grolmusz is
+quite different from that of Alon and Frankl-Wilson, yet it
+gives exactly the same bound. All three constructions use
+algebraic techniques, though in different ways. Very recently in 2006, the Frankl-Wilson bound was beaten by a
+new construction due to Barak, Rao, Shaltiel and Wigderson [8] which relies on machinery from pseudorandomness.
+The complexity problem is to prove tight degree bounds
+for polynomials computing Boolean functions over 5#6 . A
+central open problem in circuit complexity is to show lower
+bounds for ACC, the class of circuits with And, Or and
+Mod gates. As a first step towards this goal, Barrington,
+Beigel and Rudich (BBR) studied polynomial representations of Boolean functions modulo composites [9]. They
+found surprisingly that such representations are much more
+powerful over 57 than over 598 when : is prime. They
+showed that the OR function can be represented by sym
+metric polynomials of degree  
+over 5 7 and proved
+a matching lower bound for symmetric polynomials. They
+asked if better representations exist using asymmetric polynomials.
+;
+ Tardos and Barrington proved a lower bound of
+=<?>@
+[22]. This is the best lower bound known for any
+function, despite much effort [16, 23, 15, 3, 10]. The main
+
+where :'? are primes. The degree of the representation is
+C 4@DFE
+
+
+
+867G @ ) '67G @ H< .
+
+open question is whether asymmetric polynomials can give
+lower degree representations of symmetric functions than
+symmetric polynomials.
+A surprising connection between these two problems
+was discovered by Grolmusz, who used the OR polynomials of BBR to construct Ramsey graphs [17, 18]. As an
+
+intermediate step, he constructed a set system of size
+
+on elements where all set sizes are  mod 6 but all intersections are non-zero mod  , settling an open problem in
+extremal set theory. He constructed Ramsey graphs from
+this set system and showed that lower degree OR representations mod 6 would give better Ramsey graphs.
+
+
+
+One can combine the two polynomials using the Chinese Remainder Theorem (CRT) to get a single polynomial
+that weakly represents OR mod :? . However the specific
+choice of values output by the weak representation is important for our application. The construction of BBR gives
+
+a degree  
+OR representation using polynomials over
+
+with
+5JI and 5>K . A simple representation of degree  
+
+ :?ML using polynomials over 5 8 and 5 = can be derived from Alon’s construction. This highlights another difference about our definition and weak representations: for
+Ramsey constructions, we are not restricted to any fixed
+moduli : and ? , we are free to choose them in any way,
+
+(possibly as functions of ) so that the degree is minimized
+
+as a function of .
+We give a simple Ramsey construction based on OR rep
+resentations: the vertex set is   and we add edge
+% '1  to  if %/N 1 is in the zero set of )   , where %ON 1
+denotes the symmetric difference of % and 1 . In order to
+
+
+bound 
+and  , we use the notion of representations of graphs over spaces of polynomials introduced by
+Alon [2]. The idea is to assign polynomials to the vertices
+of  so that the polynomials assigned to vertices in a clique
+are linearly independent.
+
+Definition 3 Let  8P 'Q be a graph and R be a set poly
+nomials in variables over field S . A polynomial representation of  over S is an assignment of a polynomial
+*
+* 
+*
+)T(8
+R and a point % T S to U P where:
+
+*
+
+2
+For each U
+P , )VT( % T   .
+
+*
+If  W $U
+Q then )T( %YX   .
+CZ (
+
+
+R which is the diIt is easy to see that +
+mension of the S vector space spanned by polynomials in
+
+R . We use the polynomial ) 8 to construct a representation of  over 5 8 and < 8
+to construct a representation of  over 5[= . The Frankl-Wilson construction can also
+be viewed in this framework, where we represent  over
+58 and  over \ . However, quoting Alon ‘It seems that
+this construction does not extend to the case of more than
+2 colors’ [2]. We propose a definition of OR representation
+which leads to such an extension.
+]*
+]*
+5 8"^_, /. and < 
+Definition 4 Polynomials ) 
+
+5 8"` , /. represent the OR function on variables if
+[2
+4
+[2
+4
+) + "!#!#!  3  >76 :ba and <  #!"!#! 3 3  >76#:c
+*
+[A
+
+ 
+ #!"!#! 3
+and for %
+
+4
+
+4
+)  % 3  >d6#:ba or <  % 3  >76 :bc
+
+
+
+Our work generalizes and extends the connection between OR polynomials and Ramsey graphs. We propose a
+new definition of an OR representation: a pair of polynomi
+als represent the OR function on variables if the union of
+
+their zero sets contains all points in   except the origin. We give a simple construction of a Ramsey graph from
+such representations. This viewpoint based on OR polynomials unifies the constructions of Frankl-Wilson, Alon
+and Grolmusz: they can all be derived from various OR
+
+representations of degree  
+based on symmetric polynomials. Thus the barrier to better Ramsey constructions
+through algebraic techniques appears to be the construction
+of lower degree representations. On one hand, since the
+best
+lower bound for any of these representations is only
+;
+
+there is the possibility of better constructions. On
+=<?>@
+the other hand, we show that further improvements cannot
+come from representations
+using symmetric polynomials;
+;
+
+we prove an  
+lower bound for such representations.
+1.1.1 Ramsey Graphs from OR Representations:
+
+Let     "!#!"! $  denote a vector of variables and
+
+%   &  #!"!#! '&  denote a Boolean vector. The following definition of Boolean function representation modulo
+( was introduced by BBR [9].
++*
+5 6-, /. weakly repreDefinition 1 Polynomial ) 
+*
+
+-2
+   , if 0  % 
+sents the function 0 mod ( if for % $1
+
+
+2
+5
+
+4
+3
+0  1 then )  %
+) 1
+>76 ( .
+We propose the following definition of an OR representation.
+9*
+9*
+5 ;. and < 
+Definition 2 Polynomials ) 8
+ 8:,
+5>= , ;. represent the OR function on variables if
+
+4
+
+4
+)  #!#!"! 3 3
+>76 : and < + #!"!#!  3
+>76@?
+*
+B
+
+A
+
+and for %
+  
+ #!#!"! 3
+
+4
+
+4
+)  % 3  >76 : or <  % 3  >76@?
+
+where : is prime and e gf>h .The degree of the representaC 4@DFE
+
+
+tion is 
+867G @ ) '67G @ H< .
+2
+
+
+
+To differentiate the representations of Definitions 2 and 4,
+we refer to them as prime representations and prime-power
+representations respectively. The Frankl-Wilson construc
+I
+tion can be used to show that for  : L , there exist
+
+OR representations of degree  
+. The interesting feature of this representation is that it does not use the Chinese
+Remainder Theorem (CRT). The construction of Ramsey
+graphs from prime-power representations stays the same;
+the difference is in the analysis. For this, we introduce polynomial representations of  over 598 ^ .
+
+
+It places the constructions of Alon and Frankl-Wilson
+in the context of OR polynomials, and raises the possibility of getting better constructions from low degree
+representations. The notions of prime-power representations of graphs and Boolean functions arising from
+the Frankl-Wilson construction are of independent interest.
+
+
+Definition 5 Let  8P 'Q be a graph and R a set of poly
+nomials in variables over 5 . A polynomial representation
+ *
+R
+of  over 5 8"^ is an assignment of a polynomial ) T 
+*
+
+*
+5 to U
+P s.t.:
+and a point % T
+
+*
+[2
+4
+For each U
+P , )VT( % T 3  4 >76 : a .
+
+*
+3
+If  W $U
+Q then )VT( %YX
+
+>d6#: a .
+
+
+It relates the construction of Grolmusz to those of
+Frankl-Wilson and Alon, which look very different at
+first. Our Ramsey graph construction from the OR
+polynomial of BBR is simple and direct. In fact it takes
+some work to show that we get the same graph as Grolmusz. Viewing this construction in terms of set intersections, we derive improved bounds for set systems
+with restricted intersections modulo prime powers.
+
+We show that the polynomials assigned to a clique are
+
+linearly independent over \ so  is bounded by the dimension of the \ -vector space spanned by R . Like polynomial representations of graphs over \ , representations over
+5 8"^ assign linearly independent polynomials over \ to vertices in a clique. A crucial difference is that representations
+over \ tensor, those over 5 8 ^ do not. This means that if we
+have sets of polynomials R  and RJI that represent   and
+
+MI over \ , then R  RJI represents   ! MI over \ for an appropriate definition of graph product (see [2] for definitions
+and proofs). This is important for the original application of
+these representations, which was to bound the Shannon capacity of the graph. However, this property implies that one
+cannot get low dimensional representations of both  and 
+over \ , since  !  always has a large clique. But since 5 8 ^
+has zero divisors, we lose this tensor product property, so
+we can simultaneously get low dimensional representations
+of  and  over 5 8"^ .
+We could restate this argument from the viewpoint of OR
+representations. We cannot get low degree prime represen
+ *
+tations by taking :  ? since then ) 8 < 
+5 8 , /.
+
+is  at every point in   except the origin, and such
+
+a polynomial requires degree . But this argument does
+not extend to prime-power representations because of zerodivisors.
+All the OR representations above achieve a bound of
+
+ 
+using symmetric polynomials. Plugging them
+
+
+into the simple construction above gives  
+- /  0 132 
+- / 0 132 
+
+as opposed to the best bound of
+. However, by massaging the polynomials and working with set
+intersections as opposed to distances, we get exactly the
+constructions of Frankl-Wilson, Grolmusz and Alon.
+
+In this view, all the constructions naturally extend to
+multicolor Ramsey graphs. To construct 4 -color Ramsey graphs, we define OR representations involving
+4 polynomials over 5 = "!#!"! 35 = where ?  !"!#! g? are
+prime powers. Taking powers of the same prime : extends the Frankl-Wilson construction.
+
+1.1.2 Lower Bounds:
+A natural question is to show tight degree bounds for OR
+representations. A better upper bound would lead to better Ramsey graphs. Lower bounds are interesting from the
+complexity-theory viewpoint of understanding polynomial
+representations over composites. For the OR function, we
+believe Definition 2 is the right one to use, since it seems
+to eliminate dependence of the degree on the modulus :? .
+Also it places the problem in the context of understanding
+the zero-sets of low degree polynomials over 598 . This question has been studied in various other contexts including low
+degree testing, zero-testing and derandomization (see Section 5). Prime-power representations are interesting
+; since
+
+they do not rely on the CRT. Interestingly, the < >)@
+lower bound [22] also does not use the CRT, so it applies
+to prime-power representations too. It is possible that proving bounds for prime-power representations is easier than
+the prime case.
+Degree lower bounds extend a line of work in combinatorics aimed at understanding why explicit Ramsey graphs
+are hard to construct, by showing limitations to various natural techniques. A conjecture of Babai states that one cannot construct good Ramsey graphs based on the sign of a set
+of real polynomials. There has been considerable progress
+towards proving this conjecture by Alon et al. [1, 4]. Degree lower bounds are weaker since they say the known
+
+
+technique for bounding *+ and  does not yield good
+
+
+bounds, as opposed to showing either *+
+or 
+is
+large. But on the other hand, there are no good Ramsey
+
+Here are some advantages of our unified view of these
+constructions:
+3
+
+constructions using signs of real polynomials, while OR
+representations are the best technique known for this problem. Further, the Ramsey graph constructions based on
+symmetric polynomials result in graphs where the vertex
+
+set is    and where edges are added between vertices
+based on the Hamming distance between them. Such graphs
+possess a high degree of symmetry which is unlikely in a
+random graph. Our degree lower bound suggests that perhaps such Ramsey graph constructions cannot give better
+parameters (see Section 5).
+;
+ 
+We show a degree  
+lower bound for OR representations by symmetric polynomials. Thus better representations if they exist
+must use asymmetric polynomials. A
+;
+ 
+lower bound of  
+is known for symmetric polynomials that weakly represent OR mod  [9]. One might guess
+that similar arguments should work even for our definition
+of OR representations, but this is incorrect. In fact the same
+argument does not suffice even for prime representations.
+The precise bound they prove, and which holds for all weak
+
+
+
+
+ :? . This is good
+representations is 6 G @ ) ! 6 G @ 8< h
+
+enough when :'? are small, but if
+:? as in Alon’s
+construction, this gives a bound of . One cannot hope for
+a stronger result since the polynomial
+ of degree
+
+weakly represents OR on
+:? variables over 598 = . Our
+definition restricts the values output by the weak representation, making it possible to show bounds independent of
+the modulus ( . But exploiting this difference calls for new
+techniques, beyond the periodicity based arguments used
+for weak representations [9, 10]. Our lower bounds also
+apply to the polynomials used in the construction based on
+set intersections.
+
+long greedy sequence.
+For the prime case, we view a symmetric polynomial
+) acting on a 0-1 vector % as a polynomial ) acting on
+in the digits of the base : expansion of the weight 4  %
+following [10]. There it was shown that ) can be used to
+
+bound 67G @ 8) within a factor of : ; we introduce a notion
+of weighted degree of ) that exactly captures the degree of
+) . The combinatorial part of the proof uses a number theoretic lemma which seems of independent interest. It says
+
+5 8 and
+5 = are
+:? and
+that if :g? are primes,
+
+. lies in mod :
+subsets so that every number in , "!#!"!
+or in mod ? , then one of or has to be large.
+
+
+
+We present our simple Ramsey constructions based on
+distances in Section 2. The lower bounds for prime-power
+representations are in Section 3, followed by some open
+problems in Section 5. In the full version of this paper [13],
+we give an alternate construction based on set intersections
+that results in exactly the constructions of Frankl-Wilson,
+Grolmusz and Alon. We also give improved bounds for
+set systems with restricted intersections modulo prime powers. These bounds are in fact implicitly used in some of our
+Ramsey constructions.
+
+ / Y8
+
+*
+
+% 
+Let /.+ #!"!#!  . Given %
+*    let%/N 4  denote
+%
+  ,
+1 denotes
+its Hamming weight. Given '1
+% 1 denotes the bitwise AND and
+symmetric
+difference,
+
+    " for
+C % 
+ $1 denotes Hamming distance.
+Let  !#" 
+(
+
+'
+
+Z C
+
+. Let $&%(
+
+ !"!#!$ denote the ) * elementary symmetric polynomial. Every multilinear symmetric
+
+
+
+
+
+
+polynomial can be written as a linear combination of these
+polynomials. We will use Lucas’ Theorem about binomial
+coefficients modulo : which states:
+
+1.1.3 Our Techniques:
+While lower bounds for the prime and prime-power cases
+are very different, they have similar high-level structure: an
+algebraic part where we show that if the zero-set of the
+polynomial has certain structure, then the polynomial must
+have high degree, and a combinatorial part where we argue
+that there is no good partition of hypercube, that any partition results in one of the polynomials having high degree.
+For the prime-power case, we translate the problem to
+one about univariate polynomials moduloC 598 ^ . However
+over 598 ^ it is no longer true that a degree polynomial can
+C
+have only roots (take  a for instance); so we need new
+tools for degree lower bounds. Building on an algorithm
+for interpolation over 5 8 ^ by the author [14], we define a
+greedy sequence, which roughly is a sequence that is distributed uniformly among various congruence classes modulo powers of : . We show that the longest greedy sequence
+in the zero-set lower-bounds the degree of a polynomial.
+Then a combinatorial argument shows that in any partition
+
+of integers , )#!#!"!
+. into and , one of them contains a
+
+
+
+   
+ 
+
+
+
+
+ 
+
+
+
+
+
+
+
+Fact 1 Let
+
+*
+
+ 
+
+,+ -/. : 
+:
+ 
+
+);,+0-1. ) :  ) :
+ 4
+
+3
+5
+Then 2
+)43  2 )  3 >76#:&6
+
+For &
+5 , let the valuation of & denoted U8 , & . be the highest power of : that divides & . Let U 8 , F. 
+. We have the
+"
+4
+
+ultrametric inequality U8 , &
+;
+.
+h
+ U 8 , & . $U 8 , . and
+"
+U 8 , & .Y U 8 , & . U 8 , . .
+
+We say a Ramsey graph  HP gQ is explicit if there is a
+
+deterministic >)< 
+time algorithm to compute the adjacency matrix and very explicit if there is a deterministic
+
+9
+
+
+
+4
+
+9
+> @? BA CDA
+
+9
+
+;:=<87
+
+9
+
+
+>tion.
+>)<@? =<?>@A CDA algorithm that computes the adjacency relaWe briefly describe the known explicit constructions
+
+P ROOF : Let
+P * be a clique. We claim that the poly
+nomials )VT  for U
+are linearly independent over \ .
+Assume for contradiction that
+
+of Ramsey graphs in chronological order.
+L Frankl-Wilson [12]: Take : prime and (  : K . The
+vertex set consists of all subsets of , ( . of size : I L% . Two
+3 2 L 4 >76#: . One
+vertices and are adjacent if
+
+
+can bound the size of 
+and +
+using well-known
+results from extremal set theory [12, 5].
+a set
+L Grolmusz [17,
+Y main
+$ step is to3 construct
+4
+ 18] : The
+
+>d6@ but
+system R on , . of size
+so that
+3 2  4 >76@ . The vertices of the graph  are sets of
+R and
+ are adjacent if
+is odd. One can bound
+
+
+*+ and + using results from extremal set theory.
+L Alon [2]: Take :
+? to be nearly equal primes and
+(  : K . The vertex set consists of all subsets of , ( . of
+size :?/L
+. Two vertices and are adjacent if
+3 2 L 4 >d6#: . To bound   and   , we construct
+representations of  over 5 8 and  over 5[= .
+L Barak [7]: Barak gives a product based construction (discovered independently by Pudlak and Rodl) where we first
+explicitly search for a good Ramsey graph in a small sample
+space and then use the Abbot product to get a larger graph.
+
+
+ . /  0 132 
+This gives P 
+and  
+for any
+
+ . A similar product based construction, but with worse
+parameters is given by Naor [20].
+L Barak-Rao-Shaltiel-Wigderson [8]: In a recent breakthrough, Barak et al.
+give a construction that achieves
+
+
+  
+. In fact they solve a more general
+*+ &+
+problem, which is to construct bipartite Ramsey graphs.
+Their construction is rather intricate and makes significant
+use of machinery developed for extracting randomness from
+weak random sources.
+The first three constructions above are very explicit, the
+last two are merely explicit.
+
++
+T
+
+A$  A
+
+$
+
+A $  A$
+
+A$  A
+
+A
+
+
+
+
+
+T ) T 
+
+
+
+
+
+
+*
+
+By clearing denominators, w.m.a that T
+5 , and by removing common factors w.m.a that : does not divide X for
+*
+some W
+. Rearranging terms, we have
+
+A$ A
+
+$
+
+
+
+X ) X 8  
+
+
+
+
+
+
+  
+
+ % X,
+
+Substituting 
+
+A$ 
+
++T T X T:)T(8 
+
+L
+
+X ) X % X  
+
++T T X T ) T  % X 
+
+
+L
+
+  
+
+
+ 2
+4
+) X  %  3  >76 : a and * U 8 , X .   ,2 we have
+Since
+ X
+%
+X
+X
+U 87,  )  .
+e L . But U
+4 and U  W , then
+ U $W is an edge, hence )VT( %YX 3 
+>76#: a . So the RHS
+is divisible by : a , which is a contradiction. 
+
+A A
+
+
+Construction 1 Graph  8P 'Q
+from OR polynomials.
+
+
+L Let P +     .
+
+3
+O
+%
+N
+L If ) 
+1
+ , add an edge  % '1 .
+
+C
+
+ ! "
+
+Theorem 3 Given a degree OR representation,
+graph 
+
+
+
+
+has
+vertices and *+ 
+.
+
+
+
+ 
+
+P ROOF : Assume that we have a prime representation. We
+give a polynomial representation of  over 598 .
+*
+
+For each vertex 
+   , let   JL  if  
+
+and   
+if    . Define )    #!#!"! $  to be
+
+the polynomial obtained by multilinearizing )   #!"!#!  
+*
+
+
+  ). Note
+(i.e setting 
+that for 
+
+
+[2
+4    ,)   
+)  N  . Hence )    )  3 J * >d6#: . On the other
+[2
+Q then )  N  3
+hand, from our construction, if *
+4
+-3 2
+4
+
+>76 : . Hence )  
+
+>76#: .
+Thus we get a polynomial representation of  over 5 8 .
+
+Since theC )   s are all multilinear polynomials of degree
+
+at most in
+variables, they lie in a vector
+
+ space of di
+mension
+. This shows that +
+. Similarly,
+
+/3 2
+4
+N
+if * is not an edge then ) 
+
+
+>76#: , hence
+
+4
+<  N  3  >76@? . Using this we
+construct a represen
+tation of  over 5 = and bound *+ .
+For prime-power representations of OR, we can represent  and  over 5 8 ^ by the same argument. 
+
+
+
+2 OR Polynomials and Ramsey graphs
+In this section, we prove the correctness of the construction described in the introduction. While the graphs obtained are not quite optimal, the construction is simple and
+best explains the close connections between OR representations and Ramsey graphs.
+If graph  has a representation over a field S as in DefCZ (
+
+
+inition
+3, it is easy to show that +
+ R where
+CZ (
+
+R
+is the dimension of the S -vector space spanned
+by R [2].CZ For representations
+over 5 8 ^ , we show that
+
+( R  where CZ (  R  is the dimension of the
+
+\ -vector space spanned by R . The proof is by a valuation
+based argument similar to one used by Babai et al. [6].
+
+
+
+ "
+
+
+Lemma 2 If  8P 'Q has a polynomial representation over
+ CZ (
+
+58 ^ , then +
+R .
+
+ 
+
+
+
+
+
+ ! "
+
+One can construct explicit Ramsey graphs by plugging
+in various OR representations described below; all of which
+5
+
+C
+
+give   
+using symmetric polynomials. This gives
+- /  01 2 
+
+a bound of
+for some constant  on the clique size.
+In fact the constructions below have the property that given
+*
+
+
+   , the color of the edge  % '1 can be
+vertices % $1
+computed in time  .
+
+
+Alon [2]: Let :
+and let  :? L .
+? be primes
+*
+ *
+Define ) 
+5 8 , ;. and < 8
+5 = , ;. as
+) 8
+
+
+
+< 8
+
+
+
+Frankl-Wilson [12]: Take : prime and
+
+ *
+Define ) 
+< 
+\ , ;. as
+
+
+
+
+
+
+ 
+L%+  8
+ 
+L%+  =
+
+)
+
+
+
+ 
+
+
+
+ 
+
+*
+
+
+
+Since
+ ( % for %
+   , )  and < 
+2
+in fact have coefficients from 5-I and 5[K . For & 
+,
+
+ 
+4  % 2
+L
+. Lucas’ theorem implies
+3  4 >76  then )  %  3  4 >76  , and if
+that if 4  %
+ 32
+4
+
+
+4
+
+%
+4 
+<  % 3  >76 . We can choose
+C  >76 " then
+
+
+
+s.t.  
+for any
+ [19].
+Both representations above are prime representations,
+we now construct prime power representations. For ease
+of exposition, we restate Definition 4 of prime-power representations in terms of rational polynomials; we omit the
+simple proof of equivalence.
+
+@*
+Definition 6 Polynomials ) 8 g< 8
+\ , O. represent
+
+the OR function on    if
+
+4
+
+4
+)  "!#!"! 3 3
+>d6#: and <  #!"!#! 3 3
+>76#:
+*
+BA
+
+and for %
+  
+ #!#!"! 3
+
+4
+
+4
+)  % 3  >d6#: or <  % 3  >76 :
+
+)
+
+
+
+
+
+  
+
+
+
+:
+
+L
+
+(3)
+
+The proof of correctness is through Lucas’ theorem.
+Plugging any of these polynomials into construction 1
+
+gives
+type of graph : Add  % '1 to Q if
+C % the
+ 3 2 following
+4
+ $1
+
+>d6 where is either a prime or a prime
+
+power close to  .
+For constructing 4 -color Ramsey graphs, we define OR
+
+
+representations with 4 polynomials )   "!#!#!')  8 such
+ A
+that the union of their zero sets if  
+ . We can
+extend constructions in Equations 1, 2 by taking 4 distinct
+
+primes. To extend the construction of Equation 3, let 
+
+: L . For
+4 define
+
+(2)
+
+ % " $%
+
+% %
+
+
+
+ 
+
+   %
+2 %
+' % 3
+2 %L 3
+
+
+
+ 
+
+
+
+B%
+
+%
+
+
+
+8 
+
+
+
+2
+
+For % 
+, since
+4 %
+:? L , by the CRT
+
+2
+4
+
+2
+4
+4 % 3 
+>d6#: or 4  % 3  
+>76;4 ? . By Fermat’s The3  >d6 : , in the latter
+orem, in the former case )  %
+ 3
+4
+%
+
+>76 ? . Taking :g? nearly equal gives degree
+C< 
+" $ 3 
+.
+  .
+
+
+ 
+@*
+L . Define ) 
+5 I#, /.
+BBR [9]: Let 
+ *
+5 K#, ;. as
+and < 
+" 
+
+L%
+
+) 8
+
+
+< 8
+
+< 
+
+
+
+5 +    L 
+
+8    
+5  
+
+.
+
+*
+
+% ,
+For a non-zero vector %
+4   we have
+ 3
+4 4
+I: L . If 4  %  3 2
+%
+>76 then ) 
+
+>76#: . If
+ 3
+4
+  F
+
+%
+4 
+
+>76 : , then
+:/L
+hence <  % 3
+8
+C
+4
+
+ .
+
+>76 : . The degree is  :;L%
+ 
+We construct representations with the prime fixed and
+
+
+
+ I L . Define
+varying, analogous to [9]. Let
+
+ *
+)  g< 
+\ , ;. as
+" 
+
+
+L%
+) 
+
+
+L
+   " 
+L
+
+I 
+< 
+
+(4)
+
+(1)
+
+   %
+2 %L 3
+  " L
+2
+3
+L
+
+) 
+
+
+
+ : I L
+
+
+
+
+
+
+)  
+
+
+
+   Z
+5
+
+2 : L 3
+
+8 
+ 
+
+
+
+(5)
+
+We can similarly extend Equation 4, we omit the details.
+
+3 Lower Bounds for Prime-power Representations
+In this section we prove a lower bound for prime-power
+representations by symmetric polynomials.
+ *
+ *
+5 8"^ , ;. and < 
+5 8 ` , ;. be
+Theorem 4 Let ) 
+
+symmetric polynomials that represent the OR function
+on
+
+" 
+ " 
+!)6 G @ 8<
+h I .
+variables. Then 867G @ )
+
+C
+
+
+for a prime : . The degree of the representation is
+4@DFE
+
+
+867G @ ) '67G @ H< .
+
+Note that in general )  % could be rational. When we
+ 3
+ 4
+
+%
+
+>d6#: , we mean )  % is an integer satsay ) 
+2
+isfying the condition. However by this definition, if % 
+ 3
+4
+
+%
+%
+and < 
+
+>76 : , then )  need not be an integer and
+vice versa.
+
+
+
+Since a symmetric polynomial on 0-1 inputs is essentially a polynomial in the weight of the input, we can restate Theorem 4 in terms of integer polynomials. The formal proof is easy and is omitted. While we could also work
+6
+
+ is also greedy. Hence applying the inductive hypoth
+
+esis to <  , we get
+
+4
+
+4
+
+U 8 , <  . h
+U 8 , < + ./
+U 8 , ) + . (8)
+
+with polynomials in 598 ^_,  . , the presence of zero divisors
+would make it messier to use valuations.
+
+  !;:@<
+
+ ! :=I<
+bI
+
+     for Z
+The
+last
+equality
+follows
+since
+
+
+C
+
+
+
+L , hence < +
+ ) + . We now lower bound
+
+*
+< * 
+5  ,  . be univariate
+Proposition 5 Let ) 
+polynomials such that for &
+#!"!#!
+,
+
+
+
+
+
+
+U 8 , )  .
+
+
+
+U 8 , ) & .
+
+or
+
+U 8 , <  .
+
+
+
+"
+
+
+
+"
+
+Then 67G @ 8)
+
+
+
+!)867G @ 8<
+
+
+
+U 8 , < & .
+
+
+
+ +  . . Using the greedy property of the se
+quence   "!#!"! 3 ,
+
+   . h U 8 , -       .
+U8 , 
+-  
+     )    L < +  
+
+(6)
+
+U8 ,
+
+
+
+h I .
+
+The next two Lemmas (6 and 7) develop tools to show
+degree bounds for such polynomials.
+
+$
+
+
+
+Definition 7 A sequence    #!#!"! 3
+called a greedy sequence if for all  ,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Then 67G @ )
+
+
+
+
+
+
+
+h
+
+C
+
+
+
+ 4 :=<  U 8 , )    .
+
+
+
+
+
+< 
+
+" -
+
+
+
+. h
+
+;:@< "U 8 , < +  . 'U 8 , - 
+4
+
+
+
+   .
+
+
+
+(11)
+ , .d.  4;:=<  e!A Z a  2 a
+Definition 9 Given a 4 -dimensional matrix  and indices
+Z
+4;D:E Z 2
+, let J
+.
+ e!A 
+a
+a . Then  , .  , . if
+Z  consider
+Z . " Z  theZ :  !# !"! : array
+Z where
+ , Z For. #!"!#example,
+!
+.b
+: !#!#!
+:
+: L .
+and 
+
+
+
+U 8 , , . L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Z *
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+ #!"!#! : L  Z with numbers
+Thus the array contains
+indexed by their base-p expansion.
+Since U 8 , LF. depends
+Z
+on the smallest digit where and  , this is a greedy array.
+The ordering defined above gives the usual ordering of integers, it depends on the largest digit where the expansions
+differ.
+
+hence by the ultrametric inequality
+
+U 8 , ) 
+
+ .
+
+
+
+Definition 8 A 4 -dimensional matrix of distinct integers
+is called a greedy array if
+
+ + 
+
+
+
+$
+
+.
+
+
+
+The base case 
+is trivial, in this case ) is con
+
+stant so it is clear that U8 , ) VI .  U 8 , )   . . Assume
+C
+the property holds for greedy sequences
+L. .
+C  of length
+
+
+  
+L
+Given a polynomial ) 
+of degree
+,
+since
+C 
+
+
+is a monic polynomial of degree L , we write ) 
+" -  
+
+
+   , where <  is a polynomial of
+<  C 
+degree L . Substituting    ,
+
+) 
+
+$
+
+$
+
+C
+
+. h
+
+
+
+  :=I<
+
+
+An example of a greedy sequence is when C+  #!"!#! 
+are consecutive integers. Thus while a degree polynomial
+over 58 ^ can have several zeroes, the lemma implies that it
+C
+can have at most consecutive zeroes. The intuition for this
+Lemma is from an algorithm for polynomial interpolation
+
+over 58 ^ by the author [14]. Given a set , and values 0  &
+*
+for &
+of some polynomial in 5 8 ^",  . , the algorithm
+
+will output the smallest degree polynomial ) 
+that fits
+the data, provided it sees the elements of in the above
+greedy order. If the polynomial is  on every element but
+the last,C the algorithm is forced to output a polynomial of
+degree L .
+Next we define the notion of a greedy array and on ordering of its elements; which we use to construct long greedy
+sequences.
+of dimension
+ C Given a 4 -dimensional matrixZ
+C 
+Z
+!"!#!
+  , we use ,  . to denote , "!#!#!   . .
+
+P ROOF : The proof is by induction on
+C . We will show the
+
+converse, namely that if 67G @ 8)
+L .
+
+U 8 , ) 
+
+  .+
+
+Combining Equations 7, 8, 9, 10 gives the desired result. 
+
+
+
+L% .
+
+  . $U 8 , < 
+
+
+
+ ;:=I<
+
+
+
+
+
+
+
+C
+
+
+
+
+
+;:=< _U 87, ) 
+
+. h 4
+
+(9)
+  is a greedy sequence and < has deSince   "!#!#!3
+C 
+gree L , we get by induction that
+
+4
+
+4
+
+U 8 , < +  . h
+U 8 , <  .;
+U 8 , )  . (10)
+
+
+
+
+
+
+
+Hence we have
+
+ +
+U 87, 
+
+of integers is
+
++ U 8 ,  L   . + U 8 ,  % L   . for )  2
+  L  
+
+
+Let us define  
+and
+
+
+
+for
+. The definition of a greedy sequence can be re
+
+2
+stated as U 8 ,
+ .
+U 8 ,  % . for )  . Given any
+set $ , we can order it elements greedily as follows to get a
+greedy sequence: we choose   arbitrarily; having chosen
+  we choose  * $ to be the element that
+  #!"!#! 
+
+ . .
+minimizes U 8 ,
+
+Lemma 6 Let $  +  "!#!#!3
+be a greedy sequence.
+*
+Let )  
+5 ,  . be such that
+  Z C L%
+
+U 8 , ) + .
+U 8 , ) + . for
+
+
+-
+
+(7)
+
+
+To lower bound U8 , < + . , note that the sequence
+C
+
+  #!"!#!  bI 3
+of length L
+obtained by deleting
+7
+
+A two-dimensional greedy array is a matrix  of integers
+such that elements in the same row are congruent mod : ,
+while elements in distinct rows are not congruent mod : .
+Lemma 7 says that ordering the elements of  column-wise
+gives a greedy sequence.
+This concludes the algebraic step of the proof. Let us
+
+I
+sketch the rest of the proof when .: L , which corresponds to the Frankl-Wilson construction (see Figure 1).
+Define the sets
+*
+
+
+ ( "& ))#!#!"! : I L  "U 8 , )  . U 8 , ) & .
+*
+
+
+I
+ 
+_&
+#!"!#! +: L% "U 8 , ) + . h U 8 , )  & .
+
+
+2
+U 87, < & . for every &   in . FurNote that U 8 , < + .
+I
+ther and partition the set )"!#!"! : L  and they intersect only at  . We will show that and contain large
+greedy arrays.
+
+L Arrange   "!#!"! : I L  in : : grid, each row corresponding to a congruence class mod : .
+L Within each row, place elements lying in before those
+in . Since  lies in
+, place all other elements in
+4
+>76#: before  .
+which are 
+L Sort the rows according to how many elements from
+they contain.
+This reordering is illustrated in Figure 1, the dark line
+separates and .  It is clear that and  contain greedy
+ and of size
+ respectively
+arrays  of size
+"
+" 
+(indicated by shaded regions) so that
+ 
+
+"
+I
+:
+. From this it follows that 
+h : . Also, we
+can ensure that  is the last element of these arrays in the
+
+column-wise ordering. So U8 , )  & . is minimized at the last
+
+element in  , hence by Lemma 7 67G @ 8)
+h  L% . Sim
+ilarly 67G @ H<
+h
+L , which proves the desired4 bound.
+Also, 
+is minimized when  "& & 3 
+>76 : ,
+2 4
+>76#: (or vice versa), the correand   "& & 3 
+sponding polynomials give exactly the Frankl-Wilson construction.
+
+The proof for general is a high dimensional extension
+of this argument. The next lemma (Lemma 8) says that any
+
+disjoint partition of  #!"!#!
+L  into
+will result in
+
+one of the partitions having a greedy array of size  . In
+fact we prove something stronger, we can choose the dimensions of the array to be any solution to Equation 14. We also
+
+
+
+assume that is of the form : 
+which makes it easier
+to use induction.
+ 
+Lemma 8 Let
+: . Let !  be disjoint
+sets of
+
+integers such that 
+  #!"!#! :  L  . Given
+any positive integers "!#!"!
+ 
+"!#!"!   satisfying
+Z
+
+"
+"
+For
+4L
+ :
+(14)
+"
+  "
+
+Lemma 7 Ordering elements of a greedy array gives a
+greedy sequence.
+
+
+
+P ROOF : We want to show that for
+
++   U 8 ,  , .L  , ..
+
+
+e
+
+For 
+
+2
+
+
++   U 87,  , b.L  , . .
+
+
+
+(12)
+
+
+
+4VL% , we define the set
+
+$ a   A Z a a Z a   a  #!"!#! Z   
+Z.
+Z 
+The indices "!#!"!
+a are unrestricted. Note that the $ a s
+are disjoint and they partition the set  A
+. We show
+2
+that for every e , and for 
+U 8 ,  , .L  , ..
+U 8 ,  , b.bL  , . . (13)
++
++
+
+
+
+
+
+
+
+
+ 
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+^
+
+
+
+
+
+^
+
+Equation 12 will follow by summing over all e . Hence
+*
+consider a fixed e . Note that if 
+a then 
+U 8 ,  ,  . L  ,  .  .
+e . Accordingly we partition a into
++ #!#!"!
+e as follows: for 
+e L ,
+
+
+
+$
+
+
+
+
+
+
+
+
+
+*
+
+ 
+
+
+
+
+ 
+
+
+
+a
+
+a
+
+
+
+a
+"!#!#!
+*
+ 
+*
+ 
+*
+
+a
+
+8e
+
+
+
+
+
+
+
+a
+
+
+
+e L% ,
+
+
+
+
+$ a A . ) . #!"!#! Z  )  Z  2 )
+
+$ a A UZ . 8 ,  , b.. L  , Z .d.b
+
+8e
+ 
+$ a A ) #!"!#! a  ) a 
+Z *
+Z
+
+
+
+Unlike for e , for
+e it could be thatZ .  ) Z , so
+a
+a 
+we have U 8 ,  , b. L  , .".h e . Since the indices #!"!#!
+ 
+
+a
+are unrestricted in $ , we have A  A8A  A for 
+a
+e . We now prove Equation 13.
+U 87,  , .L  , .d.  . +
++
+  a  +   U 8 ,  , .bL  , ..
+ ^
+ 
+ . +
+  a !A  A
+U 87,  , b.L  , .d.  . +
++
+  a  +   U 87,  , b.L  , .d.
+ ^
+
+h . +
+!A  A
+ a
+ 
+h . +
+!A  A
+ a
+the sets
+
+
+
+Z
+
+as follows. For 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+) . )
+
+
+
+ .
+. . )
+)
+A A=A A
+A A
+ A
+ 
+
+
+
+
+
+
+
+
+
+A A=A A A A A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+A
+A
+
+
+
+$
+
+$* a A Z .  . #!"!#! Z    Z  2
+ 
+$ A U 8 ,  , ..L  , Z. . 
+
+
+* a Z.
+e
+ 
+$ a A  #!"!#! a   a 
+*  
+For
+Z 2 U 8 ,  , . L , ..M 2 e since for all
+*
+. Now given 
+let us define
+$ , Z e wesohave
+
+
+
+
+
+ ) .  B)  . B
+) 
+)   .
+either  contains a greedy array of. size )
+ contains a greedy array of size !#!#!
+
+
+
+
+
+
+
+
+
+
+
+
+
+Hence the claim follows. 
+8
+
+
+
+
+!#!"!
+
+
+
+
+.
+
+)  or
+
+
+
+
+
+
+
+
+
+0
+
+
+
+0
+
+ 
+
+I L% and the Frankl-Wilson construction
+
+Figure 1. Lower bound for :
+
+P ROOF : The proof is by induction on 4 (the dimension of
+the greedy arrays).
+When 45. , we have disjoint sets ! so that
+
+
+"
+ 
+ 
+. Since
+  "!#!"!
+L  hence
+b
+L
+:
+any ordering of and gives greedy arrays of size
+and
+"
+ "
+respectively. Given
+such that
+, if
+
+ "
+L% , then 7h
+L
+ .
+Z
+Assume that the claim is true up to 4 L . For 
+:;L , we define the following sets
+
+ B
+ ;
+A
+
+A
+A
+
+A
+ ). .
+. . . A A
+)
+.
+A A
+)
+
+AA  AA ) .
+
+
+
+
+
+a
+
+
+
+
+
+
+
+
+a
+
+a
+
+a
+
+
+
+
+
+The next Lemma is the key step in the combinatorial argument. Now we consider sets
+and
+which intersect
+only at  , and we want to produce greedy arrays that end at
+ by our ordering. We show that such arrays exist whose
+dimensions satisfy Equation 14.
+
+
+
+
+
+
+
+U 8 ,  ,  . L  ,  .7.b
+
+ is a greedy array of the right dimension. 
+
+
+
+
+
+
+
+ ,  .L  ,  .
+
+
+ " - 
+ " - 
+ :  ,  .
+L  :  ,  .
+
+
+
+ 
+:  ",  .L  _,  .
+
+
+"
+U 8 ,  _,  . L   ,  .d.
+
+
+Z
+" 4
+2
+ e
+ 
+
+,  . L  , . 
+
+;:=< !A
+a
+a
+Z 2 Z
+4;:=< Z 2 Z
+" 4;:=<
+_e A 
+@
+_e A 
+Note that
+. Hence
+
+
+
+
+
+
+. So
+
+
+
+
+
+
+
+:;L
+
+
+ Z Z   "& * Z 3A & 3 Z *4 >76 Z :
+    &OL : A"&  
+Z
+Z
+We define
+Z
+Z  sets   Z  and   similarly. Note
+Z  thatZ  for
+ 
+each ,   and   are disjoint, further  
+ I
+  "!Z #!"!
+: Z  L  . So the induction hypothesis applied to
+ implies that
+either
+ and   with )  #!"!#! )   #!"!#!
+
+
+contains a greedy array of size )
+!"!#! )  or
+
+ contains a greedy array of size !#!"!  . We define
+
+
+%-#
+
+
+
+
+Lemma 9 Partition Lemma: Let
+be sets of integers such that
+
+
+
+ B
+
+ 9
+
+: . Let !
+
+     #!#!"!   :  L )      
+$  Z Z A ! Z Z   has a greedy array    of size )  !"!#! ) 
+
+  A   has a greedy array of size  !#!"!
+Then
+positive
+integers
+. #!"!#! ) there. #!"!#! exist
+ satisfying Equation
+)
+. !#!#! 14,) so
+"
+A
+5 : . we have either
+A
+Since $ . are disjoint. and A $ A
+that  contains a greedy array  of size ) .
+,
+A $ A>h ) or A AJh ) . . Assume
+A $ A[ h as ) follows.
+. We define a
+!#!#!
+and  contains a greedy array
+of size
+greedy array  of size
+#
+!
+"
+!
+!
+)
+Choose
+
+
+and
+both
+and
+contain
+as
+the
+last
+element.
+.
+Z * 
+Z *
+
+$contains
+$ theof pre-image
+size ) . For each 
+$
+row of 
+Z  , the
+P
+: The proof is by induction on 4 .
+ of  in   of dimension ) 
+!#!#! )  .
+When 4 
+, we have sets   so that 
+ .
+ 
+"
+  "
+
+
+and
+so
+
+
+#!
+#
+"
+!
+!
+%
+L
+
+
+
+
+
+(
+
+A
+
+A
+A
+
+7
+A
+
+
+U
++
+
+
+.
+L
+
+.
+
+We need
+to
+verify
+that
+satisfies
+8
+,
+,
+.
+.  A  A . Define  to be an ordering of
+Z. 2 .
+4 :=< Z 2
+We take )  A  A
+ e!A
+
+
+. Given and , if
+, then
+2 a
+4 a
+ where  comes last, similarly for .
+ , . Z 3.  , . . >76 : so the condition
+holds.
+Z . ?
+Z .   Now assume
+Z
+that
+
+, so that  
+ 
+. Since  , .
+Assume that the claim holds up to 4L . For 
+Z
+Z
+Z
+Z
+-4
+3
+3
+and  , . are in the same row,  , .
+ , .
+>d6#: for
+: L , we define the sets         as before.
+
+the following sets
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ROOF
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+9
+
+
+
+Note that
+
+4 Lower Bounds for Prime Representations
+
+,       "!#!#!
+In this section we prove a lower bound for prime repre,     (
+sentations using symmetric polynomials.
+ as
+By induction, there exist )  #!"!#! )  and  "!#!#!
+ *
+ *
+
+5 8 , ;. and < 8
+5>= , /. be
+Theorem 10 Let ) 8
+
+#
+!
+"
+!
+!
+above so that  + contains a greedy array of size )
+
+
+symmetric
+polynomials
+that
+represent
+the
+OR
+function
+on
+
+
+
+) andZ   contains a greedy array of size !"!#! . variables. Then 6 G @ )  6g67G @ 8<  h   .
+For
+:;L
+we have
+
+
+Z
+Note that this requires 67G @ ) '67G @ H<
+h  but  if
+  Z     ZZ     #!#!"!   : I L 
+
+,
+then
+it
+is
+easy
+to
+show
+that
+7
+6
+G
+@
+
+
+)
+
+
+7
+6
+G
+@ H<
+ ,
+  
+so this case is not interesting. The hard case of this theoZ
+
+Hence applying Lemma 8, either   contains an array of
+rem is when : and ? are fast-growing functions of , as in
+
+!"!#! )  or  + contains a greedy array of size
+size ) 
+Alon’s construction. To handle this case, we prove a par !"!#!
+ . Again we define the sets
+tition
+lemma (Lemma 11) which says that taking : and ?
+$  Z Z A ! Z Z   has a greedy array    of size )  !"!#! )  large does not help.
+
+
+  A   has a greedy array of size  !#!"!
+Definition 10 Let :
+:? .
+? be distinct primes, let
+.
+.
+
+ A A . Since
+$
+
+( and $
+
+Let )  A $ A
+
+
+5
+
+
+5
+&
+Let
+and
+.
+We
+say
+that
+is
+covered
+by
+=
+8
+.
+.
+"
+"
+4
+*
+
+  "!#!"! +: L  we have )
+ :
+. Order $ and
+
+>76#:
+
+if &
+. We say  and  cover , . if every
+*
+
+so that  . is the last element. We define a greedy array 
+& )"!#!"!
+is covered by  or  .
+Z
+*
+ as follows. For each
+of size )
+#
+!
+"
+!
+!
+)
+$
+, the
+
+
+Z *
+Z
+:? , we can cover , . by taking   5 8 and
+If
+row of  contains the pre-image  of  in   of
+  5= . Given  5 8 and  5= , the number
+dimension ) 
+!"!#! )  . Similarly we define
+ in   Z  where
+Z
+of elements in ))#!"!#! :? that are covered by  or  is
+the * row contains the pre-image
+of
+. The
+"
+AThe
+ A ? partition
+A  A : L lemma
+A  A@A  A which
+can be much larger than A  A=A  A .
+proof that these are greedy arrays follows Lemma 8. They
+
+states that
+both contain  as the last element by induction.
+; to cover the first integers
+however, A  A@A  A needs to be  .
+We now complete the proof of Theorem 4.
+P
+T
+4:
+
+
+ 
+5 =
+Lemma 11 Partition Lemma: If   5 8 and 
+
+" 
+" 
+: . We can choose
+Assume that :
+so that
+%
+
+
+
+%
+BA  A
+!
+cover , . , then BA  A
+.
+I
+: and
+:
+L
+. Define the sets
+
+ 
+
+
+"
++   _& A) & : L ) U 8 , ) + . U 8 , )  & . Using A  A rather than A  A in the product lets us ignore
+the case when A  A  . Let us sketch the idea behind the
+    _& A) &   :  L ) U 8 , ) +  .h U 8 , )  &  . proof
+
+
+= ?  . Assume that to
+of the Partition Lemma. Let 
+Applying Lemma 9 implies
+that  and 
+contain greedy
+.
+.
+= ? . It
+begin with, we have   5= and +._? ? "!#!#!
+
+" 
+" 
+
+)
+!#!#! )  and
+!"!#!
+arrays  and of size
+
+
+is clear that  and  cover , however BA  A
+B
+
+A
+
+A
+
+respectively where ) and satisfy Equation 14. Apply. One could try and reduce A  A by removing elements
+ing Lemma 7, by ordering  weC get a greedy sequence
+from it. We want to
+Z * show that this results in an increase
+ 3 in  of length  
+   #!"!#! 
+)
+in A  A . Removing
+5= from  results in the numbers
+Z . ByC the def
+
+Z Z "
+Z " 
+
+inition of set  , U 8 , )  .
+U 8 , ) + . for
+. So by
+ Z
+?
+#!
+"
+#
+!
+!
+ = L
+? being
+
+Z  uncovered. Call this set
+
+Lemma 6 6 G @ ) h
+)
+L .
+9 . The various elements of $9 are less than :? and they
+$
+Similarly we get a greedy sequence of length
+in 
+are congruent mod ? , hence the CRT implies they
+*
+2
+Z 2 cannot
+ending in  . Note that by Equation 6, &
+and &  
+
+also be congruent mod : . But the problem is for  ,there
+
+
+
+Z
+implies U 8 , <  .
+U 8 , <  & . . So by Lemma 6, 67G @ 8< h
+could be considerable overlap between the residues of $9
+
+. By Equation 14,
+for
+and
+4L
+and $  mod : . Hence it is not clear that removing many
+)  L  h   . Hence ) h :
+elements from  does actually cause A  A to increase. How" 
+ " 
+ever, by suitably reordering the elements of 5 8 , we show
+6 G @ )
+67G @ H<
+h 5 )
+that every element removed from  causes the size of  to
+
+ 
+
+increase by at least . In fact Figure 2 shows that A  A could
+h
+:
+6
+increase
+by just . This is sufficient to prove the Partition
+
+I
+For the Frankl-Wilson construction where  : L , we
+Lemma.
+ 
+ 
+" 
+" 
+
+
+867G @ 8<
+h : I which is tight.
+get 67G @ 8)
+Set 8 
+set $ of integers,
+=  . Given
+8 and = 
+4
+4
+*
+define $
+>d6#:
+58 to be the set _&
+>d6#: A &
+$ .
+
+
+
+
+
+ 
+
+
+
+
+
+
+I L%
+:
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ROOF OF
+
+HEOREM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+10
+
++ -,!"/.01#"*234
+   !"%)"%("*!'
+   !#"$$!"%!"&#('
+
+ 
+
+
+
+
+
+  
+
+
+
+
+
+
+ 
+
+           
+  
+
+  
+
+Figure 2. Proof of Prop 12
+
+
+Proposition 12 Let
+  "h
+?>L then
+h = 
+
+A A
+
+
+
+? . If and
+L% .
+
+ cover ,  . and A  A 
+
+BA  A BA  A
+A A )
+)
+)
+
+
+A A )
+A  A BA  A
+) )
+
+3. Let
+? . By Prop. 12, if A  AY ? L , then A  AV h
+ "
+= VL . Since A  A :ML , we get
+:ML = .
+
+" 
+"  
+: and 
+!
+: . This proves the claim
+
+
+  
+if
+: so let
+: .
+
+Let  :@L
+for
+: . There are 8  numbers
+
+in each congruence class mod : . Thus 8 numbers are not covered by and have to be covered by
+
+? , they lie in distinct congruence  classes
+. Since
+
+mod ? . Hence Mh
+8 . Using the fact that h :
+
+
+hence : 8 h
+we get
+" 
+"  
+"  
+
+
+
+!
+ :L
+8 h : 8 
+
+ 
+
+
+
+. Let Z denote the
+P ROOF : Note that since h ? , = h
+*
+*
+5
+=
+
+complement
+of
+in
+,
+so
+.
+For
+each
+, take
+Z
+
+
+9
+
+=
+
+
+
+#!
+"
+#
+!
+!
+to
+be
+the
+first
+numbers
+in
+congruent
+to
+Z 4
+
+
+
+d
+>
+#
+6
+:
+9
++
+
+
+
+_
+
+?
+?
+"
+!
+#
+!
+!
+#
+=
+
+?
+.
+In
+other
+words,
+and
+for
+Z 2
+Z
+Z Z "
+Z " 
+
+  9  
+? "!#!"!
+ = L
+? . Let
+
+$
+
+
+
+B$
+
+
+
+$
+
+$ 6 5 $9 Z 
+7
+*
+If &
+ $ , then & is not covered by  so it $ must4 >d6#be: covered
+
+
+
+by . We want to lower bound the size of
+.
+
+
+Let us reorder the set 5 8 as   '? ? #!"!#!  : L
+
+4 ?
+>d6 :
+(this is a reordering since 8? : 
+). It sends 
+- 
+- 
+4
+7
+>
+6
+:
+to   ? such that   ? 3 
+. This
+map
+sends
+Z V4
+ 4
+
+= ? and - theZ set
+9
+>76 : Z to _? "!Z #!#!
+9
+>76 : to the
+- 
+- " 
+" 
+
+=
+intervalZ   ?  
+?
+"!
+#
+#
+!
+!
+
+
+L
+
+?
+of length
+
+2
+= for   . None
+of these intervals contain  , since that
+Z 4
+*
+
+would give &
+such that & 3
+))#!#!"!
+>76;? and
+4
+& 3  >76 Z V: 4 . Such an & is not covered by - orZ  . Each
+interval 9
+>76#: begins at a distinct point  . Sorting
+the intervals by their starting points, it follows that the union
+
+ "
+of such intervals of length = contains at least =
+L%
+elements of 5 8 . 
+
+Figure 2 illustrates this argument for :  ('?B ) 
+ 
+A
+. Here  5 '   .
+P ROOF OF L EMMA 11:
+
+
+
+: ,:
+? and ?
+We consider the cases
+
+separately. The non-trivial case is when ?
+.
+
+
+:
+? . Numbers "!#!#!
+1. Let
+lie in distinct
+congruence classes mod : and ? . Hence
+"
+ 
+" 
+"   
+7h
+
+!
+
+$
+
+Hence for
+
+
+
+$
+
+
+
+
+
+A A A A
+
+"
+
+?-L
+
+
+
+When J :;L
+
+98
+
+
+
+A A
+
+
+
+= we have
+h
+
+?-L
+
+"
+
+  "
+ =
+
+
+
+
+We will show that this is lower bounded by
+. By
+differentiating, this bound is minimized at one of the
+extreme values of , so it suffices to check the bound is
+at least I for those values. When J. ,
+
+ 
+
+$
+
+A  A "  BA  A
+
+:;L
+" 
+
+?-L
+
+"
+
+
+
+
+
+
+
+2;: ?=< " 3  ? 2;: ?=< " 3
+ 
+
+
+
+= 
+
+
+
+
+
+2;: ?=< " 3  2 ?[L : " : ?=< " 3 :
+
+"
+h 2 ?[L :
+:
+? 3
+
+
+ 8?[L : :
+
+A A
+
+
+
+"
+
+?
+
+:
+
+
+ 
+
+
+One of 8?-L : : and  : ? is at least
+: If ?
+: ,
+ 3  
+  
+ 
+. If ?
+.
+ : ?
+: , then 8?[L : :
+
+
+2. Let :
+? . The numbers ))#!#!"! : lie in" distinct
+congruence classes modulo : and ? . Hence
+7h
+
+A A A A
+
+
+
+11
+
+  . "!#!#!  with
+
+.
+
+- 5
+)  0 #!"!#!
+ + . %  2 
+)3
+%
+By Lucas’ theorem, this
+ % computes
+
+! - % $ % 8 the . same function as the
+polynomial ) 
+
+  . W :   % . U ?
+*
+
+  #!#!"!
+For
+, let 
+denote
+of . For
+. the base* 59: 8 ,and
+. base ? expansions
+
+)   W "!#!#! 'W
+W #!"!#! $W . let )  0 denote the polynomial )  applied to the base : expansion of . As consequence of Lemma 14, to prove Theorem 10 it suffices to
+prove the following Proposition.
+.
+ *
+/*
+5 8 , W #!"!#! 'W . and <  
+Proposition
+15 Let ) 
+.
+5>= , U "!#!#!$U % . be polynomials such that
+
+4
+
+4
+)   3
+>76#: and <   3
+>d6;?
+ % "
+
+ 
+the monomial 
+. Hence given ) 
+C
+degree , one can write
+
+   
+
+We now proceed to the algebraic step of the proof. Every
+ *
+5 8 , ;. computes a symsymmetric polynomial ) 8
+
+
+
+5 8 . Let  %
+
+: .
+metric function 
+
+ also computes a function
+Every polynomial ) 
+#!
+"
+#
+!
+!
+
+
+5 8 . The following equivalence between the two
+kinds of polynomials is given by Theorem 2.4 of [10].
+
+
+
+0.
+
+
+
+
+
+
+
+
+
+
+For each variable  , let 67G @   denote the degree of
+
+    then
+ in ) . If   is the
+ largest index so that 67G @ 
+:
+67G @ 8)
+: . This gives a bound with an error factor
+of : . By defining an appropriate weighted degree of ) , we
+can make the correspondence exact.
+
+
+
+0
+
+.  
+    
+
+
+
+ *
+ .,
+Definition 11 Given )
+#!"!#!  
+C 5 8 , #!#!"!
+the degree of a monomial
+with
+is
+de
+:
+L
+
+C
+fined as 67G @  
+
+: . The degree of ) denoted
+
+67G @  ) is the maximum degree over all monomials.
+
+
+
+0 
+
+
+
+
+
+.
+
+!
+
+
+
+
+
+
+
+ % %$ %
+
+B$ %
+
+
+
+
+
+
+
+
+
+
+
+
+
+,
+ 3
+
+.
+
+ % "
+
+h
+
+a c
+
+ : a ? c.
+ 
+ 
+
+, then
+: a ? c  , since if  : a ? c 
+W #!"!#! $W a   and U "!#!#! 'U c   so
+
+
+
+4
+)  :a ?Fc   )  #!"!#! 3 3
+>76#:
+
+
+ 3
+4
+< : a ? c   < + #!"!#! 
+>76#:
+ 
+
+which contradicts the hypothesis. Let 
+:? .
+8 ^ =` 
+ : a ? c where
+Let us consider
+inputs of the form
+
+  
+
+. Observe that this implies W "!#!"! $W
+3 ? c 4 >76 : . Similarly U "!#!#! 'U   a  and
+and W
+4
+a
+c *
+U c 3  : a >76 ? . Define polynomials
+
+5 8 , M. as
+J*
+
+  ) "!#!"! 3  ? c , and 9  5-= , M. as  9  
+< #!#!"! 3  9: a . This
+implies 6 G @ 
+ 6 G @ W a
+:L!
+
+and 67G @ 
+967G @ U c
+?[L . Note that
+
+4
+
+4
+ 3
+>76 : and 9+ 3
+>76;?
+(15)
+ 3
+4
+( 3
+4
+
+
+
+>76 :
+
+>76 ?
+or 9
+
+We define
+5 8 and
+5 = to be the  sets of  
+
+and 9  respectively. By equation 15 and cover , . .
+So by Lemma 11,
+" 
+ " 
+ 
+867G @  W
+67G @ U
+h
+
+sume that
+
+Also
+
+.
+
+
+
+
+
+5
+
+2 ) 3  2 ) 3
+9 9
+
+
+  )  : ) .
+9
+Further the polynomial   % " has degree
+
+
+Thus )  computes the same function as
+
+
+
+.
+
+4
+$
+)  0 "!#!"!
+ + . % 5 2 
+>76#:
+)
+3
+
+
+%
+ 9
+and they have the same degree.
+the other
+observe that the monomials
+ :/direction,
+ To . prove
+
+"% with
+
+)
+L% form a basis for polynomials
+in
+
+$
+5 8 , "!#!#!
+. with degree at most :OL% in each . Further writing a polynomial in this basis
+the
+ :  benotthechange
+  ) does
+degree as defined above. Let ) 
+degree of
+
+
+
+
+ROOF
+
+Given a symmetric multilinear polynomial
+C
+
+58 , /. of degree , write it as ) 
+
+
+
+F
+
+
+
+
+
+ . On at 0-1 input %
+% 
+. By
+Lucas’ Theorem
+
+%
+4
+3
+>76#:
+
+P ROOF :
+*
+) 
+-
+
+
+
+ 0  4 >76 : or <  0  3  4 >d6@?
+.
+
+
+Further 67G @ !)  !_67G @ !<  h  .
+
+h
+P
+: Let e denote the largest index such that 6 G @  W
+
+a
+h
+: a and )  0
+
+in. )  . This implies 67G @  ) 
+
+)   W "!#!#! 'W  a . Similarly let f be the largest index so
+that . 67G @ U
+c  h . Then 67G @   <  h  ? c and <   
+<  U #!"!#! 'U c . Hence 67G @  ) 
+ !67G  @ : !< ? . hSo : wea ? cmay
+. This
+proves the desired bound for
+as) 
+
+*
+
+Lemma 14 Given a symmetric polynomial ) 
+598
+
+there is a unique polynomial ) 
+that computes
+#!"!#!
+
+the same function 8
+5 8 and vice versa. This correspondence preserves the degree.
+
+
+
+%
+
+For
+
+
+
+Note that if  is the largest
+index such that 6 G @ 
+3
+ 
+
+67G @   :
+6 G @ ) .
+then 67G @  )
+
+
+
+ 
+
+
+
+
+
+
+
+.
+
+
+
+
+
+
+
+Proposition 13 The functions that can be computed by
+J*
+
+5 8F,  of degree less than
+symmetric
+polynomials ) 
+ 
+:  are the functions which can be computed by polyno
+mials ) 
+"!#!"!  .
+
+0.
+
+
+
+
+
+
+
+ 
+
+
+
+ 
+
+
+
+12
+
+
+
+
+9
+.
+.
+
+$ 
+
+
+
+$ 9
+
+$
+
+9
+
+$
+
+a
+
+ 
+c
+
+
+
+
+
+
+
+
+
+
+Since 67G @  W
+that 67G @  W
+!
+
+
+ a
+a '67 G @ U c h , this implies
+. Since 67G @  )
+and
+67G @  U c  h
+h
+:
+7
+6
+G
+@
+
+W
+a
+
+a
+67G @  < h ? c 67G @ U c ,
+
+
+
+
+
+
+
+67G @  ) !#67G @  < h
+:a ?Fc
+
+
+
+The second
+uses the fact that h.  : a ? c hence
+  inequality
+ 
+: a ? c 8 ^ =` 
+ .
+
+
+
+
+
+!
+
+Note that both these quantities are easy to compute, since
+they involve checking whether a system of equations is feasible. We are looking for a combinatorial lower bound,
+C  per
+
+haps analogous to Lemma 6. The latter quantity
+is
+closely related to the notion of the degree of a subset studied by Smolensky with a view towards proving circuit lower
+bounds [21]. The main difference is that he requires the
+zero-set to be exactly the set .
+
+$
+
+!
+
+$
+
+.
+
+Limitations to Constructions based on Distances:
+
+5 Discussion and Open Problems
+
+We have shown that using symmetric polynomials in out
+construction, current techniques cannot give better bounds
+
+
+on  &+ . Note that for the constructions of Alon,
+Frankl-Wilson and Grolmusz, this technique gives tight
+bounds.This raises the question: do constructions based on
+symmetric polynomials contain either a large clique or independent set?
+Using a symmetric polynomial in our construction gives
+a graph where edges are added between vertices based on
+the Hamming distance between them. More formally, let
+
+
+
+))#!"!#!
+. The graph  
+is defined asC follows:
+
+
+ *
+The vertex set is    . We add  % '1 to Q if  % $1
+
+. Is it true that for every choice of ,  
+contains a
+large clique or independent set?
+
+Following the breakthrough of Barak et al. [8], the algebraic construction described here are no longer the best
+constructions known. However, the appeal of these constructions is their simplicity and elegance, together with the
+fact that they are very explicit. So we believe that it is important to resolve the question of whether this approach can
+beat the Frankl-Wilson bound. As we have seen, this problem is intimately linked to well-studied questions in complexity theory.
+Lower Bounds for Asymmetric Polynomials:
+The question of whether there are lower degree weak representations of the OR function mod 6 has been open for a
+while. This work raises the question of whether low degree
+OR representations exist for our definition. Better upper
+bounds would give better Ramsey graphs. Lower bounds
+for prime representations will imply lower bounds for weak
+representations mod 6. Prime-power representations are exciting from the lower bound viewpoint since they have not
+been studied previously
+;
+and
+ might turn out to be easier to
+work with. The =<?>@
+lower bound of [22] applies to
+both kinds of representations.
+Both our lower bounds for symmetric polynomials follow a similar scheme: we characterize the zero-sets of lowdegree symmetric polynomials and then show that there is
+no good partition of the hypercube. A natural question is
+whether such a scheme could extend to the general case.
+The first step would be to give a of characterization of zerosets of low degree polynomials. Motivated by this we pose
+the following problems:
+
+$
+
+
+
+Acknowledgments
+I thank Dick Lipton for numerous interesting discussions
+on this subject. I thank Vince Grolmusz for comments on
+an early version, and Boaz Barak for telling me about [8].
+I also thank T.S. Jayram, Ravi Kumar, Anup Rao, Benny
+Sudakov, Prasad Tetali and Avi Wigderson for helpful comments.
+
+References
+[1] N. Alon. Ramsey graphs cannot be defined by real polynomials. Journal of Graph Theory 14, pages 651–661, 1990.
+[2] N. Alon. The Shannon capacity of a union. Combinatorica,
+18(3):301–310, 1998.
+[3] N. Alon and R. Beigel. Lower bounds for approximations by low degree polynomials over
+. Proceedings
+of the  IEEE Conference on Computational Complexity (CCC), 2001.
+[4] N. Alon, J. Pach, R. Pinchasi, R. Rados, and M. Sharir.
+Crossing patterns of semi-algebraic sets. Journal of Combinatorial Theory Ser A 111 (2005), pages 310–326, 2005.
+[5] L. Babai and P. Frankl. Linear Algebra Methods in Combinatorics. Preliminary version 2, 1992.
+[6] L. Babai, P. Frankl, S. Kutin, and D. Stefankovic. Set
+systems with restricted intersections modulo prime powers.
+Journal of Combinatorial Theory, Ser. A, 95(1), 2001.
+  "!
+[7] B. Barak. A simple explicit construction of an 
+Ramsey graph. arXiv.org, math.CO/0601651, 2006.
+
+$
+
+YA
+
+  
+1. Given
+, let 67G @ 8 
+denote the smallest
+degree of a polynomial in 598 , ;. which is  at every
+point in but not at the origin. Give a lower bound on
+
+67G @ 8  .
+
+
+
+
+  , let 67G @ 8 
+2. Given
+denote the smallest
+degree of a polynomial in 5 8F, ;. which is  over but
+
+not  at every point in   . Give a lower bound on
+
+67G @ 8  .
+
+$
+
+$$
+$
+
+$
+
+$
+
+13
+
+[8] B. Barak, A. Rao, R. Shaltiel, and A. Wigderson. 2-source
+
+dispersers for 
+ entropy and Ramsey graphs beating
+the Frankl-Wilson construction. In Proceedings of the  
+Symposium on Theory of Computing (STOC), 2006.
+[9] D. A. Barrington, R. Beigel, and S. Rudich. Representing
+boolean functions as polynomials modulo composite numbers. Computational Complexity, 4:367–382, 1994.
+[10] N. Bhatnagar, P. Gopalan, and R. J. Lipton. Symmetric polynomials over
+and simultaneous communication protocols. Proceedings of the   Annual Symposium on the
+Foundations of Computer Science (FOCS), pages 450–459,
+2003.
+[11] P. Erdős. Some remarks on the theory of graphs. Bulletin of
+the A. M. S., 53:292–294, 1947.
+[12] P. Frankl and R. Wilson. Intersection theorems with geometric consequences. Combinatorica, 1:357–368, 1981.
+[13] P. Gopalan. Constructing Ramsey graphs from Boolean
+function representations. Electronic Colloqium on Computational Complexity ECCC TR05-143, 2005.
+[14] P. Gopalan. Query-efficient algorithms for polynomial interpolation over composites. In Proceedings of the ACM-SIAM
+Sympsoium on Discrete algorithms (SODA), 2006.
+[15] F. Green. Complex fourier technique for lower bounds on
+the mod-m degree. Computational Complexity, 9:16–38,
+2000.
+[16] V. Grolmusz. On the weak mod representation of boolean
+functions. Chicago Journal of Theoretical Computer Science, 2, 1995.
+[17] V. Grolmusz. Superpolynomial size set-systems with restricted intersections mod 6 and explicit ramsey graphs.
+Combinatorica, 20(1):71–86, 2000.
+[18] V. Grolmusz. Constructing set systems with prescribed intersection sizes. Journal of Algorithms, 44(2):321–337, 2002.
+[19] S. Kutin. Constructing large set systems with given intersection sizes modulo composite numbers. Combinatorics,
+Probability and Computing, 11(5), 2002.
+[20] M. Naor. Constructing Ramsey graphs from small probability spaces. Manuscript, available online, 1993.
+[21] R. Smolensky. On representations by low-degree polynomials. In Proceedings of the   Annual Symposium on
+Foundations of Computer Science (FOCS), 1993.
+[22] G. Tardos and D. Barrington. A lower bound on the mod 6
+degree of the or function. Computational Complexity, 7:99–
+108, 1998.
+[23] S.-C. Tsai. Lower bounds on representing boolean functions
+as polynomials in
+. SIAM Journal of Discrete Mathematics, 9:55–62, 1996.
+
+14
+
+

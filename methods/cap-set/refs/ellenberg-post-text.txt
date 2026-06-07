@@ -1,0 +1,587 @@
+Briefly:  it seems to me that the idea of the Croot-Lev-Pach paper I posted about yesterday can indeed be used to give a new bound on the size of subsets of F_3^n with no three-term arithmetic progression! Such a set has size at most (2.756)^n. (There’s actually a closed form for the constant, I think, but I haven’t written it down yet.)
+
+Here’s the preprint. It’s very short. I’ll post this to the arXiv in a day or two, assuming I (or you) don’t find anything wrong with it, so comment if you have comments! Note: I’ve removed the link, since the official version of this result is now the joint paper by me and Gijswijt, and the old version shouldn’t be cited.
+
+Update:  Busy few days of administrative stuff and travel, sorry for not having updated the preprint yet, will try to finish it today.  One note, already observed below in the comments:  you get a similar bound for subsets of (F_q)^n free of solutions to (ax+by+cz=0) for any (a,b,c) with a+b+c=0; the cap set case is q=3, (a,b,c) = (1,1,1).
+
+Update 2:  Dion Gijswijt and I will be submitting this result as a joint paper, which will amalgamate the presentations of our essentially identical arguments.  Dion carried out his work independently of mine at around the same time, and the idea should be credited to both of us.  Our joint paper is available on the arXiv.
+
+ 
+
+Share this:
+				Email a link to a friend (Opens in new window)
+				Email
+			
+				Share on Facebook (Opens in new window)
+				Facebook
+			
+				Share on Reddit (Opens in new window)
+				Reddit
+			
+				Share on X (Opens in new window)
+				X
+			Like Loading...
+
+	Related
+		
+		Tagged additive combinatorics, affine cap, arithmetic progressions, cap set, combinatorics	
+
+			
+			38 thoughts on “Bounds for cap sets”		
+
+		
+					
+				
+				
+						Terence Tao says:		
+		
+		
+			May 13, 2016 at 4:55 pm		
+
+		Congratulations!  It gives hope that the Croot-Lev-Pach version of the polynomial method can be applied to other problems in this area.  (For instance, the Polynomial Freiman-Ruzsa conjecture in F_2^n is one possible target; it’s another place where Fourier methods give close to the best known bounds, but fall short of the conjectured truth.)
+
+		
+				
+				
+		
+				
+				
+						gowers says:		
+		
+		
+			May 14, 2016 at 1:39 am		
+
+		So the arXiv is no longer quick enough for getting results into the public domain …
+
+Anyhow, this is very exciting!
+
+		
+				
+				
+		
+				
+				
+						Anurag Bishnoi says:		
+		
+		
+			May 14, 2016 at 3:12 am		
+
+		This is great! 
+
+The paper of Croot-Lev-Pach somehow gave the impression that the methods are specific to Z_4. Apparently not.
+
+		
+				
+				
+		
+				
+				
+						Anurag Bishnoi says:		
+		
+		
+			May 14, 2016 at 4:08 am		
+
+		If I am not mistaken, then Proposition 1 should work over all finite fields F_q, with S_n^d denoting the space of F_q^n-reduced polynomials  (those where each variable has degree at most q – 1) of total degree at most d, M_n^d the monomial basis of S_n^d, and m_d the dimension of S_n^d. Is there a special reason why in Remark 3 you only consider F_p, for prime p instead of F_q?
+
+		
+				
+				
+		
+				
+				
+						Seva Lev says:		
+		
+		
+			May 14, 2016 at 4:48 am		
+
+		@Anurag: Proposition 1 certainly works for F_q with q a prime power. We also thought in this directions, of course, and were aware of this extension of our Lemma 1. If I am not mistaken, Peter has even mentioned to me at some point that it also works for *rings*, but I have never checked this carefully.
+
+		
+				
+				
+		
+				
+				
+						gowers says:		
+		
+		
+			May 14, 2016 at 6:26 am		
+
+		For what it’s worth, I did a back-of-envelope calculation that appeared to confirm that everything goes through for more general F_p^n, giving a bound of c^n for the density, where c doesn’t depend on p. I imagine you’ve done the same.
+
+		
+				
+				
+		
+				
+				
+						JSE says:		
+		
+		
+			May 14, 2016 at 9:04 am		
+
+		Good morning, everyone!  Yes, I don’t know why I wrote F_p; Lemma 1 is really OK for an arbitrary F_q.  And I agree with Tim that it works for general p; what I haven’t worked out is how the rate of the variable uniformly distributed on 0,1,..p-1 looks as a function of p, but I think that should just be a computation.
+
+		
+				
+				
+		
+				
+				
+						Anurag Bishnoi says:		
+		
+		
+			May 14, 2016 at 10:38 am		
+
+		@Seva: I guess both Lemma 1 of your preprint and Proposition 1 of Jordan’s preprint might work over rings if we take A to be a special kind of subset of R^n. One could assume, for example,”Condition (D)”: for every two distinct elements a, b in A, a – b is not a zero divisor, as we did in our work for generalising polynomial method to rings: http://arxiv.org/abs/1508.06020, http://arxiv.org/abs/1506.06743. But I am not too sure if that would work here as we were only considering the case when A is a ‘grid’ (and the problems look quite different). Or did you/Peter mean some other kind of extension of your Lemma to rings?
+
+		
+				
+				
+		
+				
+				
+						gowers says:		
+		
+		
+			May 14, 2016 at 2:41 pm		
+
+		I may have done something silly, but I think if you just want an exponential (in the dimension) bound for arbitrary p, then something simple like Azuma’s inequality is enough. You want a random pth-power-free monomial in n variables to have an exponentially small probability of having degree greater than d and an exponentially small probability of having degree less than d/2. It looks to me as though the degree is just the sum of n independent random variables taking values in {0,1,…,p-1}, so taking d=2pn/3 does the job: the mean of the sum is around pn/2, so the probability that it is bigger than 2pn/3 or less than pn/3 is exponentially small, by Azuma (and with a bound that doesn’t depend on p).
+
+		
+				
+				
+		
+				
+				
+						JSE says:		
+		
+		
+			May 14, 2016 at 3:32 pm		
+
+		Agreed — the pn/3 is the threshold no matter what p is, and in fact the way I am rewriting it now you can just directly get the upper bound to be constant * number of monomials of that degree, and then I’ll move the exponential estimate to the end; I think that will make it easier to read.  I didn’t know Azuma’s inequality until I just looked it up but I think this Cramer thing with the rate gives the “correct” exponent so I will stick with it!
+
+		
+				
+				
+		
+				
+				
+						gowers says:		
+		
+		
+			May 14, 2016 at 4:35 pm		
+
+		Absolutely. I wasn’t suggesting you removed that rate calculation, since you might as well go for the best exponent you can. I just found it helpful for my own understanding to realize that the fact that there’s an exponential bound is a simple consequence of the fact that the probability that a sum of n independent [0,1]-valued random variables differs from its mean by at least cn is exponentially small.
+
+		
+				
+				
+		
+				
+				
+						Ben Green says:		
+		
+		
+			May 15, 2016 at 12:07 am		
+
+		A very minor bibliographical point: Azuma’s inequality is a concentration result for martingales with bounded differences. I think that the correct name for what is needed is the Bernstein inequality, as Bernstein had the key idea in the 1920s. Other variants are called the Chernoff bound or Hoeffding’s inequality, but these two authors (and Azuma) came considerably later. Of course in the specific situation here, one can be quite explicit and appeal to none of these bounds, which apply to general bounded independent random variables.
+
+		
+				
+				
+		
+				
+				
+						Mind Boggling: Following the work of Croot, Lev, and Pach, Jordan Ellenberg settled the cap set problem! | Combinatorics and more says:		
+		
+		
+			May 15, 2016 at 7:20 am		
+
+		[…] A quote from a recent post from Jordan Ellenberg‘s blog Quomodocumque: […]
+
+		
+				
+				
+		
+				
+				
+						Dion Gijswijt says:		
+		
+		
+			May 15, 2016 at 10:57 am		
+
+		What a nice result, congratulations! 
+
+Last week, I’ve also been writing a proof of an upper bound O(p^{cn}), c<1 for progression-free sets, in Z_p^n based on the same paper of Croot, Lev and Pach, see 
+
+Click to access progressions.pdf
+
+So I guess, you beat me to it!  Also, your constant for the case p=3 is better than mine (O(2.76^n) vs O(2.84^n)).  I think the CLP-paper is a real gem in its simplicity.
+
+		
+				
+				
+		
+				
+				
+						JSE says:		
+		
+		
+			May 15, 2016 at 11:06 am		
+
+		Dion — I don’t think my constant is actually better than yours — really I am proving the same thing, that the bound is the number of monomials with degree at most q-1 in each variable and of total degree at most (qn/3).  I think I’m just using a tighter bound on the tail of the distribution than the Hoeffding inequality.
+
+		
+				
+				
+		
+				
+				
+						gowers says:		
+		
+		
+			May 15, 2016 at 1:07 pm		
+
+		Agreed — I was being lazy, and Azuma’s inequality is indeed overkill.
+
+		
+				
+				
+		
+				
+				
+						Eric Naslund says:		
+		
+		
+			May 16, 2016 at 11:20 am		
+
+		Dion Gijswijt – The bound you obtain is identical to Ellenberg’s if you replace Hoeffding’s inequality by a more precise estimate of rate function. Instead of 1-1/(18 log p) one obtains 1-(1+o_p(1))/(6*log p) where the o_p(1) is negative and increasing towards 0 as p–> infinity. In the specific case of p=3, the constant obtained from the optimization has a ‘nicer’ form, and is the root of a degree 6 polynomial: 3/8(207+33^(3/2))^(1/3). (which is approximately 2.755104613…)
+
+		
+				
+				
+		
+				
+				
+						Eric Naslund says:		
+		
+		
+			May 16, 2016 at 11:27 am		
+
+		This upper bound for progressions in F_3^n also implies an upper bound for a weaker version of the Erdos-Rado sunflower conjecture.
+
+**Corollary:** If S is a collection of subsets of {1,2,…,n} such that no three distinct members of S form a sunflower, then |S|<c^n where c=1.97938019…
+
+		
+				
+				
+		
+				
+				
+						Gil Kalai says:		
+		
+		
+			May 16, 2016 at 1:34 pm		
+
+		Of course, a crucial question is the following. If A is a subset of Z_p^n without a 3-term AP then a hyperoptimistic conjecture would be that |A| is bounded more or less by a little inflated version of r_3(p) to the n-th power. (So for p=3 we inflated 2 to 2.756). Now if the polynomial method gives when n is large a Behrend type upper bound for Z_p^n without undesired constants depending on p then we might be in business also Roth-wise. (This is inspired also by a comment from Noga last week regarding the relevance of CEP method for even p and Behrend.) 
+
+This will be a little strange because we know that the bound for Z_p^n is worse than the nth power of the bound for Z_p. So it will be rather unusual if the polynomial method will work for large n while not for n=1. This looks far-fetched but still… we can play with the relation between p and n for our purposes and maybe the probabilistic considerations and concentration behavior will work for us especially when n is large and the “inflation” we get for p will still give us a behavior like exp (sqrt p) perhaps with worse constants in the exponent. Right now it is nor clear that there will be disturbing constants depending on p but often the polynomial method gives rater clean bounds.
+
+But maybe it is known that the above hyperoptimistic conjecture is false.
+
+Regarding the weaker sunflower conjecture it is interesting whether we can somehow apply the polynomial method directly to the binary case (perhaps with a better bound) without  going through Z_3.
+
+		
+				
+				
+		
+				
+				
+						Polymath 10 Emergency Post 5: The Erdos-Szemeredi Sunflower Conjecture is Now Proven. | Combinatorics and more says:		
+		
+		
+			May 17, 2016 at 11:57 am		
+
+		[…] the previous post) and this implies also the Erdos-Szemeredi sunflower conjecture! (Eric Naslund  computed the derived upper bound to be 1.97938019 […]
+
+		
+				
+				
+		
+				
+				
+						Nate says:		
+		
+		
+			May 17, 2016 at 3:47 pm		
+
+		Hmm… This tells us if A is larger than C^n it must contain a triple a,b,c such that c = 1/2a+1/2b, i.e. c is the average of a and b. Maybe not a super-interesting direction to generalize, but it seems to me that the proof should also go through almost the same for weighted averages c = lambda*a+(1-lambda)b, for fixed rational lambda (with denominator coprime to the characteristic). 
+
+For example if lambda = 1/3.  Then lemma 1 should now say that if P(a+2a’)= 0 for a, a’ distinct elements of A that P(3a) is nonzero for all but 2m_{d/2} values of a in A. We’ve broken symmetry a bit so the line at the bottom of page 1 should now read P(x+2y) = Sum_m m(x)F_m(y) + Sum_m m(y)G_m(x), with m running over M^{d/2} in both sums as before. If we now let Phi(x)(m) = (m(x),G_m(x)) and Psi(x)(m) = (m(x),F_m(x)) then P(x+2y) = .  If a_1, a_2, … a_k are such that P(3a_i) is nonzero, then we have Phi(a_1), Phi(a_2), … Phi(a_k) are linearly independent as we have k linear functions  each of which vanishes on all but one of them.  
+
+I haven’t checked in great detail but it seems like then the proof of the main theorem goes through just replacing the role of -A with 3A, and the role of A+A by A+2A. Does this all seem right?
+
+		
+				
+				
+		
+				
+				
+						Nate says:		
+		
+		
+			May 17, 2016 at 3:50 pm		
+
+		It seems to have deleted a bunch of brackets from my above post and I’m not sure how to fix it. I hope it’s still understandable.
+
+		
+				
+				
+		
+				
+				
+						The new bound on cap sets | Anurag's Math Blog says:		
+		
+		
+			May 17, 2016 at 4:50 pm		
+
+		[…] Four days back Jordan Ellenberg posted the following on his blog: […]
+
+		
+				
+				
+		
+				
+				
+						JSE says:		
+		
+		
+			May 17, 2016 at 8:12 pm		
+
+		Yep, Nate, that’s exactly right.  In the version I’m writing up now it’ll be in that generality — as you say, the proof is exactly the same.
+
+		
+				
+				
+		
+				
+				
+						Anurag Bishnoi says:		
+		
+		
+			May 17, 2016 at 8:21 pm		
+
+		Affine caps satisfy the condition that  A + \lambda A  is disjoint from  (1 + \lambda)A  for all  \lambda \not \in \{0, -1\} . So, in principle it is possible that for affine caps the upper bound is better than the one for a cap set; right? If you assume this condition for one particular  \lambda , then as Nate points out, the bounds are the same, but if we assume it for all  \lambda ‘s simultaneously, then perhaps we can do more …
+
+		
+				
+				
+		
+				
+				
+						Ellenberg’s announcement of a solution to the cap-set problem | in theory says:		
+		
+		
+			May 17, 2016 at 8:36 pm		
+
+		[…] Ellenberg has just announced a resolution of the “cap problem” using techniques of Croot, Lev and Pach, in a […]
+
+		
+				
+				
+		
+				
+				
+						A symmetric formulation of the Croot-Lev-Pach-Ellenberg-Gijswijt capset bound | What's new says:		
+		
+		
+			May 18, 2016 at 2:13 am		
+
+		[…] as 2012 to  for some absolute constant  by Bateman and Katz. But in a very recent breakthrough, Ellenberg (and independently Gijswijt) obtained the exponentially superior bound , using a version of the […]
+
+		
+				
+				
+		
+				
+				
+						Nate says:		
+		
+		
+			May 18, 2016 at 3:37 pm		
+
+		Epsilon more of an observation, similar to what I said before:  With very little changes this also gives bounds for sets X avoiding non-trivial solutions to a_1x_1+a_2x_2+ … + a_kx_k, with a_1+a_2+…+a_k=0, where “non-trivial” now means that the x_i are not all equal, but are not necessarily distinct (Note that for k=3, not all the equal implies distinct for this class of equations). The bound this method gives depends on k and the ground field, but not on the choice of coefficients a_i.
+
+		
+				
+				
+		
+				
+				
+						Fedor Petrov says:		
+		
+		
+			May 18, 2016 at 6:58 pm		
+
+		Maybe, this (see pdf) approach is slightly different, at least it gives formally better bound (by a factor of 3/2, not in exponent, unfortunately), and it does not use vectors with many non-zero coordinates. I am sorry that notations are different from yours (I am afraid that changing them now would increase misprints.) 
+
+I tried to type this as a comment in Terence Tao’s blog, but it looks very ugly after formatting. Thus pdf. 
+
+Fedya
+
+Click to access f3_eng.pdf
+
+		
+				
+				
+		
+				
+				
+						igors says:		
+		
+		
+			May 20, 2016 at 9:00 am		
+
+		The last two paragraphs can be shortened a bit more. Specifically, from (2) it follows that  |A| 
+				
+		
+				
+				
+						Anurag Bishnoi says:		
+		
+		
+			May 21, 2016 at 11:42 am		
+
+		Using some ideas from Fedor’s proof above, I think we have the following alternate proof of your Proposition 1. Denote by  \mathcal{P}_d(n, q)  the space of all reduced polynomials in  \mathbb{F}_q[x_1, \dots, x_n]  that have degree at most  d  (what you call  S_n^d ). Let  P \in \mathcal{P}_d(n, q)  be such that  P(a + b) = 0  for all  a, b \in A  with  a \neq b .
+
+Let  S = \{a \in A : P(2a) \neq 0\} .
+
+Define  V_{d/2}  to be the subspace of functions  f  in  \mathbb{F}_q^S , that satisfy  \sum_{a \in S} f(a) Q(a) = 0  for all  Q \in \mathcal{P}_{d/2}(n, q) .
+
+Then  \dim V_{d/2} \geq |S| - m_{d/2} .
+
+Define a symmetric bilinear form on elements of  \mathbb{F}_q^S  by  \langle f, g \rangle = \sum_{a \in S} f(a) g(a) P(2a) .
+
+Since  \deg P \leq d , for all  f, g \in V_{d/2} , we have  \sum_{a, b \in S} f(a)g(b) P(a + b) = 0 ,
+
+which gives us  \sum_{a \in A} f(a) g(a) P(2a) = 0  sine  P(a + b) = 0  for all  a \neq b .
+
+Thus,  V_{d/2}  is contained in its orthogonal complement, which implies that  \dim V_{d/2} \leq |S|/2 .
+
+This gives  |S| - m_{d/2} \leq |S|/2 , implying  |S| \leq 2m_{d/2} .
+
+		
+				
+				
+		
+				
+				
+						Tom Church says:		
+		
+		
+			May 24, 2016 at 12:17 am		
+
+		My collaborators and I have just posted a paper on consequences of the Ellenberg-Gijswijt result for fast matrix multiplication.
+
+Jonah Blasiak, Thomas Church, Henry Cohn, Joshua A. Grochow, Chris Umans
+
+On cap sets and the group-theoretic approach to matrix multiplication
+
+http://arxiv.org/abs/1605.06702
+
+Abstract: In 2003, Cohn and Umans described a framework for proving upper bounds on the exponent ω of matrix multiplication by reducing matrix multiplication to group algebra multiplication. In 2005 Cohn, Kleinberg, Szegedy, and Umans proposed specific conjectures for how to obtain ω=2 in this framework. In this note we rule out obtaining ω=2 in this framework from the groups (𝔽_p)^n, using the breakthrough results of Croot, Lev, Pach, Ellenberg, and Gijswijt on cap sets. These restrictions do not however rule out abelian groups in general, let alone nonabelian groups.
+
+		
+				
+				
+		
+				
+				
+						Polymath 10 post 6: The Erdos-Rado sunflower conjecture, and the Turan (4,3) problem: homological approaches. | Combinatorics and more says:		
+		
+		
+			May 27, 2016 at 2:11 am		
+
+		[…] sets.)   More cap set updates are added to this post, and can be found in the comment threads here and […]
+
+		
+				
+				
+		
+				
+				
+						Sumsets and sumsets of subsets | Quomodocumque says:		
+		
+		
+			May 29, 2016 at 9:25 pm		
+
+		[…] here’s an interesting fact.  I have been turning over this argument of Croot-Lev-Pach and mine and Gijswijt’s for a couple of weeks now, trying to understand what it’s really doing that leads to control […]
+
+		
+				
+				
+		
+				
+				
+						Eric Naslund says:		
+		
+		
+			June 15, 2016 at 2:11 pm		
+
+		With respect to my previous comment concern the constant when p–> infty, one actually gets a slightly better constant than e^(-1/6). Instead it is c=0.8414, which is the minimum of the function e^(t/3)(1-e^(-t))/t. That is, an arithmetic progression free set in F_p^n has size at most (c+o(1))^n p^n, where the o(1) tends to 0 as p–>infty.
+
+		
+				
+				
+		
+				
+				
+						Introduction to the polynomial method (and other similar things) | Short, Fat Matrices says:		
+		
+		
+			September 9, 2016 at 11:48 am		
+
+		[…] polynomial method has made some waves recently (see this and that, for instance), and last week, Boris Alexeev gave a very nice talk on various applications […]
+
+		
+				
+				
+		
+				
+				
+						수학동아 연재 (2016년) - Prof. Sang-il Oum says:		
+		
+		
+			July 1, 2017 at 11:29 pm		
+
+		[…] 블로그글: Ellenberg 블로그, Tim Gowers 블로그, Terrence Tao […]
+
+		
+				
+				
+		
+				
+				
+						수학동아 연재 (2016년) - Sang-il Oum says:		
+		
+		
+			March 19, 2019 at 4:58 am		
+
+		[…] 블로그글: Ellenberg 블로그, Tim Gowers 블로그, Terrence Tao […]
+
+		
+				
+				
+		
+
+		
+	
+	
+		
+		Leave a comment
+
+			
+			
+
+Δ

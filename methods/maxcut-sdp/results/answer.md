@@ -1,84 +1,56 @@
-# Goemans-Williamson MAX-CUT
+# Goemans–Williamson MAX CUT (SDP + random hyperplane rounding)
 
 ## Problem
-
-Given an undirected graph G=(V,E) with nonnegative edge weights w_ij, partition V into two sides
-to maximize the total weight of edges crossing the partition (MAX-CUT). Exact MAX-CUT is NP-hard;
-the goal is a polynomial-time algorithm with the best provable worst-case ratio ALG/OPT. The
-trivial fair-coin assignment already guarantees 1/2; the question is how to provably beat it.
+Given a weighted undirected graph G = (V, E) with weights w_ij ≥ 0, find S ⊆ V maximizing the cut weight w(S, S̄) = Σ_{i∈S, j∉S} w_ij. MAX CUT is NP-complete; for two decades the best provable approximation ratio was 1/2 (independent fair coin per vertex / Sahni–Gonzales greedy). The 1/2 barrier is structural: those analyses certify only a fraction of the total weight Σ w_ij, and no graph-independent fraction above 1/2 is possible because OPT itself can be only about half of Σ w_ij.
 
 ## Key idea
+Break 1/2 by comparing against a tighter, polynomial-time-computable upper bound on OPT. Write the cut as an integer quadratic program in y_i ∈ {−1, +1}; relax each scalar y_i (a unit vector in R¹) to a unit vector u_i ∈ Rⁿ and each product y_i y_j to the inner product u_i · u_j. In the Gram matrix Y = (u_i · u_j) this is a semidefinite program (linear objective, Y_ii = 1, Y ⪰ 0), solvable to additive ε in polynomial time. Recover the vectors by factoring Y. Round by a **random hyperplane** through the origin: draw a uniform unit normal r and set S = {i : u_i · r ≥ 0}. An edge at angle θ_ij = arccos(u_i · u_j) is cut with probability exactly θ_ij/π — proportional to the very angle the relaxation maximizes.
 
-Encode side membership as a sign y_i ∈ {-1,+1}; edge (i,j) is cut iff y_i y_j = -1, and the cut
-weight is (1/2) Σ_{(i,j)} w_ij (1 - y_i y_j). The objective sees only the products y_i y_j.
-Independent edge-variable LPs miss odd-cycle consistency: on K_3 the naive LP reaches 3 while
-OPT=2, and on complete graphs the integral/LP ratio tends to 1/2. Escape by relaxing each sign to a
-**unit vector** v_i on the sphere in R^n and replacing y_i y_j by ⟨v_i,v_j⟩. The pairwise inner
-products form a positive-semidefinite Gram matrix with unit diagonal, so the relaxation is a
-**semidefinite program**, solvable to additive ε in polynomial time, with optimum SDP ≥ OPT. Recover
-an integral cut by **random-hyperplane rounding**: draw a Gaussian direction r and set
-y_i = sign⟨v_i,r⟩.
+## Algorithm
+1. Form the (scaled) Laplacian; the cut equals x^T(L/4)x for x ∈ {−1,+1}ⁿ since x^T L x = 4·w(S, S̄).
+2. Solve the SDP: maximize Σ_{i<j} ½ w_ij(1 − Y_ij) subject to Y_ii = 1, Y ⪰ 0. Optimal value Z*_P ≥ OPT (it equals the Delorme–Poljak eigenvalue bound min_{Σu_i=0} (n/4)λ_max(L + diag(u))).
+3. Factor Y = UU^T (Cholesky / eigendecomposition); row i of U is the unit vector u_i.
+4. Draw r with i.i.d. N(0,1) coordinates (a spherical Gaussian → uniform direction). Set S = {i : u_i · r ≥ 0}.
 
-## Algorithm and analysis
-
-SDP relaxation (over the Gram matrix X_ij = ⟨v_i,v_j⟩):
-
-    maximize  (1/2) Σ_{(i,j)∈E} w_ij (1 - X_ij)   s.t.  X ⪰ 0,  X_ii = 1.
-
-Rounding: factor X = Q Q^T (matrix square root / Cholesky), use row i of Q as v_i, draw
-r ~ N(0,I_n), and set y_i = sign(⟨v_i,r⟩) = sign((Q r)_i).
-
-Guarantee. For an edge with angle θ_ij = arccos⟨v_i,v_j⟩ ∈ [0,π], the projection of the
-spherically-symmetric Gaussian onto the plane of v_i,v_j is uniform in direction, so the hyperplane
-separates them with probability exactly
-
-    Pr[(i,j) cut] = θ_ij / π.
-
-Hence E[cut weight] = Σ w_ij θ_ij/π. With
-
-    α = (2/π) · min_{0<θ≤π}  θ/(1 - cos θ) ≈ 0.87856,
-
-attained at θ* ≈ 2.3311 rad ≈ 133.56° (where (1 - cos θ*) = θ* sin θ*, cos θ* ≈ -0.689), one has
-θ/π ≥ α·(1 - cos θ)/2 for all θ ∈ (0,π]. Therefore
-
-    E[cut weight] = Σ w_ij θ_ij/π ≥ α · Σ w_ij (1 - cos θ_ij)/2 = α·SDP ≥ α·OPT,
-
-a 0.87856-approximation in expectation. Repeating the rounding and keeping the best cut is useful
-in practice; derandomization can recover a cut with value at least the expectation.
+## Guarantee
+Pr[edge (i,j) cut] = θ_ij/π, so E[W] = Σ w_ij θ_ij/π. Edge-wise, θ/π ≥ α·½(1 − cos θ) with
+α = min_{0<θ≤π} (2/π)·θ/(1 − cos θ) = 0.87856…, attained at θ* = 2.331122 rad (≈ 133.6°), the nonzero root of cos θ + θ sin θ = 1. Hence E[W] ≥ α·Z*_P ≥ α·OPT, giving a (0.87856 − ε)-approximation for any ε > 0 (the ε absorbs solving the SDP to additive accuracy in time polynomial in the input and log(1/ε)). This is the first improvement over 1/2 in roughly twenty years and the first use of semidefinite programming in approximation-algorithm design.
 
 ## Code
 
-This is the standard unweighted edge-list implementation; weighted edges multiply the corresponding
-objective terms by w_ij.
-
 ```python
 import numpy as np
-import cvxpy as cp
-from scipy.linalg import sqrtm
+import networkx as nx
+import cvxpy as cvx
 
-def gw(n, edges):
-    """Goemans-Williamson MAX-CUT: returns x in {-1,+1}^n with E[cut] >= 0.87856 * OPT."""
-    # SDP relaxation over the Gram matrix X_ij = <v_i, v_j>
-    X = cp.Variable((n, n), symmetric=True)
-    constraints = [X >> 0]                              # X PSD  <=>  X is a Gram matrix
-    constraints += [X[i, i] == 1 for i in range(n)]     # unit vectors: ||v_i|| = 1
-    objective = sum(0.5 * (1 - X[i, j]) for (i, j) in edges)   # cut weight in vector form
-    prob = cp.Problem(cp.Maximize(objective), constraints)
-    prob.solve()
+def max_cut(graph):
+    """Returns (colors in {-1,+1}^n, cut weight of this coloring, SDP upper bound)."""
+    # cut weight = x^T (L/4) x for x in {-1,+1}^n, since x^T L x = 4 * cut
+    laplacian = np.array(0.25 * nx.laplacian_matrix(graph).todense())
 
-    # random-hyperplane rounding
-    Q = sqrtm(X.value).real        # X = Q Q^T; row i of Q is the vector v_i
-    r = np.random.randn(n)          # Gaussian => spherically symmetric hyperplane through 0
-    x = np.sign(Q @ r)              # y_i = sign(<v_i, r>)
-    return x
+    # SDP relaxation: Y = Gram matrix of unit vectors u_i (Y >= 0, diag = 1)
+    X = cvx.Variable(laplacian.shape, PSD=True)
+    objective = cvx.Maximize(cvx.trace(laplacian @ X))        # linear relaxation objective
+    constraints = [cvx.diag(X) == 1]                          # ||u_i|| = 1
+    cvx.Problem(objective, constraints).solve()
 
-def cut(x, edges):
-    """Edges crossing the partition described by x in {-1,+1}^n."""
-    return [(i, j) for (i, j) in edges if np.sign(x[i] * x[j]) < 0]
+    bound = float(np.trace(laplacian @ X.value))              # Z*_P >= OPT
+
+    # recover vectors u_i by eigendecomposing the Gram matrix
+    gram = np.array(X.value, dtype=float)
+    gram = 0.5 * (gram + gram.T)
+    evals, evects = np.linalg.eigh(gram)
+    keep = evals > 1e-6
+    sdp_vectors = evects[:, keep] @ np.diag(np.sqrt(evals[keep]))
+
+    # random-hyperplane rounding: r uniform on the sphere via a Gaussian
+    r = np.random.randn(sdp_vectors.shape[1])
+    r /= np.linalg.norm(r)                                    # normalization optional; only sign matters
+    colors = np.sign(sdp_vectors @ r)                        # S = {i : u_i . r >= 0}
+    colors[colors == 0] = 1
+
+    score = float(colors @ laplacian @ colors.T)              # weight of the produced cut
+    return colors, score, bound
 ```
 
-## Optimality (background)
-
-MAX-CUT is NP-hard, and NP-hard to approximate beyond 16/17 ≈ 0.941. Under the Unique Games
-Conjecture, the constant α ≈ 0.87856 is optimal: no polynomial-time algorithm achieves a better
-worst-case ratio.
+Because the algorithm is randomized, repeat the rounding step several times with fresh r and keep the best cut; each draw has expected weight at least 0.878·OPT, and keeping the best observed cut can only improve the returned score.

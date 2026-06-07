@@ -11,14 +11,16 @@ A set is *sum-free* if it has no solution to $x+y=z$. The two targets are:
 
 **Random dilation.** The arc $B=(1/3,2/3)\subset\mathbb{T}$ is sum-free, and for a random $\theta$ each nonzero integer $a$ has $\{\theta a\}$ uniformly distributed. Thus
 $$A_\theta=\{a\in A:\{\theta a\}\in B\}$$
-is sum-free for every $\theta$ and $\mathbb{E}|A_\theta|=n/3$, giving $s(A)\ge n/3$.
+is sum-free for every $\theta$ and $\mathbb{E}|A_\theta|=n/3$, giving $s(A)\ge n/3$. With the half-open arc $[1/3,2/3)$, the same averaging is nonconstant because $\theta=0$ selects nothing, so some dilation selects strictly more than $n/3$ elements.
 
 **Integrality.** With $f=1_{[1/3,2/3)}-\tfrac13$ and $f_A(x)=\sum_{a\in A}f(ax)$, one has $|A_x|=n/3+f_A(x)$. Since $|A_x|$ is integer-valued, has average $n/3$, and is not constant, its maximum is at least $\lfloor n/3\rfloor+1=\lceil(n+1)/3\rceil$. Hence $s(A)\ge(n+1)/3$.
 
 **Fourier surplus.** The exact expansion is
 $$f(x)=-\frac{\sqrt3}{\pi}\sum_{m\ge1}\frac{\chi(m)}m\cos(2\pi m x),$$
-where $\chi$ is the nonprincipal character mod $3$. An $L^1$ surplus estimate gives
-$$s(A)\ge\frac n3+C\left\|\sum_{a\in A}\cos(2\pi a\,\cdot)\right\|_{L^1(\mathbb{T})}.$$
+where $\chi$ is the nonprincipal character mod $3$. If
+$$F_A(x)=\sum_{a\in A}\sum_{m\ge1}\frac{\chi(m)}m\cos(2\pi ma x),$$
+then $f_A=-(\sqrt3/\pi)F_A$, so the one-sided maximum of $f_A$ is controlled by the $L^1$ mass of $F_A$. Mobius sifting of the higher harmonics gives the plain-cosine corollary
+$$s(A)\ge\frac n3+c\frac{\left\|\sum_{a\in A}\cos(2\pi a\,\cdot)\right\|_{L^1(\mathbb{T})}}{\log n}.$$
 For structured sets, nonnegative test functions certify $m_A=\max f_A$: if $\varphi\ge0$ and $\int\varphi=1$, then $m_A\ge\int\varphi f_A$. In the case $1\notin A$, with $u=\min A$ and $v$ the smallest element not divisible by $u$,
 $$\varphi=(1-\cos 2\pi ux)(1-\cos 2\pi vx)$$
 gives
@@ -28,7 +30,9 @@ $$\int\varphi f_A=\frac{\sqrt3}{2\pi}\left(2-\frac12 1_A(u+v)\right)>1/3.$$
 $$f_A(x)+f_A(x+1/3)+f_A(x+2/3)=3f_{A_1}(x),$$
 so $m_A\ge m_{A_1}$. Also
 $$m_A\ge\frac{|A_0|}{6}-\frac{|A_1|}{3}.$$
-This reduces the fixed-surplus conjecture $m_A\ge S/3$ to finitely many sizes. For $S=2$, the remaining $n=5,8$ cases are handled by explicit nonnegative trigonometric certificates. Therefore, for coprime positive $A$, either $A=\{1,2\}$ or
+This reduces the fixed-surplus conjecture $m_A\ge S/3$ to finitely many sizes. For $S=2$, the remaining $n=5,8$ cases are handled by explicit nonnegative trigonometric certificates: for $n=5$, first
+$$1-\frac43\cos(2\pi x)+\frac23\cos(4\pi x),$$
+then the same polynomial at the remaining coprime frequency; for $n=8$, after reducing to $A_1=\{v,2v\}$ and known elements $1,2,u,2u$, the product $(1-\cos 2\pi x)(1-\cos 2\pi vx)$ gives a value $>1/3$. Therefore, for coprime positive $A$, either $A=\{1,2\}$ or
 $$s(A)\ge\frac{n+2}{3}.$$
 
 **Counting.** The container strategy embeds $[N]$ into $\mathbb{Z}/p\mathbb{Z}$, partitions into arithmetic progressions, and chooses a good common difference $d$ satisfying
@@ -46,6 +50,21 @@ from itertools import combinations
 
 ARC_START = Fraction(1, 3)
 ARC_END = Fraction(2, 3)
+
+KNOWN_SMALL_COUNTS = {
+    1: 2,
+    2: 3,
+    3: 6,
+    4: 9,
+    5: 16,
+    6: 24,
+    7: 42,
+    8: 61,
+    9: 108,
+    10: 151,
+    11: 253,
+    12: 369,
+}
 
 def chi(m):
     r = m % 3
@@ -93,6 +112,20 @@ def select_filtered_subset(A):
             best_set, best_theta = S, theta
     return best_set, best_theta
 
+def guaranteed_integer_bound(n):
+    return 0 if n == 0 else n // 3 + 1
+
+def verify_dilation_samples(samples):
+    verified = []
+    for A in samples:
+        if any(a == 0 for a in A):
+            raise ValueError("the dilation argument assumes nonzero integers")
+        S, theta = select_filtered_subset(A)
+        assert is_sum_free(S)
+        assert len(S) >= guaranteed_integer_bound(len(A))
+        verified.append((A, S, theta))
+    return verified
+
 def certificate_integral(A, coeffs):
     total = 0.0
     positive_coeffs = [(n, c) for n, c in coeffs.items() if n > 0]
@@ -128,21 +161,38 @@ def count_sumfree_subsets(N):
 def baseline_families(N):
     odds = [x for x in range(1, N + 1) if x % 2 == 1]
     upper_half = list(range(N // 2 + 1, N + 1))
-    return {"odds": odds, "upper_half": upper_half}
+    cameron_erdos_interval = list(range((N + 3) // 3, N + 1))
+    return {
+        "odds": odds,
+        "upper_half": upper_half,
+        "cameron_erdos_interval": cameron_erdos_interval,
+    }
 
 def estimate_count(N):
     families = baseline_families(N)
+    assert is_sum_free(families["odds"])
+    assert is_sum_free(families["upper_half"])
     return {
         "exact": count_sumfree_subsets(N),
         "odd_family_choices": 2 ** len(families["odds"]),
         "upper_half_choices": 2 ** len(families["upper_half"]),
+        "cameron_erdos_interval_size": len(families["cameron_erdos_interval"]),
         "scale_2_to_N_over_2": 2 ** (N / 2),
     }
 
+def verify_exact_small_counts():
+    exact = {N: count_sumfree_subsets(N) for N in KNOWN_SMALL_COUNTS}
+    assert exact == KNOWN_SMALL_COUNTS
+    return exact
+
 if __name__ == "__main__":
-    A = [1, 2, 3, 4, 5, 6, 7]
-    S, theta = select_filtered_subset(A)
-    print(f"A={A}  forced subset={S}  theta={theta}  n/3={len(A)/3:.3f}")
+    samples = [
+        [1, 2, 3, 4, 5, 6, 7],
+        [2, 3, 5, 7, 11],
+        [-5, -2, 1, 4, 9, 10],
+    ]
+    for A, S, theta in verify_dilation_samples(samples):
+        print(f"A={A}  forced subset={S}  theta={theta}  bound={guaranteed_integer_bound(len(A))}")
 
     B = [2, 3, 5, 7, 11]
     val = certificate_bound(B)
@@ -150,8 +200,10 @@ if __name__ == "__main__":
     assert abs(val - target) < 1e-12
     print(f"certificate={val:.6f}  formula={target:.6f}  >1/3={val > 1/3}")
 
-    for N in range(1, 11):
+    exact_counts = verify_exact_small_counts()
+    for N in range(1, 13):
         data = estimate_count(N)
+        assert data["exact"] == exact_counts[N]
         ratio = data["exact"] / data["scale_2_to_N_over_2"]
         print(f"N={N:2d}  |SF(N)|={data['exact']:5d}  ratio={ratio:.3f}")
 ```

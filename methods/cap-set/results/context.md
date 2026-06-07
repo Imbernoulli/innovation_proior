@@ -41,6 +41,18 @@ only a *polynomial* factor in n off the trivial 3^n. After roughly fifteen years
 that polynomial-in-n saving was the ceiling, and there was no consensus that an
 exponential improvement to c^n with c < 3 was even true.
 
+Croot–Lev–Pach (2016) changed the available toolkit in a neighboring problem:
+progression-free subsets of (Z/4Z)^n. Their result gives an exponential upper
+bound c^n with c < 4, and the proof uses the polynomial method rather than
+Fourier analysis. The striking point is not just the conclusion, but the regime:
+the base ring is fixed while n grows, exactly the direction in which finite-field
+polynomial-method arguments had not usually been effective. Their proof is
+organized around a low-degree-polynomial rank lemma: if P(a-b) vanishes on
+distinct pairs from a set, then either P(0) vanishes or the set is bounded by the
+number of low-degree monomials. Gap: the Z/4Z argument still has ring and coset
+bookkeeping caused by the coefficient 2 in a-2b+c=0, so it is not yet a cap-set
+argument over F_3^n.
+
 On the constructive (lower-bound) side, intuition from the integers can mislead.
 Behrend (1946) built a large 3-AP-free subset of {1,…,N} by placing integers on
 a sphere of fixed radius: a sphere is strictly convex, so it carries no three
@@ -77,6 +89,16 @@ absolute ε > 0. Core idea: structure of the set of large Fourier coefficients.
 Gap: still O(3^n / poly(n)) — the same exponential 3^n, just a better polynomial.
 No mechanism here produces c^n with c < 3, and the consensus was unclear whether
 that was even the truth.
+
+**Croot–Lev–Pach's polynomial-method rank lemma (2016).** For
+progression-free subsets of (Z/4Z)^n, CLP translate the obstruction into a
+problem over an F_2-vector space and use low-degree polynomials to force a rank
+bound. The core lemma expands P(x-y), groups monomials according to whether the
+x-side or y-side has degree at most d/2, and obtains a matrix of rank at most
+twice the number of low-degree monomials. Gap: the lemma is the right kind of
+engine, but the application is still wrapped around Z/4Z's cosets; a cap-set
+upper bound needs the AP equation to feed the same rank argument directly over a
+field.
 
 **Product / tensor constructions (lower bounds).** The largest caps in small
 dimensions are known: |F_3^1|-cap 2, then 4, 9, 20, 45, 112 for n = 2,…,6. By

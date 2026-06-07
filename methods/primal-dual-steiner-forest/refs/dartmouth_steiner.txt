@@ -1,0 +1,203 @@
+       Primal-Dual Algorithm for Steiner Forest1
+
+       • The Steiner Forest Problem. In this problem, we are given an undirected graph G = (V, E) with
+         edge weights c(e) ≥ 0. Furthermore, we are given a collection of k pairs of vertices {si , ti }i=1,...,k .
+         The objective is to find a subgraph
+                                     P       H = (U, F ) ⊆ G such that si is connected to ti in H, for all
+         1 ≤ i ≤ k, and cost(F ) = e∈F c(e) is minimized.
+         The Steiner forest problem generalizes several problems:
+
+            – The shortest path problem (k = 1)
+            – The minimum spanning tree problem (k = |V2 | , all points connected)
+                                                          
+
+            – The Steiner tree problem (k = |R|
+                                                
+                                              2 corresponding to some required R ⊆ V )
+
+         As with the Steiner Tree problem, the output is acyclic, since it is always possible to break a cycle
+         (which removes an edge) and span the same vertices. Furthermore, the output takes the form of
+         a collection of disjoint trees, hence the name “Steiner forest.” In this lecture, we will see a clever
+         2-approximation using a primal-dual algorithm.
+
+       • The Primal LP. The primal LP relaxation is standard: we assign a variable xe ∈ [0, 1]P    to each edge
+         to determine if (or rather, “how much”) it is chosen, with the objective of minimizing e∈F c(e)xe .
+         But how can we express the constraint that all required terminal pairs are connected? One way is to
+         consider “blocking” subsets S ⊆ V which satisfy |{si , ti } ∩ S| = 1 for some 1 ≤ i ≤ k, that is, the
+         subset S “separates” si and ti . Observe that si is connected to ti in H if and only if |∂H S| ≥ 1 for
+         any S sepearating si and ti . Let B be the set of all such blocking subsets. We can therefore add the
+         constraint                                         X
+                                                ∀S ∈ B :          xe ≥ 1
+                                                                 e∈∂H S
+
+         Since the number of blocking sets is exponential (there are 2|V |−2 sets which exclude a given vertex
+         and contain another), it seems unwieldy to assign a constraint for each one. We could alternatively
+                                                                                     (i)
+         formulate our constraints in terms of flow by creating auxiliary variables fe representing flow (where
+         xe is the capacity of each edge) and stating that each required terminal connection must have at least
+         1 flow. Although this uses only k|F | constraints, we will proceed with the LP as expressed above,
+         and show how to use it to design our approximation algorithm. This lecture demonstrates that having
+         many constraints is not necessarily bad.
+
+       • The Dual LP. We can mechanically extract the dual LP as follows:
+                          X                                                            X
+              minimize       c(e)xe                            maximize                       yS
+                              e∈E                                                      S∈B
+                                X                                                   X
+                 subject to             xe ≥ 1,   ∀S ∈ B            subject to                yS ≤ c(e),   ∀e ∈ E
+                               e∈∂H S                                            S∈B:e∈∂H S
+                                        xe ≥ 0,   ∀e ∈ E                                      yS ≥ 0,   ∀S ∈ B
+   1
+    Lecture notes by Finn Hulse, lightly edited by Deeparnab Chakrabarty. Last modified : 25th Feb, 2022
+These have not gone through scrutiny and may contain errors. If you find any, or have any other comments, please email me at
+deeparnab@dartmouth.edu. Highly appreciated!
+
+
+                                                             1
+  Note that in the primal we don’t need to upper bound xe because any xe value above 1 could be
+  reduced at the benefit of the program without violating a constraint.
+
+• The Primal-Dual Schema for Steiner Forest. Although the primal LP has an absurd number of con-
+  straints, the corresponding dual has major benefits: we only need to worry about satisfying |E| con-
+  straints and we have the flexibility to increase yS on any blocking subset S ∈ B we choose. We
+  initialize A, our set of active blocking sets, to contain the 2k singleton blocking sets consisting of
+  each required terminal. Let F be an initially empty graph to which we add edges until it becomes a
+  valid Steiner Forest. We initialize all y values to 0, and at each stage of thePalgorithm, we raise the y
+  values of the active blocking sets until at least one edge e becomes tight ( S:e∈∂H S yS = c(e)). At
+  this point, we add e to F and consolidate e with the blocking set(s) which make it tight.
+
+      1: procedure PD-S TEINER -F OREST(G, {{s1 , t1 }, . . . {sk , tk }}, c(e) on edges):
+      2:     A ← {{s1 }, {t1 }, . . . {sk }, {tk }}
+      3:     F ←∅
+      4:     . Invariant : every S ∈ A is connected in F .
+      5:     while A 6= ∅ do
+      6:         Raise yS for all S ∈ A until some edge (u, v) becomes tight (assume u ∈ S1 )
+      7:         Add (u, v) to F
+      8:         if v ∈ S2 for some S2 then . Replace S1 and S2 with S1 ∪ S2 if it is a valid blocking set
+      9:              Remove S1 and S2 from A
+     10:              if S1 ∪ S2 ∈ B then
+     11:                  Add S1 ∪ S2 to A
+     12:         else . Replace S1 with S1 ∪ v if it is a valid blocking set
+     13:              Remove S1 from A
+     14:              if S1 ∪ v ∈ B then
+     15:                  Add S1 ∪ v to A
+     16:     . At this stage F connects every terminal; however it may contain cycles.
+     17:     (Reverse Delete:) Consider the edges of F in the reverse order they were added, delet-
+         ing them if they are unnecessary.
+     18:     return F
+
+  Note that two active blocking sets S1 and S2 can simultaneously make an edge e tight: in that case, we
+  “merge” those sets as S1 ∪ S2 , which we keep in A if it is a blocking set. It is possible that adding e
+  causes a blocking set to no longer be a blocking set, in which case the desired path has been achieved
+  and we can remove the set altogether from A. Since the goal is to connect every terminal pair, this
+  loop only terminates once A = ∅. Lastly, we go backwards in order of edges added and remove
+  unnecessary edges.
+
+• Analysis.
+
+    Theorem 1. PD-S TEINER -F OREST is a 2-approximation algorithm.
+
+  Proof. Suppose there are T loops and label At to be the state of A at step t. Step t uniformly dis-
+  tributes some ∆t mass onto the y values of all elements of At . Therefore, the value of the dual at the
+
+                                                   2
+     end of the algorithm is
+                                                X            T
+                                                             X
+                                                      yS =         ∆t · |At |                                 (1)
+                                                S∈B          t=1
+
+     Now, an edge e is added to F only if the total y incident on e equals c(e). Therefore, we get that
+
+                                                       X              T
+                                                                      X            X
+                               ∀e ∈ F :     c(e) =             yS =                          ∆t
+                                                      S:e∈∂S           t=1      S∈At :e∈∂S
+
+     and hence the total cost of F is
+                                                               
+                                       T                                 T
+                                                                                                          !
+                                 X X               X                     X            X           X
+                   cost(F ) =                               ∆t  =             ∆t                        1
+                                 e∈F      t=1   S∈At :e∈∂S                t=1         S∈At    e∈F :e∈∂S
+                                                                         T
+                                                                         X            X
+                                                                     =          ∆t           |F ∩ ∂S|         (2)
+                                                                          t=1         S∈At
+
+     Now, for a fixed S ∈ At , the number |F ∩ ∂S| can be arbitrarily large, and it seems unclear how to
+     bound the RHS of (2). Note that we would like to compare this with (1). What saves the day is the
+     reverse delete step, and the fact that F is a forest. We elaborate on this.
+     Fix some 1 ≤ t ≤ T and consider the graph F [At ] induced on the graph F by the disjoint sets At .
+     More precisely, we have a node for every S ∈ At and a link between Si and Sj iff there is some
+     (u, v) ∈ F such that u ∈ S1 and v ∈ S2 . Figure 1 illustrates what such a graph might look like. The
+
+                                                 S3
+
+                                                               S4
+
+                                          S2                                     S7
+
+
+
+                                                               S6
+                                                 S5
+                                     S1
+
+
+Figure 1: Example of F [At ], the graph induced on F by At . The red edge wouldn’t exist after reverse
+delete.
+
+
+     main observation is the following.
+     Claim 1. F [At ] is a forest.
+
+     Proof. Suppose not, and suppose F [At ] contains a cycle as purported in the picture above. Consider
+     the last edge e = (u, v) that was added to F with u ∈ Si and v ∈ Sj ; in the picture this is the red
+
+                                                        3
+      edge and i = 5 and j = 6. By the invariant of the algorithm, right before (u, v) was added to F ,
+      all the Si ’s are connected, and in particular, there is a path from u to v in F \ e. In turn, any pair
+      of vertices, in particular any pair of terminals sa , ta which were connected in F at this point, is also
+      connected in F \ e. Therefore, in the reverse delete step, this edge e must have been deleted. This is
+      the contradiction which establishes the claim.
+
+      Now we are almost done. Since F [At ] must be acyclic, the total number of edges is at most |At | − 1.
+      Returning to (2), we get
+                                             T
+                                             X          X                   T
+                                                                            X
+                                cost(F ) ≤         ∆t          |F ∩ ∂S| <         2|At |∆t
+                                             t=1        S∈At                t=1
+
+      Comparing with (1), we get that cost(F ) < 2dual ≤ 2opt, completing the proof of the theorem.
+
+Notes
+The first 2-approximation for Steiner Forest is in the paper [1] by Agrawal, Klein, and Ravi. The exposition
+above is from the influential paper [2] by Goemans and Williamson which also gives primal-dual algorithms
+for many other “constrained forest” problems. The integrality gap of the LP is also 2, even for the case when
+all pairs are terminals (the spanning tree problem), and the above algorithm remains the best approximation
+algorithm known for the Steiner forest problem to date. A strengthening of this relaxation is proposed in
+the paper [3] by Könemann, Leonardi, Schäfer, and van Zwam; unfortunately, that relaxation also has a gap
+arbitrarily close to 2.
+
+
+
+
+                                                         4
+References
+[1] A. Agrawal, P. Klein, and R. Ravi. When trees collide: An approximation algorithm for the generalized
+    Steiner problem in networks. SIAM J. Comput., 24:440–456, 1995.
+
+[2] M. X. Goemans and D. P. Williamson. A general approximation technique for constrained forest prob-
+    lems. SIAM Journal on Computing (SICOMP), 24(2):296–317, 1995.
+
+[3] J. Könemann, S. Leonardi, G. Schäfer, and S. H. van Zwam. A group-strategyproof cost sharing mech-
+    anism for the steiner forest game. SIAM Journal on Computing (SICOMP), 37(5):1319–1341, 2008.
+
+
+
+
+                                                   5
+

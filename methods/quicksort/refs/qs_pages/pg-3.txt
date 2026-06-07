@@ -1,0 +1,97 @@
+Quicksort
+
+which originally occupied what was to be the lower The validity of the solution may be proved by substi-
+resulting segment is: tuting in the original equation, and showing that the
+(Vr — Dr —1) result is an algebraic identity. For simplicity, the
+N coefficients of >) 7,, c, 6, and a should be considered
+
+i
+
+Summing with respect to r, dividing by MN, and adding
+one for the final exchange of the item which yielded the
+bound. we get the absolute expectation of the number
+of exchanges:
+
+separately. The correctness of the first three coeffi-
+
+cients is easily established. In verifying the coefficient
+
+of a, the following identities are used. Writing Wy for
+N
+
+an — 1 4 2 2
+
+6 6N M+11Pr N+ 1 M- |
+
+ain Ty, we get
+
+and Vy for the coefficient of
+
+This figure may be reduced by 7 if the final exchange is
+: ; ; . ; Vy =(N + IN — 2)Wy. — MN DW (1)
+always omitted in the case when the item which provided
+the bound is already in its correct position. In general _ 2 VN + 1)Wy - N
+it will not be worth while to test for this case. N ,
+Given the expected theoretical number of comparisons No
+and exchanges, it should be quite easy to calculate the =— Y} V,+N. from (1)
+expected time taken by a given program on a given Nom
+computer. The formula for the time taken to partition
+
+. . It is interesting to compare the average number of
+a segment of N items will take the form = P in
+
+comparisons required to sort N items, where N is very
+
+aN b+ ¢ large, with the theoretical minimum number of compari-
+
+Ne sons. We consider the case M = 2, and find the
+
+where the coefficients a, 6 and c are determined by the expected number of comparisons by putting a= 1,
+
+loop times of the program. The expected time taken b= c =T, = 0 in the formulae of the last paragraph.
+
+to sort N items will be denoted Ty. We shall suppose When N is very large, all terms except the largest may
+
+that a different method of sorting is used on segments be ignored. The figure obtained for the expected
+of size less than M. The values of T, for r < M are number of comparisons is
+taken as given. We shall find a recursive relationship N |
+
+to give the values of 7, for r > M. 2N>— ~ 2N log, N.
+
+rf
+
+Suppose that the value of the bound chosen for the
+
+first partition is the rth in order of magnitude. Then h ‘cal mini ber of 7
+the time taken to sort the whole segment of N items is The theoretical minimum average number of compari-
+
+equal to the time taken to partition the N items, plus sons required to sort N unequal randomly-ordered items
+the time taken to sort the r —I items of the lower may be estimated on information-theoretic considera-
+
+resulting segment, plus the time taken to sort the tions. As a result of a single binary comparison, the
+
+N —r — 1 items of the upper resulting segment. This maximum Sito) oh which may be destroyed is —log 2,
+assertion must also be true of the expected times while the original entropy of the randomly ordered data
+is —log N!; the final entropy of the sorted data is zero.
+Ty =T,+Ty ,+aN+b+ c The minimum number of comparisons required to
+N achieve this reduction in entropy is
+on condition that the first bound was the rth. Summing ;
+with respect to r and dividing by N we get the uncondi- —log M! = log, N!~ N log, N.
+
+tional expectation —log 2
+Ty = 2 S T,+aN+b6~ ©, N> M. The average number of comparisons required by
+N 1 N Quicksort is greater than the theoretical minimum by a
+The exact solution of this recurrence equation is* factor of 2 loge 2~1-4. This factor could be reduced
+AN — 1) Mel (N = Ie by the expedient of choosing as the bound for each
+ye — T, + —— partition the median of a small random sample of the
+M(M — 1) ‘1 M(M ~ 1) items in the segment. It is very difficult to estimate the
+7 a +) _ 1p saving which would be achieved by this, and it is possible
+ein that the extra complication of the program would not be
+Np AN 41) justified. Probably more worthwhile is the attempt to
+= [208 —~l) yy -—- 82 ft Ne 4a reduce as far as possible the actual time taken by the
+Mri? M1 innermost comparison cycle, and a number of simple
+
+* We adopt the convention that a sum is zero if its upper bound programming devices to achieve this will be described
+is less than its lower bound. in Part Two of this paper.
+
+12

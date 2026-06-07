@@ -1,0 +1,719 @@
+Gauss and the History of the Fast Fourier Transform
+MICHAEL T. HEIDEMAN, DON H. JOHNSON,
+C. SIDNEY BURRUS
+
+Communicated by C. TRUESDELL
+
+Introduction
+
+The fast FOURIER transform (FFT) has become well known as a very efficient
+algorithm for calculating the discrete FOURIER transform ( D F T ) - a formula for
+evaluating the N FOURIER coefficients from a sequence of N numbers. The DFT
+is used in many disciplines to obtain the spectrum or frequency content of a signal
+and to facilitate the computation of discrete convolution and correlation. Indeed,
+the publication of the FFT algorithm as a means of calculating the DFT by J. W.
+COOLEY• J. W. TUKEYin 1965 [1] was a turning point in digital signal processing
+and in certain areas of numerical analysis. They showed that the DFT, which was
+previously thought to require N 2 arithmetic operations, could be calculated by
+the new FFT algorithm using a number of operations proportional to N log N.
+This algorithm had a revolutionary effect on the way much of digital processing
+was done and the FFT remains the most widely used method of computing FOURIER transforms [2].
+In their original paper COOLEY&TuKEY referred only to the work of I. J. GOOD
+[3] published in 1958 as influencing their development. However, it was soon
+discovered there are major differences between the COOLEY-TUKEYFFT and the
+algorithm described by GooD, which is now commonly referred to as the prime
+factor algorithm (PFA). Soon after the appearance of the COOLEY-TUKEYpaper,
+RUDNICK [4] demonstrated a similar algorithm based on the work of DANIELSON
+& LANCZOS[5] which had appeared in 1942. This discovery prompted an investigation into the history of the FFT algorithm by COOLEY, LEWIS, & WELCH [6].
+They discovered that the DANIELSON-LANCZOSpaper referred to the works of
+RUNGE published at the turn of the century [7, 8]. While not influencing their work
+directly, the algorithm developed by COOLEY& TUKEYclearly had roots in the early
+twentieth century.
+In a recently published history of numerical analysis [9], H. H. GOLDSTINE
+attributes to CARL FRIEDRICH GAUSS, the eminent German mathematician, an
+algorithm similar to the FFT for the computation of the coefficients of a finite
+FOURIER series. GAUSS' treatise describing the algorithm was not published in his
+
+266
+
+M.T. HEIDEMAN,D. H. JOHNSON& C. S. BURJ~US
+
+lifetime; it appeared only in his collected works [10] as an unpublished manuscript.
+The presumed year o f the composition of this treatise is 1805, thereby suggesting
+that efficient algorithms for evaluating coefficients of FOURIER series were developed at least a century earlier than had been previously known. If this year is
+accurate, it predates FOURIER'S first presentation on harmonic analysis in 1807.
+A second reference to GAUSS' algorithm is found in an article in the Encyklopiidie
+der Mathematischen Wissenschaften [11] which was written by H. BURKHARDT
+in 1904. BURKHARDT comments that GAUSS' method was general, but seemingly
+not known by practitioners. It is interesting to note that GOLDSTINE'S and
+BURKHARDT'S works went almost as unnoticed as GAUSS' work itself.
+Because of the importance of the FFT, its history is again open to question.
+Is GAUSS' method indeed equivalent to a modern F F T algorithm ? If so, which type
+and why is this work by one of the greatest mathematicians not known by engineers
+• and physicists even after the publication of GOLDSTINE'Sbook ? What influenced
+GAUSS' work and who developed the D F T ? How firmly established is the date of
+writing? To answer these questions and to trace the history o f FOURIER series
+coefficient calculation into the eighteenth and nineteenth centuries, we undertook
+our own historical investigation,1 dealing primarily with the original texts and concentrating on GAUSS' work. What follows is a summary of our work, with historical
+references and evidence provided for the reader to pursue the history as he or she
+wishes. Another class o f efficient D F T algorithms, called prime factor algorithms,
+which include work from THOMAS [13], GOOD [3], WINOGRAD [14], and others is
+not included in this investigation.
+
+The Twentieth Century
+
+COOLEY,LEWIS, & WELCH [6] discovered that the DANIELSON-LANCZOSpaper
+referred to the work of CARL DAVID TOLMr~ RUNGE (1856-1927) [7, 8] as the
+inspiration for their algorithm. In these two papers and the book by RUNGE &
+K/3NIG [15], a doubling algorithm is decribed which computes the FOURIER transform of two N-point subsequences to obtain a 2N-point FOURIER transform
+using approximately N auxiliary operations. This algorithm is not as general as
+the COOLEY-TUKEYF F T algorithm because it only allows doubling of the original
+sequence length whereas the COOLEY-TUKEY approach efficiently computes the
+D F T for any multiple of the original length. The work of RUNGE also influenced
+STUMPFE who, in his book on harmonic analysis and periodograms [16], gives a
+doubling and tripling algorithm for the evaluation of harmonic series. Furthermore, on page 142 of that book, he suggests a generalization to an arbitrary multiple. All of this historical information was exposed by COOLEY, LEWIS, & WELCH
+[6] in much greater detail and has been repeated here to provide a background on
+the knowledge o f the history of the F F T circa 1967.
+
+1 This has resulted in a bibliography of over 2000 entries [12].
+
+Gauss and the History of the Fast Fourier Transform
+
+267
+
+The Nineteenth and Early Twentieth Centuries
+The work of RUNGE was well-known in the early part of the Twentieth Century
+and is even referred to in the popular textbook written by WHITTAKER & ROBINSON [17], which was originally published in 1924. WHITTAKER & ROBINSON state
+that RUNGE'S method has been widely published and cite a paper by SILVANUS
+PHILLIPS THOMPSON (1851--1916) [18]. THOMPSON, who was also a biographer o f
+Sir WILLIAM THOMSON, Lord KELVIN (1824-1907), was apparently trying to popularize RUNGE'S method in Great Britain through his articles [18, 19]. THOMPSON'S
+second paper [18] does not actually use an F F T method to obtain computational
+savings, but is interesting because of the discussion included at the end of the paper.
+The discussion includes comments by GEORGE HOWARD DARWIN (1845--1912),
+son of the more famous CHARLES,who claims to have used efficient techniques for
+the harmonic analysis of tides in 1883 [20], which he attributes to ARCHIBALD
+SMITH (1813--1872) in 1874 [21] and Sir RICHARD STRACHEV(1917-1908)in 1884
+[22]. In DARWIN'S paper [20], reference is made to a paper by JOSEPH DAVID
+EVERETT (1831--1904) published in 1860 [23], and credit is also given to ARCHIBALD SMITH. EVERETT was working with Lord KELVIN on harmonic analysis of
+daily temperature variations and gives a method for harmonic analysis using 12
+samples which he claims is an extension of the method used by Lord KELVIN in
+[24]. Lord KELVIN used a method based on 32 samples which was due to
+ARCHIBALD SMITH and was originally published in 1846 [25] and presented in more
+detail in 1850 [26] and 1855 [27]. Apparently S. P. THOMPSON, Lord KELVIN'S
+biographer, was unaware of the use of efficient techniques of harmonic analysis
+in this paper.
+The British discovery of efficient techniques for harmonic analysis can be
+reliably traced to ARCHIBALDSMITHin 1846. Other algorithms had been developed
+independently by various researchers in the Nineteenth Century. These techniques
+are tabulated on pp. 686-687 ofthe article by BURKHARDT [l 1]. The earliest method
+referenced by BURKHARDT is that of FRANCESCO CARLINI (1783-1862) in 1828
+[28] for n = 12. The only other method found by BURKHARDT which predates
+ARCHIBALD SMITH is that of PETER ANDREAS HANSEN (1795--1874) in 1835 [29]
+for n = 64. These works have no apparent influence on the work by the British.
+HANSEN was heavily influenced by GAUSS in his astronomical work, but does not
+mention GAUSS in the development of his algorithms for harmonic analysis for
+reasons which shall be made clear later.
+An important detail that should not be overlooked is that most of the methods
+preceding RUNGE were not intended for computing harmonics above the fourth.
+For most applications of harmonic analysis in the Nineteenth Century this was
+adequate because the measurement quantization was generally on the same order
+of magnitude as the contributions of the higher-order harmonics. These methods
+are, therefore, similar in style to what are now called 'pruned' FFT's [30]. Most of
+these methods were described by computational tables for a fixed number o f samples and were not presented as general techniques for computing harmonics for an
+arbitrary number o f samples. These algorithms consisted of grouping terms in
+the trigonometric series having the same multiplicative coefficient. Thus, a group
+of n multiplies and n - 1 additions was reduced to a single multiply and n - 1
+
+268
+
+M . T . HEIDEMAN, D . H. JOHNSON & C. S. Bum~us
+
+additions. However, such an approach will not result in what is termed today an
+efficient algorithm, such as FFT. Efficient algorithms are derived by decomposing
+a D F T into a sequence of shorter length DFTs. As will be seen, this procedure was
+that used by GAUSS; consequently, the nineteenth century work was unrelated to
+GAUSS' and did not foreshadow the twentieth century work on efficient D F T
+algorithms.
+
+The Background of Gauss' Work
+The use of trigonometric series in analysis originates in the work of LEONHARD
+EULER (1707--1783) [31-35]. In [35], EULER gives the formulas for the coefficients
+of the FOURIER series representation of a function of a real variable. In another
+work [34], EULER uses a trigonometric series to describe the motions o f a discrete
+approximation to sound propagation in an elastic medium. By example, he derives
+a formula for the coefficients of a series of sines given samples of the function, which
+can be interpreted as the D F T for a series consisting only of sines [36]. The stature
+of EULER in his own time caused his works to be read by his contemporaries,
+particularly the French mathematicians CLAIRAUT,D'ALEMBERT,and LAGRANGE.
+ALEXIS-CLAUDE CLAIRAUT (1713-1765) published in 1754 [37] what we currently
+believe to be the earliest explicit formula for the D F T (the computation for series
+coefficients from equally spaced samples of the function), but it was restricted to
+a cosine FOURIER series. DANIEL BERNOULLI(1700-1782) expressed the form of a
+vibrating string as a series of sine and cosine terms with arguments of both time
+and distance in 1753 [38]. Perhaps the most influential work in the latter portion
+of the nineteenth century on the D F T is that of JOSEPH Louis LAGRANGE(17361813). Extending the work o f EULER, he published a DFT-like formula for finite
+FOURIER series containing only sines, in 1759 [39] and in 1762 [40]. This work was
+referred to, for example, by CARLINI in his paper of 1828. The most authoritative
+compilation of the early history of trigonometric series is an article of 536 pages
+by H. BURKHARDT [41].
+CLAIRAUT and LAGRANGEwere concerned with orbital mechanics and the problem of determining from a finite set of observations the details of an orbit. Consequently, their data was periodic and they used an interpolation approach to orbit
+determination: in modern terminology and notation, an even periodic functionf(x)
+having a normalized period of one is represented as a finite trigonometric series by
+N--1
+
+f(x) = ~ a~ cos 2~kx,
+
+0 ~ x ~ 1.
+
+(1)
+
+k~0
+
+The problem is to find the coefficients {ak} from the N values o f f ( x ) for values of
+n
+
+x n = ~ - with n = 0, 1. . . . . N - 1. By forcing f(x) to equal the observed values
+at the abscissas (x,}, one can easily show that the coefficients {ag} are given by
+the cosine D F T of the observed values o f f ( x ) . GAUSS presumably knew of the
+papers of LAaRANGE [39, 40], for while a student, from 1795 to 1798, 2 he borrowed
+from the library at G6ttingen the volumes containing them.
+2 DUNNINOTONby searching the University library records [42] has compiled a list
+of books borrowed by GAUSS at G6ttingen.
+
+Gauss and the History of the Fast Fourier Transform
+
+269
+
+Gauss' Algorithm for Computing the DFT
+The treatise of interest was written by CARL FRIEDRICH GAUSS (1777-1855)
+and entitled "Theoria Interpolationis Methodo Nova Tractata". It was published
+only posthumously in Volume 3 of his collected works in 1866 [10], but was originally written, most likely, in 1805. GOLOSTINE [9] gives, on pages 249-253, an
+English translation of parts o f the sections o f GAuss' paper related to trigonometric
+interpolation algorithms, which are Articles 25 through 28 of the original Latin
+text. In this treatise, GAUSS extended the work on trigonometric interpolation to
+periodic functions which are not necessarily odd or even while considering the
+problem of determining the orbit of certain asteroids from sample locations. These
+functions are expressed by a FOURIER series of the form
+
+f(x) = ~ a~ cos 2~kx + ~ b~ sin 2:~kx,
+k=0
+
+where m = ( N -
+
+(2)
+
+k=l
+
+1)/2 for N o d d , or m = N/2 for N e v e n . GAUSS showed in
+/,/
+
+Articles 19-20 that if one were given the values of f(xn), xn = -~ (n = O, 1. . . . .
+.... N - 1), that the coefficients a/~ and bk are given by the now well-known formulas for the D F T [43]. This set of equations is the earliest explicit formula for
+the general D F T that we have found.
+GAUSS develops his efficient algorithm by using N1 equally spaced samples over
+one period of the signal. This set of NI samples is a subset o f N total samples,
+where N = N~N2. GAUSS computes the finite FOURIER series which passes
+through these samples using m harmonics where m is as defined in (2). He then
+assumes that another subset o f N1 equally spaced samples of the signal are measured which are offset from the original set of samples by a fraction, 1/?(2, of the
+original sample interval where N2 is a positive integer. A finite FOURIER series
+with m harmonics is computed which passes through this new set of samples and
+it is discovered that these coefficients are quite different from those computed for
+the original N1 samples. GAUSS realized what the problem was and proceeded to
+develop a method for correcting the coefficients he had already calculated and to
+determine additional coefficients for the higher frequency harmonics. Using modern terminology, we would say that the waveform was undersampled; therefore
+the coefficients were in error because of aliasing of the high frequency harmonics [2].
+GAuss' solution to this problem is to measure a total of N2 sets o f N1 equally
+spaced samples which together form the overall set of N equally spaced samples.
+The finite FOURIER series for the entire set of N samples is computed by first
+computing the coefficients for each of the N2 sets of length N~ all shifted relative
+to a common origin, and then computing coefficients of the N1 series o f length N2
+which are formed from the coefficients of corresponding terms in the N2 sets of
+coefficients originally computed. A final trigonometric identity is used to convert
+these coefficients into the finite FOURIER series coefficients for the N samples.
+In modern terminology, the D F T of the samples o f f ( x ) is defined by
+N--1
+
+=
+
+X(n)
+n=0
+
+(3)
+
+270
+
+M. T. HEIDEMAN,D, H. JOHNSON & C. S. BURRUS
+
+where, if f(x) has a period of one, X(n) = f(n/N) are the N equally spaced samples, WN = e -j2~/N and k = 0, 1. . . . . N - 1 are the indices of the FOURIER coefficients. This D F T can be rewritten in terms of N2 sets of N1 subsamples by the
+change of index variables [44]:
+
+n = N2nl + n2,
+k = kx + N l k 2 ,
+for n~, kl = 0, 1. . . . . N~ - 1 and /'/2, k2 ~ 0, 1. . . . . N2 - 1. Each subsequence
+is a function of nl and which subsequence it is, is denoted by I/2. The D F T in
+(3) becomes
+
+N2--1 ['NI--1
+n2=0
+oX(N2nx
+
+wnlkl wnzkl ] 1/17n2k2
+n2)
+
+N,
+
+U ]
+
+(4)
+
+where the inner sum calculates the N2 length-N1 D F T s corrected by a power of
+WN, and the outer sum calculates the N1 length-N2 DFTs. This is exactly the exponential form of GAUSS' algorithm where the WN term accounts for the shifts
+from the origin of the N2 length-N1 sequences. This is also exactly the F F T algorithm derived by COOLEY & TUKEY in 1965 [1] where WN is called a twiddle
+factor [2], a factor to correct the D F T of the inner sum for the shifted samples of
+X(n). The equivalence of GAUSS' algorithm and the COOLEY-TUKEY F F T is not
+obvious due to the notation and trigonometric fornmlation of GAUSS. One can
+easily verify the results by calculating the inner sum of (4) and comparing the numerical results with the intermediate calculation in Article 28 of [10] after converting
+from exponential to trigonometric form and correcting for factors of 1/Na. The
+example of N -- 12 for the orbit of the asteroid Pallas was worked out in Article 28
+of [10] for N1 = 4, N2 -- 3 and for N1 = 3, N2 = 4 and an example was given
+in Article 41 for N = 36 with N~ = N 2 = 6 and for the special case o f odd
+symmetry.
+In Article 27 GAUSS states that his algorithm can be generalized to the case
+where N has more than two factors, although no examples are given. This and the
+observed efficiency are seen in the following translation from Article 27.
+" A n d so for this case, where most of the proposed values o f the function X,
+an integral period of the arrangement, the number is composite and = ~ = #v,
+in articles 25, 26, we learned that through the division of that period into v
+periods o f # terms, it produces, when all values are given, the same satisfactory
+function, which by the immediate application of the general theory applies
+to the whole period; truly, that method greatly reduces the tediousness of
+mechanical calculations, success will teach the one who tries it. Now the work
+will be no greater than the explanation of how that division can be extended still
+further and can be applied to the case where the majority of all proposed values
+are composed of three or more factors, for example, if the number # would
+again be composite, in that case clearly each period o f be terms can be subdivided into m a n y lesser periods."
+
+Gauss and the History of the Fast Fourier Transform
+
+271
+
+He did not, however, go on to quantify the computational requirements of his
+method to obtain the now familiar N Z ' Ni or N log N expressions for its computational complexity. From this short excerpt, GAUSS clearly developed his procedure because it was computationally efficient and because it could be applied
+to a select, but interesting, set of sequence lengths. Thus, GAUSS' algorithm is as
+general and powerful as the COOLEY-TUKEYalgorithm and is, in fact, equivalent
+to an algorithm called decimation-in-frequency adapted to a real data sequence.
+The treatise by GAuss was not published during his lifetime and was not explicitly dated. The hints used by the biographers of GAuss [42, 45] and by us to
+establish a date for this work are summarized in the accompanying table. F r o m
+these facts, we infer that GAuss wrote this treatise in October-November, 1805.
+This work predates the work o f JEAN BAPTISTE JOSEPH FOURIER (1768-1830) in
+1807 on representations of functions as infinite series of harmonics. FOURIER
+did not publish his results until 1822 [46] because his presentation to the Academy
+of Sciences in Paris on December 21, 1807 was not welt received by LAGRANGE
+and was refused publication in the Memoirs of the Academy. An earlier manuscript of FOURIER'S dates back to 1804-1805 and includes research which he
+may have started as early as 1802 [47].
+
+Discussion
+
+The D F T approach to solving the problem of orbital mechanics was one of
+several. Approaches related to Newtonian mechanics gave alternative solutions
+to the problem, and, in the end, came to be preferred, even by GAuss. Mathematicians concerned with orbital mechanics who would have read his posthumous
+treatise at the time of its publication in 1866 probably would not have found the
+technique described therein of much interest. For the modern technical reader,
+the treatise is difficult to read because of the language and the notation adopted
+by GAUSS to describe his method. Examples of this notation are the use o f ~r as
+the length of a sequence (instead of N), the use of the symbols a, b, e, d, .... a', b',
+c', d', ..., a", b", e", d", etc. as the indices of the time series, and the use of capital letters to refer to the values of a function at a point whose index is the corresponding small letter (e.g., f(a) = A). GAUSS' method was also derived using real
+trigonometric functions rather than complex exponentials, making it more
+difficult to relate his method to current F F T techniques. Thus, the dated nature
+of the publication, its publication in Latin, and the lack of notice of GOLDSTINE'S
+and BURKHARDT'Swork contributed to the "loss" of GAUSS' F F T technique until
+now.
+
+The D F T appears to have been originated by GAUSS, although that work can
+be considered a simple extension of eighteenth century work. However, GAUSS'
+derivation o f the general D F T formula in 1805 implies that the genesis o f modern
+efficient D F T algorithms presumably could not have occurred prior to that date.
+Although it appears that the discrete FOURIER transform should have really been
+named after GAUSS, it is obviously not practical to rename it. The term "GAussFOURIER transform ( G F T ) " has already been coined by HOPE [48] in 1965 and the
+term "discrete GAuss transform ( D G T ) " has also been previously used [49].
+
+272
+
+M . T . HEIDEMAN,D. H. JOHNSON & C. S. BURRUS
+
+T. S. HUANG was unknowingly correct when he satirically remarked in 1971 that
+the F F T was GAUSS' 1001st algorithm [50].
+This investigation has once again demonstrated the virtuosity o f CARL FRIEDR:CH
+GAUSS. In addition, it has shown how certain problems can be timeless, but that
+their solution can be rediscovered again and again. BURrd-IARt)T pointed out this
+algorithm in 1904 and GOLDSTINE suggested the connection between GAUSS and
+the F F T in 1977, but both of these went largely unnoticed, presumably because
+they were published in books dealing primarily with history. I t was shown that
+various attempts at efficient algorithms were used in Great Britain and elsewhere
+in the 19t~ Century, but were unrelated to the work o f GAUSS and were, in fact, not
+as general or well-formulated as GAuss' work. Almost one hundred years passed
+between the publication o f GAUSS' algorithm and the modern rediscovery o f this
+approach by COOLEY & TUKEY.
+
+Principal Discoveries of Efficient Methods
+of Computing the DFT
+Researcher(s)
+
+Date Lengths of
+Sequence
+
+Number of Application
+DFT Values
+
+C. F. GAUSS [10]
+
+1805 Any composite
+integer
+
+All
+
+F. CARL1NI[28]
+
+1828
+
+7
+
+A. SMITH [25]
+
+1846 4, 8, 16, 32
+
+5 or 9
+
+J. D. EVERETT[23]
+
+1860
+
+5
+
+C. RUNGE [7]
+
+1903 2nK
+
+All
+
+K. STUMPFF [16]
+
+1939 2nK, 3~K
+
+All
+
+12
+
+12
+
+DANtELSON & LANCZOS[5] 1942 2n
+L. H. THOMAS[13]
+
+I. J. GOOD [3]
+COOLEY (~ TUKEY [i]
+S. WINOGRAD[14]
+
+All
+
+1948 Any integer with All
+relatively prime
+factors
+1958 Any integer with All
+relatively prime
+factors
+1965 Any composite All
+integer
+1976 Any integer with All
+relatively prime
+factors
+
+Interpolation of
+orbits of celestial
+bodies
+Harmonic analysis
+of barometric pressure variations
+Correcting deviations in compasses
+on ships
+Modeling underground temperature
+deviations
+Harmonic analysis
+of functions
+Harmonic analysis
+of functions
+X-ray diffraction in
+crystals
+Harmonic analysis
+of functions
+Harmonic analysis
+of functions
+Harmonic analysis
+of functions
+Use of complexity
+theory for harmonic
+analysis
+
+Gauss and the History of the Fast Fourier Transform
+
+273
+
+Acknowledgements. This research was supported by NSF grant ECS-83-14006,
+NASA grant NGT-44-006804, and ONR grant N00014-81-K-0565.
+Our work was greatly aided by the assistance of language scholars at Rice University.
+The Latin was translated by Dr. H. L. EAKERand Mr. W. D. MENEFEE.Relevant German
+references were translated by Dr. S. L. CLARK of Rice and Professor H. W. SCH/3SSLER
+of the Universit~t Erlangen-Ntirnberg.
+
+Dating of Gauss' Work on the FFT
+Theoria interpolationis methodo nova tractata
+Volume HI, Werke
+
+April 30, 1777
+
+GAUSS is born in Brunswick.
+
+September 1795
+
+GAUSS arrives at G6ttingen. Throughout his stay there, he
+checked out many books from the university library. In
+particular, he continually read Miscellanea Taurinensia,
+the proceedings of the academy located in Turin. When these
+proceedings were being published, LAGRANGEwas there and
+this journal served as his exclusive outlet. In Volumes I
+and III, LAGRANGZ'S D F T (sine only) appears.
+
+November 25, 1796
+
+Date given for diary entry 44, 3 which reads Formula interpolationis elegans. Translated, this entry means "Elegant
+formula for interpolation". The editor of the diary connected
+this with the LAGRANGE interpolation formula. No specific
+library books can be readily connected to this entry.
+
+December 1796
+
+Date given for diary entry 46, which reads Formulae trigonometricae per series expressae. Translated, this entry
+means "Trigonometric formulas expressed with series".
+The editor of the diary made no comment about this entry.
+
+September 28, 1798
+
+GAUSS returns home to Brunswick after finishing his studies
+at G6ttingen.
+
+December, 18041805
+
+Correspondence between GAUSS and BESSEL indicates their
+concern with the interpolation problem. No mention is
+made, however, of the trigonometric interpolation problem. 4
+
+3 The entries of GAUSS' mathematical diary are published with accompanying comments by the editors in Volume X.I of the Werke, pp. 488-571.
+4 Briefwechsel zwischen Gauss und Bessel, Leipzig, 1880.
+
+274
+
+M. T. HEIDEMAN, D. H. JOHNSON • C. S. BURRUS
+
+March 25, 1805
+
+GAUSS, in a ]etter to the astronomer OLBERS,s provides his
+latest elements for the orbit of the asteroid Juno, among
+which is the value of the eccentricity 0.254236. 6 This number
+is used by GAUSSin an example in his FFT writings. Thus
+the treatise must have been completed after this date. These
+elements were published later in Monatliche Correspondenz,
+a collection of unreviewed notes containing astronomical
+observations and information, in May, 1805.
+
+November, 1805
+
+Diary entry 124, which reads Theoriam interpolationis ulterius exeoluimus. Translated, this entry means " W e have
+worked out further a theory of interpolation". The editor
+takes this entry to mean that his treatise on interpolation
+could not have been written before November, 1805. He
+refers to a notebook of GAUSS consisting of short mathematical notes (Mathematische Brouillons), which was begun in
+October, 1805. Volume 18 of the notebook contains an opening note on interpolation. The editor takes this note to be
+a first draft of the treatise. However, the collected work of
+GAUSS does not contain this paper.
+
+January, 1806
+
+In correspondence to OLBERS7, GAuss mentions his work on
+interpolation, which he says was done "earlier". He stressed
+the novelty of the second half of the work. He enclosed a
+copy of it with the letter, asking OLBERS for criticism. In
+reply, OLBERS encouraged publication, but admitted not
+being able to follow the second half.
+
+July 30, 1806
+
+Date attached to a letter sent from GAUSS to BODE, in which
+the value of the eccentricity for Juno of 0.2549441 is given.
+Presumably, this means that the F F T treatise must have
+been written prior to this date. This letter appeared in
+Monatliche Correspondenz later in 1806. 8
+
+November 8, 1808
+
+A letter from SCHUMACHER, a former student of GAUSS, to
+GAUSS mentions that SCHUMACHER'Smother has a handwritten copy of his work on interpolation. 9 It is unclear whether
+this letter is referring to Mathematische Brouillons or the
+
+Theoria interpolationis.
+June 8, 1816
+
+SCHUMACnER writes GAUSS that he has a handwritten version
+of GAUSS' work on interpolation, which he hopes GAUSS
+will publish s o o n . 9 Thus, GAUSS did not keep this work
+secret, but presumably was not interested in publishing it.
+
+5 Briefweehsel zwisehen Olbers und Gauss, Vol. 1, Julius Springer, p. 255.
+6 Volume VI, Werke, p. 262.
+
+7 Briefweehselzwisehen Olbers und Gauss, Vol. 1, Julius Springer, pp. 281, 286.
+s Volume VI, Werke, p. 279.
+9 Volume X.2, Werke, p. 125.
+
+Gauss and the History of the Fast Fourier Transform
+
+275
+
+References
+
+1. J. W. COOLEY & J. W. TUKEY, "An Algorithm for the Machine Calculation of
+Complex Fourier Series," Math. Comput., Vol. 19, no. 2, pp. 297-301, Reprinted
+in Digital Signal Processing, ed. L. R. RABINER& C. M. RADER,pp. 223-227, New
+York: IEEE Press, 1972, Apr. 1965.
+2. E. O. BRIGHAM,The Fast Fourier Transform. Englewood, NJ: Prentice-Hall, Inc.,
+1974.
+3. 1. J. GOOD,"The Interaction Algorithm and Practical Fourier Analysis," J. R. Statist.
+Soe. B, Vol. 20, no. 2, pp. 361-372, 1958, Addendum in J. R. Statist. Soc. B,
+vol. 22, no. 2, pp. 372-375, 1960.
+4. P. RUDNICK,"Note on the Calculation of Fourier Series," Math. Comput., Vol. 20,
+no. 3, pp. 429-430, Jul. 1966.
+5. G. C. DANIELSON& C. LANCZOS,"Some Improvements in Practical Fourier Analysis
+and Their Application to X-ray Scattering From Liquids," J. Franklin Inst., Vol. 233,
+no. 4 and 5, pp. 365-380 and 435-452, Apr. and May 1942.
+6. J. w. COOLEY, P . A . W . LEwis & P. D. WELCH~ "Historical Notes on the Fast
+Fourier Transform," IEEE Trans. Audio Electroacoust., Vol. AU-15, no. 2, pp. 7679, Jun. 1967, Reprinted in Proc. IEEE, vol. 55, no. 10, pp. 1675-1677, Oct. 1967.
+Also reprinted in Digital Signal Processing, ed. L. R. RABINER & C. M. RADER,
+pp. 260-262, New York: IEEE Press 1972.
+7. C. RUNGE, "t2ber die Zerlegung empirisch gegebener Periodischer Funktionen
+in Sinuswellen," Z. Math. Phys., Vol. 48, pp. 443-456, 1903.
+8. C. RUNGE, "~ber die Zerlegung einer empirischen Funktion in Sinuswellen," Z.
+Math. Phys., Vol. 52, pp. 117-123, •905.
+9. H. H. GOLDSTINE,A History of Numerical Analysis from the 16th Through the 19th
+Century. Berlin, Heidelberg, and New York: Springer-Verlag, 1977.
+10. C. F. GAuss, "Nachlass, Theoria Interpolationis Methodo Nova Tractata," in
+Carl Friedrich Gauss Werke, Band 3, K6niglichen Gesellschaft der Wissenschaften:
+G6ttingen, pp. 265-330, 1866.
+11. H. BURKHARDT,"Trigonometrische Interpolation," in Chapter 9, Encyklopddie der
+Mathematischen Wissenschaften, vol. 2, part 1, 1st half, 1899-1916.
+12. M. T. HEIDr~AN & C. S. BURRUS, "A Bibliography of Fast Transform and Convolution Algorithms II," Technical Report Number 8402, Electrical Engineering
+Dept., Rice University, Houston, TX 77251-1892, Feb. •984.
+13. L. H. THOMAS,"Using a Computer to Solve Problems in Physics," in Applications
+of Digital Computers, Boston: Ginn, 1963.
+14. S. WINOGRAD,"On Computing the Discrete Fourier Transform," Proc. Nat. Acad.
+Sci. USA, Vol. 73, no. 4, pp. 1005-1006, Apr. 1976.
+15. C. RUNGE & H. K&qIG, "Vorlesungen tiber Numerisches Rechnen," Die Grundlehren
+der Mathematischen Wissensehaften, Vol. 11, pp. 211-237, Berlin: Julius Springer,
+1924.
+16. K. STUMVEF, TafeIn und Aufgaben zur Harmonischen Analyse und Periodogrammrechnung. Berlin: Julius Springer, 1939.
+17. E. T. WHITTAKER& G. ROBINSON, The Calculus of Observations. London: Blackie
+and Sons, Limited, 1924.
+18. S.P. THOMVSON, "A New Method of Approximate Harmonic Analysis by Selected
+Ordinates," Proc. Phys. Soc. London, Vol. 23, pp. 334-343, 1911.
+19. S. P. THOMVSON,"Note on a Rapid Method of Harmonic Analysis," Proc. Phys. Soc.
+London, Vol. 19, pp. 443-453, 1904.
+20. G. H. DARWJN & J. C. ADAMS, "The Harmonic Analysis of Tidal Observations,"
+
+276
+
+M.T. HEIDEMAN,D. H. JOHNSON& C. S. BURRUS
+
+Brit. Assoc. Report, pp. 49-118, 1883, Reprinted in G.H.DAaWIN: ScientifiePapers
+Volume 1." Oceanic Tides and Lunar Disturbances of Gravity, pp. 1-69, Cambridge:
+University Press, 1907.
+21. A. SMIIH, Admiralty Scientific Mannal on 'Deviations of the Compass', 5th Edition.
+London: Hydrographic Office, Admiralty, 1874.
+22. R. STRACHEV,"On the Computation of the Harmonic Components of a Series Representing a Phenomenon Recurring in Daily and Yearly Periods," Proc. Roy. Soe.
+London, Vol. 42, no. 251, pp. 61-79, 1887.
+23. J. D. EVERETT,"On a Method of Reducing Observations of Underground Temperature, With its Application to the Monthly Mean Temperatures of Underground
+Thermometers at the Royal Edinburgh Observatory," Trans. Roy. Soc. Edin.,
+Vol. 22, no. 2, pp. 429--439, 1860.
+24. W. THOMSON, "On the Reduction of Observations of Underground Temperature;
+With Application to Professor Forbes' Edinburgh Observations, and the Continued
+Carlton Hill Series," Trans. Roy. Soc. Edin., Vol. 22, no. 2, pp. 405-427, Reprinted
+in Mathematical and Physical Papers, VoL 3 of WILLIAMTHOMSON, Lord KELVIN,
+pp. 261--290, London: C. J. Clay and Sons, Cambridge Univ. Press, 1890, 1860.
+25. A. SMITH ~¢ E. SABINE, "Contributions to Terrestrial Magnetism No. VIII, Memorandum on Elements of Reduction," Phil. Trans. Roy. Soc. London, Vol. 136, no. 3,
+pp. 347-355, 1846.
+26. A. SMITH, Instructions for the Computation of a Table of the Deviations of a Ship's
+Compass, From Deviations Observed on 4, 8, 16, and 32 Points, and for the Adjustment of the Table on a Change of Magnetic Latitude. London: Gt. Brit. Hydrographic Office, 1850.
+27. A. SMITH,Supplement to the Practical Rules for Ascertaining the Deviations of the
+Ship's Compass Caused by the Ship's Iron, Being Instructions for the Computation of
+a Table of the Deviation of the Ship's Compass from Observations Made on 4, 8, 16,
+or 32 Points (Second Edition) and a Graphic Method of Correcting the Deviations of
+a Ship's Compass. London: J. D. Potter, 1855.
+28. F. CARLINI,Sulla Legge Delle Variazioni Orarie del Barometro. Modena: Presso la
+Tipographia Camerale, 1828. Also in Societdt Italiana della Seienze, Rome, Memorie
+di Matematica e di Fisiea, vol. 20, p. 198, 1828.
+29. P. A. HANSEN, Mdmoire Sur la Ddtermination des Perturbations Absolues dans des
+Ellipses d' une Excentrici td et d' une Inclinaison Quelconques. Paris: Bachelier, 1835.
+30. J. D. MARKEL, "FFT Pruning," IEEE Trans. Audio Electroacoust., Vol. AU-19,
+no. 4, pp. 305-311, Dec. 1971.
+31. L. EULER, Introductio in AnaIysin btfinitorum. Lausanne: Marc-Michel Bousquet et
+Comp., 1748. Reprinted in Leonhardi Euleri Opera Omnia, Series I, Volume 8.
+32. L. EULER, "Observationes Generales Circa Series Quarum Termini Secundum Sinus
+vel Cosinus Angulorum Multiplorum Progrediuntur," Nova Acta Academiae Scientiarum Petropolitanae, Vol. 7, pp. 87-98, 1793, Reprinted in Leonhardi Euleri Opera
+Omnia, Series I, Volume 16, pp. 163-177.
+33. L. EULER, "Methodus Facilis Inveniendi Series per Sinus Cosinusve Angulorum
+Multiplorum Procedentes Quarum Usus in Universa Theoria Astronomiae est
+Amplissimus," Nova Acta Academiae Scientiarum Petropolitanae, Vol. 11, pp. 94113, 1798, Reprinted in Leonhardi Euleri Opera Omnia, Series I, Volume 16, pp. 311332.
+34. L. EULER, "De Propagatione Pulsuum per Medium Elasticum," Novi Commentarii
+aeademiae scientiarum Petropolitanae, Vol. 1, pp. 67-105, 1750, Reprinted in Leonhardi Euleri Opera Omnia, Series II, Volume 10, pp. 98-131.
+35. L. EULER, "De Serierum Determinatione seu Nova Methodus Inveniendi Terminos
+
+Gauss and the History of the Fast Fourier Transform
+
+277
+
+Generales Serierum," Novi Commentarii academiae seientiarium Petropolitanae,
+Vol. 3, pp. 36-85, 1753, Reprinted in Leonhardi Euleri Opera Omnia, Series I, Volume 14 pp. 463-515.
+36. C. TROESDELL,"The Rational Mechanics of Flexible or Elastic Bodies," in Leonhardi
+Euleri Opera Omnia, pp. 229-234, Series 11, Volume 11, Section 2, 1960.
+37. A.-C. CLAIRAUT,"M6moire sur l'Orbite Apparente du Soleil Autour de la Terre,
+en Ayant 6gard aux Perturbations Produites par les Actions de la Lune et des Plan6tes Principales," Mdmoires de Mathdmatique et de Physique de l'Acaddmie Royale
+des Sciences, no. 9, pp. 801-870, 1754.
+38. D. BERNOULLI,"R6flexions et &laircissemens sur les Nouvelles Vibrations des Curdes," Mdmoires de l'Acaddmie Royale des Sciences et Belles Lettres, Berlin, 1753.
+39. J. L. LAGRANGE,"Recherches sur la Nature et la Propagation du Son," Miscellanea
+Taurinensia (Mdlanges de Turin), Vol. I, no. I - X , pp. 1-112, 1759, Reprinted in
+~Euvres de Lagrange, Volume 1, ed. J. A. SERRET,pp. 39-148, Paris: Gauthier-Villars, 1867.
+40. J. L. LAGRANGE,"Solution de Diff6rents Probl6mes de Calcul Int6gral," Miscellanea Taurinensia (Mdlanges de Turin), Vol. 1II, Reprinted in (Euvres de Lagrange,
+Volume 1, ed. J.A. SERRET,pp. 469--668, Paris: Gauthier-Villars, 1867, 1762-1765.
+41. H. BURKHARDT, "Trigonometrische Reihen und Integrale (his etwa 1850)," in Chapter 12, Encyklopiidie der Mathematischen Wissenschaften, vol. 2, part 1, 2nd half,
+1904-1916.
+42. G. W. DUNNINGTON, Carl Friedrich Gauss: Titan of Science. New York: Exposition
+Press, 1955.
+43. R. N. BRACEWELL,The Fourier Transform andIts Applications. New York: McGrawHill, 1978.
+44. C. S. BURRUS, "Index Mappings for Multidimensional Formulation of the D F T and
+Convolution," IEEE Trans. on ASSP, Vol. ASSP-25, no. 3, pp. 239-242, Jun. 1977.
+45. U. C. MERZBACH, Carl Friedrich Gauss: A Bibliography. Wilmington, DE: Scholarly
+Resources Inc., 1984.
+46. J. B. J. FOURIER, Thdorie Analytique de la Chaleur. Paris: F. Didot, 1822. English
+translation in The Analytical Theory of Heat, translated by ALEXANDERFREEMAN,
+Cambridge: University Press, 1878.
+47. J. HERIVEL, Joseph Fourier: The Man and the Physicist. Oxford: Clarendon Press,
+1975.
+48. L. L. HovE, "A Fast Gaussian Method for Fourier Transform Evaluation," Proe.
+IEEE, Vol. 63, no. 9, pp. 1353-1354, Sep. 1975.
+49. I. J. GOOD, "Inversion of the Discrete Gauss Transform," Applic. Anal., Vol. 9, no. 3
+pp. 205-218, Oct. 1979.
+50. T. S. HUANG, " H o w the Fast Fourier Transform Got Its Name," Computer, Vol. 4,
+no. 3, p. 15, May-Jun. 1971.
+Department of Electrical & Computer
+Engineering
+Rice University
+Houston, Texas
+
+(Received February 28, 1985)
+
+

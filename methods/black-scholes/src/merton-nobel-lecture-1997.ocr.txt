@@ -1,0 +1,2038 @@
+85
+
+APPLICATIONS OF OPTION-PRICING THEORY:
+TWENTY-FIVE YEARS LATER*
+
+Nobel Lecture, December 9, 1997
+by
+ROBERT C. MERTON
+
+Graduate School of Business Administration, Harvard University, Boston,
+MA 02163, USA and Long-Term Capital Management, L-P., Greenwich,
+CT 06831, USA
+
+INTRODUCTION'
+
+The news from Stockholm that the prize in economic sciences had been
+given for option-pricing theory provided unique and signal recognition to
+the rapidly advancing, but still relatively new discipline, within economics
+which relates mathematical finance theory and finance practice. The special
+sphere of finance within economics is the study of allocation and deployment
+of economic resources, both spatially and across time, in an uncertain en-
+vironment. To capture the influence and interaction of time and uncertainty
+effectively requires sophisticated mathematical and computational tools.
+Indeed, mathematical models of modern finance contain some truly elegant
+applications of probability and optimization theory. These applications chal-
+lenge the most powerful computational technologies. But, of course, all that
+is elegant and challenging in science need not also be practical; and surely,
+not all that is practical in science is elegant and challenging. Here we have
+both. In the time since publication of our early work on the option-pricing
+model, the mathematically complex models of finance theory have had a
+direct and wide-ranging influence on finance practice. This conjoining of in-
+trinsic intellectual interest with extrinsic application is central to research in
+modern finance.
+
+It was not always thus. The origins of much of the mathematics in modern
+finance can be traced to Louis Bachelier’s 1900 dissertation on the theory of
+speculation, framed as an option-pricing problem. This work marks the twin
+births of both the continuous-time mathematics of stochastic processes and
+the continuous-time economics of derivative-security pricing. Kiyoshi Ito
+(1987) was greatly influenced by Bachelier’s work in his development in the
+
+* | am grateful to Robert K. Merton, Lisa Meulbroek, and Myron Scholes for their helpful sug-
+gestions on this lecture and for so much more. Over the past thirty years, I have come to owe an
+incalculable debt to Paul A. Samuelson, my teacher, mentor, colleague, co-researcher, and friend.
+Try as I have (cf. Merton, 1983, 1992), I cannot find the words to pay sufficient tribute to him. I
+dedicate this lecture to Paul and to the memory of Fischer Black. Copyright © Nobel Foun-
+dation.
+
+! This section draws on Merton (1994, 1995, 1997b).
+
+
+===PAGEBREAK===
+
+86 Economic Sciences 1997
+
+1940s and early 1950s of the stochastic calculus, later to become an essential
+mathematical tool in finance. Paul Samuelson’s theory of rational warrant
+pricing, published in 1965, was also motivated by the same piece. However,
+Bachelier’s important work was largely lost to financial economists for more
+than a half century. During most of that period, mathematically complex
+models with a strong influence on practice were not at all the hallmarks of
+finance theory. Before the pioneering work of Markowitz, Modigliani, Miller,
+Sharpe, Lintner, Fama, and Samuelson in the late 1950s and 1960s, finance
+theory was little more than a collection of anecdotes, rules of thumb, and
+shuffling of accounting data. It was not until the end of the 1960s and early
+1970s that models of finance in academe become considerably more sophis-
+ticated, involving both the intertemporal and uncertainty dimensions of
+valuation and optimal decision-making. The new models of dynamic portfo-
+lio theory, intertemporal capital asset pricing, and derivative-security pricing
+employed stochastic differential and integral equations, stochastic dynamic
+programming, and partial differential equations. These mathematical tools
+were a quantum level more complex than had been used in finance before
+and they are still the core tools employed today.
+
+The most influential development in terms of impact on finance practice
+was the Black-Scholes model for option pricing. Yet paradoxically, the mathe-
+matical model was developed entirely in theory, with essentially no reference
+to empirical option-pricing data as motivation for its formulation. Publication
+of the model brought the field to almost immediate closure on the funda-
+mentals of option-pricing theory. At the same time, it provided a launching
+pad for refinements of the theory, extensions to derivative-security pricing in
+general, and a wide range of other applications, some completely outside the
+realm of finance. The Chicago Board Options Exchange (CBOE), the first
+public options exchange, began trading in April 1973, and by 1975, traders
+on the CBOE were using the model to both price and hedge their option po-
+sitions. It was so widely used that, in those pre-personal-computer days, Texas
+Instruments sold a handheld calculator specially programmed to produce
+Black-Scholes option prices and hedge ratios. That rapid adoption was all the
+more impressive, as the mathematics used in the model were not part of the
+standard mathematical training of either academic economists or practi-
+tioner traders.
+
+Academic finance research of the 1960s including capital asset pricing, per-
+formance and risk measurement, and the creation of the first large-scale data-
+bases for security prices essential for serious empirical work have certainly in-
+fluenced subsequent finance practice. Still the speed of adoption and the
+intensity of that influence was not comparable to the influence of the option
+model. There are surely several possible explanations for the different rates
+of adoption in the 1960s and the 1970s. My hypothesis is that manifest “need”
+determined that difference. In the 1960s, especially in the United States,
+financial markets exhibited unusually low volatility: the stock market rose
+steadily, interest rates were relatively stable, and exchange rates were fixed.
+Such a market environment provided investors and financial-service firms
+
+
+===PAGEBREAK===
+
+Robert C. Merton 87
+
+with little incentive to adopt new financial technology, especially technology
+designed to help manage risk. However, the 1970s experienced several events
+that caused both structural changes and large increases in volatility. Among
+the more important events were: the shift from fixed to floating exchange
+rates with the fall of Bretton Woods and the devaluation of the dollar; the
+world oil-price shock with the creation of OPEC; double-digit inflation and
+interest rates in the United States; and the extraordinary real-return decline
+in the U.S. stock market from a peak of around 1050 on the Dow Jones
+Industrial Average in the beginning of 1973 to about 580 at the end of 1974.
+As a result, the increased demand for managing risks in a volatile and struc-
+turally different economic environment contributed to the major success of
+the derivative-security exchanges created in the 1970s to trade listed options
+on stocks, futures on major currencies, and futures on fixed-income instru-
+ments. This success in turn increased the speed of adoption for quantitative
+financial models to help value options and assess risk exposures.
+
+The influence of option-pricing theory on finance practice has not been
+limited to financial options traded in markets or even to derivative securities
+generally. As we shall see, the underlying conceptual framework originally
+used to derive the option-pricing formula can be used to price and evaluate
+the risk in a wide array of applications, both financial and non-financial.
+Option-pricing technology has played a fundamental role in supporting the
+creation of new financial products and markets around the globe. In the
+present and in the impending future, that role will continue expanding to
+support the design of entirely new financial institutions, decision-making by
+senior management, and the formulation of public policy on the financial
+system. To underscore that point, I begin with a few remarks about financial
+innovation of the past, this adumbration to be followed in later sections with
+a detailed listing of applications of the options technology that include some
+observations on the directions of future changes in financial services.
+
+New financial product and market designs, improved computer and tele-
+communications technology and advances in the theory of finance during
+the past quarter-century have led to dramatic and rapid changes in the struc-
+ture of global financial markets and institutions. The scientific breakthroughs
+in financial modeling in this period both shaped and were shaped by the ex-
+traordinary flow of financial innovation which coincided with those changes.
+Thus, the publication of the option-pricing model in 1973 surely helped the
+development and growth of the listed options and over-the-counter (OTC)
+derivatives markets. But, the extraordinary growth and success of those mark-
+ets just as surely stimulated further development and research focus on the
+derivative-security pricing models. To see this in perspective, consider some
+of the innovative changes in market structure and scale of the global financial
+system since 1973. There occurred the aforementioned fall of Bretton Woods
+leading to floating-exchange rates for currencies; the development of the na-
+tional mortgage market in the United States which in turn restructured that
+entire industry; passage of the Employee Retirement Income Security Act
+(ERISA) in 1974 with the subsequent development of the U.S. pension-fund
+
+
+===PAGEBREAK===
+
+88 Economic Sciences 1997
+
+industry; the first money-market fund with check writing that also took place
+in 1974; and the explosive growth in mutual fund assets from $48 billion 25
+years ago to $4.3 trillion today (a ninety-fold increase), with one institution,
+Fidelity Investments, accounting for some $500 billion by itself. In this same
+period, average daily trading volume on the New York Stock Exchange grew
+from 12 million shares to more than 300 million. Even more dramatic were
+the changes in Europe and in Asia. The cumulative impact has significantly
+affected all of us—as users, producers, or overseers of the financial system.
+
+Nowhere has this been more the case than in the development, refinement
+and broad-based implementation of contracting technology. Derivative secu-
+rities such as futures, options, swaps and other contractual agreements-—the
+underlying substantive instruments for which our model was developed—pro-
+vide a prime example. Innovations in financial-contracting technology have
+improved efficiency by expanding opportunities for risk sharing, lowering
+transactions costs and reducing information and agency costs. The numbers
+reported for the global use of derivative securities are staggering (the figure of
+$70 trillion appeared more than once in the news stories surrounding the
+award of the Prize and there are a number of world banking institutions with
+reported multi-trillion dollar, off-balance-sheet derivative positions). How-
+ever, since these are notional amounts (and often involve double-counting),
+they are meaningless for assessing either the importance or the risk-exposure
+to derivative securities. Nevertheless, it is enough to say here that, properly
+measured, derivatives are ubiquitous throughout the world financial system
+and that they are used widely by non-financial firms and sovereigns as well as
+by institutions in virtually every part of their financing and risk-managing ac-
+tivities. Some observers see the extraordinary growth in the use of derivatives
+as fad-like, but a more likely explanation is the vast saving in transactions costs
+derived from their use. The cost of implementing financial strategies for in-
+stitutions using derivatives can be one-tenth to one-twentieth of the cost of ex-
+ecuting them in the underlying cash-market securities.® The significance of
+reducing spread costs in financing can be quite dramatic for corporations
+and for sovereigns: for instance, not long ago, a | percent (i.e., 100-basis-
+point) reduction in debt-spread cost on Italian government debt would have
+reduced the deficit by an amount equal to 1.25 percent of the gross domestic
+product of Italy.
+
+Further improved technology, together with growing breadth and experi-
+ence in the applications of derivatives, should continue to reduce transac-
+tions costs as both users and producers of derivatives move along the learning
+curve. Like retail depositors with automatic-teller machines in banks, initial
+
+? Notional amounts typically represent either the total value of the underlying asset on which pay-
+ments on the derivative is determined (e.g interest-rate swap contracts) or the exercise price on
+an option. The value of the derivative contract itself is often a small fraction of its notional
+amount.
+
+5 See André F. Perold (1992) for a case study illustrating the savings in transactions costs, taxes,
+and custodial fees from using derivatives instead of the cash market. Myron S. Scholes (1976)
+provides an early analysis of the effect of taxes on option prices.
+
+
+===PAGEBREAK===
+
+Robert C. Merton 89
+
+resistance by institutional clients to contractual agreements can be high, but
+once customers use them they tend not to return to the traditional alterna-
+tives for implementing financial strategies.
+
+A central process in the past two decades has been the remarkable rate of
+globalization of the financial system. Even today, inspection of the diverse fi-
+nancial systems of individual nation-states would lead one to question how ef-
+fective integration across geopolitical borders could have realistically taken
+place since those systems are rarely compatible in institutional forms, regula-
+tions, laws, tax structures, and business practices. Still, significant integration
+did take place. This was made possible in large part by derivative securities
+functioning as “adapters”. In general, the flexibility created by the widespread
+use of contractual agreements, other derivatives, and specialized institutional
+designs provides an offset to dysfunctional institutional rigidities.* More spe-
+cifically, derivative-security contracting technologies provide efficient means
+for creating cross-border interfaces among otherwise incompatible domestic
+systems, without requiring widespread or radical changes within each system.
+For that reason, implementation of derivative-security technology and mar-
+kets within smaller and emerging-market countries may help form important
+gateways of access to world capital markets and global risk-sharing. Such dev-
+elopments and changes are not limited only to the emerging-market coun-
+tries with their new financial systems. Derivatives and other contracting tech-
+nologies are likely to play a significant role in the financial engineering of the
+major transitions required for European Monetary Union and for the major
+restructuring of financial institutions in Japan.
+
+With this introduction as background, I turn now to the key conceptual
+and mathematical framework underlying the option-pricing model and its
+subsequent applications.
+
+GENERAL DERIVATION OF DERIVATIVE-SECURITY PRICING
+
+I understand that it is customary in these lectures for the Laureates to review
+the background and the process leading up to their discoveries. Happily,
+there is no need to do so here since that has been done elsewhere in Black
+(1989), Bernstein (1992, Ch.11), Merton and Scholes (1995), and Scholes
+(1998). Instead, I briefly summarize. My principal contribution to the Black-
+Scholes option-pricing theory was to show that the dynamic trading strategy
+prescribed by Black and Scholes to offset the risk exposure of an option
+would provide a perfect hedge in the limit of continuous trading. That is, if
+one could trade continuously without cost, then following their dynamic trad-
+ing strategy using the underlying traded asset and the riskless asset would ex-
+actly replicate the payoffs on the option. Thus, in a continuous-trading fi-
+
+* Scholes and Mark A. Wolfson (1992) develop the principles of security and institutional design
+along these lines. See also Perold (1992) and Merton (1993, 1995). Inspection of the weekly
+International Financing Review will find the widespread and varied applications of financial engi-
+neering, derivatives, special-purpose vehicles and securities for private-sector and sovereign fi-
+nancing in every part of the world.
+
+
+===PAGEBREAK===
+
+90 Economic Sciences 1997
+
+nancial environment, the option price must satisfy the Black-Scholes formula
+
+or else there would be an opportunity for arbitrage profits. To demonstrate
+
+this limit-case result, I applied the tools developed in my earlier work (1969;
+
+1971) on the continuous-time theory of portfolio selection. My 1973 paper
+
+also extended the applicability of the Black-Scholes model to allow for sto-
+
+chastic interest rates on the riskless asset, dividend payments on the underly-
+ing asset, a changing exercise price, American-type early-exercise of the op-
+tion, and other “exotic” features such as the “down-and-out” provision on the
+option. I am also responsible for naming the model, “the Black-Scholes
+
+Option-Pricing Model.”
+
+The derivations of the pricing formula in both of our 1973 papers make
+the following assumptions:
+
+1) “frictionless” and “continuous” markets: there are no transactions costs or
+differential taxes. Markets are open all the time and trading takes place
+continuously. Borrowing and short-selling are allowed without restric-
+tion. The borrowing and lending rates are equal.
+
+Il) Underlying asset-price dynamics: let V= V(t) denote the price at time ¢ of a
+limited-liability asset, such as a share of stock. The posited dynamics for
+the instantaneous returns can be described by an Ité-type stochastic dif-
+ferential equation with continuous sample paths given by
+
+dV= [aV-D,(Vt)]dt+ oVdZ
+
+where: @ = instantaneous expected rate of return on the security; 0? = in-
+stantaneous variance rate, which is assumed to depend, at most, on V(t) and
+t (i.e., 0? = 0°(V,t)); dZis a Wiener process; and D, = dividend payment flow
+rate. With limited liability, to avoid arbitrage, V(t) = Ofor all ¢> if Vie) = 0.
+Hence D, must satisfy D,(0,t) = 0. Other than a technical requirement of
+bounded variation, @ can follow a quite general stochastic process, depend-
+ent on VY, other security prices, or state variables. In particular, the assumed
+dynamics permit a mean-reverting process for the underlying asset’s returns.
+
+III) Default-free bond-price dynamics: bond returns are assumed to be described
+by Ité stochastic processes with continuous sample paths. In the original
+Black and Scholes formulation and for exposition convenience here, it is
+assumed that the riskless instantaneous interest rate, r(i) = 7 is a constant
+over time.
+
+IV) Investor preferences and expectations: investor preferences are assumed to
+prefer more to less. All investors are assumed to agree on the function o
+
+5’ My 1970 working paper was the first to use the “Black-Scholes” label for their model (cf. Merton
+1992, p. 379). This same paper was given at the July 1970 Wells Fargo Capital Market Conference,
+since made “famous” (or notorious) by Bernstein (1992, p. 223) as the one at which I “...incon-
+veniently overslept...” the morning session and missed the Black and Scholes presentation. The
+second instance naming their model was in the 1971 working-paper version of Merton (1973a).
+Samuelson (1972) is the first published usage: both in the main text and in my appendix to that
+paper which derives the model and refers to it as the “Black-Scholes formula.” The formula is
+cited in Roger J. Leonard (1971) and Carliss Baldwin (1972), the earliest theses to apply the
+model. Somewhat ironically, all these references to the “Black-Scholes model” appear before the
+actual publication of either Black and Scholes (1972) or (1973).
+
+
+===PAGEBREAK===
+
+Robert C. Merton 91
+
+and on the It6 process characterization for the return dynamics. It is not
+assumed that they agree on the expected rate of return, @.
+
+V) Functional dependence of the option-pricing formula: the option price is as-
+sumed to be a twice-continuously differentiable function of the asset
+price, V, default-free bond prices, and time.
+
+In the particular case of a nondividend-paying asset (D, = 0) and a constant
+variance rate, 0’, these assumptions lead to the Black-Scholes option-pricing
+formula for a European-type call option with exercise price L and expiration
+date T, written as
+
+(1) C(V, t) = V Nd) - L exp(-r[T-t]) N(d-o NT -t)
+
+where d = ( In[V/L] + [r + 0°/2][T-t]) /o0 V T -t and N() is the cumulative densi-
+ty function for the standard normal distribution.
+
+Subsequent research in the field proceeded along three dimensions: appli-
+cations of the technology to other than financial options (which is discussed
+in the next section); empirical testing of the pricing formula, which began
+with a study using over-the-counter data from a dealer’s book obtained by
+Black and Scholes (1972); attempts to weaken the assumptions used in the
+derivation, and thereby to strengthen the foundation of the applications dev-
+eloped from this research. The balance of this section addresses issues of the
+latter dimension.
+
+Early concerns raised about the model’s theoretical foundation came from
+Long (1974) and Smith (1976), who questioned Assumption V: namely, how
+does one know that the option prices do not depend on other variables than
+the ones assumed (for instance, the price of beer), and why should the pric-
+ing function be twice-continuously differentiable? These concerns were
+resolved in an alternative derivation in Merton (1977b) which shows that
+Assumption V. is a derived consequence, not an assumption, of the analysis.°
+
+A broader, and still open, research issue is the robustness of the pricing for-
+mula in the absence of a dynamic portfolio strategy that exactly replicates the
+payoffs to the option security. Obviously, the conclusion on that issue de-
+pends on why perfect replication is not feasible as well as on the magnitude of
+the imperfection. Continuous trading is, of course, only an idealized pro-
+spect, not literally obtainable; therefore, with discrete trading intervals,
+replication is at best only approximate. Subsequent simulation work has
+shown that within the actual trading intervals available and the volatility levels
+of speculative prices, the error in replication is manageable, provided, how-
+ever, that the other assumptions about the underlying process obtain. Cox
+
+® As another instance of early questioning of the core model, a paper I refereed argued that
+Black-Scholes must be fundamentally flawed because a different valuation formula is derived
+from the replication argument if the R. L. Stratonovich (1968) stochastic calculus is used for
+modeling instead of the It6 calculus. My report showed that while the paper’s mathematics were
+correct, its economics were not: A Stratonovich-type formulation of the underlying price process
+implies that traders have a partial knowledge about future asset prices that the non-anticipating
+character of the It6 process does not. The “paradox” is thus resolved because the assumed infor-
+mation sets are essentially different and hence, so should the pricing formulas.
+
+
+===PAGEBREAK===
+
+92 Economic Sciences 1997
+
+and Ross (1976) and Merton (1976a, b) relax the continuous sample-path as-
+sumption and analyze option pricing using a mixture of jump and diffusion
+processes to capture the prospect of non-local movements in the underlying
+asset’s return process.” Without a continuous sample path, replication is not
+possible and that rules out a strict no-arbitrage derivation. Instead, the deri-
+vation of the option-pricing model is completed by using equilibrium asset
+pricing models such as the Intertemporal CAPM [Merton (1973b)] and the
+Arbitrage Pricing Theory [Ross (1976a)].* This approach relates back to the
+original way in which Black and Scholes derived their model using the classic
+Sharpe-Lintner CAPM.’ There has developed a considerable literature on the
+case of imperfect replication (Cf. Bertsimas, Kogan, and Lo [1997], Breeden
+[1984], Davis [1997], Figlewski [1989], Féllmer and Sondermann [1986],
+and Romano and Touzi [1997]).
+
+On this occasion, I re-examine the imperfect-replication problem for a de-
+rivative security linked to an underlying asset that is not continuously avail-
+able for trading in an environment in which some assets are tradable at any
+time. As is discussed in the section to follow, non-tradability is the circum-
+stance for several important classes of applications that have evolved over the
+last quarter century, which include among others, the pricing of financial
+guarantees such as deposit and pension insurance and the valuation of non-
+financial or “real” options. Since the Black-Scholes model was derived by as-
+suming that the underlying asset is continuously traded, questions have been
+raised about whether the pricing formula can be properly applied in those
+applications. The derivation follows along the lines presented in Merton
+(1977b, 1997b) for the perfect-replication case.
+
+A derivative security has contractually determined payouts that can be de-
+scribed by functions of observable asset prices and time. These payout func-
+tions define the derivative. We express the terms as follows:
+
+Let W(t) = price of a derivative security at time 1.
+
+If V(t) > V(t) for OSt<T, then W(t) = f[V(2),¢]
+(2) If V(t) < V(t) for 0<t <T, then W(t) = g[V(t),¢]
+
+If t=T, then W(T)=HV(T)|
+
+7 Since a discontinuous sample-path price process for the underlying asset rules out perfect
+hedging even with continuous trading but a continuous-sample-path process with stochastic vo-
+latility does not, there is considerable interest in testing which process fits the data better. See
+Eric Rosenfeld (1980), an early developer of such tests and James B. Wiggins (1987).
+
+8 The important Douglas T. Breeden (1979) Consumption-based Capital Asset Pricing Model,
+which was not published at the time of these papers, can also be used to complete those models.
+® See Black (1989) and Scholes (1998). Fischer Black always maintained with me that the CAPM-
+version of the option-model derivation was more robust because continuous trading is not feasi-
+ble and there are transactions costs. As noted in Merton (1973a, p. 116), the discrete-time
+Samuelson-Merton (1969) model also gives the Balck-Scholes formula under special conditions.
+
+
+===PAGEBREAK===
+
+Robert C. Merton 93
+
+For O< ts T, the derivative security receives a payment flow rate specified by
+D,(V,t). The terms as described in (2) are to be interpreted as follows: the first
+time that V(é) = V(d) or V(2) < V(2), the owner of the derivative must exchange
+it for cash according to the schedule in (2). If no such events occur for t< T,
+then the security is redeemed at ¢= T for cash according to (2). Tis called the
+maturity date (or expiration date, or redemption date) of the derivative. The
+derivative security is thus defined by specifying the contingent payoff func-
+tions f, g, h, D,, and T. In some cases, the schedules or the boundaries V(t)
+and V(t) are contractually specified; in others, they are determined endo-
+genously as part of the valuation process, as in the case of the early-exercise
+boundary for an American-type option.
+
+By arbitrage restrictions, the derivative security will have limited liability if
+and only if g2 0, h2 0, f2 0, and D,(0, t) = 0.
+
+Vv
+
+Vv
+or
+
+0
+
+Figure 1. Relevant region of Vi V(t) Ss Vi) <V(0),0S¢ST
+
+If (as drawn in Figure 1) the boundaries V(é), and Vit) are continuous func-
+tions, then because V(é) has a continuous sample path in ¢ by Assumption II,
+one has that (i) if V(t) < V(t) for some 4 then there is a 4, f< 4, so that V(£) =
+Vd) and (ii) if Vi) >V(2) for some ¢, then there isa 4 [< ¢, so that V(d = Vd.
+Hence, in this case, the inequalities for V can be neglected in (2) and the
+only relevant region for analysis is V(t) < V(Q) S$ Vit), OS tS T.
+
+With the derivative-security characteristics fully specified, we turn now to
+the fundamental production technology for hedging the risk of issuing a
+derivative security and for evaluating the cost of its production. To locate the
+derivation in a more substantive framework, I posit a hypothetical financial
+intermediary that creates derivative securities in principal transactions for its
+customers by selling them contracts which are its obligation. It uses the cap-
+ital markets or transactions with other institutions to hedge the contractual
+
+
+===PAGEBREAK===
+
+94 Economic Sciences 1997
+
+liabilities so created by dynamically trading in the underlying securities fol-
+lowing a strategy designed to reproduce the cash flows of the issued contracts
+as accurately as it can. If the intermediary cannot perfectly replicate the pay-
+offs to the issued derivative, it either obtains adequate equity to bear the resi-
+dual risks of its imperfectly hedged positions or it securitizes those positions
+by bundling them into a portfolio for a special-purpose financial vehicle
+which it then sells either in the capital market or to a consortium of other in-
+stitutions in a process similar to the traditional reinsurance market. Although
+surely a caricature, the following description is nevertheless not far removed
+from real-world practice.
+
+The objective is to find a feasible, continuous-trading portfolio strategy
+constructed from all available traded assets including the riskless asset that
+comes “closest” to satisfying the following four properties: if P() denotes the
+value of the portfolio at time ¢ then for O< t< T:
+
+(i) atgif Vid) = V(d, then P(A = g[V(d), t
+(ii) at 4, if V(t) =V(d), then P(t) = f[ VO, 4]
+(iii) for each ¢, the payout rate on the portfolio is D,(V, #) dt
+
+(iv) att= 7 P(T) =A).
+
+Call this portfolio the “hedging portfolio” for the derivative security defined
+by (2). That portfolio is labeled as “portfolio (*).” In the special, but impor-
+tant, case in which the portfolio meets the above conditions exactly, the hedg-
+ing portfolio is called the “replicating portfolio” for the derivative security.
+
+Bertsimas, Kogan, and Lo(1997) study the complementary problem of
+“closeness” of dynamic replication where they assume that one can trade in
+the underlying asset but that trading is not continuous. They apply stochastic
+dynamic programming to derive optimal strategies to minimize mean-
+squared tracking error. These strategies are then employed in simulations to
+estimate quantitatively how close one can get to dynamic completeness.
+
+Determine the optimal hedging portfolio in two steps: first, find the port-
+folio strategy constructed from all continuously traded assets that has the
+smallest “tracking error” in replicating the returns on the underlying asset.
+For the underlying asset with price V, call this portfolio, the “V-Fund.” In the
+second step, derive the hedging portfolio for the derivative security as a dy-
+namic portfolio strategy mixing the V-Fund with the riskless asset.
+
+Let S,(t) denote the price of continuously traded asset 7 at time ¢. There are
+n such risky assets plus the riskless asset which are traded continuously. The
+dynamics for S, are assumed to follow a continuous-sample-path [to process
+given by
+
+(3) dS, = 0,8, dt +0, 5,dZ,,i=I,...,.n
+
+where @, is the instantaneous expected rate of return on asset 1; dZ, is a
+Wiener process; 6;,is the instantaneous covariance between the returns on 7
+and j [that is, (dS,/S,) (dS,/S) = 0, dt and O,, = o,*]; let 7, be defined as the in-
+
+
+===PAGEBREAK===
+
+Robert C. Merton 95
+
+stantaneous correlation between dZ,and dZin Assumption II such that dZ, dZ
+= n, dt. Let S(t) denote the value of the V-Fund portfolio and let w,(t) denote
+the fraction of that portfolio allocated to asset i, i=1,...,n , at time « The bal-
+ance of the portfolio’s assets are invested in the riskless asset. The dynamics
+for Scan be written as
+
+(4) dS = [p S-D, (V;t)] dt + 5S dq
+
+where = r+ »y wit), -r], & = > > w(t)w(t)o,, and dq = [ > w(HodZJ/6.
+i=l
+
+i=] j=t i=t
+
+To create the V-Fund, the w, are chosen so as to minimize the unanticipated
+part of the difference between the return on the underlying asset and the
+traded portfolio’s return. That is, at each point in time, the portfolio alloca-
+tion is chosen so as to minimize the instantaneous variance of [dS/S - dV/V].
+As shown in Merton (1992, Theorem 15.3, p.501), the portfolio rule that
+does this is given by
+
+(5) wih=o> yO, b= Lm.
+k=l
+
+where v,, is the kth-ith element of the inverse of the variance-covariance ma-
+trix of the returns on the n risky continuously traded assets. From Merton
+(1992, p.502), the instantaneous correlation between the returns on the V-
+Fund and the underlying asset, p dt = dZ dq, can be written as
+
+(6) p=(> > Mg OH 8 1 NY
+k=l isl
+and
+(7) 5 =po.
+The dynamics of the tracking error can thus be written as
+(8) dS/S - dV/V = (pt - a) dt + Odb
+
+where @? = (1 - p2) o? and the Wiener process db = (p dq - dZ)/V'1 - p?. As
+shown in Merton (1992, eq. 15.51), it follows that
+
+(9) dS./S,db=0, i=l,....n.
+
+That is, the tracking error in (8) is uncorrelated with the returns on all trad-
+ed assets, which is a consequence of picking the portfolio strategy that mini-
+mizes that error.
+
+With this, we now proceed with a “cookbook-like” derivation of the produc-
+tion process for our hypothetical financial intermediary to best hedge the
+cash flows of the derivative securities it issues. The derivation begins with a
+description of the activities for the intermediary’s quantitative-analysis
+(“quant”) department which is responsible for gathering the variance-covari-
+ance information necessary to use (5) to construct and maintain the V-Fund
+portfolio. It is also assigned the responsibility to solve the following linear
+parabolic partial differential equation for FLY, ¢]
+
+
+===PAGEBREAK===
+
+96 Economic Sciences 1997
+
+(10) 0= 4o(V,aV7F, [V1] +[rV - DV, ]FLV, 4] - FLV, 1] + ELV, 1]+ D,(V,1)
+
+subject to the boundary conditions: for V(t) < Vs V(t) and t< T,
+
+(11) F{V(0)t] = s[V(o), 2] 20
+(12) F[V(t),t] = e[ V(t), t] 20
+(13) FLY, T) = AL V] 20
+
+where F,, = °F AV, F, = oF PV; and F, = oF /t. Note that the non-negativity
+conditions in (11)-(13) together with D,(0, t) = 0 implies that the derivative
+security has limited liability. As a mathematical question, this is a well-posed
+problem, and a solution to (10)—(13) exists and is unique.
+
+Having solved for the function F[V,#], the quant department has the pre-
+scribed ongoing tasks at each time ¢ (0S t< T) to:
+
+(i) ask the trading desk for the prices of all traded assets necessary to deter-
+mine the price S(t) of the V-Fund and the best estimate of the current
+price of the underlying asset, V(¢);
+
+(ti) compute from the solution to (10)-(13) compute
+M(t) = FLV), AV;
+
+(iii) tell the trading desk that the strategy of portfolio (*) requires that
+$M(#) be invested in the V-Fund for the period ¢ to t+ dé,
+
+(iv) compute Y(t) = F{V(), t] and store ¥(¢) in the intermediary’s data files
+for (later) analysis of the time series (i.e., stochastic process) Y(t).
+
+The prescription for the execution or trading-desk activities of the interme-
+diary is as follows: At time ¢= 0, give the trading desk $P(0) as an initial fun-
+ding (investment) for portfolio (*) which contains the V-Fund asset and the
+riskless asset. Let P(t) denote the value of portfolio (*) at ¢, after having made
+any prescribed cash distribution (payment) from the portfolio. The trading
+desk has the job at each time ¢ (0S tS T) to:
+
+(a) determine the current prices of the underlying asset, V(¢) and all indi-
+vidual traded assets held in the V-Fund, and send that price information
+to the quant department,
+
+(b) pay a cash distribution of $D,/V(i), t/dt to the customer holding the
+derivative security; by selling securities in the portfolio (if necessary);
+
+(c) compute the value of the balance of the portfolio, P(¢);
+(d) receive instructions on M(¢) from the quant department;
+
+(e) readjust the portfolio allocation so that $M(2) is now invested in the V-
+Fund and $[P(é) — M(#)] is invested in the riskless asset.
+
+It follows that the dynamics for the value of portfolio (*) are given by
+
+
+===PAGEBREAK===
+
+Robert C. Merton 97
+
+DAV, t)
+
+(14) dP = M()S + MA at + [P- M(Opar— DLV, t)dt
+
+where
+M On = price appreciation
+
+D,(V,t ws .
+M (JP? a = dividend payments received into the portfolio
+
+[P—M(t)]rdt = interest earned by the portfolio
+D,(V,t)dt = cash distribution to customer
+
+Noting that M(t) = F,[V¢] V, one has by substitution from (4) into (14) that
+the dynamics of P satisfy
+
+aP = F[V,t]VdS/S + FV, t]VD,(V,t)/S +(P — F[V,t]V)rdt - D,(V)at
+(15)
+=(FV(u-r)+rP—-D,]dt + F,Védq
+Return now to the quant department to derive the dynamics for Y(t). From
+(iv), one has that Y(2) = FLV, é] for V(t) = V. Because Fis the solution to (10—
+
+13), Fis a twice-continuously differentiable function of Vand ¢. Therefore, we
+can apply It6’s lemma, so that for V(2) = V,
+
+dy = F[V,t]dV + B[V, t]dt + 4 F,[V,t(av)
+(16)
+
+=[40°VF, + F(av — D,)+ Flat + RVodZ
+because (dV)? = o?V2dt. Because F{V,¢] satisfies (10), one has that
+
+(17) 4OVF, - Di +K =rF-rvF -D,
+
+Substituting (17) into (16), one can rewrite (16) as
+
+(18) aY =[F(a—r)V +rF - D,|dt + FVodZ
+
+Note that the calculation of Y(¢) and its dynamics by the quant department in
+no way requires knowledge of the time-series of values for portfolio (*), {P(d},
+that are calculated by the trading desk. Putting these two time series together,
+we define Q(t) = P(t) — Y(2). It follows that dQ= dP— dY. Substituting for dP
+from (15) and for dY from (18), rearranging terms using (8), one has that
+
+(19) dQ = rQ dt + F, V( dS/S - dV/V)
+= (rQ+F, Viu- a] jdt + F,V Odb.
+
+At this point, we digress to examine the special case in which perfect replica-
+
+
+===PAGEBREAK===
+
+98 Economic Sciences 1997
+
+tion of the return on the underlying asset obtains (i.e., p =1 and there is no
+tracking error). In that case, equation (19) reduces to an ordinary differen-
+tial equation Q/Q= r) with solution
+
+(20) Q(t) = Q(O)exp(rt)
+
+where Q(0) = P(O) — Y(0) = P(0) — F[V(0),0]. Therefore, if the initial funding
+provided to the trading desk for portfolio (*) is chosen so that P(0) =
+F[V(0),0], then from (20), Q(t) = O for all tand
+
+(21) P(t) = F[V(t),t]
+
+By comparison of (11)—(13) with (2), one has from (21) that the (*)-portfo-
+lio strategy generates the identical payment flows and terminal (and bound-
+ary) values as the derivative security described at the outset of this analysis.
+That is, for a one-time, initial investment of $F/V(0),0], a feasible portfolio
+strategy has been found that exactly replicates the payoffs to the derivative
+security. Thus, $F/V(0),0] is the cost to the intermediary for producing the
+derivative. If the derivative security is traded, then to avoid (“conditional”) arbi-
+trage (conditional on o, 7, D,), its price must satisfy
+
+(22) Wt) =P) =FLV(o), t].
+
+Since the absence of arbitrage opportunities is a necessary condition for equi-
+librium, it follows that equilibrium prices for derivative securities on continu-
+ously tradable underlying assets must satisfy (22). This is, of course, the origi-
+nal Black-Scholes result and the V-Fund degenerates into a single asset, the
+underlying asset itself. However, note that (22) obtains without assuming that
+the derivative-pricing function is a twice-continuously differentiable function
+of V and t. The smoothness of the pricing function is instead a derived con-
+clusion.
+
+Note further that the development of the (*)-portfolio strategy did not re-
+quire that the derivative security (defined by (2)) actually trades in the capi-
+tal market. The (*)-portfolio strategy provides the technology for "manufac-
+turing” or synthetically creating the cash flows and payoffs of the derivative
+security if it does not exist. That is, if one describes a state-contingent sched-
+ule of outcomes for a portfolio (i.e. specifies f, g, h, Dy, T, V(2), V(#)), then the
+(*)-portfolio strategy provides the trading rules to create this pattern of pay-
+outs and it specifies the cost of implementing those rules. The cost of creat-
+ing the security at time ¢ is thus F/V(¢),t]. Moreover, if the financial-services
+industry is competitive, then price equals marginal cost, and (22) obtains
+as the formula for equilibrium prices of derivatives sold directly by inter-
+mediaries.
+
+Returning from this digression to the case of imperfect replication, one
+has, by construction of the process for Y, that Q=P-Y is the cumulative arith-
+metic tracking error for the hedging portfolio. By inspection of (19), the in-
+stantaneous tracking error for the derivative security is perfectly correlated
+with the tracking error of the V-Fund. Hence, from (9), it follows that the
+tracking error for the hedging portfolio is uncorrelated with the returns on
+
+
+===PAGEBREAK===
+
+Robert C. Merton 99
+
+all continuously traded assets. Using this lack of correlation with any other
+traded asset, I now argue that in this case the replication-based valuation can
+be used for pricing the derivative security even though replication is not fea-
+sible.
+
+As we know, in all equilibrium asset-pricing models, assets that have only
+non-systematic or diversifiable risk are priced to yield an expected return
+equal to the riskless rate of interest. The condition satisfied by the tracking-
+error component of the hedging portfolio satisfies an even stronger no-
+correlation condition than either a zero-beta asset in the CAPM, a zero mul-
+tibeta asset of the Intertemporal CAPM, or a zero factor-risk asset of the
+Arbitrage Pricing Theory. Thus, by any of those theories, the equilibrium
+condition from either (8) or (19) is that
+
+(23) waa.
+
+If (23) obtains, it follows immediately that the equilibrium price for the deri-
+vative security is F{V(t), t/, the same formula “as if” the underlying asset is
+traded continuously. And as a consequence, the Black-Scholes formula would
+apply even in those applications in which the underlying asset is not traded.
+As is well known from the literature on incomplete markets, (23) need not
+obtain if the creation of the new derivative security helps complete the mar-
+ket for a large enough subset of investors that the incremental dimension of
+risk spanned by this new instrument is “priced” as a systematic risk factor with
+an expected return different from the riskless interest rate. Markets tend to
+remain incomplete with respect to a particular risk either because the cost of
+creating the securities necessary to span that risk exceeds the benefits, or be-
+cause non-verifiability, moral-hazard, or adverse-selection problems render
+the viability of such securities untenable. Generally, major macro risks for
+which significant pools of investors want to manage their exposures are not
+controllable by any group of investors, and it is unlikely that any group would
+have systematic access to materially better information about those risks.
+Hence, the usual asymmetric-information and incentive reasons given for
+market failure do not seem to be present. In systems with well-developed fi-
+nancial institutions and markets and with today’s financial technology, it is
+thus not readily apparent what factors make the cost of developing standard-
+ized derivative markets (e.g., futures, swaps, options) prohibitive if, in large
+scale, there is a significant premium latently waiting to be paid by investors
+who currently participate in the markets. On a more prosaic empirical note,
+in most applications of the option-pricing model, the “residual” or tracking-
+error variations are likely to be specific to the underlying project, firm, insti-
+tution, or person, and thereby they are unlikely candidates for macro-risk sur-
+rogates. These observations support the prospects for (23) to obtain.
+However, the risk need not be macro in scope in order to be significant to
+one investor or a small group of investors. Obvious examples of such risks
+would be various firm- or person-specific components of human capital, in-
+cluding death and disability risks. To make a case for instruments with these
+types of exposures to be priced with a risk premium, incomplete-market mod-
+
+
+===PAGEBREAK===
+
+100 Economic Sciences 1997
+
+els often focus on the “incipient-demand” (or “maximum reservation”) price
+or risk premium that an investor would pay to eliminate a risk that is not cov-
+ered in the market by the existing set of securities. In the abstract, that price,
+of course, can be quite substantial. However, arguments along these lines to
+explain financial product pricing implicitly assume a rather modest and static
+financial-services sector. A classic example is life insurance. Risk-averse indi-
+viduals with families may, if necessary, be willing to pay a considerable premi-
+um for life insurance, well in excess of the actuarial mortality risk, even after
+taking into account moral-hazard and person-specific informational asymme-
+tries. Moreover, if the analysis further postulates a financial sector so crude
+that bilateral contracts between risk-averse individuals are the only way to ob-
+tain such insurance, then the equilibrium price for such insurance in that
+model can be so large that few, if any, contracts are created. But, such models
+are a poor descriptor of the real world. If the institutions and markets were
+really that limited, the incentives for change and innovation would be enor-
+mous. Modern finance technology and experience in implementing it pro-
+vide the means for such change. And if, instead, one admits into the model
+just the classic mechanism for organizing an “insurance” institution (whether
+government-run or private-sector) to take advantage of the enormous diver-
+sification benefits of pooling such risks and subdividing them among large
+numbers of participants, then the equilibrium price equals the “supply” price
+of such insurance contracts which approaches the actuarial rate.
+
+As is typical in analyses of other industries, the equilibrium prices of finan-
+cial products and services are more closely linked to the costs of the efficient
+producers than to the inefficient ones (except perhaps as a very crude upper
+bound to those prices). Furthermore, the institutional structure of the finan-
+cial system is neither exogenous nor fixed. In theory and in practice, that
+structure changes in response to changing technology and to profit-opportu-
+nities for creating new products and existing products more efficiently. As
+discussed at length elsewhere (Merton 1992, pp. 457-467; 535-536), a financi-
+al sector with a rich and well-developed structure of institutions can justify a
+“quasi-dichotomy” modeling approach to the pricing of real and financial as-
+sets that employs “reduced-form” equilibrium models with a simple financial
+sector in which all agents are assumed to be minimum-cost information pro-
+cessors and transactors. However, distortions of insights into the real world
+can occur if significant costs for the agents are introduced into that model
+while the simple financial sector is retained as an unchanged assumption. Put
+simply, high transaction and information costs for most of the economy’s
+agents to directly create their own financial products and services does not
+imply that equilibrium asset prices are influenced by those high costs, as long
+as there is an efficient financial-service industry with low-cost, reasonably
+competitive producers.
+
+In considering the preceding technical analysis, one might wonder if there
+are relevant situations in which the price is observable but trade in the asset
+cannot take place? One common class of real-world instances is characterized
+as follows: consider an insurance company that has guaranteed the financial
+
+
+===PAGEBREAK===
+
+Robert C. Merton 101
+
+performance of the liabilities of a privately-held opaque institution with a
+mark-to-market portfolio of assets. The market value of that portfolio (cor-
+responding to V in the analysis here) is provided to the guarantor on a con-
+tinuous basis, but the portfolio itself cannot be traded by the guarantor to
+hedge its exposure because it does not know the assets held within the port-
+folio. Elsewhere (Merton, 1997a), I have developed a model using an alter-
+native approach of incentive-contracting combined with the derivative-secu-
+rity technology to analyze the problem of contract guarantees for an opaque
+institution. It is nevertheless the case that discontinuous tradability of an asset
+is often accompanied by discontinuous observations of its price. And so, the
+combination of the two warrants attention. Hence, I complete this section
+with consideration of how to modify the valuation formula if the price of the
+underlying asset V is not continuously observable.
+
+Suppose that in the example adopted in this section, the price of the un-
+derlying asset is observed at t=0 and then again at the maturity of the deriva-
+tive contract, t=T. In between, there is neither direct observation nor in-
+ferential information from payouts on the asset. Hence, D,(V,t) = 0, and the
+derivative security has no payouts or interim “stopping points” prior to matu-
+rity [as specified in (11) and (12)] contingent on V(t). It is however known
+that the dynamics of V are as described in Assumption II with a covariance
+structure with available traded assets sufficiently well specified to construct
+the V-Fund according to (5). Define the random variable X(t) = V(t)/S(#), the
+cumulative proportional tracking error, with X(0) = 1. By applying It6’s lemma,
+one has from (8), (9), and (23) that the dynamics for X can be written as
+
+(24) dX =0X db.
+
+It follows from (24) that the distribution for X(t), conditional on X(0) = J, is
+lognormal with the expected value of X(t) equal to 1 and the variance of
+In/[X(t)] equal to @7t. The partial differential equation for F, corresponding to
+(10), that determines the hedging strategy uses as its independent variable
+the best estimate of V(t), which is S(t), and it is written as
+
+(25) 0=1/, & S F,[S,t] + SF [S,t] aF[S,t] + FA1S,t,
+subject to the terminal-time boundary condition that for S(T-) = S,
+(26) F{S, T] =E { h(SX) }
+
+where his as defined in (13), Xis a lognormally distributed random variable
+with Ef X} = J and variance of In [X/] equal to @T and E{ } is the expectation
+operator over the distribution of X.
+
+Condition (26) reflects the fact that for all ¢< T, the best estimate of V(t) is
+S(t). However, at t = T, V(T) is revealed and the value of S “jumps” by the total
+cumulative tracking error of X(T) from its value Sat t = T- to S(T) = V(T). The
+effect of the underlying asset price not being observable is perhaps well-illu-
+strated by comparing the solution for the European-type call option with the
+classic Black-Scholes solution given here in (1). The solution to (25) and (26)
+with h(V) = max [0, V- L]is given by, for 0< t< T,
+
+
+===PAGEBREAK===
+
+102 Economic Sciences 1997
+
+(27) F[S, t]) =S N(u) - L exp(-r[T-t]) Nu-V)
+
+where u = ( In[S/L] +r[T-t] + y/2) /V7, Y= ©(F2) + @T, and N() is the cumul-
+ative density function for the standard normal distribution.
+
+By inspection of (1) and (27), the key difference in the option-pricing for-
+mula with and without continuous observation of the underlying asset price is
+that the variance over the remaining life of the option does not go to zero as
+t approaches T, because of the “jump” event at the expiration date corre-
+sponding to the cumulative effect of tracking error.
+
+This section has explored conditions under which the Black-Scholes op-
+tion-pricing model can be validly applied to the pricing of assets with deriv-
+ative-security-like structures, even when the underlying asset-equivalent is
+neither continuously traded nor continuously observable. A fuller analysis of
+this question would certainly take account of the additional tracking error
+that obtains as a consequence of imperfect dynamic trading of the V-Fund
+portfolio, along the lines of Bertsimas, Kogan, and Lo (1997). However, a
+more accurate assessment of the real-world impact should also take into ac-
+count other risk-management tools that intermediaries have to reduce track-
+ing error. For instance, as developed in analytical detail in Merton (1992, pp.
+450-457), intermediaries need only use dynamic trading to hedge their net
+derivative-security exposures to various underlying assets. For a real-world in-
+termediary with a large book of various derivative products, netting, which in
+effect extends the capability for hedging to include trading in securities with
+“non-linear” pay-off structures, can vastly reduce the size and even the
+frequency of the hedging transactions necessary to achieve an acceptable
+level of tracking error. Beyond this, as part of their optimal risk management,
+intermediaries can “shade” their bid and offer prices among their various
+products to encourage more or less customer activity in different products to
+help manage their exposures. The limiting case when the net positions of cus-
+tomer exposures leaves the intermediary with no exposure is called a
+“matched book.”
+
+APPLICATIONS OF THE OPTION-PRICING TECHNOLOGY
+
+Open the financial section of a major newspaper almost anywhere in the
+world and you will find pages devoted to reporting the prices of exchange-
+traded derivative securities, both futures and options. Along with the vast
+over-the-counter derivatives market, these exchange markets trade options
+and futures on individual stocks, stock-index and mutual-fund portfolios, on
+bonds and other fixed-income securities of every maturity, on currencies, and
+on commodities including agricultural products, metals, crude oil and re-
+fined products, natural gas, and even, electricity. The volume of transactions
+in these markets is often many times larger than the volume in the underlying
+cash-market assets. Options have traditionally been used in the purchase of
+real estate and the acquisition of publishing and movie rights. Employee
+stock options have long been granted to key employees and today represent a
+
+
+===PAGEBREAK===
+
+Robert C. Merton 103
+
+significantly growing proportion of total compensation, especially for the
+more highly paid workers in the United States. In all these markets, the same
+option-pricing methodology set forth in the preceding section is widely used
+both to price and to measure the risk exposure from these derivatives (cf.
+Jarrow and Rudd [1983] and Cox and Rubinstein [1985]). However, financi-
+al options represent only one of several categories of applications for the op-
+tion-pricing technology.
+
+In the iate 1960s and early 1970s when the basic research leading to the
+Black-Scholes model was underway, options were seen as rather arcane and
+specialized financial instruments. However, both Black and Scholes (1972,
+1973) and I (Merton, 1970,1974) recognized early on in the research effort
+that the same approach used to price options could be applied to a variety of
+other valuation problems. Perhaps the first major development of this sort
+was the pricing of corporate liabilities, the “right-hand side” of the firm’s
+balance sheet. This approach to valuation treated the wide array of instru-
+ments used to finance firms such as debentures, convertible bonds, warrants,
+preferred stock, and common stock (as well as a variety of hybrid securities)
+as derivative securities with their contractual payouts ultimately dependent on
+the value of the overall firm. In contrast to the standard fragmented valuation
+methods of the time, it provided a unified theory for pricing these liabilities.
+Because application of the pricing methodology does not require a history of
+trading in the particular instrument to be evaluated, it was well-suited for
+pricing new types of financial securities issued by corporations in an inno-
+vating environment. Applications to corporate finance along this line develo-
+ped rapidly.”
+
+“Option-like” structures were soon seen to be lurking everywhere; thus
+there came an explosion of research in applying option-pricing theory which
+still continues. Indeed, I could not do full justice to the list of contributions
+accumulated over the past 25 years even if this entire paper were devoted to
+that endeavor. Fortunately, a major effort to do just that is underway and the
+results will soon be available (Jin, Kogan, Lim, Taylor, and Lo, forthcoming).
+The authors have generously shared their findings with me. And so, I can
+convey here some sense of the breadth of applications and be necessarily in-
+complete without harm.
+
+The put option is a basic option which gives its owner the right to sell the
+underlying asset at a specified (“exercise”) price on or before a given (“expi-
+ration”) date. When purchased in conjunction with ownership of the under-
+lying asset, it is functionally equivalent to an insurance policy that protects its
+owner against economic loss from a decline in the asset’s value below the ex-
+ercise price for any reason, where the term of the insurance policy corre-
+sponds to the expiration date. Hence, option-pricing theory can be applied to
+value insurance contracts. An early insurance application of the Black-Scholes
+
+‘© See Merton (1992, pp. 423-427) for an extensive list of references. See also Gregory D.
+Hawkins (1982) and Michael J. Brennan and Eduardo S. Schwartz (1985a) and the early empiri-
+cal testing by E. Philip Jones et al. (1984).
+
+
+===PAGEBREAK===
+
+104 Economic Sciences 1997
+
+model was to the pricing of loan guarantees and deposit insurance (cf.,
+Merton, 1977a). A contract that insures against losses in value caused by de-
+fault on promised payments on a contract in effect is equivalent to a put op-
+tion on the contract with an exercise price equal to the value of the contract
+if it were default-free. Loan and other contract guarantees, collectively called
+credit derivatives, are ubiquitous in the private sector. Indeed, whenever a
+debt instrument is purchased in which there is any chance that the promised
+payments will not be made, the purchaser is not only lending money but also
+in effect issuing a loan guarantee as a form of self-insurance. Another private-
+sector application of options analysis is in the valuation of catastrophic-insu-
+rance reinsurance contracts and bonds." Dual funds and exotic options pro-
+vide various financial insurance and minimum-return-guarantee products.”
+Almost surely, the largest issuer of such guarantees are governments. In the
+United States, the Office of the Management of the Budget is required by law
+to value those guarantees. The option model has been applied to assess de-
+posit insurance, pension insurance, guarantees of student loans and home
+mortgages, and loans to small businesses and some large ones as well.” The
+application to government activities goes beyond just providing guarantees.
+The model has been used to determine the cost of other subsidies including
+farm-price supports and through-put guarantees for pipelines."* It has been
+applied to value licenses issued with limiting quotas such as for taxis or fish-
+eries or the right to pollute and to value the government’s right to change
+those quotas." Government sanctions patents. The decision whether to spend
+the resources to acquire a patent depends on the value of the patent which
+can be framed as an option-pricing problem. Indeed, even on something that
+is not currently commercial, one may acquire the patent for its “option
+value,” should economic conditions change in an unexpected way.’® Paddock,
+Siegel, and Smith (1988) show that option value can be a significant propor-
+tion of the total valuation of government-granted offshore drilling rights, es-
+pecially when current and expected future economic conditions would not
+support development of the fields. Option-pricing analysis quantifies the gov-
+ernment’s economic decision whether to build roads in less-populated areas
+
+" Cf Alan Kraus and Ross (1982), Neil A. Doherty and James R. Garven (1986), J. David
+Cummins (1988), Cummins and Hélyette Geman (1995), and Scott E. Harrington et al. (1995).
+® Brennan and Schwartz (1976), Jonathan J. Ingersoll, Jr. (1976), M. Barry Goldman et al.
+(1979), Mary Ann Gatto et al. (1980), and René Stulz (1982). In an early real-world application,
+Myron Scholes and I developed the first options-strategy mutual fund in the United States,
+Money Market/Options Investments, Inc., in February 1976. The strategy which invested 90 per-
+cent of its assets in money market instruments and ten percent in a diversified portfolio of stock
+call options provided equity exposure on the upside with a guaranteed “floor” on the value of the
+portfolio. The return patterns from this and similar “floor” strategies were later published in
+Merton, et al. (1978, 1982).
+
+'’ Howard B. Sosin (1980), Carliss Baldwin, Donald Lessard, and Scott P. Mason (1983), Donald
+F. Cunningham and Patric H. Hendershott (1984), Alan J. Marcus (1987), Merton and Zvi Bodie
+(1992), Bodie (1996), Ashoka Mody (1996), and Robert S. Neal (1996).
+
+4 Scott P. Mason and Merton (1985), Calum G. Turvey and Vincent Amanor-Boadu (1989) and
+Taehoon Kang and B. Wade Brorsen (1995).
+
+'s James E. Anderson (1987) and Jonathan M. Karpoff (1989).
+
+‘6 Lenos Trigeorgis (1993).
+
+
+===PAGEBREAK===
+
+Robert C. Merton 105
+
+depending on whether it has the policy option to abandon rural roads if they
+are not used enough.”
+
+Various legal and tax issues involving policy and behavior have been ad-
+dressed using the option model. Among them is the valuation of plaintiffs’
+litigation options, bankruptcy laws including limited-liability provisions, tax
+delinquency on real estate and other property as an option to abandon or re-
+cover the property by paying the arrears, tax evasion, and valuing the tax
+“timing” option for the capital-gains tax in a circumstance when only realiza-
+tion of losses and gains on investments triggers a taxable event."
+
+In a recent preliminary study, the options structure has been employed to
+help model the decision of whether the Social Security fund should invest in
+equities (Smetters 1997). As can be seen in the option formula of the pre-
+ceding section, the value of an option depends on the volatility of the under-
+lying asset. The Federal Reserve uses as one of its indicators of investor un-
+certainty about the future course of interest rates, the “implied” volatility
+derived from option prices on government bonds.” In his last paper, pub-
+lished after his death, Fischer Black (1995) applies options theory to model
+the process for the interest rates that govern the dynamics of government
+bond prices. In another area involving central-bank concerns, Perold (1995)
+shows how the introduction of various types of derivatives contracts has help-
+ed reducepotential systemic-risk problems in the payment system from settle-
+ment exposures. The Black-Scholes model can be used to value the “free
+credit option” implicitly offered to participants, in addition to “float,” in mar-
+kets with other than instantaneous settlement periods. See also Kupiec and
+White (1996). The prospective application of derivative-security technology
+to enhance central-bank stabilization policies in both interest rates and cur-
+rencies is discussed in Merton (1995, 1997b).
+
+In an application involving government activities far removed from sophis-
+ticated and relatively efficient financial markets, options analysis has been
+used to provide new insights into optimal government planning policies in
+developing countries. A view held by some in development economics about
+the optimal educational policy for less-developed countries is that once the
+expected future needs for labor-force composition are determined, the op-
+timal education policy should be to pursue targeted training of the specific
+skills forecast and in the quantities needed. The alternative of providing
+either more general education and training in multiple skills or training in
+skills not expected to be used is seen as a “luxury” that poorer, developing
+countries could not afford. It, of course, was understood, that forecasts of
+future labor-training needs were not precise. Nevertheless, the basic pre-
+scription formally treated them as if they were. In S. J. Merton (1992), the
+question is revisited, this time with an explicit recognition of the uncertainty
+
+" Cathy A. Hamlett and C. Phillip Baumel (1990).
+
+* George M. Constantinides and Ingersoll (1984), Brendan O'Flaherty (1990), William J.
+Blanton (1995), Paul G. Mahoney (1995), and Charles T. Terry (1995).
+
+9 Sylvia Nasar (1992). See Bodie and Merton (1995) for an overview article on implied volatility
+as an example of the informational role of asset and option prices.
+
+
+===PAGEBREAK===
+
+106 Economic Sciences 1997
+
+about future labor requirements embedded in the model. The analysis shows
+that the value of having the option to change the skill mix and skill type of
+the labor force over a relatively short period of time can exceed the increased
+cost in terms of longer education periods or less-deep training in any one
+skill. The Black-Scholes model is used to quantify that tradeoff. In a different
+context of the private-sector in a developed country, the same technique
+could be used to assess the cost-benefit tradeoff for a company to pay a higher
+wage for a labor force with additional skills not expected to be used in return
+for the flexibility to employ those skills if the unexpected happens.
+
+The discussion of labor education and training decisions and litigation and
+taxes leads naturally into the subject of human capital and household deci-
+sion-making. The individual decision as to how much vocational education to
+acquire can be formulated as an option-valuation problem in which the op-
+timal exercise conditions reflect when to stop training and start working.” In
+the classic labor-leisure tradeoff, one whose job provides the flexibility to in-
+crease or decrease the number of hours worked, and hence his total com-
+pensation, on relatively short notice, has a valuable option relative to those
+whose available work hours are fixed.?' Wage and pension-plan “floors” that
+provide for a minimum compensation, and even tenure for university profes-
+sors (McDonald 1974), have an option-like structure. Other options com-
+monly a part of household finance are: the commitment by an institution to
+provide a mortgage to the house buyer, if he chooses to get one; the pre-pay-
+ment right, after he takes the mortgage, that gives the homeowner the right
+to renegotiate the interest rate paid to the lender if rates fall;* a car lease
+which gives the customer the right, but not the obligation, to purchase the
+car at a pre-specified price at the end of the lease.” Health-care insurance
+contains varying degrees of flexibility, a major one being whether the consu-
+mer agrees in advance to use only a pre-specified set of doctors and hospitals
+(“HMO plan”) or he retains the right to choose an “out-of-plan” doctor or
+hospital (“point-of-service” plan). In the consumer making the decision on
+which to take and the health insurer assessing the relative cost of providing
+the two plans, each solves an option-pricing problem as to the value of that
+flexibility.* Much the same structure of valuation occurs in choosing between
+“pay-per-view” and “flat-fee” payment for cable-television services.
+
+Many of the preceding option-pricing applications do not involve financial
+instruments. The family of such applications is called “real” options. The
+most developed area for real-option application is investment decisions by
+firms.” However, real-options analysis has also been applied to real-estate in-
+
+* Uri Dothan and Joseph Williams (1981).
+
+2 Bodie et al. (1992).
+
+Kenneth B. Dunn and John J. McConnell (1981) and Brennan and Schwartz (1985b).
+
+*3 Stephen E. Miller (1995).
+
+* Hayes et al. (1993) and Magiera and McLean (1996).
+
+2 Mason and Merton (1985), Robert L. McDonald and Daniel R. Siegel (1985), Saman Majd and
+Robert S. Pindyck (1987), Alexander J. Triantis and James E. Hodder (1990), Avinash K. Dixit
+and Pindyck (1994), Nancy A. Nichols (1994), Trigeorgis (1996) and Keith J. Leslie and Max P.
+Michaels (1997).
+
+
+===PAGEBREAK===
+
+Robert C. Merton 107
+
+vestment and development decisions.” The common element for using op-
+tion-pricing here is the same as in the preceding examples: the future is un-
+certain (if it were not, there would be no need to create options because we
+know now what we will do later) and in an uncertain environment, having the
+flexibility to decide what to do after some of that uncertainty is resolved de-
+finitely has value. Option-pricing theory provides the means for assessing that
+value.
+
+The major categories of options within project-investment valuations are:
+the option to initiate or expand, the option to abandon or contract, and the
+option to wait, slow-down, or speed-up development. There are “growth” op-
+tions which involve creating excess capacity as an option to expand and re-
+search and development as creating the opportunity to produce new
+products and even new businesses, but not the obligation to do so if they are
+not economically viable.”
+
+A few examples: For real-world application of the options technology in
+valuing product development in the pharmaceutical industry, see Nichols
+(1994). In the generation of electric power, the power plant can be construc-
+ted to use a single fuel such as oil or natural gas or it can be built to operate
+on either. The value of that option is the ability to use the least-cost, available
+fuel at each point in time and the cost of that optionality is manifest in both
+the higher cost of construction and less-efficient energy conversion than with
+the corresponding specialized equipment. A third example described in
+Luehrman (1992) comes from the entertainment industry and involves the
+decision about making a sequel to a movie: the choices are: either to produce
+both the original movie and its sequel at the same time, or wait and produce
+the sequel after the success or failure of the original is known. One
+does not have to be a movie-production expert to guess that the incremental
+cost of producing the sequel is going to be less if the first path is followed.
+While this is done, more typically the latter is chosen, especially with higher-
+budget films. The economic reason is that the second approach provides the
+option not to make the sequel (if, for example, the original is not a success).
+If the producer knew (almost certainly) that the sequel will be produced,
+then the option value of waiting for more information is small and the cost of
+doing the sequel separately is likely to exceed the benefit. Hence, once again,
+we see that the amount of uncertainty is critical to the decision, and the op-
+tion-pricing model provides the means for quantifying the cost/benefit trade-
+off. As a last example, Baldwin and Clark (1999) develop a model for desig-
+ning complex production systems focused around the concept of modularity.
+They exemplify their central theme with several industrial examples which in-
+clude computer and automobile production. Modularity in production pro-
+vides options. In assessing the value of modularity for production, they em-
+
+* V. Kerry Smith (1984), Raymond Chiang et al. (1986), David Geltner and William C. Wheaton
+(1989), Joseph T. Williams (1991), and F. Christian Zinkhan (1991).
+
+7 W. Carl Kester (1984), Robyn McLaughlin and Robert A. Taggart (1992) and Terrance W.
+Faulkner (1996).
+
+
+===PAGEBREAK===
+
+108 Economic Sciences 1997
+
+ploy an option-pricing type of methodology, where complexity in the pro-
+duction system is comparable to uncertainty in the financial one.”
+
+In each of these real-option examples as with a number of the other appli-
+cations discussed in this section, the underlying “asset” is rarely traded in
+anything approximating a continuous market and its price is therefore not
+continuously observable either. For that reason, this paper, manifestly focu-
+sed on applications, devotes so much space to the technical section on ex-
+tending the Black-Scholes option-pricing framework to include non-tradabil-
+ity and non-observability.
+
+FUTURE DIRECTIONS OF APPLICATIONS
+
+As I suggested at the outset, innovation is a central force driving the financial
+system toward greater economic efficiency with considerable economic be-
+nefit having accrued from the changes since the time that the option-pricing
+papers were published. Indeed, much financial research and broad-based
+practitioner experience developed over that period have led to vast improve-
+ments in our understanding of how to apply the new financial technologies to
+manage risk. Moreover, we have seen how wide ranging are the applications
+of our technology for pricing and measuring the risk of derivatives.
+Nevertheless, there still remains an intense uneasiness among managers,
+regulators, politicians, the press, and the public over these new derivative-
+security activities and their perceived risks to financial institutions. And this
+seems to be the case even though the huge financial disruptions, such as the
+savings-and-loan debacle of the 1980s in the United States and the current
+financial crises in Asia and some emerging markets, appear to be the conse-
+quence of the more traditional risks taken by institutions such as commercial,
+real-estate, and less-developed-country lending, loan guarantees, and equity-
+share holdings.
+
+One conjecture attributes this uneasiness to the frequently cited instances
+of individual costly events that are alleged to be associated with derivatives,
+such as the failure of Barings Bank, Proctor and Gamble’s losses on complex
+interest-rate contracts, the financial distress of Orange County, and so forth.
+Perhaps.” But, as already noted, derivatives are ubiquitous in the financial
+world and thus, they are likely to be present in any financial circumstance,
+whether or not their use has anything causal to do with the resulting financial
+outcomes. However, even if all these allegations were valid, the sheer fact that
+we are able to associate individual names with these occurrences instead of
+mere numbers (“XYZ company” instead of “475-500 thrifts” as the relevant
+
+* See also Hau He and Pindyck (1992). On an entirely different application, Kester’s 1984 ana-
+lysis of whether to develop products in parallel or sequentially could be applied to the evaluation
+of alternative strategies for funding basic scientific research: is it better to support N different re-
+search approaches simultaneously or just to support one or two and then use the resulting out-
+comes to sequence future research approaches? See also Merton (1992, p. 426).
+
+” Merton H. Miller (1997) provides a cogent analysis refuting many of the specific-case allega-
+tions of derivatives misuse.
+
+
+===PAGEBREAK===
+
+Robert C. Merton 109
+
+descriptor) would suggest that these are relatively isolated events—unfortu-
+nate pathologies rather than indicators of systemic flaws. In contrast, the phy-
+siology of this financial technology, that is, how it works when it works as it
+should, is not the subject of daily reports from around the globe but is essen-
+tially taken for granted.
+
+An alternative or supplementary conjecture about the sources of the col-
+lective anxiety over derivatives holds that they are a part of a wider imple-
+mentation of financial innovations which have required major changes in the
+basic institutional hierarchy and in the infrastructure to support it. As a re-
+sult, the knowledge base now required to manage and oversee financial insti-
+tutions differs greatly from the traditional training and experience of many fi-
+nancial managers and government regulators. Experiential changes of this
+sort are threatening. It is difficult to deal with change that is exogenous to
+our traditional knowledge base and framework and thus comes to seem be-
+yond our control. Decreased understanding of the new environment can
+create a sense of greater risk even when the objective level of risk in the
+system remains unchanged or is actually reduced. If so, we should start to
+deal with the problem now since the knowledge gap may widen if the current
+pace of financial innovation, as some anticipate, accelerates into the 21*
+century. Moreover, greater complexity of products and the need for more
+rapid decision-making will probably increase the reliance on models, which
+in turn implies a growing place for elements of mathematical and computa-
+tional maturity in the knowledge base of managers. Dealing with this knowl-
+edge gap offers considerable challenge to private institutions and govern-
+ment as well as considerable opportunity to schools of management and
+engineering and to university departments of economics and mathematics.
+
+There are two essentially different frames of reference for trying to analyze
+and understand changes in the financial system. One perspective takes as
+given the existing institutional structure of financial service providers, wheth-
+er governmental or private-sector, and examines what can be done to make
+those institutions perform their particular financial services more efficiently
+and profitably. An alternative to this traditional institutional perspective—and
+the one I favor-is the functional perspective, which takes as given the econo-
+mic functions served by the financial system and examines what is the best in-
+stitutional structure to perform those functions.” The basic functions of a
+financial system are essentially the same in all economies, which makes them
+far more stable, across time and across geopolitical borders, than the identity
+and structure of the institutions performing them. Thus, a functional per-
+spective offers a more robust frame of reference than an institutional one, es-
+pecially in a rapidly changing financial environment. It is difficult to use in-
+stitutions as the conceptual “anchor” for analyzing the evolving financial
+system when the institutional structure is itself changing significantly, as has
+been the case for the past two decades and as appears likely to continue well
+
+* For elaboration on the functional perspective, see Merton (1993, 1995), Crane et al. (1995),
+and Bodie and Merton (1998).
+
+
+===PAGEBREAK===
+
+110 Economic Sciences 1997
+
+into the future. In contrast, in the functional perspective, institutional
+change is endogenous, and may therefore prove especially useful in predict-
+ing the future direction of financial innovation, changes in financial markets
+and intermediaries, and regulatory design.”
+
+The successful private-sector and governmental financial service providers
+and overseers in the impending future will be those who can address the dis-
+ruptive aspects of innovation in financial technology while still fully exploi-
+ting its efficiency benefits. What types of research and training will be needed
+to manage financial institutions? The view of the future here as elsewhere in
+the economic sphere is clouded with significant uncertainties. With this in
+mind, I nevertheless try my hand at a few thoughts on the direction of
+change for product and service demands by users of the financial system and
+the implications of those changes for applications of mathematical financial
+modeling.
+
+The household sector of users in the more fully developed financial sys-
+tems has experienced a secular trend of disaggregation in financial services.
+Some see this trend continuing with existing products such as mutual funds
+being transported into technologically less-developed systems. Perhaps so, es-
+pecially in the more immediate future, with the widespread growth of rela-
+tively inexpensive Internet accessibility. However, deep and wide-ranging dis-
+aggregation has left households with the responsibility for making important
+and technically complex micro financial decisions involving risk (such as de-
+tailed asset allocation and estimates of the optimal level of life-cycle saving for
+retirement)-—decisions that they had not had to make in the past, are not
+trained to make in the present, and are unlikely to execute efficiently even
+with attempts at education in the future. The low-cost availability of the
+Internet does not solve the “principal-agent” problem with respect to finan-
+cial advice dispensed by an agent. That is why I believe that the trend will shift
+toward more integrated financial products and services, which are easier to
+understand and more tailored toward individual profiles. Those products and
+services will include not only the traditional attempt to achieve an efficient
+risk-return tradeoff for the tangible-wealth portfolio but will also integrate hu-
+man-capital considerations, hedging, and income and estate tax planning in-
+to the asset-allocation decisions. Beyond the advisory role, financial service
+providers will undertake a role of principal to create financial instruments
+that eliminate “short-fall” or “basis” risk for households with respect to target-
+
+| During the last 25 years, finance theory has been a good predictor of future changes in finance
+practice. That is, when theory seems to suggest that something “should be there” and it isn’t,
+practice has evolved so that it is. The “pure” securities developed by Kenneth J. Arrow (1953) that
+so clearly explain the theoretical function of financial instruments in risk bearing were nowhere
+to be found in the real world until the broad development of the options and derivative-security
+markets. It is now routine for financial engineers to disaggregate the cash flows of various secu-
+rities into their elemental Arrow-security component parts and then to reaggregate them to cre-
+ate securities with new patterns of cash flows. For the relation between options and Arrow secu-
+rities and the application of the Black-Scholes model to the synthesis and pricing of Arrow
+securities, see Ross (1976b), Rolf W. Banz and Miller (1978), Breeden and Robert Litzenberger
+(1978), Darrell J. Duffie and Chi-fu Huang (1986), and Merton (1992, pp. 443-450).
+
+
+===PAGEBREAK===
+
+Robert C. Merton 111
+
+ed financial goals such as tuition for children’s higher education and desired
+consumption-smoothing throughout the life-cycle (e.g., preserving the
+household’s standard of living in retirement, cf., Franco Modigliani, 1986).
+The creation of such customized financial instruments will be made econom-
+ically feasible by the derivative-security pricing technology that permits the
+construction of custom products at “assembly-line”-levels of cost. Paradoxi-
+cally, making the products more user-friendly and simpler to understand for
+customers will create considerably more complexity for the producers of
+those products. Hence, financial-engineering creativity and the technological
+and transactional bases to implement that creativity, reliably and cost-effec-
+tively, are likely to become a central competitive element in the industry. The
+resulting complexity will require more elaborate and highly quantitative risk-
+management systems within financial service firms and a parallel need for
+more sophisticated approaches to government oversight. Neither of these can
+be achieved without greater reliance on mathematical financial modeling,
+which in turn will be feasible only with continued improvements in the so-
+phistication and accuracy of financial models.
+
+Non-financial firms currently use derivative securities and other contractu-
+al agreements to hedge interest rate, currency, commodity, and even equity
+price risks. With improved lower-cost technology and learning-curve experi-
+ence, this practice is likely to expand. Eventually, this alternative to equity
+capital as a cushion for risk could lead to a major change of corporate struc-
+tures as more firms use hedging to substitute for equity capital; thereby
+moving from publicly traded shares to closely-held private shares.
+
+The preceding section provides examples of current applications of the op-
+tions technology to corporate project evaluation: the evaluation of research-
+and-development projects in pharmaceuticals and the value of flexibility in
+the decision about sequel production in the movie industry. The big potential
+shift in the future, however, is from tactical applications of derivatives to stra-
+tegic ones.” For example, a hypothetical oil company with crude oil reserves
+and gasoline and heating-oil distribution but no refining capability could
+complete the vertical integration of the firm by using contractual agreements
+instead of physical acquisition of a refinery. Thus, by entering into contracts
+that call for the delivery of crude oil by the firm on one date in return for
+receiving a mix of refined petroleum products at a pre-specified later date,
+the firm in effect creates a synthetic refinery. Real-world strategic examples in
+natural gas and electricity are described in Harvard Business School case
+studies, “Enron Gas Services” (1994) and “Tennessee Valley Authority:
+Option Purchase Agreements” (1996), by Peter Tufano. There is some
+evidence that these new financial technologies may even lead to a revisiting of
+the industrial-organization model for these industries.
+
+It is no comcidence that the early strategic applications are in energy- and
+power-generation industries that need long-term planning horizons and have
+
+*® See Kester (1984), Stewart C. Myers (1984), and Edward H. Bowman and Dileep Hurry (1993)
+on the application of option-pricing theory to the evaluation of strategic decisions.
+
+
+===PAGEBREAK===
+
+112 Economic Sciences 1997
+
+major fixed-cost components on a large scale with considerable uncertainty.
+Since energy and power generation are fundamental in every economy, this
+use for derivatives offers mainline applications in both developed and devel-
+oping countries. Eventually, such use of derivatives may become standard
+tools for implementing strategic objectives.
+
+A major requirement for the efficient broad-based application of these
+contracting technologies in both the household and non-financial-firm sec-
+tors will be to find effective organizational structures for ensuring contract
+performance, which includes global clarification and revisions of the treat-
+ment of such contractual agreements in bankruptcy. The need for assurances
+on contract performance is likely to stimulate further development of the fi-
+nancial-guarantee business for financial institutions. Such institutions will
+have to improve the efficiency of collateral management further as assurance
+for performance. As we have seen, one early application of the option-pricing
+model focuses directly on the valuation and risk-exposure measurement of fi-
+nancial guarantees.
+
+A consequence of all this prospective technological change will be the need
+for greater analytical understanding of valuation and risk management by
+users, producers, and regulators of derivative securities. Furthermore, im-
+provements in efficiency from derivative products will not be effectively realiz-
+ed without concurrent changes in the financial “infrastructure”-the institu-
+tional interfaces between intermediaries and financial markets, regulatory
+practices, organization of trading, clearing, settlement, other back-office fa-
+cilities, and management-information systems. To perform its functions as
+both user and overseer of the financial system, government will need to in-
+novate and make use of derivative-security technology in the provision of risk-
+accounting standards, designing monetary and fiscal policies, implementing
+stabilization programs, and overseeing financial-system regulation.
+
+In summary, in the distant past, applications of mathematical models had
+only limited and sidestream effects on finance practice. But in the last quarter
+century since the publication of the Black-Scholes option-pricing theory, such
+models have become mainstream to practitioners in financial institutions and
+markets around the world. The option-pricing model has played an active
+role in that transformation. It is safe to say that mathematical models will play
+an indispensable role in the functioning of the global financial system.
+
+Even this brief discourse on the application to finance practice of mathe-
+matical models in general and the option-pricing model in particular would
+be negligently incomplete without a strong word of caution about their use.
+At times we can lose sight of the ultimate purpose of the models when their
+mathematics become too interesting. The mathematics of financial models
+can be applied precisely, but the models are not at all precise in their appli-
+cation to the complex real world. Their accuracy as a useful approximation to
+that world varies significantly across time and place. The models should be
+applied in practice only tentatively, with careful assessment of their limita-
+tions in each application.
+
+
+===PAGEBREAK===
+
+Robert C. Merton 113
+
+BIBLIOGRAPHY
+
+Anderson, James E. “Quotas as Options: Optimality and Quota License Pricing Under
+Uncertainty,” Journal of International Economics, August 1987, 23 (1-2), pp. 21-39.
+
+Arrow, Kenneth J. “Le réle des valeurs boursiéres pour la répartition la meilleure des ris-
+ques,” Econometrie, Colloques Internationaux du Centre National de la Recherche
+Scientifique, 1953, Vol. XI, Paris, pp. 41-7.
+
+Bachelier, Louis. “Théorie de la Spéculation,” Annales Science de 1 Ecole Normale Supérieure,
+Paris: Gauthier-Villars, 1900 (3) No. 1018. (English translation in Cootner, P.H., ed. The
+Random Character of Stock Market Prices, Cambridge, MA: MIT Press, 1964, pp. 17-78.)
+
+Baldwin, Carliss. “Pricing Convertible Preferred Stock According to the Rational Option
+Pricing Theory,” B.S. dissertation, Massachusetts Institute of Technology, Cambridge,
+MA, 1972.
+
+Baldwin, Carliss and Clark, Kim. Design Rules: The Power of Modularity, forthcoming,
+Cambridge, MA: MIT Press, 1999 (forthcoming).
+
+Baldwin, Carliss, Lessard, Donald and Mason, Scott P. “Budgetary Time Bombs: Controlling
+Government Loan Guarantees,” Canadian Public Policy, 1983, 9, pp. 338-346.
+
+Banz, Rolf W. and Miller, Merton H. “Prices for State-Contingent Claims: Some Estimates
+and Applications,” Journal of Business, October 1978, 51 (4), pp. 653-72.
+
+Bernstein, Peter L. Capital Ideas: The Improbable Origins of Modern Wall Street, New York: Free
+Press, 1992.
+
+Bertsimas, Dimitris, Kogan, Leonid and Lo, Andrew W. “Pricing and Hedging Derivative
+Securities in Incomplete Markets: An e-Arbitrage Approach,” Sloan School of
+Management, Massachusetts Institute of Technology Working Paper #LFE-1027-97, June
+1997.
+
+Black, Fischer. “How We Came Up With the Option Formula,” Journal of Portfolio
+Management, Winter 1989, 15 (2), pp. 4-8. Originally, distributed in two parts by Fischer
+Black’s pricing and commentary service on options, Options, Vol. 1, No. 10, June 21,
+1976; Vol. 1, No. 11, July 5, 1976.
+
+—. “Interest Rates as Options,” Journal of Finance, December 1995,: 50 (5), pp. 1371-1376.
+
+Black, Fischer and Scholes, Myron S. “The Valuation of Option Contracts and a Test of
+Market Efficiency,” Journal of Finance, May 1972, 27 (2), pp. 399-418.
+
+~. “The Pricing of Options and Corporate Liabilities,” Journal of Political Economy, May-June
+1973, 81 (3), pp. 637-54.
+
+Blanton, William J. “Reducing the Value of Plaintiff's Litigation Option in Federal Court:
+Daubert v. Merrell Dow Pharmaceuticals, Inc.,” George Mason University Law Review,
+Spring 1995, 2, pp. 159-222.
+
+Bodie, Zvi. “What the Pension Benefit Guaranty Corporation Can Learn from the Federal
+Savings-and-Loan Insurance Corporation,” Journal of Financial Services Research, January
+1996, 10 (1), pp. 83-100.
+
+Bodie, Zvi and Merton, Robert C. “The Informational Role of Asset Prices: The Case of
+Implied Volatility,” Chapter 6 in Dwight B. Crane et al, 1995, pp. 197-224.
+
+-. Finance, Upper Saddle River, NJ: Prentice Hall, 1998.
+
+Bodie, Zvi, Merton, Robert C. and Samuelson, William F. “Labor Supply Flexibility and
+Portfolio Choice in a Life-Cycle Model,” Journal of Economic Dynamics and Control,
+July-October 1992, 16 (3,4), pp. 427-449.
+
+Bowman, Edward H. and Hurry, Dileep. “Strategy Through the Option Lens: An
+Integrated View of Resource Investments and the Incremental-Choice Process,” Academy
+of Management Review, October 1993, 18 (4), pp. 760-82.
+
+Breeden, Douglas T. “An Intertemporal Asset Pricing Model with Stochastic Consumption
+and Investment Opportunities,” Journal of Financial Economics, September 1979, 7 (3) pp.
+265-96.
+
+-. “Futures Markets and Commodity Options: Hedging and Optimality in Incomplete
+Markets,” Journal of Economic Theory, April 1984, 32 (2), pp. 275-300.
+
+
+===PAGEBREAK===
+
+114 Economic Sciences 1997
+
+Breeden, Douglas T. and Litzenberger, Robert. “Prices of State-Contingent Claims Implicit
+in Option Prices,” Journal of Business, October 1978, 51 (4), pp. 621-51.
+
+Brennan, Michael J. and Schwartz, Eduardo S. “The Pricing of Equity~Linked Life
+Insurance Policies with an Asset Value Guarantee,” Journal of Financial Economics, June
+1976 3 (3) pp. 195-213.
+
+-—. “Evaluating Natural Resource Investments,” Journal of Business, April 1985a, 58 (2), pp.
+135-57.
+
+-, “Determinants of GNMA Mortgage Prices,” Journal of the American Real Estate & Urban
+Economics Association, Fall 1985b, 13 (3), pp. 209-28.
+
+Chiang, Raymond, Lai, Tsong-Yue and Ling, David C. “Retail Leasehold Interests: A
+Contingent Claim Analysis,” Journal of the American Real Estate © Urban Economics
+Association, Summer 1986, 14 (2), pp. 216-29.
+
+Constantinides, George M. and Ingersoll, Jonathan E., Jr. “Optimal Bond Trading with
+Personal Taxes,” Journal of Financial Economics, September, 1984, 13 (3), pp. 299-336.
+Cox, John C. and Ross, Stephen A. “The Valuation of Options for Alternative Stochastic
+
+Processes,” Journal of Financial Economics, January-March 1976, 3 (1/2), pp. 145-66.
+
+Cox, John C. and Rubinstein, Mark. Options Markets. Upper Saddle River, NJ: Prentice Hall,
+1985.
+
+Crane, Dwight B., Froot, Kenneth A., Mason, Scott P., Perold, André F., Merton, Robert C.,
+Bodie, Zvi, Sirri, Erik R. and Tufano, Peter. The Global Financial System: A Functional
+Perspective, Boston: Harvard Business School Press, 1995.
+
+Cummins, J. David. “Risk-Based Premiums for Insurance Guarantee Funds,” Journal of
+Finance, September 1988, 43 (4), pp. 823-89.
+
+Cummins, J. David and Geman, Hélyette. “Pricing Catastrophe Insurance Futures and Call
+Spreads: An Arbitrage Approach,” Journal of Fixed Income, March 1995, 4 (4) pp. 46-57.
+Cunningham, Donald F, and Hendershott, Patric H. “Pricing FHA Mortgage Default
+
+Insurance,” Housing Finance Review, December 1984, 3 (4), pp. 373-92.
+
+Davis, Mark H.A. “Option Pricing in Incomplete Markets,” in M.A.H. Dempster and S.
+Pliska, eds., Mathematics of Derivative Securities, Cambridge: Cambridge University Press:
+1997, pp. 216-226.
+
+Dixit, Avinash K. and Pindyck, Robert S. Investment Under Uncertainty, Princeton: Princeton
+University Press, 1994.
+
+Doherty, Neil A. and Garven, James R. “Price Regulation in Property-Liability Insurance: A
+Contingent-Claims Approach,” Journal of Finance, December 1986, 41 (5), pp. 1031-50.
+Dothan, Uri and Williams, Joseph. “Education as an Option,” Journal of Business, January
+
+1981, 54 (1), pp. 117-39.
+
+Duffie, Darrell J.. and Huang, Chi-fu. “Implementing Arrow-Debreu Equilibria by
+Continuous Trading of a Few Long-Lived Securities,” Econometria, November 1986, 53
+(6), pp. 1337-56.
+
+Dunn, Kenneth B. and McConnell, John J. “Valuation of GNMA Mortgage-Backed
+Securities,” Journal of Finance, June 1981, 36 (3), pp. 599-616.
+
+Faulkner, Terrance W. “Applying ‘Options Thinking’ to R & D Valuation,” Research-
+Technology Management, May-June 1996, 39 (3), pp. 50-56.
+
+Figlewski, Stephen. “Options Arbitrage in Imperfect Markets,” Journal of Finance, December
+1989, 44 (5), pp. 1289-1311.
+
+Féllmer, Hans and Sondermann, Dieter. “Hedging of Non-Redundant Contingent-Claims,”
+in Werner Hildenbrand and Andreau Mas-Colell, eds., Contributions to Mathematical
+Economics, in Honor of Gérard Debreu, Amsterdam: North Holland, 1986, pp. 205-223.
+
+Gatto, Mary Ann, Geske, Robert, Litzenberger, Robert and Sosin, Howard B. “Mutual Fund
+Insurance,” Journal of Financial Economics, September 1980, 8 (3), pp. 283-317.
+
+Geltner, David and Wheaton, William C. “On the Use of the Financial Option Price Model
+to Value and Explain Vacant Urban Land,” Journal of the American Real Estate & Urban
+Economics Association, Summer 1989, 17 (2), pp. 142-58.
+
+Goldman, M. Barry, Sosin, Howard B. and Shepp, Lawrence A. “On Contingent Claims that
+
+
+===PAGEBREAK===
+
+Robert C. Merton 115
+
+Insure Ex-Post Optimal Stock Market Timing,” Journal of Finance, (May 1979, 34 (2), pp.
+401-13.
+
+Hamlett, Cathy A. and Baumel, C. Phillip. “Rural Road Abandonment: Policy Criteria and
+Empirical Analysis,” American Journal of Agricultural Economics, February 1990, 72 (1) pp.
+114-20.
+
+Harrington, Scott E., Mann, Steven V. and Niehaus, Greg. “Insurer Capital Structure
+Decisions and the Viability of Insurance Derivatives,” Journal of Risk and Insurance,
+September 1995, 62 (3), pp. 483-508.
+
+Hawkins, Gregory D. “An Analysis of Revolving Credit Agreements,” Journal of Financial
+Economics, March 1982, 10 (1), pp. 59-82.
+
+Hayes, James A., Cole, Joseph B. and Meiselman, David I. “Health Insurance Derivatives:
+The Newest Application of Modern Financial Risk Management,” Business Economics,
+April 1993, 28 (2), pp. 36-40.
+
+He, Hua and Pindyck, Robert, S. “Investments in Flexible Production Capacity,” Journal of
+Economic Dynamics and Control, July-October 1992, 16 (3.4), pp. 575-99.
+
+Ingersoll, Jonathan E., Jr. “A Theoretical Model and Empirical Investigation of the Dual
+Purpose Funds: An Application of Contingent-Claims Analysis,” Journal of Financial
+Economics, January-March 1976, 3 (1/2), pp. 82-123.
+
+Ito, Kiyoshi. Kiyoshi It6 Selected Papers, New York: Springer-Verlag, 1987.
+
+Jarrow, Robert A. and Rudd, Andrew T. Option Pricing, Homewood, IL: Richard D. Irwin
+1983.
+
+Jin, Li, Kogan, Leonid, Lim, Terence, Taylor, Jonathan and Lo, Andrew W. “The Derivatives
+Sourcebook: A Bibliography of Applications of the Black-Scholes/Merton Option-
+Pricing Model,” Sloan School of Management, Massachusetts Institute of Technology
+Working Paper, (forthcoming).
+
+Jones, E. Philip, Mason, Scott P., Rosenfeld, Eric E. and Fisher, Lawrence. “Contingent
+Claims Analysis of Corporate Capital Structures: An Empirical Investigation,” Journal of
+Finance, July 1984 39 (3), pp. 611-625.
+
+Kang, Taehoon and Brorsen, B. Wade. “Valuing Target Price Support Programs with
+Average Option Pricing,” American Journal of Agricultural Economics, February 1995, 77
+(1), pp. 106-118.
+
+Karpoff, Jonathan M. “Characteristics of Limited Entry Fisheries and the Option
+Component of Entry Licenses,” Land Economics, November 1989, 65 (4), pp. 386-393.
+Kester, W. Carl. “Today’s Options for Tomorrow’s Growth,” Harvard Business Review,
+
+March-April 1984, 62 (2), pp. 153-60.
+
+Kraus, Alan and Ross, Stephen A. “The Determination of Fair Profits for the Property-
+Liability Insurance Firm,” Journal of Finance, September 1982, 37 (4), pp. 1015-28.
+
+Kupiec, Paul H. and White, A. Patricia. “Regulatory Competition and the Efficiency of
+Alternative Derivative Product Margining Systems,” Finance and Economics Discussion Series,
+Board of Governors of the Federal Reserve System,Washington, DC, February 1996,
+96/11.
+
+Leonard, Roger J. “An Empirical Examination of a New General Equilibrium Model for
+Warrant Pricing,” M.S. thesis, Massachusetts Institute of Technology, September 1971.
+Leslie, Keith J. and Michaels, Max P. “The Real Power of Real Options,” McKinsey Quarterly,
+
+1997, 2 (3), pp. 4-22.
+
+Long, John B. “Discussion,” Journal of Finance, May 1974, 29 (2), pp. 485-8.
+
+Luehrman, Timothy A. “Arundel Partners: The Sequel Project,” Harvard Business School
+Case #9-292-140, 1992.
+
+Magiera, Frank T. and McLean, Robert A. “Strategic Options in Capital Budgeting and
+Program Selection under Fee-forService and Managed Care,” Health Care Management
+Review, Fall 1996, 21 (4), pp. 7-17.
+
+Mahoney, Paul G. “Contract Remedies and Options Pricing,” Journal of Legal Studies,
+January 1995, 24 (1), pp. 139-63.
+
+Majd, Saman and Pindyck, Robert S. “Time to Build, Option Value, and Investment
+Decisions,” Journal of Financial Economics, March 1987, 18 (1), pp. 7-28.
+
+
+===PAGEBREAK===
+
+116 Economic Sciences 1997
+
+Marcus, Alan J. “Corporate Pension Policy and the Value of PBGC Insurance,” in Zvi Bodie,
+John B. Shoven, and David A. Wise, eds., Issues in Pension Economics, Chicago, IL:
+University of Chicago Press, 1987, pp. 49-76.
+
+Mason, Scott P. and Merton, Robert C. “The Role of Contingent Claims Analysis in
+Corporate Finance,” in Edward Altman and Marti Subrahmanyan, eds., Recent Advances in
+Corporate Finance, Homewood, IL: Richard D. Irwin, 1985, pp. 7-54.
+
+McLaughlin, Robyn and Taggart, Robert A. “The Opportunity Cost of Using Excess
+Capacity,” Financial Management, Summer 1992, 21 (2), pp. 12-23.
+
+McDonald, John G. “Faculty Tenure as a Put Option: An Economic Interpretation,” Social
+Science Quarterly, September 1974, 55 (2), pp. 362-71.
+
+McDonald, Robert L. and Siegel, Daniel R. “Investment and the Valuation of Firms When
+There is an Option to Shut Down,” International Economic Review, June 1985, 26 (2), pp.
+331-49.
+
+Merton, Robert C. “Lifetime Portfolio Selection Under Uncertainty: The Continuous-Time
+Case,” Review of Economics and Statistics, August 1969, 51 (3), pp. 247-57. Reprinted in
+Merton (1992, Ch. 4).
+
+-. “A Dynamic General Equilibrium Model of the Asset Market and its Application to the
+Pricing of the Capital Structure of the Firm.” Massachusetts Institute of Technology
+Working Paper No. 497-70, 1970. Reprinted in Merton (1992, Ch. 11).
+
+-. “Optimum Consumption and Portfolio Rules in a Continuous-Time Model,” Journal of
+Economic Theory, December 1971, 3 (4), pp. 373-413. Reprinted in Merton (1992, Ch. 5).
+
+-. “Appendix: Continuous-Time Speculative Processes,” in R.H. Day and S.M. Robinson,
+eds., Mathematical Topics in Economic Theory and Computation, Philadelphia, PA: Society for
+Industrial and Applied Mathematics, 1972. Reprinted in SIAM Review, January 1973, 15
+(1), pp. 34-38.
+
+-. ‘Theory of Rational Option Pricing,” Bell Journal of Economics and Management Science,
+Spring 1973a, 4 (1), pp. 141-83. Reprinted in Merton (1992, Ch. 8). Original Working
+Paper #574-71, Sloan School of Management, Massachusetts Institute of Technology,
+Cambridge, MA (October 1971).
+
+—. “An Intertemporal Capital Asset Pricing Model,” Econometrica, September 1973b, 41 (5),
+pp. 867-87. Reprinted in Merton (1992, Ch. 15).
+
+-. “On the Pricing of Corporate Debt: The Risk Structure of Interest Rates,” Journal of
+Finance, May 1974, 29 (2), pp. 449-70. Reprinted in Merton (1992, Ch. 12).
+
+-. “Option Pricing When Underlying Stock Returns are Discontinuous,” Journal of Financial
+Economics, January-March 1976a, 3 (1/2), pp. 125-44. Reprinted in Merton (1992, Ch. 9).
+
+-. “The Impact on Option Pricing of Specification Error in the Underlying Stock Price
+Returns,” Journal of Finance, May 1976b, 31 (2), pp. 333-50.
+
+-. “An Analytic Derivation of the Cost of Deposit Insurance and Loan Guarantees: An
+Application of Modern Option Pricing Theory,” Journal of Banking and Finance, June
+1977a, I (1), pp. 3-11. Reprinted in Merton (1992, Ch. 19).
+
+-. “On the Pricing of Contingent Claims and the Modigliani-Miller Theorem,” Journal of
+Financial Economics, November 1977b, 5 (3), pp. 241-9. Reprinted in Merton (1992, Ch.
+13).
+
+-. “Financial Economics,” in E.C. Brown and R.M. Solow, eds., Paul Samuelson and Modern
+Economic Theory, New York: McGraw-Hill, 1983, pp. 105-140.
+
+—. Continuous-Time Finance, Revised Edition, Cambridge, MA: Basil Blackwell, 1992.
+
+-. “Operation and Regulation in Financial Intermediation: A Functional Perspective,” in
+Peter Englund, ed., Operation and Regulation of Financial Markets, Stockholm: The
+Economic Council, 1993, pp. 17-67.
+
+-. “Influence of Mathematical Models in Finance on Practice: Past, Present and Future,”
+Philosophical Transactions of the Royal Society of London, June 1994, 347 (1684), pp. 451-463.
+
+~. “Financial Innovation and the Management and Regulation of Financial Institutions,”
+Journal of Banking and Finance, June 1995, 19 (3,4), pp. 461-481.
+
+~.“A Model of Contract Guarantees for Credit-Sensitive, Opaque Financial Inter-
+mediaries,” European Finance Review, 1997a, I (1), pp. 1-13.
+
+
+===PAGEBREAK===
+
+Robert C. Merton 117
+
+—.“On the Role of the Wiener Process in Finance Theory and Practice: The Case of
+Replicating Portfolios,” in David Jerison, IM. Singer, and Daniel W. Stroock, eds., The
+Legacy of Norbert Wiener: A Centennial Symposium, PSPM Series, Vol. 60, Providence, RI:
+American Mathematical Society, 1997b, pp. 209-221.
+
+Merton, Robert C. and Bodie, Zvi. “On the Management of Financial Guarantees,”
+Financial Management, Winter 1992, 21 (4), pp. 87-109.
+
+Merton, Robert C. and Scholes, Myron S. “Fischer Black,” Journal of Finance, December
+1995, 50 (5), pp. 1359-1370.
+
+Merton, Robert C., Scholes, Myron S. and Gladstein, Mathew L. “The Returns and Risk of
+Alternative Call Option Portfolio Investment Strategies,” Journal of Business, April 1978,
+51 (2), pp. 183-242.
+
+~.“The Returns and Risks of Alternative Put-Option Portfolio Investment Strategies,”
+Journal of Business, January 1982, 55 (1), pp. 1-55.
+
+Merton, Samantha J. “Options Pricing in the Real World of Uncertainties: Educating
+Towards a Flexible Labor Force,” B.A. thesis, Department of Economics, Harvard
+University, March 18, 1992.
+
+Miller, Merton H. Merton Miller on Derivatives, New York: John Wiley & Sons, Inc., 1997.
+
+Miller, Stephen E. “Economics of Automobile Leasing: The Call Option Value,” Journal of
+Consumer Affairs, Summer 1995, 29 (1), pp. 199-218.
+
+Modigliani, Franco. “Life Cycle, Individual Thrift and the Wealth of Nations,” Les Prix Nobel
+1985, Stockholm: Nobel Foundation, 1986.
+
+Mody, Ashoka. “Valuing and Accounting for Loan Guarantees,” World Bank Research
+Observer, 1996, 11 (1), pp.119-42.
+
+Myers, Stewart C. “Finance Theory and Financial Strategy,” Interfaces, January-February
+1984, 14 (1), pp. 126-37.
+
+Nasar, Sylvia. “For Fed, a New Set of Tea Leaves,” New York Times, 5 July 1992, sec. D:1.
+
+Neal, Robert S. “Credit Derivatives: New Financial Instruments for Controlling Credit
+Risk,” Economic Review, (Federal Reserve Bank of Kansas City), Second Quarter 1996, 81
+(2), pp.15-27.
+
+Nichols, Nancy A. “Scientific Management at Merck: An Interview with CFO Judy Lewent,”
+Harvard Business Review, January-February 1994, 72 (1), pp. 89-99.
+
+O'Flaherty, Brendan. “The Option Value of Tax Delinquency: Theory,” Journal of Urban
+Economics, November 1990, 28 (3), pp. 287-317.
+
+Paddock, James L., Siegel, Daniel R. and Smith, James L. “Option Valuation of Claims on
+Real Assets: The Case of Offshore Petroleum Leases,” Quarterly Journal of Economics,
+August 1988, 103 (3), pp. 479-508.
+
+Perold, André F. “BEA Associates: Enhanced Equity Index Funds,” Harvard Business
+School Case #293-024, 1992.
+
+-. “The Payment System and Derivative Instruments,” Chapter 2 in Crane et al. 1995, pp.
+33-79.
+
+Romano, Marc and Touzi, Nizar. “Contingent Claims and Market Completeness in a
+Stochastic Volatility Model,” Mathematical Finance, October 1997, 7 (4), pp. 399-412.
+Rosenfeld, Eric. Stochastic Processes of Common Stock Returns: An Empirical Examination, Ph.D.
+dissertation, Sloan School of Management, Massachusetts Institute of Technology,
+
+Cambridge, MA, 1980.
+
+Ross, Stephen A. “Arbitrage Theory of Capital Asset Pricing,” Journal of Economic Theory,
+December 1976a, 13 (3), pp. 341-60.
+
+-. “Options and Efficiency,” Quarterly Journal of Economics, February 1976b, 90 (1), pp.
+75-89.
+
+Samuelson, Paul A. “Rational Theory of Warrant Pricing,” Industrial Management Review,
+Spring 1965, 6 (2), pp. 13-31.
+
+-. “Mathematics of Speculative Price,” in R-H. Day and S.M. Robinson, eds., Mathematical
+Topics in Economic Theory and Computation, Philadelphia, PA: Society for Industrial and
+Applied Mathematics, 1972. Reprinted in SIAM Review, January 1973, 15 (1), pp. 1-42.
+
+Samuelson, Paul A. and Merton Robert C. “A Complete Model of Warrant Pricing that
+
+
+===PAGEBREAK===
+
+118 Economic Sciences 1997
+
+Maximizes Utility,” Industrial Management Review, Winter 1969. 10 (2), pp. 17-46.
+Reprinted in Merton (1992, Ch. 7).
+
+Scholes, Myron S. “Taxes and the Pricing of Options,” Journal of Finance, May 1976, 31 (2),
+pp. 319-32.
+
+~. “Derivatives in a Dynamic Environment,” Les Prix Nobel 1 997, Stockholm: Nobel
+Foundation, 1998.
+
+Scholes, Myron S. and Wolfson, Mark A. Taxes and Business Strategy: A Planning Approach,
+Upper Saddle River, NJ: Prentice-Hall, 1992.
+
+Smetters, Kenneth. “Investing the Social Security Trust Fund in Equities: An Option
+Pricing Approach,” Technical Paper Series, Macroeconomic Analysis and Tax Analysis
+Divisions, Washington, DC., 1997.
+
+Smith, Clifford W., Jr. “Option Pricing: A Review,” Journal of Financial Economics,
+January-March 1976, 3 (1/2), pp. 3-52.
+
+Smith, V. Kerry. “A Bound for Option Value,” Land Economics, August 1984, 60 (3), pp.
+292-6.
+
+Sosin, Howard B. “On the Valuation of Federal Loan Guarantees to Corporations,” Journal
+of Finance, December 1980, 35 (5), pp. 1209-21.
+
+Stratonovich, R.L. Conditional Markov Processes and Their Application to the Theory of Optimal
+Control, New York: American Elsevier, 1968.
+
+Stulz, René M. “Options on the Minimum or the Maximum of Two Risky Assets: Analysis
+and Applications,” Journal of Financial Economics, July 1982, 10 (2), pp. 161-85.
+
+Terry, Charles T. “Option Pricing Theory and the Economic Incentive Analysis of
+Nonrecourse Acquisition Liabilities,” American Journal of Tax Policy, Fall 1995, 12 (2), pp.
+273-397.
+
+Triantis, Alexander J. and Hodder, James E. “Valuing Flexibility as a Complex Option,”
+Journal of Finance, June 1990, 45 (2), pp. 549-65.
+
+Trigeorgis, Lenos. “Real Options and Interactions with Financial Flexibility,” Financial
+Management, Autumn 1993, 22 (3), pp. 202-24.
+
+—. Real Options, Cambridge, MA: The MIT Press, 1996.
+
+Tufano, Peter. “Enron Gas Services,” Harvard Business School Case #294-051, 1994.
+
+-. “Tennessee Valley Authority: Option Purchase Agreements,” Harvard Business School
+Case #296—038, 1996.
+
+Turvey, Calum G. and Amanor-Boadu, Vincent. “Evaluating Premiums for a Farm Income
+Insurance Policy,” Canadian Journal of Agricultural Economics, July 1989, 37 (2), pp.
+233-47.
+
+Wiggins, James B. “Option Values Under Stochastic Volatility: Theory and Empirical
+Estimates,” Journal of Financial Economics, December 1987, 19 (2), pp. 351-72.
+
+Williams, Joseph T. “Real Estate Development as an Option,” Journal of Real Estate Finance
+and Economics, June 1991, 4 (2), pp. 191-208.
+
+Zinkhan, F. Christian. “Option-Pricing and Timberland’s Land-Use Conversion Option,”
+Land Economics, August 1991, 67 (3), pp. 317-325.
+
+
+===PAGEBREAK===
+

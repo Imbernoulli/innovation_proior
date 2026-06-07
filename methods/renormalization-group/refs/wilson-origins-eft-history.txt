@@ -1,0 +1,2374 @@
+                                                  Drawing Scales Apart: The Origins of Wilson’s
+                                                     Conception of Effective Field Theories
+                                                                                    Sébastien Rivat∗
+                                                                                  November 8, 2021
+
+
+
+
+arXiv:2111.03148v1 [physics.hist-ph] 4 Nov 2021
+                                                                                         Abstract
+                                                              This article traces the origins of Kenneth Wilson’s conception of
+                                                          effective field theories (EFTs) in the 1960s. I argue that what really
+                                                          made the difference in Wilson’s path to his first prototype of EFT
+                                                          are his long-standing pragmatic aspirations and methodological com-
+                                                          mitments. Wilson’s primary interest was to work on mathematically
+                                                          interesting physical problems and he thought that progress could be
+                                                          made by treating them as if they could be analyzed in principle by a
+                                                          sufficiently powerful computer. The first point explains why he had no
+                                                          qualms about twisting the structure of field theories; the second why
+                                                          he divided the state-space of a toy model field theory into continuous
+                                                          slices by following a standard divide-and-conquer algorithmic strategy
+                                                          instead of working directly with a fully discretized and finite theory. I
+                                                          also show how Wilson’s prototype bears the mark of these aspirations
+                                                          and commitments and clear up a few striking ironies along the way.
+
+                                                  Keywords: Kenneth Wilson; Effective Field Theories; Renormalization Group;
+                                                  Quantum Field Theory; High Energy Physics; Condensed Matter Physics.
+
+
+                                                  1       Introduction
+                                                  Effective field theories (EFTs) have taken a central place in physics practice
+                                                  during the last decades. Many physicists today even believe that empirically
+                                                  successful theories are ultimately best treated as effective theories and thus,
+                                                  as a matter of design, as incomplete and non-fundamental theories. Yet little
+                                                  has been said so far about how this came to be. Historical studies on postwar
+                                                  physics have focused on the successful field-theoretic treatment of the elec-
+                                                  tromagnetic interaction in the late 1940s, the most vocal anti-field-theoretic
+                                                  responses in the two following decades, the revival of field theory in the early
+                                                  1970s, and the ultimate triumph of the Standard Model of particle physics by
+                                                  the end of the 1970s (e.g., Pickering, 1984; Cushing, 1990; Schweber, 1994;
+                                                      ∗
+                                                      Max Planck Institute for the History of Science, Berlin.     Email: srivat@mpiwg-
+                                                  berlin.mpg.de
+
+
+                                                                                             1
+Kaiser, 2005; Close, 2013). But for instance, no attention has been paid to
+the fact that the early form of the Standard Model was already treated as an
+EFT in 1973-74 (see, e.g., Georgi et al., 1974).
+    The few historians who have looked at effective theories, such as Cao and
+Schweber (1993) and Schweber (2015), have also left crucial aspects out in
+their story. According to the standard account, the EFT program grew mainly
+out of Kenneth Wilson’s work on renormalization group (RG) methods in the
+1960-70s thanks to a fruitful cross-fertilization between particle and condensed
+matter physics.1 Wilson, however, formulated a first prototype of EFT be-
+fore his encounter with condensed matter physics, and there has not yet been
+any detailed analysis of the origins of this early work. Likewise, the work
+of Steven Weinberg, Sydney Coleman, and many others on phenomenological
+Lagrangians in the late 1960s has not been much explored despite its decisive
+impact on Weinberg’s (1979) foundational article and, through this work, on
+many quarters of the EFT program (e.g., Donoghue et al., 1994, chap. 4; van
+Kolck, 1999).2
+    This paper is the first of a series aiming to tell a more comprehensive
+story of the early development of effective theories by focusing on Wilson’s
+and Weinberg’s works in the 1960s. During this period, Wilson and Weinberg
+both came to loosen in their own way the rules of “conventional field theory”
+inherited from the successful perturbative formulation of quantum electrody-
+namics (QED), the quantum theory of the electromagnetic interaction. Wilson
+worked with discretized Hamiltonian models through his attempt to develop a
+new method to understand the high-energy structure of field theories. Wein-
+berg worked with non-fundamental Lagrangian models with free parameters
+through his attempt to derive empirical quantities more systematically and
+efficiently. And despite their different trajectories, they each ended up with
+a prototype of EFT: namely, an approximate field theory including all the
+terms compatible with its principles and valid, by virtue of its mathematical
+structure, only within some limited regime.3
+    The first fundamental point of contact between Wilson’s and Weinberg’s
+works appears, in fact, only in 1971 or so, when the most distinctive EFT
+   1
+      See also Williams (2016, chap. 1) for a preliminary historical account along these lines
+and Koberinski (2021) for similar remarks.
+    2
+      Schweber acknowledges this omission and justifies it by pointing out that he is only
+interested in historical elements that transformed “the meaning of quantum field theoretical
+descriptions” (2015, p. 68). But he gives no ground to believe that the meaning of field
+theory was not also fundamentally altered by the rise of phenomenological Lagrangians.
+Note that Sakharov’s treatment of General Relativity as an effective theory in (1967) and
+Coleman and E. Weinberg’s (1973) work on effective potentials are closely related to this
+tradition and would also deserve special scrutiny.
+    3
+      This characterization, which I intend as a working definition here, is based on physicists’
+usual way of describing the most distinctive features of EFTs today (e.g., Donoghue et
+al., 1994, chap. 4; Petrov and Blechman, 2016, chap. 1). For a detailed analysis of the
+general concept of effective theory across physics, see Rivat (2021, sec. 2-3). I also speak
+about “principles” and not merely “symmetries” to emphasize that the terms introduced are
+usually required to satisfy other assumptions, which are, strictly speaking, not symmetry
+principles (e.g., hermiticity, analyticity, locality).
+
+
+
+                                               2
+feature of their prototypes, namely, that an EFT includes all the terms com-
+patible with its principles, becomes fully clear to both of them.4 I will thus
+end the story at this stage, in 1971, where nothing yet seems to prevent any
+kind of strong convergence afterward, and leave the question of whether Wil-
+son’s and Weinberg’s works ultimately merged into a fully unified framework
+for future work. The important thing for now is that despite this point of
+contact, Wilson’s and Weinberg’s prototypes are still very different from each
+other in 1971, much more than one might expect if one believes that there is a
+fully unified EFT program that directly came out of Wilson’s works, and this
+prompts two related questions: (i) What brought them to come up with such
+different prototypes? (ii) What really made the difference in each case?
+    I will focus on Wilson’s part of the story in this paper. Wilson formulated a
+first prototype of effective theory in his article “Model Hamiltonians for Local
+Quantum Field Theory” in 1965. After reducing the state-space of a simple
+meson-nucleon model to a set of well-separated continuous slices, he worked
+out a sequence of low-energy effective models with increasingly large high-
+energy cut-offs by successively taking new high-energy slices into account. He
+also derived a sequence of couplings associated with these models—Wilson’s
+first version of an RG equation. And although he only reached a fully-fledged
+conception of the RG and EFTs in 1971 or so, many of its elements were
+already apparent in this article: for instance, the key idea of separating degrees
+of freedom according to their relevance at different energy scales. I will thus
+follow Wilson’s path to his first prototype, analyze his achievements in 1965 in
+relation to his later works, and briefly explore the way in which his interactions
+and concerns led him to his mature conception in the early 1970s.
+    My central claim is that although Wilson’s “vehicle” was certainly field
+theory, as he puts it later on (1991, 1/4, 17’58”), he was mainly driven to-
+ward effective theories by his long-standing desire to solve mathematically
+interesting physical problems and treat them as if they could be analyzed in
+principle by a sufficiently powerful computer. There are, to be sure, other
+relevant factors in this story. Traditions certainly played an important role
+for instance. But Wilson was not really stuck in any single one and this gave
+him at best the freedom, not the momentum, to try out new tools and meth-
+ods. Likewise, the specific local puzzles Wilson worked on certainly led him
+to explore unconventional field-theoretic routes. But again, these puzzles were
+largely independent of one another and he could have used different tools for
+each—as other physicists did at the time—instead of the ones he eventually
+designed. I will show, in other words, that the key factors in Wilson’s part
+of the story were “large-scale” pragmatic aspirations and methodological com-
+mitments that were sufficiently stable over time to be ultimately effective.
+    There will be two additional benefits coming out of this. (i) As we will see,
+Wilson’s aspirations and commitments shaped his prototype in decisive ways.
+We will thus be able to appreciate more easily what makes his prototype so dis-
+   4
+    There are, after all, many other types of approximate field theories valid only within
+some limited regime at the time, such as the static model for instance, as Chew and Low
+(1956a) already made it clear.
+
+
+                                            3
+tinctive. (ii) Some of the “delicious ironies” filling the early history of effective
+theories, as Weinberg (1999, p. 242) felicitously puts it, will look merely ironic
+and not incoherent from this perspective. By focusing exclusively on Wilson’s
+concern with understanding the high-energy structure of field theories, for in-
+stance, it would be hard to explain why he developed a new kind of field theory,
+which, as a matter of principle, could not provide any such information. But
+if we also appeal to Wilson’s pragmatic take on physical problems, it becomes
+easier to understand why he had no qualms about altering the structure of
+field theory if it meant making some progress.
+    The paper is organized as follows. The first three sections 2-4 are devoted
+to Wilson’s trajectory before 1965. Sections 5-6 analyze Wilson’s work on
+model Hamiltonians in 1965 and its significance. Sections 7-10 briefly examine
+Wilson’s path to his mature conception of effective theories from 1965 to the
+early 1970s.
+
+
+2     The static model: Or how to warm-up be-
+      fore the UV
+The story begins in 1956, at Caltech, where Wilson went as a graduate student
+after finishing his undergraduate studies at Harvard (1954-56). Caltech was
+an attractive place for aspirant field theorists in the 1950s. Richard Feynman,
+now a world-renowned physicist after his success with QED, and Murray Gell-
+Mann, a young rising star who would soon redefine the frontiers of particle
+physics, had moved there a few years back. The hot topic at the time was
+to find ways to apply the methods that had worked so well with the electro-
+magnetic interaction to its weak and strong cousins, and both Feynman and
+Gell-Mann did some work related to this during the 1950s. Unfortunately, Wil-
+son did not interact much with them at the beginning. But his first years at
+Caltech still gave him the opportunity to embark on the field-theoretic adven-
+ture of postwar physics by learning more about nuclear physics and becoming
+proficient in speaking the language of quantum field theory (QFT).
+    Wilson started to work on his thesis project in 1958, following Gell-Mann’s
+suggestion to apply the Low equation in the one-meson approximation to K-
+meson and nucleon scatterings. The main idea was to extend the work that
+had been done with simplified pion-nucleon models since the early 1950s to the
+new type of meson, the K-meson or kaon, which had been detected for the first
+time in cosmic-ray experiments in 1947. Since Wilson did devote most of his
+thesis to the Low equation—the last part deals with a similar equation but for
+pion-pion scatterings, it will be useful to provide some background to the key
+model underlying this equation, the so-called “static model” or “fixed-source
+model”, which Wilson kept using up until the early 1970s (see, e.g., Wilson,
+1972b). As he ironically put it years later:
+      Like many second-rate graduate students, I pursued ideas from
+      my thesis topic for over fifteen years before disengaging from it.
+      (Wilson, 2005, p. 5)
+
+                                         4
+And these ideas, as it turns out, played a crucial role in him developing Nobel-
+Prize-winning work.
+    The static model (or, more precisely, the “static approximation in meson-
+nucleon models”) is part of a large family of relativistic and non-relativistic
+field-theoretic models in nuclear physics that all trace back to Hideki Yukawa’s
+seminal work in 1935.5 Yukawa’s original ambition was to formulate a funda-
+mental theory of the strong interaction by assuming that it is mediated by a
+new kind of particle, the pions, exactly in the same way as the electromag-
+netic interaction is mediated by photons (Yukawa, 1935; see also Brown and
+Rechenberg, 1996, esp. chap. 5, for more historical details). Over the years,
+however, this ambition somewhat faded away as physicists faced increasingly
+serious issues they had not encountered with the electromagnetic interaction:
+most famously, that the value of the coupling gN N π between nucleons and pi-
+ons in the most realistic relativistic models was seemingly too large to make
+any sensible use of standard perturbative methods.
+    Following Werner Heisenberg, Wolfgang Pauli, and Gregor Wentzel’s lead,
+the main response in the early 1940s was to take the large value of the coupling
+seriously and use more drastic approximations, such as treating a nucleon as an
+extended non-relativistic source. This strategy was still suffering from severe
+issues. The meson field, for instance, was treated in classical terms in the first
+strong coupling models. After the success of QED in the late 1940s, physi-
+cists tried again to formulate relativistic weak coupling models of the strong
+interaction. But it was quickly found that these models failed to match with
+significant experiments. The strong coupling models were eventually revived in
+the early 1950s by Maurice Lévy (1952a,b,c) and others, and physicists started
+to look seriously at these models again after Geoffrey Chew was able to obtain
+significant experimental correlations for low-energy pion-nucleon interactions
+(Chew, 1954a,b,c; Chew and Low, 1956a,b).
+    The static model is a remarkably simple offspring of this strong coupling
+tradition (although it may, of course, be used for weak couplings too). The
+Hamiltonian includes only a simple Yukawa-type interaction term between
+mesons and a nucleon source, using here the charged scalar static model at the
+basis of Wilson’s 1965 article:
+                         Z ∞
+                     1        3
+                                h
+                                      †       †
+                                                     i
+         Hstatic =           d k wk (ak ak + bk bk )
+                   (2π)3 0
+                           Z ∞
+                        g0       3
+                                   h 1 
+                                                       † +   †        −
+                                                                        i
+                   +            dk √        (ak + bk )τ + (ak + bk )τ     ,    (1)
+                      (2π)3 0          2wk
+
+where ak , a†k (resp. bk , b†k ) are the π + -meson (resp. π − -meson) annihilation and
+creation operators, wk the energy of a meson with momentum k and mass µ, g0
+the bare Yukawa coupling characterizing the strength of interaction between
+   5
+    The tradition coming out of Yukawa’s work is often referred to as “meson theory” in the
+1950s (e.g., Gell-Mann and Watson, 1954; Wick, 1955). Major reviews at the time include
+Pauli (1948), Blair and Chew (1953), Bethe and de Hoffmann (1955), and Wick (1955). For
+a short historical account written in the 1950s, see, e.g., Bethe and de Hoffmann (1955,
+chap. 38-9).
+
+
+                                            5
+mesons and the nucleon source, and τ +/− the bare fixed-source operators ac-
+counting for the transition between bare nucleon states |ni and |pi induced by
+the emission and absorption of mesons.
+    As in Yukawa’s original proposal, the key idea behind the “minimal cou-
+pling assumption” (in analogy with QED) is to treat the absorption and emis-
+sion of mesons by the nucleon source one at a time. The simple form of Hstatic
+also comes from the “static approximation”: the nucleon source is treated as
+fixed, i.e., as having an infinite mass. There is thus no need to include kinetic
+terms for nucleons, and nucleon recoil effects caused by the emission and ab-
+sorption of mesons can be safely neglected (see, e.g., Schweber, 1961, pp. 373ff.
+for more details). As Gell-Mann and Watson (1954, p. 261) emphasize, this
+approximation is not indispensable. But it makes the resulting Hamiltonian
+particularly easy to “solve”, i.e., the energy levels and transition amplitudes
+between the states of the system are easy to compute, at least approximately
+since the model specified by Eq. (1) is not exactly solvable. Finally, the model
+displays ultraviolet (UV) divergences similar to those found in QED, i.e., a
+direct computation of these energy levels and transition amplitudes involves
+divergent momentum integrals and thus yields infinite predictions. As we will
+see, Wilson uses a sharp momentum cut-off in 1965 to make these integrals
+finite and analyze the model. In the 1950s, by contrast, it was rather com-
+mon to use a smooth momentum cut-off function v(k) and keep it fixed, which
+amounts to assuming that the nucleon source is not only static but also spa-
+tially extended.
+    Chew’s main contribution was to bring coupling constant renormalization
+into the picture (1953, 1954a,b,c). The older strong coupling models did not
+involve any, and, as Chew (1954a, p. 1670) recognized, it did not seem rel-
+evant at the time since the cut-off was kept fixed and its value set on the
+basis of experimental considerations. Chew nonetheless showed that a decisive
+payoff would come from using the same sorts of renormalization methods that
+had been used in the case of QED to absorb its UV divergences. He had no-
+ticed that the non-relativistic perturbative expansion of matrix elements for
+pion-nucleon processes contained anomalously large contributions at higher
+orders. The validity of the perturbative treatment was under threat—higher-
+order terms were supposed to bring only small corrections to lower-order ones.
+Chew showed that it was possible to absorb these anomalous contributions in
+the expression of the propagator and vertex functions, thereby absorbing some
+of the cut-off dependence of the original model into its parameters (viz. for a
+restricted set of diagrams and up to a certain order in perturbation theory).
+He was thus able to re-organize the various terms in the perturbative expan-
+sion according to their “true” relative importance and, along the way, he found
+some indication that the renormalized coupling gr would be smaller than the
+original bare coupling g0 (Chew, 1954b,c). Since g0 was arbitrary, however,
+the model had to be confronted with experiments to assess whether the renor-
+malization procedure had improved the original perturbative treatment. Chew
+(1954a) was able to find significant correlations between the predictions of the
+renormalized static model and experimental data and thus show that it was
+
+
+                                       6
+more phenomenologically relevant than physicists thought at the time.
+    Another important idea already apparent in Chew’s 1954 articles, and
+which became even more explicit in his subsequent work with Low, is that
+the static model and its siblings are unlikely to work at high energies and
+are best understood as describing only “low-lying” or low-energy meson states
+(e.g., Chew, 1954b, p. 1759; Chew and Low, 1956a, p. 1570). Chew and Low
+did not simply make these remarks because the static model had a high-energy
+cut-off built into its structure and excluded key high-energy relativistic effects
+(e.g., nucleon recoil). The discovery of new strongly interacting particles with
+a higher rest mass from 1947 onward, such as the aforementioned K-mesons
+and the hyperons (i.e., heavy baryons), also led to a wider skepticism about
+the ability of Yukawa’s original theory and its descendants to extend to high
+energies and provide a fundamental description of the strong interaction. As
+Chew and Low (1956a, p. 1570) emphasize, it became natural in this context
+to use the static model to derive model-independent predictions that might
+also turn out to be predictions of the true theory (if any).
+    The Low equation, sometimes referred to as the Chew-Low equation, is
+one of the key non-perturbative results that came out of this endeavor (Low,
+1955). This non-linear equation, which is akin to a dispersion relation, relates
+a given meson-nucleon transition amplitude Aif at some energy scale w with
+all the other amplitudes with the same initial nucleon-meson state i or the
+same final nucleon-meson state f but with an arbitrary intermediary state of
+energy wk . There are different versions of this equation, both integral and
+differential. But schematically, it takes the following form (see, e.g., Schweber,
+1961, sec. 12d, for more details):
+                                 Z          A† Aik A†ik Af k 
+                                                fk
+                     Aif (w) =       dwk          +                           (2)
+                                            wk + w wk − w
+By studying its properties, it was then possible to derive general constraints on
+the structure of meson-nucleon transition amplitudes that would not depend
+on the specific details of the type of interaction used (such as Gell-Mann and
+Goldberger’s crossing theorem for instance, which relates matrix elements for
+processes with opposite momenta). And the Low equation could be further
+simplified by implementing the one-meson approximation, i.e., by neglecting
+states with multiple mesons (see, e.g., Schweber, 1961, pp. 401-8).
+    So what did Wilson do with the Low equation? On the face of it, he does not
+appear to have done much apart from showcasing his highly promising skills (as
+Peskin, 2014, p. 653, notes too). He mainly studied perturbative expressions
+of the solutions to the Low equation in the one-meson approximation and
+showed, in particular, that these expressions take a simplified form at high
+energies (using different versions of the static model and for some appropriate
+choice of cut-off when necessary). For instance, in the simplest and somewhat
+unrealistic case, Wilson found an asymptotic perturbative expression of the
+form:
+                                             gs
+                            Aif (w) ∼                 ,                       (3)
+                                      1 − cgs ln(w/µ)
+
+                                            7
+with gs a power series in the renormalized coupling gr and c some coefficient
+(see Wilson, 1961, part. II, sec. D, for more details). He also showed that
+these expressions satisfy key mathematical properties of the exact solutions
+to the Low equation: for instance, properties of analyticity and unitarity (cf.
+Wilson, 1961, pp. 5-6). And we may ask: if Wilson was so much interested
+in working in field theory at the beginning of his career as a nuclear physicist,
+what did really motivate him to pursue this type of dissertation work? After
+all, as Wilson (1991, 1/4, 4’47”ff.) recalls, he did most of this work in 1959-
+60, exactly when both he and his thesis advisor, Gell-Mann, had already lost
+interest in K-mesons. And, strictly speaking, Wilson did not really attempt to
+extend the Low equation to the particular case of K-mesons, as Gell-Mann had
+originally suggested. The main concrete puzzle he was working on at the time
+was the issue—rather unappealing for an aspirant field theorist—of analyzing
+the mathematical properties of the solutions to a phenomenological equation
+with the help of perturbative methods.
+     The project Wilson devised for himself was, in fact, more ambitious. He
+wanted to use the static model and the equations derived from it to understand
+the general structure of realistic field theories and their solutions. Wilson is
+explicit about it both in his dissertation and in his correspondence with Gell-
+Mann (e.g., Wilson, 1959a, p. 4; 1961, pp. 14, 16). In the introduction of his
+dissertation, for instance, he emphasizes that studying the convergence and
+analytic properties of the perturbative solutions to the Low equation in the
+one-meson approximation could “easily be relevant to the far more difficult
+problem of covariant field theory” (Wilson, 1961, p. 16).
+     The idea was indeed not entirely out of place. As Gian-Carlo Wick (1955,
+p. 339) had already emphasized, the static model had a “fighting chance”
+compared to other models of the strong interaction: at least some versions of
+the model had appropriate quantum numbers to account for existing particles
+and had made clear contact with experiments. The static model was also
+displaying similar UV divergences and was amenable to similar perturbative
+renormalization methods as realistic theories. The perturbative expressions
+derived from the static model at high energies were even similar to the type
+of perturbative series that had been found in QED, say, a1 g + a2 g 2 ln(w) +
+a3 g 3 ln2 (w) + ..., with w some energy scale, g some coupling, and ai some
+coefficients (cf. Wilson, 1961, p. 17). So if the static model was solved by
+using improved perturbative methods, or even non-perturbative ones, it was
+reasonable to expect that these methods would also work for realistic theories.
+Finally, the minimal coupling and static approximations made the static model
+easy to compute with. As Francis Halpern and his collaborators (1959, p.
+155) emphasize, this was, in fact, one of the main motivations for studying the
+static model in the late 1950s, before physicists started to move away from
+field-theoretic treatments of the strong interaction. And all these similarities
+and the easiness with which one could work with the static model convinced
+Wilson that it would be a fruitful place to learn more about the high-energy
+structure of QFT.6
+  6
+      One might be worried here that Wilson would not be able to learn anything about
+
+
+                                           8
+3     The impact of Gell-Mann and Low’s early
+      renormalization group picture
+Wilson’s simplified perturbative expressions at high energies were, in particu-
+lar, remarkably similar to several results that Gell-Mann and Low had found
+in the case of QED, and this led Wilson to become increasingly interested in
+their work.
+    As we have already seen, Gell-Mann and Low were both working on meson-
+nucleon models in the mid-1950s (e.g., Gell-Mann and Watson, 1954; Low,
+1955). But around the same time, they also wrote an article investigating the
+high-energy behavior of QED, which could, or so they thought, be relevant to
+meson theory (Gell-Mann and Low, 1954, p. 1301). QFTs had been known
+to display UV divergences since the late 1920s. The perturbative renormal-
+ization methods developed in the late 1940s for QED had brought some relief.
+But besides being mathematically and conceptually dubious, it was not clear
+whether these methods were not hiding the real problem, to wit, the seemingly
+pathological high-energy behavior of QFTs, and Gell-Mann and Low wanted
+to gain some insight into it. Their article has since become known as one of the
+first instances in which RG methods were introduced. It is worth emphasizing,
+however, that Gell-Mann and Low were not concerned with, or even talking
+about, the RG at this point (as it is explicit from the title and content of the
+article and as Gell-Mann also emphasizes later on in 2010, p. 276). They were
+interested in developing a new method to understand the high-energy behav-
+ior of the renormalized photon and electron propagators (obtained with the
+standard renormalization methods used at the time).
+    Gell-Mann and Low were confronted with two immediate issues. First,
+the propagators were displaying infrared singularities when the mass m of
+the electron was taken to zero. For instance, the first few lowest-order terms
+for the renormalized electron propagator included contributions depending on
+ln(k/m), with k the four-momentum of an electron, and one could not naively
+take m → 0 to derive a simplified asymptotic expression for k  m. Second,
+the increasingly large contributions of higher-order terms at high energies pre-
+vented one from identifying a subset of dominant terms and obtaining a simple
+asymptotic expression from the perturbative series. At the same time, it was
+also clear to Gell-Mann and Low that logarithmic radiative corrections in QED
+would bring deviations from the naive high-energy scaling behavior expected
+the high-energy structure of QFT from the static model insofar as it was merely a low-
+energy model, as Chew had already emphasized. I will discuss further this point below
+to support the idea that Wilson’s main goal in 1965 was rather to develop a new non-
+perturbative method than to understand directly the high-energy structure of QFT. But
+the same argument could already be made here, in 1959-60. As it turns out, Wilson does
+acknowledge later on the discrepancy between his main field-theoretic aspiration and the
+tools he was using to fulfill it at the time: “Murray’s goal was to use the equation to
+help make sense of the phenomenology of K-p scattering. But I became fascinated with
+the high-energy behavior of solutions to the Low equation, despite its being a reasonable
+approximation for physics, if at all, only for low energies.” (Wilson, 2005, p. 5, my emphasis;
+see also 1983b, p. 589)
+
+
+                                              9
+from the expression of the bare propagators (e.g., in 1/k for electrons). The
+underlying problem, then, was to find the general dependence of renormalized
+quantities on the momentum and mass scales involved in the process of interest
+(i.e., on k/m for the electron propagator).
+    Gell-Mann and Low’s strategy to solve this problem is easier to appreci-
+ate in the simple case of the electron propagator without photon self-energy
+contributions (cf. Gell-Mann and Low, 1954, sec. 3). First, a direct calcu-
+lation shows that the bare electron propagator s(λ, k, m) with a cut-off λ is
+not singular for m → 0. By contrast, the renormalized propagator sr (k, m)
+and the wave function renormalization factor z(λ, m) both take the form of
+a perturbative series including singular contributions depending on ln(k/m)
+and ln(λ/m), respectively. It should thus be possible to express sr and z in
+such a way that these contributions directly cancel each other in the equation
+s(λ, k, m) = z(λ, m)sr (k, m).
+    Then, one takes the asymptotic limit λ  k  m in the expression of
+s(λ, k, m) to remove any non-singular mass dependence and replace s(λ, k, m)
+with its simplified asymptotic expression in the previous equation (after remov-
+ing factors in 1/k on both sides). The result is a general asymptotic functional
+equation for sr (k/m) of the form s(λ/k) = z(λ/m)sr (k/m).
+    Finally, one can derive the general form of the solutions to this equation
+and obtain information about the asymptotic behavior of sr (k/m) for k  m.
+If photon self-energy contributions are included and the dependence on the
+renormalized coupling er is made explicit, the solutions take the form:
+                                                 k       
+                       sr (k/m, er ) = A(er )H      φ(er ) ,                (4)
+                                                  m
+with A, H and φ some unknown functions. Similar expressions can be found
+for the photon propagator and the coupling (cf. Gell-Mann and Low, 1954,
+p. 1307). And by analyzing how the unknown functions entering into these
+expressions vary with er and k, say, by computing their expression up to the
+first or second order in perturbation theory, it is possible to draw more per-
+spicuous conclusions about the asymptotic behavior of renormalized quantities
+in QED than allowed by their original perturbative expression (see Gell-Mann
+and Low, 1954, sec. 5, for more details).
+    As Wilson (1971d, p. 1843) notes later on, Gell-Mann and Low’s method
+is somewhat convoluted. In particular, their most important result by today’s
+lights, namely, an “RG equation” governing the variation of couplings across
+scales of the form λde(λ)/dλ = β(e(λ)) for some function β and some momen-
+tum parameter λ, is independent of the original issue of infrared singularities.
+Still, Wilson realized that the simplified asymptotic expressions he had derived
+in his thesis were displaying the same kind of scale and coupling dependence.
+For instance, if one substitutes k/m for w/µ and er for gr and assumes that
+the power series gs is an analytic function F of the renormalized coupling gr ,
+
+
+
+
+                                      10
+one finds that Eq. (3) takes the same form as Eq. (4) with:
+
+                            A(er ) = −1/c
+                            k         h   k      i−1
+                          H( , er ) = ln( φ(er ))
+                            m            hm         −1 i
+                             φ(er ) = exp − cF (er )                                   (5)
+
+This is, of course, a somewhat oversimplified reconstruction. Wilson provides
+more details in his dissertation (see 1961, part II, sec. F) and summarizes the
+connection as follows later on:
+       Well at any rate, I had run through the series to enough orders
+       to see that there was a rule there. You could complete the rule
+       and then you could complete the sum for the high-energy limit of
+       the solution of some of these equations. And that sort of got me
+       interested in Gell-Mann-Low. (Wilson, 1991, 1/4, 7’34”ff.)
+    These similarities certainly explain why Wilson became interested in Gell-
+Mann and Low’s article. But we might still wonder whether it had any real
+impact on his early works. Wilson has repeatedly emphasized in later inter-
+views that his study of the asymptotic properties of the solutions to the Low
+equation was his “first introduction” to the RG (e.g., Lubkin, 1982, p. 18;
+Lewin, 1995, p. 572; Wilson, 2002, part I). He even emphasized in a letter to
+Wolfhart Zimmermann that Gell-Mann and Low’s article was one of his main
+sources of inspiration for the work he did in 1965 (Wilson, 1965b; see also
+1983b, p. 589). Yet it does not seem that Gell-Mann and Low’s article played
+such a crucial role. First, Wilson briefly showed in his dissertation how their
+ideas could be applied to the static model by lumping appropriate pieces of
+matrix elements together (cf. 1961, pp. 43-8). His treatment, however, was
+rather peripheral and the method he used was also quite different from what he
+did in 1965 (more details will be given in section 5). For instance, Wilson was
+far from introducing large energy gaps in the state-space of the static model at
+this point. Second, Wilson understood Gell-Mann and Low’s ideas in formal
+terms at that time compared to his own understanding of the RG after 1965.
+According to Wilson, for instance, one of their key moves was to introduce an
+“alternative unit of length” λ to renormalize quantities in QED and safely take
+the zero-mass limit (1961, p. 43). But he did not yet associate any physical
+picture with their new arbitrary “renormalization condition”, say, as resulting
+from a coarse-graining procedure.7
+    Suppose that Wilson did get something both concrete and substantial out
+of Gell-Mann and Low’s article. We might still wonder whether it was in any
+way faithful to what they had achieved at the time by today’s lights. Gell-
+Mann and Low’s article is notoriously difficult to understand and the short
+   7
+    Note that there is some ambiguity about how to best interpret the two “cut-off” param-
+eters λ and λ0 in section 4 of Gell-Mann and Low’s article. I am inclined to interpret them
+as arbitrary subtraction points given how Gell-Mann and Low introduce and use them (cf.
+Gell-Mann and Low, 1954, pp. 1305-6). This also seems to be Wilson’s interpretation in his
+dissertation (1961, p. 43).
+
+
+                                            11
+account I provided above only scratches the surface. In hindsight, they are
+often seen as having shown that the structure of renormalizable theories is
+somewhat arbitrary (e.g., Schwartz, 2013, chap. 23).8 One can use different
+renormalization conditions, each parametrized by a different value of some
+arbitrary momentum scale, and adjust the structure of the renormalized theory
+at stake accordingly. One can also rely on this arbitrariness to derive RG
+equations for renormalized couplings, probe their high-energy behavior, and
+show that this behavior is independent of the initial bare parametrization
+of the theory. Finally, one can eliminate large contributions that spoil the
+perturbative treatment of the theory, the so-called “large logarithms problem”,
+by imposing a suitable renormalization condition.
+    Now, whether these hidden gems were already clear in Gell-Mann and
+Low’s mind in 1954, there are good reasons to think that Wilson did not fully
+grasp them, at least not before 1965. First, as Wilson acknowledges later
+on, he could not “understand the paper of Gell-Mann and Low” and had to
+“reinvent the renormalization group before [he] could understand [it]” (Wilson,
+1991, 1/4, 5’34”ff., 26’44”ff.). To be sure, Wilson’s memory and later remarks
+should be treated with caution, and especially this one, as he certainly did
+“understand” enough of Gell-Mann and Low’s work to be able to apply it in
+his dissertation. However, he may not have understood what was the central
+point of their article. For instance, Wilson was much more aware in 1971 than
+he originally was in 1961 that the issue of infrared singularities is irrelevant
+for assessing the scaling behavior of quantities in QED (e.g., compare Wilson,
+1961, pp. 43-8, and 1971d, p. 1843). Second, it is not as if Wilson could
+easily get these hidden gems from Gell-Mann himself. Wilson did most of the
+work that was closely related to Gell-Mann and Low’s RG in 1959-60, when
+Gell-Mann was visiting Lévy in Paris and Wilson entered the Harvard Society
+of Fellows (1959-62). And it does not seem that Wilson ever exchanged on the
+topic of the RG with Low too (Wilson, 1991, 1/4, 8’09”ff.). In a word: Wilson
+probably had to work out Gell-Mann and Low’s article on his own and extract
+from it whatever could be relevant for his own work.9
+    The most plausible reading, in my sense, is that Wilson was influenced by
+   8
+     See Wilson (1970, 1971d) and Weinberg (1983) for their own respective exegesis, and
+Fraser (2021) for a more comprehensive historical account. See also Rivat (2019) for more
+details about the difference between Wilson’s and Gell-Mann and Low’s RG in contemporary
+physics, and Williams (2016, p. 7) for a complementary reading of Gell-Mann and Low’s
+achievements in 1954 emphasizing ideas of scale invariance and broken scale invariance.
+   9
+     There are also uncertainties concerning the impact of Bogoliubov and Shirkov’s intro-
+duction to QFT on Wilson’s work, which was the first textbook to include a section on
+the RG (Bogoliubov and Shirkov, 1959, chap. 9) and which Wilson cites in his dissertation
+(1961, p. 46). The book was first published in English in 1959 and copies were appar-
+ently circulating beforehand. Wilson sometimes mentions that this book was already used
+during his coursework and, most crucially, before he realized the connection between his
+dissertation work and Gell-Mann and Low’s article (Wilson, 1991, 1/4, 8’00”ff.). Sometimes
+he emphasizes that he read the book on his own and that it was not covered during his
+coursework (Wilson, 2002, Part I). To make the matter even worse, Wilson points out that
+he did not “understand” Bogoliubov and Shirkov’s introduction to the RG either (Wilson,
+1991, 1/4, 5’45”ff.).
+
+
+
+                                           12
+Gell-Mann and Low’s article in two ways before 1965. First, Wilson was driven
+to think more deeply about the need to develop new methods to investigate
+the high-energy structure of QFTs. After all, this was one of Gell-Mann and
+Low’s most explicit goals in the article—Wilson could not have missed it.
+They were also explicit about the academic character of their investigation for
+the specific case of QED given its unlikely empirical validity at high energies
+(Gell-Mann and Low, 1954, p. 1301). That is: the underlying goal of the
+article was to develop a new method for a future fundamental QFT and not to
+understand the high-energy structure of QED per se. Second, Gell-Mann and
+Low’s article led Wilson to think about the idea of a sequence of renormalized
+couplings associated with different scales as he explicitly acknowledges in the
+draft of his 1965 article (Wilson, 1965c, p. 2, footnote 1). Physicists were using
+different types of renormalization conditions at the time (see, e.g., Schweber
+et al., 1955, part IIC). Contrary to Gell-Mann and Low’s approach, however,
+all these conditions were fixed, i.e., specified at a particular scale. That said, it
+is not as if Wilson took his scale-dependent physical picture of the RG, already
+explicit in 1965 as we will see, from Gell-Mann and Low’s work. They only
+gave him a “very strong direction” for his investigations, as he puts it later on
+(1991, 2/4, 32’23”ff.), but not an explicit template with a fully-fledged physical
+interpretation.
+
+
+4     From the S-matrix to model field theories
+Wilson eventually defended his dissertation in June 1960 while he was a Junior
+Fellow at Harvard. The years 1959-63 were the occasion for him to travel to
+different places and interact with various theoretical and experimental physi-
+cists. He had visited Berkeley and Stanford in 1959 to discuss his dissertation
+work with Geoffrey Chew, Stanley Mandelstam, and Marshall Baker. His time
+at Harvard also gave him the opportunity to interact with Kenneth Johnson
+and Francis Low at MIT. He spent as well the year 1962 at CERN, partly as
+a Ford Foundation Fellow, and finally moved to Cornell as a junior faculty in
+1963.
+    Wilson worked mainly on topics related to the rising S-matrix program
+during those years. By 1963, however, he had convinced himself that this
+work would lead him nowhere. He decided to return to field theory and devote
+his time to understanding the high-energy structure of QFT in the context of
+the strong interaction. As Wilson recounts in his Nobel Prize lecture:
+      I rejected S-matrix theory because the equations of S-matrix theory,
+      even if one could write them down, were too complicated and inel-
+      egant to be a theory; in contrast, the existence of a strong coupling
+      approximation as well as a weak coupling approximation to fixed
+      source meson theory helped me believe that quantum field theory
+      might make sense. (1983b, p. 590; see also 1991, 1/4, 13’23”ff.)
+It is important to note here that Wilson’s decision was not merely the result
+of his ultimate distaste for the S-matrix program and the encouraging signs
+
+                                         13
+that had emerged from his dissertation work. He had also been driven toward
+physics since high school by his desire to work on “interesting and productive
+mathematical problems” and he saw the high-energy behavior of QFT as the
+“most interesting and useful” one he could work on at the time (Wilson, 2005,
+p. 5). But this decision, though judicious as it may look with the benefit of
+hindsight, was nonetheless going to make him somewhat isolated from the most
+popular areas of research in nuclear physics during this period, the S-matrix
+and current algebra programs.
+    There was indeed a growing skepticism toward the ability of QFT to provide
+a coherent and fundamental description of particles in the early 1960s. The
+1950s had seen heated debates as to whether QED remains consistent across all
+scales (see Blum, forthcoming, for more details). Many influential physicists,
+including Wolfgang Pauli and Lev Landau, had provided arguments to the
+effect that it would not. For instance, in today’s terms, Landau showed that the
+perturbatively renormalized expression of the coupling in QED would become
+infinite at some finite high-energy scale. And since QED was supposed to be
+the field-theoretic blueprint of particle physics, these physicists had considered
+that the same situation would obtain for the weak and the strong interaction, if
+they were ever going to be described by fundamental QFTs. Similar arguments
+were put forward in the context of the strong interaction with toy model field
+theories, such as the Lee model (1954), which led Landau to declare:
+
+       We are driven to the conclusion that the Hamiltonian method for
+       strong interaction is dead and must be buried, although of course
+       with deserved honor. (1960, p. 801)
+
+Meson theory was also becoming less and less popular. Even Chew, who had
+been one of the most active physicists working in this area, had somewhat
+lost interest in the static model by the end of the 1950s, as Wilson had the
+misfortune to discover when he visited Berkeley (cf. 1959b).10
+    In this context, toy model field theories provided a natural framework to in-
+vestigate further the high-energy behavior of QFTs (also referred to as “model
+field theories” in, e.g., Bludman, 1966). Following Tsung-Dao Lee’s work,
+Walter Thirring (1958) had proposed another exactly solvable simple model.
+Johnson (1961) had further clarified the structure of its correlation functions.
+  10
+    To be fair, there were still many physicists working within the traditional field-theoretic
+framework in the early 1960s (e.g., Salam and Ward, 1959; Glashow, 1961; Schwinger, 1964).
+There were also “public encouragements” by influential physicists to do so. For instance,
+as Victor Weisskopf put it in his concluding remarks to the 11th Rochester conference held
+at CERN in July 1962: “In fact, it could be that all that we have found follows from field
+theory. And this is why one should encourage those people who are very faithful to field
+theory and go on with a painstaking study of field theory in all its aspects. Perhaps they
+make little progress, but what they find might be all the more significant” (1962, p. 933).
+Since Wilson was at CERN at the time, there is actually some chance that he heard these
+rather prophetic words, or at least read them in the proceedings afterward. Wilson did
+attend the conference (as it would be common for visiting scientists) and was, in particular,
+secretary for the session “Regge poles and related topics” (cf. Prentki, 1962, p. 501). Wilson
+(1991, 1/4, 20’53”ff.) also explicitly refers to this specific conference in his interview with
+Cao.
+
+
+                                              14
+And, as Wilson suggests in his interview with the Physics of Scale project in
+2002, he got increasingly interested in the structure of these model field the-
+ories thanks to his interaction with Johnson and other physicists at MIT in
+the early 1960s.11 Wilson eventually started to work “in earnest” on the high-
+energy behavior of QFTs during the summer 1963 while he was “sitting in a
+hospital in Yugoslavia” trying to recover from “the usual Third World stomach
+problems” (1991, 1/4, 15’00”ff.). He was drawn on this occasion to look at the
+Lee model, a partially relativistic pion-nucleon model very much akin to the
+static model and which he eventually put to use in 1965. It had already been
+known at least since the mid-1950s that the Lee model was not even close to
+being realistic (e.g., Wick, 1955, p. 339). Yet, this model was still sufficiently
+rich in non-trivial properties, such as UV divergences and coupling constant
+renormalization, to appear relevant for analyzing the mathematical structure
+of QFT (Lee, 1954, p. 1329; Ruijgrok and van Hove, 1956, p. 880). And the
+fact that it was exactly solvable made it extremely attractive for identifying
+perturbative artifacts within the set of issues plaguing QFTs.
+    Lee, Thirring, and Johnson were, of course, not the only ones trying to
+clarify the mathematical structure of QFTs at the time. The axiomatic field-
+theoretic tradition, which Wilson became acquainted with in the early 1960s,
+had been burgeoning since the mid-1950s thanks in particular to Arthur Wight-
+man’s and Rudolf Haag’s works. And there is another key player closely related
+to this tradition in Wilson’s story, namely, Léon van Hove. He was one of the
+few mathematically-oriented field theorists who had relied on the static model
+for foundational work. Even more striking is the fact that he had justified
+using this model on very similar grounds as Lee (1954, p. 1329) and Wilson
+(1965d) did afterward:
+
+       This method [i.e., perturbative renormalization], which leaves di-
+       vergences in the fundamental constants of the theory, cannot be
+       considered as definitive, and the search for a more exact method,
+       as well as its comparison with the method of perturbative renormal-
+       ization, appear to be indispensable tasks. An interesting direction
+       of research regarding the difficulties arising in this method is given
+       by the study of certain field models, simple enough to be suscep-
+       tible to rigorous treatment, but which nevertheless present in an
+       attenuated form the divergences that are characteristic of general
+       cases. A well-known example is provided by a neutral scalar field
+       (boson field) in scalar interaction with point sources too heavy to
+       move during the emission or absorption of bosons [i.e., the static
+       model].12 (van Hove, 1952, p. 146, my translation)
+  11
+      “There was hardly anybody at Harvard. So what I used to do was go down and eat
+lunch with people at MIT: Francis Low, Ken Johnson and those people. And that was very
+interesting. That set me up for what got me going in early 1963/1964. Partly it was looking
+at the work of Johnson and Marshall Baker and trying to figure out why I didn’t agree with
+it” (Wilson, 2002, part I). See also Huang (2015, p. 20).
+   12
+      “Cette méthode, qui laisse subsister les divergences dans les constantes fondamentales de
+la théorie, ne peut être regardée comme définitive, et la recherche d’une méthode plus exacte,
+
+
+                                                15
+As it turns out, van Hove was the head of the Theory Division at CERN dur-
+ing Wilson’s stay in 1962. They certainly did interact at the time.13 And
+there is also clear evidence from a correspondence between Wilson and Zim-
+mermann that Wilson read van Hove’s 1952 article before working on model
+Hamiltonians in 1965 (cf. Wilson, 1965b).
+    So what was the impact of this model field-theoretic tradition on Wilson’s
+works? Looking ahead, Wilson came around this time to build for himself
+a portfolio of toy model field theories to investigate the structure of QFTs,
+including the charged scalar static model, the Lee model, and the φ4 -theory (cf.
+Wilson, 1965a,c,d). None of these models would bring any definitive conclusion
+by itself, say, about the ultimate consistency of QFT or the relevance of a
+new non-perturbative method. However, they would constitute a “theorist’s
+laboratory” in which to perform various “experiments” (Wilson, 2005, p. 6).
+Wilson could then examine how a particular model would respond, as it were,
+to a new method, or how its perturbative solutions would behave at high
+energies, and convince himself, if he found similarities across models, that the
+theoretical phenomenon at stake was robust.
+    Now, as Wilson recognizes in his letter to Zimmerman, van Hove’s 1952
+article had a decisive impact on his attempt to “construct a relatively simple
+intuitive picture of the structure of quantum field theory” in his 1965 arti-
+cle. Van Hove’s primary concern was a result akin to what is now known as
+“Haag’s theorem”: namely, that the systems described by the free and inter-
+acting versions of a QFT model with an infinite number of degrees of freedom
+have unitarily inequivalent state-spaces, which raises the issue of whether the
+solutions obtained by applying perturbation theory to the free model have
+anything to do with the exact ones. Van Hove knew that this result would not
+hold in the case of a model with only a finite number of degrees of freedom
+and this led him to suggest a simple method for evaluating the validity of
+perturbation theory in the corresponding infinite model (1952, sec. 5, esp. p.
+155). One would first need to compute the quantity of interest Q in the finite
+model with a high-energy cut-off Λ up to the order n in the coupling g: for
+instance,
+                Q(Λ, n) = a1 g + a2 g 2 ln(Λ) + ... + an g n lnn−1 (Λ),      (6)
+using here the same notation as before. One would then define some maximal
+bound G for the coupling, i.e., 0 < g < G, under which the error  resulting
+from neglecting the perturbative term in g n+1 would not be too large, i.e.,
+ ≤ max . In the simple example above, G would be implicitly defined by
+ainsi que sa comparaison avec la méthode de perturbation et renormalisation, semblent
+des tâches indispensables. Une orientation intéressante concernant les difficultés qui s’y
+présentent est fournie par l’étude de certains modèles de champs, assez simples pour être
+susceptibles d’un traitement rigoureux, mais présentant néanmoins sous une forme atténuée
+les divergences caractéristiques des cas généraux. Un exemple bien connu en est fourni
+par un champ scalaire neutre (champ de boson) en interaction scalaire avec des sources
+ponctuelles trop lourdes pour se mouvoir lors de l’émission ou de l’absorption des bosons.”
+   13
+      Wilson thanks van Hove and his group for their hospitality in (1963, p. 44) and briefly
+mentions later on that he had been “in touch with everybody” in the group during his visit
+(1991, 1/4, 14’51”ff.).
+
+
+                                             16
+max = an+1 Gn+1 lnn (Λ). If one found G(Λ, max , n) → 0 in the infinite cut-off
+limit Λ → ∞, the perturbative treatment of the quantity would be invalid.
+    As we will see in more detail in section 5, Wilson’s approach in 1965 was
+quite different from what van Hove had suggested. First, Wilson did not take
+the exact solvability of a model to be significant (1965a, p. 162). There
+were, in Wilson’s eyes, too few models known to be exactly solvable at the
+time and none of them were realistic. Overall, Wilson was more interested
+in developing methods for constructing and solving a model than finding the
+solutions of the model themselves (cf. Wilson, 1965a,c,d). For van Hove,
+by contrast, the exact solvability of a model was essential for assessing the
+deficiencies of perturbation theory—hence the choice of a simple and exactly
+solvable static model with only one neutral scalar field and a large-distance
+cut-off. Second, Wilson reduced the state-space of his version of the static
+model to a set of well-separated continuous slices in 1965 while van Hove had
+suggested using a model with a finite state-space, which amounts, in today’s
+terms, to working with a lattice of finite extent. It was common to impose both
+a large-distance and a short-distance cut-off in the 1950-60s (e.g., Wick, 1955,
+pp. 340-2). But it was mostly a matter of convenience and the perturbative
+quantities of interest, such as the matrix elements for some scattering process,
+were calculated by integrating over all possible momenta (e.g., Wick, 1955,
+sec. 3-6; Henley and Thirring, 1962, part III). In van Hove’s work, by contrast,
+the difference between a finite and an infinite number of degrees of freedom
+had acquired a foundational significance. Finally, Wilson’s method in 1965
+involved evaluating how low-energy degrees of freedom affect the lowest energy
+levels of a Hamiltonian describing a physical system at some fixed high-energy
+scale while van Hove’s suggestion amounted to evaluating whether higher-order
+terms in perturbation theory become too large at high energies.
+    Having said that, van Hove’s work still influenced Wilson in decisive ways.
+Wilson is not explicit about its specific impact in his letter to Zimmerman.
+But the central result of van Hove’s 1952 article certainly led Wilson to realize
+that perturbation theory was even more ill-behaved in the case of infinite mod-
+els than he had originally thought. He must have felt even more keenly the
+need to develop new methods to go beyond standard applications of pertur-
+bation theory. In the same vein, van Hove’s work must have had a liberating
+effect on Wilson’s mind. The use of non-relativistic finite models to analyze
+field-theoretic issues was indeed not very fashionable in those days (see, e.g.,
+George Sudarshan’s and Werner Heisenberg’s skeptical reaction to Wilson’s
+talk on model Hamiltonians in 1965a, pp. 172-4). Van Hove’s method and
+suggestions must have given Wilson both a clear precedent and an incentive
+for cutting in the way he deemed necessary the infinite-dimensional state-space
+of the static model. But most importantly, van Hove made the key sugges-
+tion that the perturbative results obtained from the infinite static model could
+be evaluated by relying on a sequence of finite versions of the model, each
+including new high-energy degrees of freedom, and assessing whether the per-
+turbative treatment was still reliable in the infinite cut-off limit. Wilson did
+frame the issue of assessing whether the solutions of a model exist in those
+
+
+                                       17
+terms in the talk he gave in 1965 (cf. Wilson, 1965a, pp. 161-2). And, as we
+will see in the next section, Wilson’s strategy in his 1965 article does bear the
+mark of van Hove’s suggestion.
+    We have at this point all the main elements that seem to be indispensable
+to understanding Wilson’s path to his 1965 article. In particular, Wilson
+wants to work on interesting mathematical problems related to the high-energy
+structure of field theory. He has been fiddling with the static model for many
+years now. He knows all too well the need to invent new methods, as Gell-
+Mann and Low did, to go beyond standard applications of perturbation theory.
+He has also stored various toy models in his theoretical laboratory along the
+way. And since he is aware that they either have no practical relevance or are
+unlikely to remain empirically valid across all scales, there is no reason left for
+him not to try to slice them up in novel ways and examine their behavior at
+high energies.14
+
+
+5      The slicing method in 1965
+       We have not used perturbation theory—we have used an axe on the
+       Hamiltonian. (Wilson, “What Every Quantum Mechanic Should
+       Know”)
+
+Wilson made this remark to his students in the early 1980s while teaching
+quantum mechanics.15 Yet it illustrates well what must have been his state of
+mind in June 1965, when he first laid down his early formulation of the RG
+and EFTs in publishable form (Wilson, 1965d). Wilson was indeed explicit
+about his main goal. He meant to develop a new non-perturbative method
+to extract qualitative information from realistic field-theoretic models of the
+strong interaction. Standard perturbative methods had been shown to be in-
+applicable. The usual rules for assessing whether other existing approximation
+methods, such as the variational method and the WKB approximation, would
+be appropriate were not working too. And following Lee’s work, it was not
+even clear whether these models would ultimately make any sense (Wilson,
+1965d, p. B446). New methods were thus required to understand their struc-
+ture and more generally the structure of field theory itself—not perturbative
+field theory. In hindsight, Wilson’s achievements are remarkable and it will be
+useful to retrace his steps in some detail.
+    Wilson starts by laying down a version of the static model with two me-
+son fields of opposite charge interacting with a two-state nucleon source (cf.
+Eq. 1). These models are old hat in 1965. But as we have seen, the model
+field-theoretic tradition has given them some respectability for investigating
+  14
+      I will leave aside Wilson’s work on the operator product expansion (OPE) in 1963-64
+insofar as it does not seem to have influenced much his work on model Hamiltonians in 1964-
+1965. See, e.g., Wilson (1971a, p. 26; 2002, part II) for some textual evidence supporting
+the idea that he was indeed working on two distinct attempts to probe the structure of
+QFTs in 1963-65.
+   15
+      Cf. Kenneth G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript Collec-
+tions, Cornell University Library. Box 1, Folder 12.
+
+
+                                            18
+the mathematical structure of QFT. Accordingly, the most important feature
+of Wilson’s model Hamiltonian is that it displays the same sorts of issues as
+realistic QFTs. But its simplicity, its ability to encode all the relevant prop-
+erties of the target system, its intuitive physical character, and the existence
+of many approximation methods to work out its consequences also make it a
+very appealing tool in Wilson’s eyes, much more than the S-matrix machinery
+for instance (Wilson, 1965d, pp. B446-7).
+    Wilson’s first key move is to reduce the state-space of the model Hstatic in
+Eq. (1) to a set of well-separated continuous “slices” parametrized by some
+large scale Λ (1965d, p. B447):
+                              1                  1
+               0 < k < k0 ,     Λ < k < Λ , ... , Λn < k < Λn , ... ,                  (7)
+                              2                  2
+where k stands for the possible momenta of mesons and k0 for some momentum
+scale of the order of the meson mass µ and much smaller than Λ, using here the
+natural unit µ = 1 for simplicity (i.e., Λn ≡ µΛn ). The large scale-separation
+between the slices ensures that low-energy mesons introduce only a small shift
+in the energy levels of the system composed of the static source and high-energy
+mesons. The system at the scale Λn can thus be studied by treating the effects
+of mesons with characteristic scale Λn−1 , ..., k0 as a series of incredibly refined
+perturbations in powers of 1/Λ (Wilson, 1965d, p. B447).
+    By performing this first step, Wilson has also reduced the general problem
+of solving Hstatic into two main tasks: (i) solve the partial Hamiltonian in
+each slice; (ii) evaluate how they relate to one another. The system composed
+of the source and low-energy “laboratory” mesons of momenta k ∈]0, k0 [ is
+the only one that does not receive small perturbations from the other slices.
+It thus appears natural that Wilson would start by solving the Hamiltonian
+Hlab associated with this system. And since Hlab has a fixed cut-off k0 , the
+traditional tools of quantum mechanics can be used to obtain approximate
+solutions. The choice of approximation method depends only on the value of
+g0 in Eq. (1).
+    To connect the discussion with standard perturbative methods, let us as-
+sume that the coupling g0 is small enough to allow for a perturbative treat-
+ment in the coupling constant. The first thing to do is to find the eigen-
+states and eigenvalues of the free part Hfree of Hlab (e.g., plane wave solu-
+tions with energy wk ). The application of a†k and b†k to the ground state
+|0i, i.e., the bare nucleon state with no mesons, generates a complete basis
+{|φn i} = {|0i, |k1 i, |k1 , k2 i, etc.}, where |k1 , ..., km i stands for the state of the
+nucleon source with m mesons of momenta ki . For simplicity, I ignore the
+difference between charged mesons and the particular state of the fixed source
+here. Now suppose that the interaction term g0 V in the full Hamiltonian
+Hlab = Hfree + g0 V brings only small deviations to the free solutions, i.e., that
+the eigenstate |ψi of Hlab with energy E reduces to a free state |φi of energy
+w in the limit g0 → 0. Then, we can use standard non-relativistic methods
+to derive approximate expressions for |ψi and E at any order in perturbation
+theory. For instance, in the case of a state |ψi associated with a free one-meson
+
+
+                                            19
+particle state |ki, E takes the following schematic form:
+                                        Z
+                                      2     Vkk0 Vk0 k
+                 E = wk +g0 Vkk + g0
+                                Z        k0 wk − wk0
+                                             Vkk0 Vk0 k00 Vk00 k
+                          + g03                                  + ...,          (8)
+                                 k0 k00 (wk − wk0 )(wk − wk00 )
+
+where Vkk0 = hk|V |k 0 i and the cut-off k0 ensures that all the momentum inte-
+grals involved in Eq. (8) are finite (see, e.g., Wick, 1955, for more details).
+    Having solved Hlab , the next step is to examine H1 , the static Hamiltonian
+defined by taking into account mesons with momenta ranging over ]0, k0 [ and
+]Λ/2, Λ[. The large scale-separation between these two slices ensures that low-
+energy mesons do not affect much the behavior of high-energy ones. We can
+thus divide H1 into an “unperturbed” high-energy Hamiltonian H0 ranging
+over ]Λ/2, Λ[ and a low-energy “perturbation” Hlab ranging over ]0, k0 [. Hlab
+has already been solved, at least approximately. H0 , on the other hand, is
+very similar to Hlab except that it describes mesons with momenta of order Λ.
+The dependence on Λ can be made explicit by rewriting H0 as ΛHs , with Hs
+the Hamiltonian obtained by rescaling the range of integration of H0 down to
+]1/2, 1[, reparametrizing its creation and annihilation operators, and adjusting
+its parameters accordingly.
+    Note that the Hamiltonian Hs includes interaction terms and does not have
+the same ground states |pi and |ni as the free part of the static model. Let us
+call |P i and |N i the physical ground states of Hs with energy E0 . They are also
+the ground states of H0 = ΛHs with energy ΛE0 , i.e., the ground states of the
+bare nucleon source together with a cloud of virtual mesons of characteristic
+momentum Λ. Now, if we take into account Hlab , the contributions of low-
+energy “laboratory” mesons are negligible compared to ΛE0 . We could, in
+effect, replace |P i and |N i by any state of the form |P il = |P, k1 , ..., kl i and
+|N im = |N, k1 , ..., km i (l, m > 0) with low-energy mesons of momenta ki  Λ
+(but not too many to ensure that they indeed bring only small deviations at
+this level). That is: the physical ground state of H0 is highly degenerate if we
+take into account low-energy laboratory mesons.
+    Wilson introduces his early prototype of effective Hamiltonian as a means to
+systematically evaluate how low-energy mesons affect the fixed source at some
+higher energy level. The key idea is the following. We could obtain the series of
+energy perturbations E = E (0) +E (1) +E (2) +... coming from low-energy mesons
+by applying degenerate perturbation theory to the high-energy Hamiltonian
+and using the series of perturbed states |ψi = |ψ (0) i + |ψ (1) i + |ψ (2) i + ... .
+But this would become cumbersome if we have to repeat the analysis all over
+again each time we want to assess the impact of a different set of low-energy
+mesons. Instead, we can construct a new Hamiltonian which gives all the
+required energy perturbations when applied to the state-space spanned by the
+ground states |ψ (0) i and adjust the corresponding basis whenever we want to
+add or remove low-energy mesons.
+    Consider first the level Λ. Wilson defines the effective Hamiltonian Heff at
+this level in the lowest order of degenerate perturbation theory by projecting
+
+                                          20
+H1 onto the state-space spanned by the ground states |P il and |N im of its
+unperturbed part H0 . In this subspace, H0 reduces to ΛE0 . There is also a
+non-zero probability that the physical ground state of the fixed source shifts
+from |N i to |P i through the absorption of a low-energy meson of momentum
+k, i.e., hP |ak τ + |N, ki = α 6= 0 for the transition amplitude. We can account
+for the effect of the cloud of mesons at the level Λ by redefining the bare fixed-
+source operator τ + in Eq. (1) in terms of a renormalized operator τR+ = τ + /α,
+i.e., by using |P i = τR+ |N i instead of |pi = τ + |ni. As a result, the effective
+Hamiltonian takes the following form:
+                             Z k0
+                        1           3
+                                        h
+                                                †       †
+                                                             i
+      Heff = ΛE0 +                d   k   w  (a
+                                            k k k a + b   b
+                                                        k k )
+                      (2π)3 0
+                                Z k0
+                          g0 α           3
+                                            h 1 
+                                                               † +    †        −
+                                                                                 i
+                      +                dk    √       (ak + bk )τR + (ak + bk )τR ,  (9)
+                         (2π)3 0                2wk
+
+with the same conventions as in Eq. (1) and with a renormalized “effective”
+coupling defined by gr = g0 α.16
+   Consider now the level Λn . We can again divide the Hamiltonian Hn rang-
+ing over all the slices up to ]Λn /2, Λn [ into an unperturbed part describing
+mesons with momenta of order Λn and a perturbative part describing mesons
+with momenta of order Λn−1 or less. The same type of effective Hamiltonian
+can be obtained from Hn by projecting it onto the subspace spanned by the
+ground states of Λn Hs,n together with mesons with momenta Λn−1 or less:
+
+                          Heff,n = Λn E0 [g0 ] + Hn−1 [g0 α(g0 )],                        (10)
+
+where the dependence on the bare coupling g0 is made explicit. The form of
+Hn−1 is similar to the expression found in Eq. (9), except that it takes into
+account slices up to the momentum scale Λn−1 and includes an operator τR,n
+defined relatively to the ground states |Pn i and |Nn i of H0,n .
+    Then, we can successively apply the transformation to the Hamiltonians
+Hm (m ≤ n − 1), ignoring each time mesons with momenta of order Λm .
+This allows us to evaluate how the effects of low-energy mesons add up across
+scales and to obtain the lowest energy deviations of order Λm−1 above the
+lowest energy level of Hn :
+
+                       Λn E0 [g0 ] + Hn−1 ,
+                       Λn E0 [g0 ] + Λn−1 E0 [g0 α(g0 )] + Hn−2 ,
+                       ...,
+                       Λn E0 [g0 ] + Λn−1 E0 [g0 α(g0 )] + ... + Hlab                     (11)
+
+The pattern is, in fact, similar to what is usually found in atomic physics: the
+recursive formula ultimately provides the “maximally” hyperfine structure of
+  16
+     Note that if Heff is the projection of H1 onto the state-space spanned by the states |P il
+and |N im (l, m ≥ 0), we need to replace τ by τR in the expression of Heff . Wilson corrects
+this minor point in his 1970 article (cf. 1965d, p. B449; 1970, p. A443).
+
+
+                                              21
+the fixed source specified at the level Λn given a series of effects organized
+according to their relative contributions in powers of 1/Λ.
+    The transformation also generates a sequence of couplings, going here from
+a “bare” coupling g0 at the level Λn down to the “renormalized” laboratory-
+level coupling g:
+
+                 gn = g0 , gn−1 = gn α(gn ) , ... , g = g1 α(g1 )          (12)
+
+Although Wilson does not refer to it in this way, Eq. (12) corresponds to his
+early formulation of an “RG equation” in terms of a sequence of couplings at
+distinct energy scales. Each coupling gm (0 < m < n) in the sequence encodes
+effects arising from a cloud of virtual mesons at the level Λm+1 (and indirectly
+virtual effects up to the level Λn ). Note as well that the RG equation takes a
+discretized form and that the “renormalization scale” is specified by the slice
+number m.
+    The lowest energy levels of Hn can also be found by starting with Hlab and
+some experimentally determined value of the coupling constant g and invert-
+ing the recursion formula above. This amounts to studying the high-energy
+behavior of the static model by successively taking into account the effects of
+new high-energy slices on the physics originally described by Hlab . And by
+investigating the behavior of gn and Hn in the limit n → ∞, one can obtain
+information about the eigenvalues of the “butchered” static Hamiltonian and
+the strength of its coupling at high energies.
+    There are, of course, many aspects of this article that deserve further
+scrutiny. But we have reached a point where we have everything we need to
+assess the significance of Wilson’s 1965 article with respect to his later works
+on the RG and EFTs. First, Wilson lays down two fundamental method-
+ological principles that will become the trademark of his RG approach later
+on: (i) divide a complex problem involving many scales into a set of simpler
+sub-problems specified at different scales (multi-scale analysis); (ii) evaluate
+how the physics at some scale affects the physics at other scales (interscale-
+sensitivity analysis). Second, Wilson has a preliminary version of a “coarse-
+graining” procedure: Heff,n is defined by ignoring “high-energy” mesons with
+characteristic momentum Λn , keeping “low-energy” mesons with momenta
+k < Λn−1 , and taking into account the simplest effects of virtual high-energy
+mesons on the coupling between low-energy mesons and the fixed source.
+Third, Wilson’s resulting prototype of EFT shares many elements with his
+version of the early 1970s. For instance, Heff,n represents a restricted set of
+degrees of freedom within a limited range of energy scales. The relative in-
+dependence, or “autonomy”, between high-energy and low-energy degrees of
+freedom is also directly built into the mathematical formalism of the effective
+model (i.e., it is not something that we discover at the end of the renormal-
+ization procedure as in the traditional analysis of a renormalizable model).
+Finally, Wilson’s early RG equation involves a discrete sequence of couplings
+at different physical scales (and not, for instance, a sequence specified by ar-
+bitrary renormalization conditions).
+    These similarities notwithstanding, Wilson is still far from his mature
+
+                                       22
+views. Note first that the high-energy structure of QFTs is still both a math-
+ematically and physically relevant problem in Wilson’s mind. For instance,
+he devotes the end of his 1965 article to classifying the possible asymptotic
+behaviors of couplings at high energies and still treats QED as a putatively
+UV-complete field theory.17 Wilson is indeed far from suggesting the idea of
+treating realistic theories with a fixed cut-off at this stage. In his eyes, the
+main underlying goal is still to solve the full Hamiltonian of realistic theories
+and the renormalization procedure still requires taking the infinite cut-off limit
+at the end. Second, Wilson is not yet fully clear about the idea of integrating
+out high-energy degrees of freedom. Heff,n still describes the “high-energy”
+system originally described by Hn and not some new “low-energy” system,
+strictly speaking. Third, non-renormalizable terms are absent in 1965. Wilson
+takes Heff,n to give the lowest-order term that one would obtain by solving Hn
+in degenerate perturbation theory. The Hamiltonian Heff,n would be clearly
+more complicated if higher-order perturbative effects from low-energy mesons
+were included. But Wilson does not provide any detail at this stage and he
+is not yet explicit about the idea that Heff,n would include an infinite number
+of independent interaction terms. Finally, Wilson does not speak about irrele-
+vant and relevant couplings and is not concerned with low-energy fixed-points
+in 1965.
+    Despite these missing elements, Wilson has pushed field theory forward
+in three major directions in 1965. First, he has turned the traditional way
+of parsing a theory on its head. The standard approach was to divide some
+Hamiltonian H into a free and an interacting part and assume that the inter-
+acting part is sufficiently small to avoid intractable nonlinearities and derive
+approximate solutions. Wilson divides H into a high-energy and a low-energy
+part and introduces a sufficiently large gap between the two to treat the low-
+energy part as a perturbation. Second, Wilson has provided a clear physical
+basis to the renormalization program and made it clear that the most impor-
+tant aspect of the renormalization procedure lies in the relationship between
+different physical scales and not in the high-energy limit of theories (see Wil-
+son, 1976b, p. 4; 1983b, p. 590, for later remarks related to this point).
+Third, Wilson has developed a new type of field theory and thereby somewhat
+deviated from the pristine, albeit approximate, blueprint offered by QED. In
+particular, his notion of effective Hamiltonian in 1965 corresponds to a renor-
+malized field theory with a sharp cut-off accounting both for the lowest energy
+level of a system specified at some higher energy scale and for small deviations
+induced by the physics at the cut-off scale and below.
+    Before assessing what were the main driving forces behind these achieve-
+ments, I need to address one remaining puzzle: namely, that contrary to what
+  17
+      “The curve A [i.e., the Landau pole singularity case] will never occur in practice. For
+if it did occur then eλ would not exist for large λ. But because of our definition of eλ [...],
+the photon propagator also would not exist for large photon momentum k. But quantum
+electrodynamics cannot exist without a photon propagator, and in particular the function
+φ [i.e., the beta function] will then not exist either. So, instead of the curve A being
+a possibility, we have the possibility that no consistent quantum electrodynamics exists.”
+(Wilson, 1965d, p. B453)
+
+
+                                              23
+Wilson (1965d, p. B447) says, the butchered static model does not display the
+same sorts of issues as realistic models and thus might not give us any inter-
+esting information about them. Take the issue of UV divergences for instance
+and suppose that for some scattering process, the
+                                                R Λoriginal static model exhibits
+UV logarithmic divergences as in QED (i.e.,         dk/k ∝ ln(Λ) for Λ → ∞).
+If we take into account mesons with arbitrarily high energies, the butchered
+static model exhibits linear divergences in the number n of slices for the same
+process:
+                               n Z Λm
+                              X        dk
+                                           = n ln 2                         (13)
+                                   1 m k
+                              m=1 2 Λ
+
+This suggests, first, that the high-energy structure of the butchered static
+model is different from that of realistic field theories and, second, that the
+methods developed here might not give any interesting information about re-
+alistic models. After all, it was already well-known at the time that if two
+models display different types of UV divergences, a method that works in one
+case might not work or be as fruitful in the other case. Renormalizable and
+non-renormalizable models provide a clear example with respect to standard
+perturbative methods (if one wishes to take the infinite cut-off limit). And
+even if the butchered static model were displaying the same kinds of diver-
+gences as realistic models, say, by identifying n with ln(Λ/µ), it would not be
+sufficient to conclude that their high-energy structure is similar and that they
+should be treated in the same way, as it is now clear with QED and Quantum
+Chromodynamics (QCD), the modern theory of the strong interaction.
+    In my view, the most plausible solution to this puzzle is to take Wilson to be
+mainly concerned with finding a new non-perturbative method and not discov-
+ering structural features of realistic models themselves. It would be surprising
+if he was not aware of the issues I just mentioned. For instance, although
+Wilson does not make it explicit in his discussion of the various asymptotic
+behaviors at high energies (1965d, sec. VI-VII), he is probably aware that
+the couplings of two models displaying the same kinds of UV divergences in
+perturbation theory may follow different trajectories at high energies. And if
+my reading is correct, Wilson is just not yet sure that the method he is devel-
+oping in 1965 will work for realistic models. As we will see, he does spend the
+following years trying to make sure that he is not “landing himself in the soup”
+with the sort of recursive transformation he develops in 1965. And he knows
+at the time that more work needs to be done to show that the method applies
+to realistic models. So, to put it differently, Wilson is not yet concerned with
+solving the general problem of how QFTs behave at high energies. He only
+means to make a more modest and cautious contribution: namely, to develop
+a method that might help physicists make some progress in that direction.
+
+
+6     Taking stock
+Now is a good time to take a pause and assess what really made the difference
+in the story so far.
+
+                                       24
+    As we have seen, Wilson worked within different research traditions during
+his early career and came to be in contact with unusual ones for an aspirant
+field theorist. He first received the standard field-theoretic training of the
+1950s and gradually learned that something new would have to be invented.
+His work in meson theory provided him with a simple, paradigmatic, and
+sufficiently realistic field-theoretic model to fiddle with and eventually brought
+him to the emerging RG tradition of the 1950s. Gell-Mann and Low gave him
+the idea of a sequence of couplings, though probably not the physical picture
+he developed in 1965. This picture rather came from the slicing method itself
+and became clearer to Wilson once he compared it with Gell-Mann and Low’s
+rather formalistic picture of scale-dependence (see Wilson, 1965d, p. B452).
+Wilson was also in contact with the growing S-matrix tradition of the 1960s
+but quickly distanced himself from this more phenomenological approach to
+particle physics (see, e.g., Chew, 1963). The model field-theoretic tradition of
+the 1950-60s provided him with more models to toy around with and cleared
+his mind for dealing with the static model in the way he deemed necessary. Van
+Hove is likely to be the main source of inspiration for his attempt to examine
+how a cut-off Hamiltonian model behaves when one successively adds new high-
+energy degrees of freedom to it. And there is more, from Wilson’s interest in
+purely mathematical puzzles (e.g., Wilson, 1962) to his acquaintance with the
+field of quantum chemistry through discussions with his father, Bright Wilson
+(Wilson, 1993).18
+    Despite all these influences, it does not seem that any of them brought
+Wilson to butcher the state-space of the static model and define a sequence
+of effective models in the specific way he did. For instance, Wilson’s peculiar
+way of parsing a cut-off Hamiltonian into a high-energy and a low-energy part
+is remarkably distinct from Gell-Mann and Low’s and his own early attempt
+to isolate the high-energy behavior of perturbative expressions. Wilson’s infi-
+nite sequence of cut-off Hamiltonians with intermediary gaps of order Λ is also
+quite different from Gell-Mann and Low’s simple division between low-energy
+and high-energy scales (and from Dyson’s division between low and high fre-
+quencies). Likewise, Wilson kept continuous slices in his 1965 article instead
+of following van Hove’s suggestion to start directly with a fully discretized and
+finite model. But he did rely on a discrete sequence of couplings (compared
+to Gell-Mann and Low). And overall, it seems that these sources of inspira-
+tion and the diversity of research traditions in which Wilson was working gave
+him at best new directions for his investigations and a strong incentive to try
+out new methods instead of using existing ones (as he originally did in his
+dissertation).
+    Wilson also worked on different local puzzles during the late 1950s and early
+  18
+    Another potential source of inspiration behind Wilson’s slicing method could be Freeman
+Dyson’s idea of developing a renormalization technique based on the separation between
+low and high frequencies (Dyson, 1951). Wilson explicitly relates his own renormalization
+method to Dyson’s idea in his later works (e.g., Wilson, 1971d, p. 1842; 1972a, footnote
+14; 1976a, p. 249; 1983b, p. 590). At the same time, Wilson also acknowledges later on
+that the logic of his method is quite different from Dyson’s (cf. Wilson, 1991, 1/4, 11’20”ff.
+2002, part I).
+
+
+                                             25
+1960s. The first was to examine how the Low equation works with K-mesons, in
+line with Gell-Mann’s interest in the phenomenological side of particle physics.
+This puzzle, however, quickly turned into the more mathematically-oriented
+one of understanding the asymptotic behavior of the solutions to the Low
+equation for any kind of meson. Then, in the following years, Wilson moved
+back and forth between specific mathematical puzzles related to the properties
+of phenomenological quantities (Amati et al., 1963; Wilson, 1963) and the
+high-energy behavior of physically intuitive toy models (e.g., the Lee model,
+the Thirring model), ultimately moving back to field theory for good with his
+work on the operator product expansion (OPE) and model Hamiltonians in
+1963-65.
+    Again, Wilson did not follow a series of closely related puzzles that natu-
+rally brought him to the slicing method. At best, these puzzles were related
+insofar as they helped him to get a grip on the more general problem of un-
+derstanding the structure of QFTs. As Wilson recalls: “I knew that I wanted
+a problem that I could work on for a long time” (2010, part 2, 4’43”ff.). He
+did not, however, engage with this problem by showing undue reverence for
+the pristine formulation of field theory inherited from QED compared, say, to
+physicists attempting to apply gauge symmetries to the weak and strong in-
+teractions (e.g., Schwinger, 1957; Salam and Ward, 1959). Wilson’s return to
+field theory in 1963 was rather pragmatic. On the one hand, he thought that
+understanding its structure was the mathematically most interesting problem
+in physics he could work on at the time. This explains why he had no qualms
+about twisting the structure of field theory if it meant gaining new insights.
+On the other hand, Wilson thought that the best way of understanding the
+structure of field theory was to develop new non-perturbative methods and
+he took this project to be mathematically interesting in itself. This explains
+why he worked with simple models that might not have the relevant UV be-
+havior and why he made diverse and somewhat unrelated attempts at probing
+their high-energy structure. And overall, it seems that the local puzzles Wil-
+son worked on during this period played a rather secondary role compared to
+these more stable and long-lasting pragmatic aspirations.
+    But was it enough? Consider the role played by Wilson’s concern with the
+UV together with his more pragmatic aspirations in the context of his 1965
+article. Wilson knew that it was essential to have a good handle on the UV
+behavior of Hstatic in order to solve it. Traditionally, the problem involved two
+parts: (i) analyze the different types of divergences displayed by the model of
+interest; (ii) assess whether the model is perturbatively renormalizable. Wilson
+made an analogous move: (i) analyze how the high-energy degrees of freedom
+of the model affect its low-energy behavior; (ii) assess its limiting UV behavior.
+Since Hstatic displayed UV divergences, Wilson had to introduce a cut-off in
+order to address these questions. And since Hstatic was non-relativistic and
+unrealistic at high energies, there was no reason for him not to use the simplest
+one, namely, a sharp momentum cut-off Λ. To address (i), it thus makes sense
+that Wilson would divide a cut-off Hamiltonian into a high-energy and a low-
+energy part, which is equivalent to adding high-energy degrees of freedom to
+
+
+                                       26
+some original low-energy model.
+    Now, the crucial question for Wilson was: how would this analysis help
+to solve Hstatic ? Wilson knew that high-energy mesons had more important
+effects than low-energy ones. It would thus make sense to treat the low-energy
+Hamiltonian as a “perturbation” to the high-energy one. But this new kind
+of perturbative analysis would work only if there was a sufficiently large scale-
+separation between their energy levels. This explains why Wilson inserted a
+large energy gap of characteristic size Λ between the “low-energy” and “high-
+energy” systems described by Hlab and H0 , respectively. We can also under-
+stand why Wilson introduced a first prototype of effective theory at all. It was
+meant as a tool to assess how the low-energy physics described by Hlab affects
+the lowest energy levels of H0 , which, again, is equivalent to evaluating the
+impact of adding new high-energy degrees of freedom to Hlab .
+    We still face two issues: (i) Why did Wilson take into account an infinite
+number of slices? (ii) Why did he define his prototype of effective theory
+over a continuous momentum range? We might try to address these issues by
+pointing out that Wilson’s specific way of analyzing the impact of high-energy
+degrees of freedom forced him to rely on a sequence of cut-off Hamiltonians if
+he also wanted to evaluate the limiting UV behavior of the model. After all,
+H0 was defined over the range ]Λ/2, Λ[ and it was not obvious whether taking
+the limit Λ → ∞ would give any relevant information. On the other hand,
+Heff and Hlab were, as a matter of design, restricted to low-energies. So Wilson
+was forced to re-conceptualize the UV behavior of the model in terms of a
+discrete number n of high-energy slices and consider an infinite sequence by
+taking the limit n → ∞. This reconstruction somewhat helps to address (i).
+But it does not explain why Wilson felt the need to keep continuous slices. He
+could have directly worked with lattice field-theoretic methods by introducing
+a large-distance and a short-distance cut-off.
+    The crucial missing element is Wilson’s general outlook about how to solve
+physical problems and thus make decisive progress in physics at the time. Wil-
+son had been fascinated since an early age by the ability of machines to solve
+problems thanks to his grandfather who was a “gear expert” at MIT (1983a, p.
+5; see also 1986). Wilson became increasingly interested in computers during
+his studies at Caltech through his interactions with Jon Mathews, who intro-
+duced him to elementary programming problems with the computers of the
+Jet Propulsion Lab (Alexander, 1982, p. 5; Wilson, 2002, part I). A few years
+later, Wilson tried to use the MIT computers to gain some insight into his
+dissertation work. But they had too little computing power for Wilson to get
+anything interesting out of them within a reasonable amount of time and he
+got increasingly frustrated by this experience (2002, part II). Yet this failure
+proved to be quite productive. Wilson was led to develop a new methodolog-
+ical scheme: the physical problems he worked on would have to be framed in
+such a way that they could be solved in principle by a sufficiently powerful
+computer (1983a, p. 5; 2002, part II). And this new methodological scheme
+played a crucial role in the way he thought about butchering the static model
+after his early work on the OPE (1964):
+
+
+                                       27
+      So then I spent a long time just trying to figure out how do I get
+      more understanding about high-energy behavior [...]. The pertur-
+      bative approach doesn’t work. So that sets me off thinking about
+      a computational approach to go beyond perturbation theory. And
+      I particularly get interested in the question if I had a computer big
+      enough, how would I do this computation. That became sort of a
+      guiding point to drive me to how to think about the problem. How
+      can I convert this from a problem of infinite number of degrees of
+      freedom, which you can’t deal with anyhow, to a problem which is
+      finite even if it was so large that you would have to have an astro-
+      nomical size computer. I just wanted to convert it from an infinite
+      number of degrees of freedom to a finite number. (Wilson, 2002,
+      part I)
+
+    As we have seen, Wilson did not directly convert the problem into a finite
+one in his 1965 article. Each slice still contained an infinite number of degrees
+of freedom. But Wilson did something physically more subtle and methodolog-
+ically more simple. He implemented the foundational methodological principle
+at the basis of any sensible algorithmic strategy, the so-called “divide and con-
+quer” principle: (i) he “divided” a complex and seemingly unsolvable problem
+involving a continuous and infinite range of momenta into an infinite series
+of simpler sub-problems of the same type involving a continuous yet limited
+range; (ii) he “combined” the solutions of these sub-problems to solve the origi-
+nal problem. Each Hamiltonian H0,n ranging over ]Λn /2, Λn [, including Hlab at
+the laboratory level, was indeed conceived from the get-go as a tractable copy
+of the original Hamiltonian Hstatic . Both H0,n and Hstatic involved an infinite
+number of degrees of freedom for instance. But H0,n was at least approxi-
+mately solvable compared to Hstatic . Of course, implementing the division was
+not enough. Wilson also needed to justify that these sub-problems could be an-
+alyzed separately before relating them to one another—hence the assumption
+that the slices are sufficiently separated across energy scales. And by making
+this assumption, Wilson found that the infinite number of sub-problems would
+reduce to a two-fold recursive problem: (i) solve the lowest-energy Hamiltonian
+Hlab , i.e., the inductive base; (ii) derive the recursive relationship between Hn
+and Hn+1 , which involves, in particular, solving Hs,n+1 and expressing gn+1 in
+terms of gn .
+    There is another benefit coming out of this: namely, that this perspec-
+tive helps to understand why the main irony in Wilson’s part of the story is
+harmless. As we have seen, a key part in Wilson’s original project was to
+understand the high-energy structure of QFTs. And yet he ultimately came
+up with a new type of field theory, which, as a matter of principle, could not
+provide such information. If I had only singled out Wilson’s concern about
+the UV and not his pragmatic aspirations and methodological commitments,
+his early formulation of EFTs would have looked somewhat accidental at this
+stage. Likewise, if I had only singled out the traditions in which he was working
+at the time, it would have been hard to explain why Wilson defined an infinite
+sequence of low-energy effective models (instead of following Gell-Mann and
+
+                                       28
+Low’s method for instance). Wilson’s path to his first prototype of EFT and
+the specific form it takes only make sense if we acknowledge his pragmatic
+aspirations and peculiar algorithmic outlook on physical problems.
+
+
+7    The road ahead and the meaning of field
+     theory
+Wilson continued to work on model Hamiltonians and on his early formulation
+of the OPE in the following years. He eventually published two major articles
+in 1969-70 and reached his mature conception of the RG and EFTs in 1971
+(Wilson, 1969, 1970, 1971b,c). Along the way, Wilson’s concern for the high-
+energy behavior of QFTs became less central than it originally was in the late
+1950s and early 1960s. He also became clearer about the necessity of including
+all possible terms in an EFT, the idea of integrating out high-energy degrees
+of freedom, and the significance of low-energy fixed-points, relevant and irrele-
+vant operators, and large scale-separation. Wilson’s algorithmic outlook kept
+playing an important role in these transformations (see, esp., Wilson, 1970).
+But he also made new encounters, including a decisive one with statistical
+physics in 1965-66. Since this episode has already received a fair amount of
+attention in the literature (e.g., Cao and Schweber, 1993; Schweber, 2015), I
+will be much briefer in what follows.
+    So we are in 1965, at the time Wilson has published his first article on the
+RG and EFTs. The article will receive literally no attention in the following
+years, and Wilson is, in fact, the first and only physicist who cites it in the
+early 1970s (cf. Wilson, 1970, 1971c, 1972a). He also finds little success at
+conferences. For instance, Gerald Guralnik recalls that Wilson “got beaten up
+rather badly” when he presented his ideas about discretized model Hamilto-
+nians in July 1965 (Guralnik, 2009, p. 21). Yet Wilson’s 1965 work appears
+to have a deep impact on his subsequent ideas and lead him, in particular, to
+rethink in depth the meaning of field theory (see, e.g., Wilson, 1965b; 1971d,
+sec. 7; Wilson and Kogut, 1974, sec. 1.1). As he recalls later on in his Nobel
+Prize lecture:
+
+     Following this development [the 1965 article], I thought very hard
+     about the question “what is a field theory,” using the φ4 interaction
+     of a scalar field [...] as an example. [...] I realized that I had to
+     think about the degrees of freedom that make up a field theory.
+     (Wilson, 1983b, pp. 590-1)
+
+At the time, the tradition in particle physics, especially among those who work
+with Lagrangian models, is to think about “degrees of freedom” in terms of the
+different kinds of particles, whether elementary or composite, that constitute a
+given physical system, and distinguish between them by attributing appropri-
+ate quantum numbers and symmetry transformation properties to their cor-
+responding field variables (e.g., Schwinger, 1957, 1964; Glashow, 1961; Salam
+and Ward, 1964).
+
+                                       29
+    Wilson seems to take a diametrically opposite view. Like many other model
+field theorists, he has worked for many years with simple model Hamiltonians
+describing essentially only one kind of field (e.g., a meson field for the static
+model). Wilson has also relied heavily on their formulation in terms of creation
+and annihilation operators, which makes their structure across energy scales
+more explicit. And when he publishes his article on model Hamiltonians in
+1965, the important question is not whether a field is composite or elementary,
+for instance, or whether it has appropriate mass or spin properties to account
+for existing particle phenomena. Rather, it seems that the central issue at
+the heart of field theory for Wilson is to understand how distinct degrees
+of freedom contribute across different physical scales—at first in momentum
+space in 1965, and eventually in position space by the mid-1970s, when he
+starts to devote most of his time to lattice field theory. It was common at
+the time to regard the Fourier decomposition of a field in momentum space
+as a convenient formal trick and take creation and annihilation operators as
+bookkeeping devices for tracking changes in the occupation states of the field
+(e.g., Schweber et al., 1955, pp. 89-92; Schweber, 1961, sec. 6.e). In his
+1965 article, Wilson rather takes the decomposition in momentum space to be
+constitutive of the meaning of a field as a multi-scale system and thinks of it
+in terms of a sequence of sub-systems across physical scales.
+    Wilson also appears to become increasingly aware around this time that
+he needs to introduce a cut-off in order to escape the pitfalls of perturbation
+theory and understand the structure of realistic QFTs (as he also emphasizes
+later on in 1983b, p. 591). Not every kind of cut-off will do, however. As
+we have seen, Wilson needs a cut-off that is simple enough to separate unam-
+biguously different contributions according to their relative importance across
+scales—hence Wilson’s use of a sharp cut-off in momentum space. The “phase-
+space cells” method he develops in 1965 may appear by today’s lights to be a
+rather confusing attempt at separating wave packets (see Wilson, 1965a, pp.
+164-72; 1965d, sec. VII; 1971c). But the strategy is the same. In both cases,
+Wilson picks out one degree of freedom at a time, or one “pack” of degrees
+of freedom, according to its relevance at a particular scale. And by using the
+simplest type of cut-off, a sharp cut-off, Wilson is very close to working with
+a lattice field theory, as he does later on.
+    It is important to emphasize that Wilson’s outlook is still mainly method-
+ological at this stage. In his eyes, the slicing and phase-space cells methods
+offer a conceptually clear and efficient way of probing the structure of QFT
+(see, e.g., Wilson, 1965d, p. B447; 1983b, p. 591). But he does not believe
+that realistic QFTs only make sense with a fixed cut-off. Wilson takes QED
+to be a putatively UV-complete theory, as we saw above, and he is also open
+to the possibility that some field-theoretic models might display a high-energy
+fixed-point (see, e.g., 1965d, sec. VI). In the same vein, his 1965 article in-
+dicates that he attributes more and more importance to the question of how
+different degrees of freedom are related to one another across scales compared
+to his original concerns about the asymptotic behavior of field theories at high
+energies. But again, the shift is largely methodological at this stage. Wilson’s
+
+
+                                       30
+theoretical tools seem to underwrite a new vision of field theory which might
+prove to be remarkably efficient for solving traditional puzzles. He still needs,
+however, to test whether these tools—and thus this new vision—are fruitful
+with the help of new toy models, as he has done before for the behavior of
+QFTs at high energies. And it is precisely at this moment that statistical
+physics enters the stage.
+
+
+8      Wilson’s encounter with statistical physics
+       [...] the land of statistical physics is broad, with many dales, hills,
+       valleys and peaks to explore that are of relevance to the real world
+       and to our ways of thinking about it. (Fisher, 1999, p. 127)
+
+Wilson had not been very much in touch with or interested in statistical physics
+when he first came to Cornell in 1963 (Wilson, 2002, part I). In 1965-66,
+however, a series of fortuitous encounters with physicists working on critical
+phenomena led him to redesign in depth his research plans, perfect his new
+field-theoretic tools, and reach what is now considered to be his mature un-
+derstanding of the RG and EFTs. I will briefly outline Wilson’s three most
+significant encounters in what follows (see Schweber, 2015, for more details).
+     The “first catalytic event”, in Wilson’s own words, dates back to 1965-66,
+before he went to the Aspen Center for Physics in Colorado in the summer
+1966 (Wilson, 2002, part II). Benjamin Widom, who had just been appointed
+full professor in the Chemistry Department at Cornell in 1963, gave a talk on
+his new scaling hypothesis and Wilson turned out to be there, though prob-
+ably by chance.19 Widom (1965a) had found a simplified equation of state
+for a fluid at criticality. This equation would involve a homogeneous function
+φ(λx, λy) = λγ φ(x, y) of its variables x and y, with γ some degree of homo-
+geneity and λ some scaling factor, and thus display a simple (multiplicative)
+scaling behavior with no natural dimensionful scale near some critical point
+(x∗ , y ∗ ). Wilson (1991, 1/4, 33’48”ff.) recalls finding the result puzzling. He
+had encountered similar simple asymptotic behaviors for systems displaying
+multiple scales in his previous works. Yet Widom had not provided any jus-
+tification for his scaling equation apart from its empirical adequacy, and this
+moved Wilson to explore further the connection between particle physics and
+critical phenomena.
+     The second catalytic event for Wilson was Leo Kadanoff’s 1966 preprint
+introducing the idea of a “blocking transformation”. Following Widom’s clari-
+fication of the scaling behavior of a fluid near criticality, Kadanoff (1966) took
+  19
+    There is some ambiguity about the exact date of this talk. Williams (2016, p. 8) briefly
+mentions Wilson’s own hesitations about the exact date, around 1964-65 according to his
+interview with the Physics of Scale project (Wilson, 2002, part I) and “sometimes before
+going to Aspen” according to his Nobel Prize lecture (Wilson, 1983b, p. 591). Widom
+places the date either in 1966 or 1967 (Widom, 2003, part III). It seems to me that Wilson
+probably heard Widom’s talk either toward the end of 1965 or early in the year 1966 since
+Widom was on leave at the University of Reading during the first semester of 1965 and
+Wilson started to work on problems in statistical physics when he went to Aspen.
+
+
+                                            31
+up the project of devising a new strategy for justifying Widom’s (1965a,b)
+results. He started with the Ising model and decided to divide the lattice
+into blocks smaller than the average correlation length between the spins, viz.
+over distance scales where the spins would tend to line up and effectively act
+as small “blocks”. As we will see in more detail below, Kadanoff replaced
+the spin variables contained within each block by a single one and adjusted
+the parameters of the Hamiltonian to account for the effects of the missing
+spins. According to Kadanoff, the resulting effective Hamiltonian would have
+the same form as the original one close enough to the critical point. And by
+performing this blocking transformation, he was able to obtain a set of func-
+tional equations for some key quantities of the model and show that they scale
+according to Widom’s homogeneity hypothesis (Kadanoff, 1966, sec. 3).
+    There is, in fact, some uncertainty as to whether Wilson had worked out
+a blocking transformation before reading Kadanoff’s preprint. Wilson (1983b,
+p. 591) suggests in his Nobel Prize lecture that he was working on similar
+ideas in Aspen and discovered that he “had been scooped” after discussing his
+work with some condensed matter physicists there, who directed him toward
+Kadanoff’s preprint. But it is also possible that Wilson was doing something
+quite different in Aspen and encountered Kadanoff’s preprint only afterward,
+during one of the seminars organized by Benjamin Widom and Michael Fisher
+at Cornell (Mermin, 2015, pp. 84-5). Be that as it may, Wilson’s later works
+and remarks still suggest that Kadanoff’s work helped him to understand more
+clearly the origin of Widom’s scaling laws and the connection between con-
+densed matter and particle physics (e.g., Wilson, 1971b; 2002, part II; Wilson
+and Kogut, 1974, p. 82). In both cases, physical problems would involve
+multiple scales which do not all participate in the same way in the phenom-
+ena of interest. Likewise, Kadanoff’s work probably helped him to clarify the
+idea of “integrating out” physically irrelevant degrees of freedom and realize
+that the physically important notion of fixed-point is a low-energy one, not a
+high-energy one (Wilson and Kogut, 1974, p. 82; Wilson, 2002, part II).
+    The third catalytic event was Wilson’s encounter with Fisher who had just
+moved from King’s College to Cornell in the summer 1966. The two would soon
+deliver groundbreaking work, both relevant to the fields of condensed matter
+and particle physics (Wilson and Fisher, 1972). At the beginning, however,
+Wilson found in Fisher a privileged source of wisdom to catch up with the
+recent developments in statistical physics (Wilson, 1991, 1/4, 45’22”ff.). Fisher
+was already a well-established figure in the field, having published important
+articles and reviews about critical phenomena (e.g., Fisher, 1959, 1964, 1967;
+Essam and Fisher, 1963). He also had a far-reaching understanding of what
+was at stake. Thanks to him, Wilson discovered that statistical physics was
+full of ideas similar to the ones he had already been toying around with in the
+past few years, including ideas about effective Hamiltonians, scaling laws, and
+non-integral scaling exponents. And from there, as Wilson puts it in his Nobel
+Prize lecture, he started to amalgamate his “thinking about field theories on
+a lattice and critical phenomena” (1983b, p. 591).
+    The first article he published after 1965 with a graduate student at Cornell,
+
+
+                                       32
+Kenneth Piech, displayed such amalgamation (Piech and Wilson, 1968). The
+field-theoretic model they introduced to account for atomic phenomena was
+directly formulated on a lattice. Inversely, Wilson learned from Fisher and
+Widom that the Ising model he had been working on since 1966 could serve
+again as “a ‘theorists’ laboratory’ for the investigation of the same kind of
+phenomena that lead to renormalizability challenges in quantum field theory”
+(Wilson, 2005, p. 4). Wilson had thus expanded his portfolio of model field
+theories. But now it seems that their status had somewhat evolved in his
+mind. They had stopped being mere toy models to be studied for the sake of
+obtaining information about the high-energy behavior of realistic theories in
+particle physics. Wilson had also found that they were, to a certain extent,
+physically realized in some condensed matter systems and could thus be treated
+as autonomous field-theoretic models at least in some areas.
+
+
+9     “I wanted to have that assurance that I wasn’t
+      just landing myself in the soup”
+Another fundamental element in Wilson’s mind changed around 1966-67. It
+became clear to him that the exact version of the RG transformation he had
+worked out in 1965 would generate an infinite number of independent terms
+parametrized by distinct couplings, namely, all the possible terms consistent
+with the symmetries of the original model he had started with. At the same
+time, he also realized that the new terms would be systematically organized ac-
+cording to their importance across scales and that most of them would become
+“irrelevant” at the scale of interest.
+    The origin of this shift in Wilson’s mind is not entirely clear, however. One
+plausible hypothesis is that he was already aware of the need to introduce
+all the possible terms thanks to his work on the OPE in 1963-64. Wilson’s
+(1964) manuscript contains a similar methodological principle. The product of
+local operators evaluated at points arbitrarily close to one another is expanded
+in a complete basis of arbitrarily complex local operators. As far as I can
+tell, this is the first time Wilson thinks of field operators as operator-valued
+vectors living in an infinite-dimensional vector space. And he is also aware
+that the set of operators in this basis is not only fully determined by the
+symmetries and variables of the model of interest but also includes in principle
+both perturbatively renormalizable and non-renormalizable operators.
+    Now, Wilson does introduce an additional constraint on the dimensionality
+of these operators, which, in effect, is akin to the constraint of perturbative
+renormalizability often endorsed at the time (1964, pp. 27-8, 32). This con-
+straint reflects his interest in the singular behavior of QFTs at short distances,
+which is primarily contained in the first few lowest-dimensional terms of an
+OPE in standard cases. And yet, despite this somewhat arbitrary restriction,
+Wilson still endorses a methodological principle akin to what is known today
+as Gell-Mann’s “totalitarian principle”, which states that everything that is
+not forbidden is compulsory (cf. Gell-Mann, 1956, p. 859). Wilson indeed em-
+
+
+                                       33
+phasizes that an OPE needs to include all possible terms that are consistent
+with a given set of symmetries and constraints (e.g., 1964, pp. 28-9, 32). And
+this may well have opened his eyes about the need to include all the possible
+terms consistent with the principles of a given model when one successively
+eliminates one scale after the other in a physical problem.
+    The connection is nonetheless too thin to be significant. First, Wilson
+was concerned in 1964 with the behavior of products of operators at distinct
+points, not about the most general form of a local field-theoretic operator, say,
+the Hamiltonian density H(x) of a given model. There is, in other words,
+no reason for him to think that a scale-dependent transformation on a local
+operator (as he does it in 1965) automatically generates all the local operators
+satisfying the same principles as the original one. Second, Wilson’s manuscript
+suggests that the kind of systematicity he is after in 1964 is more akin to the
+systematicity sought when including higher-order terms in the perturbative
+calculation of a given correlation function. That is, he is not making a claim
+about the most general form of models themselves but rather trying to give a
+non-perturbative generalization of the renormalization procedure.20
+    A better hypothesis, in my sense, is that Wilson’s attitude shifted after he
+read Kadanoff’s work in 1966. Although Wilson was already “moving in that
+direction”, as he emphasizes later on (2002, part II), Kadanoff probably gave
+him a clear set-up to examine more precisely how the dynamics of a model
+changes when one eliminates one scale of a physical problem at a time. As
+Wilson further recalls:
+       [Kadanoff] just postulates, of course, that decimation would come
+       back to the same Hamiltonian, and one of the things I do work
+       through at some point is doing decimation on two-dimensional
+       Hamiltonian, but which, of course, produces infinite sets of cou-
+       plings, not just two as Kadanoff assumed. (Wilson, 2002, part II)
+In other words, Wilson convinced himself that a typical RG transformation
+would generate all the possible terms consistent with the principles of some
+original model by fiddling with the two-dimensional Ising model. I have not
+come across archival materials where Wilson does this calculation explicitly.
+In particular, his manuscripts on the Ising model in the 1960s do not include
+such calculation.21 But if his recollections in his interview with the Physics of
+Scale project are correct, he probably did the calculation in 1966-67 (i.e., after
+he arrived in Aspen and before he did a similar calculation with the static
+model in 1967 or so, cf. below).
+    The best way to understand Wilson’s shift is to briefly show how a simple
+blocking transformation generates new terms in the Ising model.22 Consider
+  20
+     See Wilson (1964, pp. 4-5, 11, 25) for his suggestion that the OPE might provide the
+basis for a new non-perturbative renormalization program.
+  21
+     See Wilson’s “Unpublished Notes on the Ising Model” dated from the 1960s in Kenneth
+G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript Collections, Cornell
+University Library. Box 1, Folder 6.
+  22
+     I will follow Yeomans’s simple presentation here (1992, sec. 9.2). But more details can
+be found in Goldenfeld (1992, sec. 9.6) and Kadanoff (2000, sec. 14.2) for instance.
+
+
+                                            34
+first a two-dimensional lattice of infinite size and spacing a with a two-valued
+spin variable si = ±1 located at each site i. The dynamics of the system is
+governed by a simple Hamiltonian:
+                                         X
+                                 H=J         si sj ,                        (14)
+                                           hiji
+
+
+where each spin si interacts only with its P nearest neighbors sj on the lattice.
+For simplicity, I have set the usual term h i si accounting for the interaction
+between the spins and an external field h to zero. Then, the next step is to
+implement a simple decimation procedure eliminating one diagonal of spins
+over two in the lattice (see Fig. 1). The procedure is equivalent to eliminating
+only the spin s00 at the center of each block made of five spins s00 , s01 , s0−1 , s10
+and s−10 obtained after rotating the lattice by 45 degrees (using a simplified
+notation sij to keep track of the interactions
+                                       √         between the five spins below).
+The result is a lattice with spacing a 2 having exactly the same shape as the
+original one.
+
+
+
+
+      Figure 1: Decimation of one diagonal over two in the two-dimensional
+      Ising model.
+
+
+   At the formal level, the decimation procedure goes as follows. Note first
+that the original partition function,
+                                X      h        i
+                            Z=      exp − H(hsi) ,                     (15)
+                                   hsi
+
+
+with hsi a possible lattice spin configuration, can be rearranged as a sum of
+products of terms involving only the five spins of each rotated block:
+                         h                                i
+                    exp − Js00 (s01 + s0−1 + s10 + s−10 )                (16)
+
+If we eliminate the spin s00 at the center of each block by explicitly computing
+the partition function for each s00 = ±1, we obtain a sum of products of terms
+
+                                          35
+like:                      h                             i
+                     2 cosh − J(s01 + s0−1 + s10 + s−10 )                   (17)
+By considering the sixteen possible configurations sij = ±1, this expression
+can be rewritten as:
+      h
+   exp − A(J) − B(J)(s−10 s01 + s01 s10 + s10 s0−1 + s0−1 s−10
+                                                                          i
+                        + s−10 s10 + s0−1 s01 ) − C(J)(s−10 s01 s10 s0−1 ) , (18)
+
+provided the new parameters A(J), B(J), and C(J) satisfy:
+                                                       
+               A(J) = ln 2 + ln cosh(4J) + 4 ln cosh(2J) /8
+                                  
+               B(J) = ln cosh(4J) /8
+                                                 
+               C(J) = ln cosh(4J) − 4 ln cosh(2J) /8                        (19)
+
+We can thus eliminate the spin s00 in each diagonal block and obtain a thermo-
+dynamically equivalent system by taking into account the interaction between
+every pair of the remaining four spins as well as their collective interaction.
+Ignoring the constant term, the new effective Hamiltonian is given by:
+                       X                X                X
+          Heff = 2B(J)     si sj + B(J)     si sj + C(J)    si sj sk sl ,  (20)
+                        hiji             [ij]            (ijkl)
+
+
+with hiji indexing nearest neighbors in each new block, [ij] the two spins lying
+across each other, and (ijkl) the four spins of the block. The transformation
+has thus generated two new types of interaction terms. Each iteration intro-
+duces new terms encoding the effects of interactions involving the spins that
+have been decimated. And if the procedure is iterated infinitely many times,
+the resulting effective Hamiltonian includes infinitely many distinct types of
+interaction terms.
+    Of course, finding such a pattern in one paradigmatic example was far from
+proving that it would obtain in every case. Yet Wilson belongs to this category
+of physicists for whom having two distinct paradigmatic examples satisfying
+one general pattern is enough to convince oneself that it applies in many cases
+(cf. 1991, 4/4, 20’12”ff.). And he needed to check whether the static model
+displayed the same pattern. The difficulty, in fact, was not so much in finding
+out whether the effective Hamiltonian at the level Λn obtained by taking into
+account higher-order perturbations from low-energy mesons included infinitely
+many terms. Wilson was probably already aware of that (cf. 1983b, p. 592;
+2005, p. 7). He had not worked out the complete structure of Heff,n in 1965.
+But he still had defined it as the Hamiltonian that would give all the required
+higher-order corrections in the state-space spanned by the ground states of the
+system, which would otherwise have been obtained by applying degenerate
+perturbation theory to Hn and using perturbed states. For this to work, Heff,n
+
+
+
+
+                                       36
+had to include higher-order operators of the schematic form:
+                                     1                1
+                           V              V...V            V,                        (21)
+                               E (0) − H0       E (0) − H0
+
+with H0 the unperturbed Hamiltonian, E (0) its eigenvalues, and V the pertur-
+bation (i.e., respectively, Λn Hs , Λn E0 , and Hn−1 in the notation of section 5).
+The real difficulty, then, was to assess whether the resulting expansion and the
+transformation between Heff,n and Heff,n−1 made any mathematical sense.
+    Wilson spent the next few years making sure that he was indeed not “land-
+ing [himself] in the soup by just imagining these Hamiltonians with [an] infinite
+number of couplings” (2002, part I; see also 1976b, p. 4; 2004; 2005, p. 13).
+According to his recollections, he did most of the work in 1967 or so (cf. 1991,
+4/4, 19’47”ff.). The final product, however, arrived only three years later in a
+thirty-five-page-long article titled “Model of Coupling Constant Renormaliza-
+tion” (Wilson, 1970). Wilson was able to show in this article that the mathe-
+matical space in which these Hamiltonians live is well-defined and closed under
+the transformations relating them. He thus obtained the confirmation from his
+study of the static model that both Gell-Mann and Low’s and Kadanoff’s orig-
+inal pictures were too simple to be correct (as he recounts in 1975, p. 6).
+    The key element that convinced Wilson that he was not landing himself
+in the soup is the existence, in today’s terms, of a systematic power-counting
+scheme for evaluating the contributions coming from different scales. Wilson
+was indeed concerned about whether an RG transformation would ultimately
+involve only a manageable subset of couplings (2002, part III). He realized in
+the case of the static model that he could easily separate the different contri-
+butions coming from low-energy mesons according to their importance across
+scales and show that increasingly complex contributions are increasingly negli-
+gible at the scale of interest (Wilson, 1970, sec. III). Wilson actually provides in
+this article a much more rigorous analysis than this simple picture, explaining
+why the contributions of new interaction terms do not increase without bounds
+when one includes increasingly many higher-order perturbative terms.23 It will
+not be necessary to go into the details here. The important point is that higher-
+order perturbative terms obtained at the scale Λn−1 contribute to the value
+of the energy levels at the scale Λn by increasing powers of 1/Λ (cf. Eq. 21
+above). Most of the new terms, in other words, are irrelevant at the scale of
+interest. Wilson was led, in turn, to study in more detail the contributions
+of what he later designated as relevant and irrelevant operators and realize
+that there was no need to introduce a large scale-separation between differ-
+ent slices.24 The large energy gaps introduced in 1965 had only allowed him
+to safely ignore higher-order perturbations from one scale to the other. But
+  23
+     See also Wilson’s “Unpublished Notes on Topological Analysis—Convergence of Oper-
+ator Interaction in a Renormalization Group Transformation in the Fixed Source Problem”
+in Kenneth G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript Collections,
+Cornell University Library. Box 1, Folder 10.
+  24
+     Kadanoff had already been using the term ‘irrelevant variable’ as Wilson acknowledges
+in (1971b, p. 3179, footnote 11). See also Wilson and Kogut (1974, p. 112).
+
+
+                                           37
+he could have taken more perturbations into account and examined how two
+scales arbitrarily close to one another affect each other.
+
+
+10      The state of affairs in 1971
+We are now in 1971, at a point where all the essential elements of Wilson’s
+mature conception of the RG and EFTs are on the table. Starting with a bare
+model with a sharp cut-off Λ0 , a full and non-perturbative RG transformation
+generates a series of effective models restricted to lower scales Λ < Λ0 and
+including infinitely many independent interaction terms, organized according
+to the importance of their contributions at the scale Λ. In typical cases, the
+transformation eventually hits a low-energy fixed-point around which only a
+finite number of interaction terms remain relevant. And given this achieve-
+ment, we might wonder whether Wilson still takes the high-energy limit of
+QFTs to be a physically relevant problem at this point. I will briefly conclude
+the story by providing some details about the two syntheses of 1970 and 1971
+and Wilson’s views toward the UV in 1971.
+    The first synthesis comes with Wilson’s 1970 article “Model of Coupling
+Constant Renormalization” already discussed above. He has simplified his
+early version of the static model and now works with a lattice model with only
+one degree of freedom within each slice. The idea of integrating out high-energy
+degrees of freedom is also completely clear by now. Non-renormalizable terms
+have also become perfectly acceptable in Wilson’s mind (cf. 1970, pp. 1440,
+1446). But most importantly, Wilson lays down for the first time the modern
+apparatus of his version of the RG and specifies, in particular, the concept of
+theory-space and RG transformation in formal terms (see 1970, esp. sec. V).
+Within this setting, the properties of a low-energy effective model generated
+by an RG transformation are more determined by the transformation itself and
+the existence of a low-energy fixed-point than by the properties of the original
+bare model (1970, pp. 1456, 1460). That is, the RG appears to be constitutive
+of what an effective theory is in Wilson’s 1970 article. Wilson, however, is not
+attributing any explicit physical significance to cut-offs here. They are mainly
+introduced for mathematical reasons, i.e., to efficiently derive an RG trans-
+formation and thus understand the structure of the model across scales. The
+question of the UV limit is also clearly not a concern for Wilson in this article.
+He wants to “understand renormalization better” (Wilson, 1970, p. 1439).
+And renormalization itself, not the “problem of renormalization” associated
+with the definition of a renormalized QFT in the UV limit, is understood here
+in terms of the variational structure of a theory across two different scales.
+    Wilson does not stop there. The second synthesis comes in 1971 with his
+article “Renormalization group and Critical Phenomena II: Phase-Space Cell
+Analysis of Critical Behavior”, which unfolds the picture laid down in 1965 and
+1970. Wilson has already provided an intuitive topological picture of the RG in
+a first short article by drawing an analogy with the behavior of classical flows
+in phase-space (1971b). The RG space is, in Wilson’s words, carved by “hills”,
+“gullies” and “ridges”, and simple topological explanations are provided to
+
+                                       38
+account for the behavior of RG flows. Wilson’s second article provides the
+mathematical and methodological counterparts of this picture (1971c). This
+is the first time Wilson integrates out high-energy degrees of freedom by elim-
+inating variables lying on external “momentum shells” and obtains arbitrarily
+complex interaction terms as a result—a method very much akin to what is
+now done in the path integral formalism.25 He is thus able to provide a new
+mathematical basis for Kadanoff’s somewhat arbitrary blocking transforma-
+tions and a clear physical picture explaining why integrating out high-energy
+degrees of freedom generates infinitely many interaction terms. The new terms
+encode the complex set of correlations involving both the remaining degrees of
+freedom and those that have been eliminated.
+    Wilson’s increasing skepticism toward the physical relevance of the high-
+energy limit of QFTs becomes clearer in an article published in the same year
+(1971d). This article is the occasion for Wilson to review Gell-Mann and Low’s
+early work on the RG and examine the various possible high-energy behaviors
+of QFT models. Wilson explicitly acknowledges the “academic nature” of
+such studies (1971d, p. 1818). He is also probably largely convinced like many
+other physicists at the time that realistic field theories do not display a UV
+fixed-point (although he does mention the possibility of a limit cycle at high
+energies for the strong interaction in this article). Yet the key element in my
+sense rather lies in the set of reasons he suggests for keeping a cut-off fixed.
+Some of these reasons are of course not new. Wilson is also far from taking any
+of them to be sufficient. He is not even taking a definitive stance toward the
+idea of keeping a cut-off fixed. But it is striking to find him explicitly laying
+down for the first time some of the reasons that are usually mentioned today
+to support the idea that a given theory is best treated as an effective theory.
+    First, and most importantly, Wilson raises the issue of treating a given
+interaction in isolation (1971d, pp. 1819, 1830, 1832). A model might display
+a UV fixed-point and appear to be well-behaved at high energies. But if the
+model fails to account for some interaction that affects the physical processes
+it describes at high energies, there is little chance that it will remain reliable
+in these regimes. According to Wilson, it is physically sensible to introduce a
+fixed cut-off Λ in such cases:
+
+      While the renormalized coupling constant e2 of electrodynamics is
+      small, one sees from Fig. 3 that e2λ → x1 for λ → ∞ [with eλ the
+      renormalized coupling specified at some arbitrary scale λ and x1
+      some hypothetical UV fixed-point]. The constant x1 is fixed in-
+      dependent of e2 and so cannot be arbitrarily small. This suggests
+      that all particles will couple strongly to photons at sufficiently high
+      momenta; but this would mean that electrodynamics and strong
+      interactions would mix strongly, suggesting that pure electrody-
+      namics is valid only below a cutoff momentum Λ. (Wilson, 1971d,
+      p. 1832)
+  25
+     Wilson explicitly makes the connection in his lectures on the RG at Cornell in the early
+1970s (cf. 1972b, p. 31).
+
+
+                                             39
+    Second, Wilson mentions the issue of the perturbative breakdown of a
+given model at high energies (1971d, p. 1838). If the perturbative coupling
+of a model becomes increasingly large at high energies, there is no reason to
+believe that perturbation theory is reliable in those regimes. In the absence of
+non-perturbative methods, it is therefore methodologically sensible to restrict
+the model to regimes where it is perturbatively reliable by introducing a fixed
+cut-off.
+    Finally, Wilson emphasizes the idea that there is no fundamental distinc-
+tion between (perturbatively) renormalizable and non-renormalizable interac-
+tion terms contrary to the standard lore at the time (1971d, p. 1840). Non-
+renormalizable terms may well be required in some circumstances. As we will
+see in Weinberg’s part of the story, chiral Lagrangians provide a good exam-
+ple. And if a model includes non-renormalizable terms, it is essential to keep
+the cut-off fixed to ensure that the renormalized model is predictive beyond
+tree-level.
+    So, although the UV limit of QFTs is still a mathematically interesting
+problem in Wilson’s eyes, it appears that he has come to take less seriously
+its potential physical relevance compared to his early views in the 1960s. Of
+course, more needs to be said about the reasons behind this shift, including
+Wilson’s missed opportunity with asymptotic freedom. The important point
+for now is that he has not only laid down his mature conception of EFTs in the
+early 1970s but also explicitly put forward a set of preliminary justifications
+for treating a theory as an EFT.
+
+
+11     Conclusion
+Kenneth Wilson’s path to effective field theories (EFTs) was marked by his
+long-standing aspiration to understand the high-energy structure of putatively
+UV-complete field theories. Wilson was first brought to study the high-energy
+behavior of a simple meson-nucleon model, the static model, and encoun-
+tered through this work the early renormalization group (RG) and model field-
+theoretic traditions of the 1950-60s. After a quick detour through the S-matrix
+program and a first attempt with the operator product expansion, he even-
+tually came to divide the static model into an infinite sequence of effective
+models describing phenomena at distinct energy scales. Before anything else,
+Wilson’s first prototype of EFT was the result of his attempt to break down
+an intractable problem into smaller and more manageable pieces by drawing
+energy scales apart.
+    His subsequent encounter with statistical physics eventually led him to
+clarify how these models are exactly related to each other across scales, thereby
+giving a physically more intuitive and mathematically more rigorous basis to
+the set of renormalization methods that had proved so successful with the
+electromagnetic interaction. By the early 1970s, Wilson’s mature conception
+of the RG and EFTs was in place. In particular, Wilson’s works made it clear
+that the structure of an EFT is largely determined by an RG transformation
+together with a low-energy fixed-point. Both the mathematical framework and
+
+                                       40
+the physical picture he had developed since 1965 quickly drew many adepts,
+especially in the condensed matter physics community (see, e.g., Domb’s short
+historical account of Wilson’s impact in 1996, sec. 1.7). As Shankar puts it:
+“It was love at first bite. [...] I seriously considered adding a middle initial G
+to my name to openly flaunt my newfound faith.” (2015, p. 204)
+    I will briefly end Wilson’s part of the story by mentioning two outstand-
+ing ironies. We have already seen that Wilson’s pragmatic aspirations and
+algorithmic methodological outlook explain why he was led to formulate a
+prototype of EFT which, on the face of it, could not give him any informa-
+tion about the high-energy behavior of QFTs. In the same vein, it is also
+somewhat ironic that Wilson gained further physical insights into the hierar-
+chical structure of matter across scales from the theory of critical phenomena.
+Critical phenomena are, after all, exactly the sorts of phenomena for which
+every scale equally matters, which may well explain why Kadanoff thought he
+had to obtain the same description at large distance scales. By letting non-
+renormalizable terms in, Wilson ended up with a radically different physical
+picture where the physics the most relevant at some scale becomes completely
+irrelevant at some other scale. This apparent irony, however, disappears once
+we realize that Wilson was inspired only by Kadanoff’s strategy of going from
+one scale to the other and did not make any assumption about how the struc-
+ture of physical phenomena would vary across these scales.
+    There is yet one last irony for which there is not much to be done. Wil-
+son spent more than ten years looking for non-standard perturbative meth-
+ods and non-perturbative methods to understand the high-energy behavior
+of the strong interaction when it turned out to be unnecessary. The discov-
+ery of asymptotic freedom in 1972-73 led physicists to realize that the high-
+energy regime of the strong interaction is precisely the regime for which non-
+perturbative methods are not needed. It is hard to imagine how Wilson could
+have anticipated this discovery, viz. that the strong coupling regime of the
+strong interaction lies at low energies and not at high energies. Be that as it
+may, his enduring efforts to treat QFTs in non-perturbative terms still proved
+to be a remarkably fruitful way of studying QCD at low energies.
+Acknowledgments: I would like to thank Alexander Blum and Porter Williams
+for invaluable archival materials and very fruitful discussions. I am also grateful
+to Michael Peskin, James Fraser, Vincent Ardourel, audiences at the MPIWG, 2nd
+ESHS Early Career Scholars Conference and Foundations 2021, as well as the ref-
+erees, for very useful exchanges and/or feedback. This work was supported by the
+Max Planck Institute for the History of Science.
+
+
+References
+Alexander, G. (1982). “American and Briton Awarded Nobel Prizes”. In: Los
+   Angeles Times, October 19 1982, Part I, 5.
+Amati, D., Stanghellini, A., and Wilson, K. G. (1963). “Theory of Fermion
+   Regge Poles”. In: Il Nuovo Cimento 28.3, pp. 639–650.
+
+
+                                        41
+Bethe, H. A. and de Hoffmann, F. (1955). Mesons and Fields: Volume 2,
+   Mesons. Evanston: Row, Peterson & Co.
+Blair, J. S. and Chew, G. F. (1953). “Subnuclear Particles”. In: Annual Review
+   of Nuclear Science 2.1, pp. 163–186.
+Bludman, S. A. (1966). “Unified Theories of Elementary Particles”. In: Physics
+   Today 19.2, p. 55.
+Blum, A. (forthcoming). The Decline and Fall of QED. Cambridge: Cambridge
+   University Press.
+Bogoliubov, N. N. and Shirkov, D. V. (1959). Introduction to the Theory of
+   Quantized Fields. Interscience Monographs in Physics and Astronomy v. 3.
+   New York: Interscience Publishers.
+Brown, L. and Rechenberg, H. (1996). Origin of the Concept of Nuclear Forces.
+   Bristol: Institute of Physics Publishing.
+Cao, T. Y. and Schweber, S. S. (1993). “The Conceptual Foundations and
+   the Philosophical Aspects of Renormalization Theory”. In: Synthese 97.1,
+   pp. 33–108.
+Chew, G. F. (1953). “Pion-Nucleon Scattering When the Coupling is Weak
+   and Extended”. In: Physical Review 89.3, pp. 591–593.
+— (1954a). “Comparison of the Cut-Off Meson Theory with Experiment”. In:
+   Physical Review 95.6, pp. 1669–1675.
+— (1954b). “Method of Approximation for the Meson-Nucleon Problem when
+   the Interaction is Fixed and Extended”. In: Physical Review 94.6, pp. 1755–
+   1759.
+— (1954c). “Renormalization of Meson Theory with a Fixed Extended Source”.
+   In: Physical Review 94.6, pp. 1748–1754.
+— (1963). “The Dubious Role of the Space-Time Continuum in Microscopic
+   Physics”. In: Science Progress 51.204, pp. 529–539.
+Chew, G. F. and Low, F. E. (1956a). “Effective-Range Approach to the Low-
+   Energy p-Wave Pion-Nucleon Interaction”. In: Physical Review 101.5, pp. 1570–
+   1579.
+— (1956b). “Theory of Photomeson Production at Low Energies”. In: Physical
+   Review 101.5, pp. 1579–1587.
+Close, F. (2013). The Infinity Puzzle: The Personalities, Politics, and Extraor-
+   dinary Science Behind the Higgs Boson. Oxford: Oxford University Press.
+Coleman, S. and Weinberg, E. (1973). “Radiative Corrections as the Origin of
+   Spontaneous Symmetry Breaking”. In: Physical Review D 7.6, pp. 1888–
+   1910.
+Cushing, J. (1990). Theory Construction and Selection in Modern Physics: The
+   S-Matrix. Cambridge: Cambridge University Press.
+Domb, C. (1996). The Critical Point: A Historical Introduction to the Modern
+   Theory of Critical Phenomena. London: Taylor & Francis.
+Donoghue, J., Golowich, E., and Holstein, B. (1994). Dynamics of the Standard
+   Model. Cambridge: Cambridge University Press.
+Dyson, F. J. (1951). “The Renormalization Method in Quantum Electrody-
+   namics”. In: Proceedings of the Royal Society of London. Series A. Mathe-
+   matical and Physical Sciences 207.1090, pp. 395–401.
+
+
+                                    42
+Essam, J. W. and Fisher, M. E. (1963). “Pade Approximant Studies of the Lat-
+   tice Gas and Ising Ferromagnet below the Critical Point”. In: The Journal
+   of Chemical Physics 38.4, pp. 802–812.
+Fisher, M. E. (1999). “Renormalization Group Theory: Its Basis and Formula-
+   tions in Statistical Physics”. In: Conceptual Foundations of Quantum Field
+   Theory. Ed. by T. Y. Cao. Cambridge, UK: Cambridge University Press,
+   pp. 89–135.
+Fisher, M. E. (1959). “The Susceptibility of the Plane Ising Model”. In: Physica
+   25.1, pp. 521–524.
+— (1964). “Correlation Functions and the Critical Region of Simple Fluids”.
+   In: Journal of Mathematical Physics 5.7, pp. 944–962.
+— (1967). “The Theory of Equilibrium Critical Phenomena”. In: Reports on
+   Progress in Physics 30.2, pp. 615–730.
+Fraser, J. D. (2021). “The Twin Origins of Renormalization Group Concepts”.
+   In: Studies in History and Philosophy of Science Part A 89, pp. 114–128.
+Gell-Mann, M. (1956). “The Interpretation of the New Particles as Displaced
+   Charge Multiplets”. In: Il Nuovo Cimento 4.2, pp. 848–866.
+— (2010). “Particle Theory from S-Matrix to Quarks”. In: Murray Gell-Mann
+   - Selected Papers. Ed. by H. Fritzsch. Vol. 40. World Scientific Series in 20th
+   Century Physics. Singapore: World Scientific, pp. 273–296.
+Gell-Mann, M. and Low, F. E. (1954). “Quantum Electrodynamics at Small
+   Distances”. In: Physical Review 95.5, pp. 1300–1312.
+Gell-Mann, M. and Watson, K. M. (1954). “The Interactions Between pi-
+   Mesons and Nucleons”. In: Annual Review of Nuclear Science 4.1, pp. 219–
+   270.
+Georgi, H., Quinn, H. R., and Weinberg, S. (1974). “Hierarchy of Interactions
+   in Unified Gauge Theories”. In: Physical Review Letters 33.7, pp. 451–454.
+Glashow, S. L. (1961). “Partial-symmetries of Weak Interactions”. In: Nuclear
+   Physics 22.4, pp. 579–588.
+Goldenfeld, N. (1992). Lectures on Phase Transitions and the Renormalization
+   Group. New York: Addison-Wesley.
+Guralnik, G. S. (2009). “The History of the Guralnik, Hagen and Kibble De-
+   velopment of the Theory of Spontaneous Symmetry Breaking and Gauge
+   Particles”. In: International Journal of Modern Physics A 24.14, pp. 2601–
+   2627.
+Halpern, F. R. et al. (1959). “The Physical Nucleon in Static Source Meson
+   Theory”. In: Annals of Physics 7.2, pp. 154–173.
+Henley, E. M. and Thirring, W. E. (1962). Elementary Quantum Field Theory.
+   New York: McGraw-Hill.
+Huang, K. (2015). “A Critical History of Renormalization”. In: Ken Wilson
+   Memorial Volume: Renormalization, Lattice Gauge Theory, the Operator
+   Product Expansion and Quantum Fields. Ed. by B. E. Baaquie et al. Sin-
+   gapore: World Scientific, pp. 19–42.
+Johnson, K. (1961). “Solution of the Equations for the Green’s Functions of
+   a Two Dimensional Relativistic Field Theory”. In: Il Nuovo Cimento 20.4,
+   pp. 773–790.
+
+
+                                       43
+Kadanoff, L. (1966). “Scaling Laws for Ising Models near Tc”. In: Physics
+    Physique Fizika 2.6, pp. 263–272.
+— (2000). Statistical Physics: Statics, Dynamics and Renormalization. Singa-
+    pore: World Scientific.
+Kaiser, D. (2005). Drawing Theories Apart: The Dispersion of Feynman Dia-
+    grams in Postwar Physics. Chicago: University of Chicago Press.
+Koberinski, A. (2021). “Mathematical Developments in the Rise of Yang-Mills
+    Gauge Theories”. In: Synthese 198.16, pp. 3747–3777.
+Landau, L. D. (1960). “Fundamental Problems”. In: Collected Papers of L.D.
+    Landau. Ed. by D. Ter Haar. 1965 ed. Oxford: Pergamon Press, pp. 800–
+    802.
+Lee, T. D. (1954). “Some Special Examples in Renormalizable Field Theory”.
+    In: Physical Review 95.5, pp. 1329–1334.
+Lévy, M. (1952a). “Meson Theory of Nuclear Forces and Low Energy Properties
+    of the Neutron-Proton System”. In: Physical Review 88.4, pp. 725–739.
+— (1952b). “Non-Adiabatic Treatment of the Relativistic Two-Body Prob-
+    lem”. In: Physical Review 88.1, pp. 72–82.
+— (1952c). “The Symmetrical Pseudoscalar Meson Theory of Nuclear Forces”.
+    In: Physical Review 86.5, pp. 806–806.
+Lewin, D. I. (1995). “Nobel Laureate Espouses Physics, Education, and Breadth
+    of Knowledge”. In: Computers in Physics 9.6, pp. 572–573.
+Low, F. E. (1955). “Boson-Fermion Scattering in the Heisenberg Representa-
+    tion”. In: Physical Review 97.5, pp. 1392–1398.
+Lubkin, G. B. (1982). “Wilson Wins Nobel Prize for Theory of Critical Phe-
+    nomena”. In: Physics Today 35.12, p. 17.
+Mermin, N. D. (2015). “Early Memories of Ken”. In: Ken Wilson Memorial
+    Volume: Renormalization, Lattice Gauge Theory, the Operator Product Ex-
+    pansion and Quantum Fields. Ed. by B. E. Baaquie et al. Singapore: World
+    Scientific, pp. 83–85.
+Pauli, W. (1948). Meson Theory of Nuclear Forces. 2nd. New York: Interscience
+    Publishers.
+Peskin, M. E. (2014). “Ken Wilson: Solving the Strong Interactions”. In: Jour-
+    nal of Statistical Physics 157.4, pp. 651–665.
+Petrov, A. A. and Blechman, A. E. (2016). Effective Field Theories. Singapore:
+    World Scientific.
+Pickering, A. (1984). Constructing Quarks: A Sociological History of Particle
+    Physics. Chicago: University of Chicago Press.
+Piech, K. R. and Wilson, K. G. (1968). “Model Atomic Hamiltonians”. In: The
+    Journal of Chemical Physics 48.8, pp. 3740–3750.
+Prentki, J., ed. (1962). Proceedings to the 1962 International Conference on
+    High-Energy Physics at CERN, Genève, 4th-11th July 1962. Genève: CERN.
+Rivat, S. (2019). “Renormalization Scrutinized”. In: Studies in History and
+    Philosophy of Modern Physics 68, pp. 23–39.
+— (2021). “Effective Theories and Infinite Idealizations: A Challenge for Sci-
+    entific Realism”. In: Synthese 198.12, pp. 12107–12136.
+
+
+
+                                     44
+Ruijgrok, T. W. and van Hove, L. (1956). “Exactly Renormalizable Model in
+   the Quantum Theory of Fields”. In: Physica 22.6, pp. 880–886.
+Sakharov, A. D. (1967). “Vacuum Quantum Fluctuations in Curved Space
+   and the Theory of Gravitation”. In: Doklady Akademii Nauk SSSR 177.1,
+   pp. 70–71.
+Salam, A. and Ward, J. C. (1959). “Weak and Electromagnetic Interactions”.
+   In: Il Nuovo Cimento 11.4, pp. 568–577.
+— (1964). “Electromagnetic and Weak Interactions”. In: Physics Letters 13.2,
+   pp. 168–171.
+Schwartz, M. (2013). Quantum Field Theory and the Standard Model. Cam-
+   bridge: Cambridge University Press.
+Schweber, S. S. (1961). An Introduction to Relativistic Quantum Field Theory.
+   Evanston: Row, Peterson & Co.
+— (1994). QED and the Men Who Made It : Dyson, Feynman, Schwinger,
+   and Tomonaga. Princeton: Princeton University Press.
+— (2015). “Hacking the Quantum Revolution: 1925-1975”. In: The European
+   Physical Journal H 40.1, pp. 53–149.
+Schweber, S. S., Bethe, H. A., and de Hoffmann, F. (1955). Mesons and Fields:
+   Volume 1, Fields. Evanston: Row, Peterson & Co.
+Schwinger, J. (1957). “A Theory of the Fundamental Interactions”. In: Annals
+   of Physics 2.5, pp. 407–434.
+— (1964). “Field Theory of Matter”. In: Physical Review 135.3, B816–B830.
+Shankar, R. (2015). “RG for Non-relativistic Fermions”. In: Ken Wilson Memo-
+   rial Volume: Renormalization, Lattice Gauge Theory, the Operator Product
+   Expansion and Quantum Fields. Ed. by B. E. Baaquie et al. Singapore:
+   World Scientific, pp. 203–212.
+Thirring, W. E. (1958). “A Soluble Relativistic Field Theory”. In: Annals of
+   Physics 3.1, pp. 91–112.
+van Hove, L. (1952). “Les Difficultés de Divergences pour un Modèle Particulier
+   de Champ Quantifié”. In: Physica 18.3, pp. 145–159.
+van Kolck, U. (1999). “Effective Field Theory of Nuclear Forces”. In: Progress
+   in Particle and Nuclear Physics 43, pp. 337–418.
+Weinberg, S. (1979). “Phenomenological Lagrangians”. In: Physica A: Statis-
+   tical Mechanics and its Applications 96.1, pp. 327–340.
+— (1983). “Why the Renormalization Group is a Good Thing”. In: Asymptotic
+   Realms of Physics, Essays in Honor of Francis E. Low. Ed. by A. Guth,
+   K. Huang, and R. Jaffe. Cambridge, MA: MIT Press, pp. 1–19.
+— (1999). “What is Quantum Field Theory and What Did We Think It Was”.
+   In: Conceptual Foundations of Quantum Field Theory. Ed. by T. Y. Cao.
+   Cambridge: Cambridge University Press, pp. 241–251.
+Weisskopf, V. F. (1962). “Concluding Remarks”. In: Proceedings to the 1962
+   International Conference on High-Energy Physics at CERN, Genève, 4th-
+   11th July 1962. Ed. by J. Prentki. Genève: CERN, pp. 929–933.
+Wick, G. C. (1955). “Introduction to Some Recent Work in Meson Theory”.
+   In: Reviews of Modern Physics 27.4, pp. 339–362.
+
+
+
+                                       45
+Widom, B. (1965a). “Equation of State in the Neighborhood of the Critical
+   Point”. In: The Journal of Chemical Physics 43.11, pp. 3898–3905.
+— (1965b). “Surface Tension and Molecular Correlations near the Critical
+   Point”. In: The Journal of Chemical Physics 43.11, pp. 3892–3897.
+— (2003). “Interview with the Physics of Scale Project collaborators (March
+   20, 2003)”. url: https : / / authors . library . caltech . edu / 5456 / 1 /
+   hrst.mit.edu/hrs/renormalization/Widom/index.html.
+Williams, P. (2016). “The Historical Path to EFTs”. In: Philosophy of Sci-
+   ence Made Effective: Realism, Reduction, and the Renormalization Group
+   in Quantum Field Theory. New York. url: https://doi.org/10.7916/
+   D8474B5K.
+Wilson, K. G. (1959a). “Letter to Murray Gell-Mann (July 29, 1959)”. Murray
+   Gell-Mann Papers. #10219-MS. California Institute of Technology Archives
+   and Special Collections Repository. Box 22, Folder 27.
+— (1959b). “Letter to Murray Gell-Mann (September 12, 1959)”. Murray Gell-
+   Mann Papers. #10219-MS. California Institute of Technology Archives and
+   Special Collections Repository. Box 22, Folder 27.
+— (1961). “An Investigation of the Low Equation and the Chew-Mandelstam
+   Equations”. PhD thesis. California Institute of Technology. url: https:
+   //resolver.caltech.edu/CaltechETD:etd-10222002-104500.
+— (1962). “Proof of a Conjecture by Dyson”. In: Journal of Mathematical
+   Physics 3.5, pp. 1040–1043.
+— (1963). “Regge Poles and Multiple Production”. In: Acta Physica Austriaca
+   17.
+— (1964). “Products of Quantum Field Operators at Short Distances”. Ken-
+   neth G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript
+   Collections, Cornell University Library. Box 1, Folder 18.
+— (1965a). “Construction of Model Hamiltonians for Local Quantum Field
+   Theory”. In: Proceedings of Seminar on Unified Theories of Elementary
+   Particles, July 1965. Ed. by H. Rechenberg. Munich: MPI fur Physik und
+   Astrophysik Munich, pp. 161–174.
+— (1965b). “Letter to Wolfhart Zimmermann (January 13, 1965)”.
+— (1965c). “Model Hamiltonians for Local Quantum Field Theory”. Kenneth
+   G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript Collec-
+   tions, Cornell University Library. Box 1, Folder 7.
+— (1965d). “Model Hamiltonians for Local Quantum Field Theory”. In: Phys-
+   ical Review 140.2, B445–B457.
+— (1969). “Non-Lagrangian Models of Current Algebra”. In: Physical Review
+   179.5, pp. 1499–1512.
+— (1970). “Model of Coupling-Constant Renormalization”. In: Physical Re-
+   view D 2.8, pp. 1438–1472.
+— (1971a). “Cornell Annual Report, Laboratory of Nuclear Physics, July
+   1970-June 1971”.
+— (1971b). “Renormalization Group and Critical Phenomena. I. Renormal-
+   ization Group and the Kadanoff Scaling Picture”. In: Physical Review B
+   4.9, pp. 3174–3183.
+
+
+                                     46
+Wilson, K. G. (1971c). “Renormalization Group and Critical Phenomena. II.
+   Phase-Space Cell Analysis of Critical Behavior”. In: Physical Review B 4.9,
+   pp. 3184–3205.
+— (1971d). “Renormalization Group and Strong Interactions”. In: Physical
+   Review D 3.8, pp. 1818–1846.
+— (1972a). “Renormalization of a Scalar Field Theory in Strong Coupling”.
+   In: Physical Review D 6.2, pp. 419–426.
+— (1972b). “Unpublished Lectures on the Renormalization Group given at
+   Cornell, ’Renormalization Group: II’, Lecture Notes by J. Serene”. Ken-
+   neth G. Wilson Papers, #14-22-4086. Division of Rare and Manuscript
+   Collections, Cornell University Library. Box 1, Folder 25.
+— (1975). “The Renormalization Group and Block Spins”. In: Boltzmann
+   medal address, IUPAP International Conference on Statistical Mechanics,
+   Budapest, 1975. url: https://lib- extopc.kek.jp/preprints/PDF/
+   1976/7602/7602087.pdf.
+— (1976a). “Relativistically Invariant Lattice Theories”. In: New Pathways in
+   High-Energy Physics II: New Particles—Theories and Experiments. Ed. by
+   A. Perlmutter. Studies in the Natural Sciences. Boston: Springer, pp. 243–
+   264.
+— (1976b). “The Renormalization Group—Introduction”. In: Phase transi-
+   tions and critical phenomena, Vol 6. Ed. by C. Domb and M. S. Green.
+   London: Academic Press, pp. 1–5.
+— (1983a). “Supercomputers”. Kenneth G. Wilson Papers, #14-22-4086. Di-
+   vision of Rare and Manuscript Collections, Cornell University Library. Box
+   6, Folder 2.
+— (1983b). “The Renormalization Group and Critical Phenomena”. In: Re-
+   views of Modern Physics 55.3. Publisher: American Physical Society, pp. 583–
+   600.
+— (1986). “Letter to Julie Dougherty (June 30, 1986)”. Kenneth G. Wilson
+   Papers, #14-22-4086. Division of Rare and Manuscript Collections, Cornell
+   University Library. Box 7, Folder 11.
+— (1991). “Interview with Tian Yu Cao (December 10, 1991)”. American
+   Institute of Physics - Oral History Interviews. 4 parts. url: https://www.
+   aip.org/history- programs/niels- bohr- library/oral- histories/
+   34476.
+— (1993). “Tribute to E B Wilson (1908-1992)”. In: Journal of Molecular
+   Spectroscopy 162, pp. 1–3.
+— (2002). “Interview with the Physics of Scale Project collaborators (July 6,
+   2002)”. url: https://authors.library.caltech.edu/5456/1/hrst.
+   mit.edu/hrs/renormalization/Wilson/index.html.
+— (2004). “The Origins of Lattice Gauge Theory”. Kenneth G. Wilson Pa-
+   pers, #14-22-4086. Division of Rare and Manuscript Collections, Cornell
+   University Library. Box 2, Folder 54.
+— (2005). “The Origins of Lattice Gauge Theory”. In: Nuclear Physics B -
+   Proceedings Supplements 140, pp. 3–19.
+
+
+
+                                     47
+Wilson, K. G. (2010). “Interview with Stanislaw Glazek and Meeting with
+   Students at the University of Warsaw (November 15, 2010)”. url: https:
+   //www.fuw.edu.pl/~lfqcd/KGWilson-SKFiz/.
+Wilson, K. G. and Fisher, M. E. (1972). “Critical Exponents in 3.99 Dimen-
+   sions”. In: Physical Review Letters 28.4, pp. 240–243.
+Wilson, K. G. and Kogut, J. B. (1974). “The Renormalization Group and the
+   -Expansion”. In: Physics Reports 12.2, pp. 75–199.
+Yeomans, J. M. (1992). Statistical Mechanics of Phase Transitions. New York:
+   Oxford University Press.
+Yukawa, H. (1935). “On the Interaction of Elementary Particles. I”. In: Pro-
+   ceedings of the Physico-Mathematical Society of Japan. 3rd Series 17, pp. 48–
+   57.
+
+
+
+
+                                      48
+

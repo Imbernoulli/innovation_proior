@@ -1,0 +1,381 @@
+       CS 395T: Sublinear Algorithms                                                          Fall 2016
+
+                                  Lecture 6 — September 13, 2016
+       Prof. Eric Price                                               Scribe: Shanshan Wu, Yitao Chen
+
+
+
+
+1     Overview
+
+Recap of last lecture. We talked about Johnson-Lindenstrauss (JL) lemma [JL84] and how to
+construct a distribution of linear maps that satisfies the JL guarantee. The main result is that let
+A ∈ Rm×n with each entry drawn i.i.d. from a zero-mean subgaussian distribution with variance
+. 1/m, if m = O( 12 log 1δ ), then we have for 0 < , δ < 1,
+
+                                  ∀x ∈ Rn ,       P(|kAxk22 − kxk22 | ≥ kxk22 ) ≤ δ.                     (1)
+
+The key idea is to show that kAxk22 is subgamma distributed:
+
+                   Aij ∼ subgaussian(1/m)
+                   =⇒ Aij xj ∼ subgaussian(x2i /m)
+                      X
+                   =⇒     Aij xj ∼ subgaussian(kxk22 /m)
+                          j
+                       X
+                   =⇒ (  Aij xj )2 ∼ subexponential(kxk22 /m)
+                              j
+                                       XX
+                   =⇒ kAxk22 =          ( Aij xj )2 ∼ subgamma(kxk42 /m, kxk22 /m)                        (2)
+                                        i     j
+
+Since E[kAxk22 ] = kxk22 , we can use subgamma’s tail bound to prove concentration of kAxk22 :
+                                                                1     2                 1 2
+                   P(|kAxk22 − kxk22 | ≥ kxk22 ) ≤ 2e− 2 min( m,m) = 2e− 2  m ≤ δ,
+
+where the last inequality follows from the assumption that m = O( 12 log 1δ ). Surprisingly, this
+bound on m is actually tight (see Larsen and Nelson’s recent paper [LN16] and the references
+therein).
+Overview of this lecture. We will talk about two problems:
+
+    1. Storing the linear mapping A requires O(mn) space, can we do better (sublinear in n)?
+
+    2. How to find the most frequent items (“heavy hitters”) in a data stream?
+
+
+2     AMS-sketch
+
+In order to reduce the space usage of storing A, we relax the original full independence assumption
+to limited independence, and use hash functions to generate binary values for Aij . Here is a formal
+definition for k−wise independence.
+
+                                                            1
+Definition 1. H = {h : [m] → [l]} is a k-wise independent hash family if ∀i1 6= i2 6= · · · 6= ik ∈ [n]
+and ∀j1 , j2 , · · · , jk ∈ [l],
+                                                                           1
+                                  P [h(i1 ) = j1 ∧ · · · ∧ h(ik ) = jk ] = k .
+                                 h∈H                                       l
+
+The key idea of using 4-wise independent hash function comes from the famous AMS sketch1 , which
+originates in a paper by Alon, Matias and Szegedy [AMS99]. It is initially designed to estimate the
+second frequency moments of streaming data. The algorithm works as follows.
+
+  1. Pick m random hash function h1 , h2 , ..., hm from a 4-wise independent hash family H = {h :
+     [n] → {− √1m , + √1m }.
+                                         P
+  2. Let Aij = hi (j), and compute yi = j Aij xj , for all i = 1, 2, .., m.
+
+  3. Output i yi2 , which is essentially kAxk22 .
+             P
+
+
+To see how this algorithm performs, we now compute the mean and variance of i yi2 . And we will
+                                                                                 P
+make use of the property of 4-wise independence.
+         X                            X                   X          X
+       E[    yi2 ] = m E[y12 ] = m E[(  A1j xj )2 ] = m E[  x2j /m +   A1j A1k xj xk ] = kxk22 .
+              i                             j                       j           j6=k
+                      X                           XX
+                  Var(  yi2 ) = Var(kAxk22 ) = E[( ( Aij xj )2 − kxk22 )2 ] = O(kxk42 /m),                       (3)
+                        i                               i       j
+
+where that last equality comes from the fact that ( i ( j Aij xj )2 − kxk22 )2 only involves upto
+                                                    P P
+4 terms of Aij , and with 4-wise independence, we can directly use the result achieved by full
+independence. The O(kxk42 /m) is implied by the previous Eq. (2).
+We have shown that the AMS algorithm outputs an unbiased estimator of kxk22 with variance
+O(kxk42 /m). Using Chebyshev’s inequality gives the JL guarantee in Eq. (1) with probability at
+least 3/4:
+                                                Var( i yi2 )
+                                                     P
+                         2       2        2                        1
+                  P(|kAxk2 − kxk2 | ≥ kxk2 ) ≤        4     = O( 2 ) ≤ 1/4,
+                                                   2
+                                                   kxk2          m
+where the last inequality holds for m = O( 12 ).
+
+
+2.1      High-probability bound
+
+There are two ways to get a high-probability bound with dependence log 1δ . The first method
+is to use the “median of mean” trick: we can perform the algorithm O(log 1δ ) times and output
+the median. Using Chernoff’s inequality2 , we can show that the median satisfies Eq. (1) with
+probability at least 1 − δ. The total space usage is O( 12 log 1δ log n).
+Another way of achieving O(log 1δ ) dependence is to use higher moments’ bound. As shown in
+Figure 1, the bounds achieved by higher moments are better in the tail, but are worse otherwise (due
+to larger constants). In general, the k-th moment bound of a subguassian (reps. subexponential)
+variable has the form of k k/2 /tk (reps. k k /tk ).
+  1
+      It is sometimes called the “tug-of-war” estimator.
+  2
+      To be more specific, we only need to bound the probability that more than half of the variables are bad.
+
+
+                                                            2
+                10 5
+                                                                          Standard Gaussian
+                                                                          1/t2
+                10 0                                                      6/t4
+
+
+
+
+                10 -5
+
+
+
+
+               10 -10
+                        0          1          2               3            4       5          6
+
+
+Figure 1: A comparison of different moments’ bound: higher moments perform better in the tail,
+but worse close in (due to larger constants).
+
+
+The idea of using higher moments is a simple extension of what we have done in Eq. (3): instead
+of using 4-wise independence to bound the second moment, more generally, if we have 2k-wise
+independence, we can then compute the k-th moment of |kAxk22 − kxk22 | by treating all the Aij ’s
+as independent. In other words, |kAxk22 − kxk22 |k should have the same behavior as that of an i.i.d.
+subgaussian matrix. More specifically, according to Eq. (2), kAxk22 − kxk22 should behave like a
+                                                 √
+subexponential3 variable with parameter kxk22 / m, i.e.,
+                                                                   √
+                              E[|kAxk22 − kxk22 |k ] ≤ k k (kxk22 / m)k .
+Using the Chebyshev bound, we get
+                        P(|kAxk22 − kxk22 | > kxk22 ) = P(|kAxk22 − kxk22 |k > k kxk2k
+                                                                                      2 )
+                                                          E[|kAxk22 − kxk22 |k ]
+                                                      ≤
+                                                                      k kxk2k
+                                                                            2
+                                                            kk
+                                                      ≤     √ k.                                    (4)
+                                                          ( m)
+The above bound holds for any k as long as we use 2k-wise independent hash function, so we can
+optimize over k to get the best bound. Taking the derivate of k log( √km ) and setting it to be zero,
+            √
+we get k =  m/e and
+                                                                         kk       √
+                            P(|kAxk22 − kxk22 | > kxk22 ) ≤ min         √ k = e− m/e .
+                                                                  k    ( m)
+Setting the failure probability to be at most δ gives us the desired m = O( 12 log 1δ ). Compared to
+                                                                                              √
+the 4-wise independent hash family used in the original AMS sketch, we now need to use O( m/e)-
+wise hash family. The space complexity for this method is O( 12 log 1δ log n).
+  3
+    According the definition of subgamma distribution, a subgamma(kxk42 /m, kxk22 /m) variable is also a
+                          √
+subgamma(kxk42 /m, kxk22 / m) variable, and hence is subexponetial.
+
+
+                                                          3
+3     Heavy hitters
+
+The next problem that we are going to study is the Heavy Hitter problem. Given a (turnstile) stream
+of items, our goal is to find the “heavy hitters”, i.e., the most frequent items. More formally, we
+are given a data stream S = (s1 , s2 , · · · ), where si ∈ [n]. Let x ∈ Rn be the final histogram, i.e., xi
+represents the number of times that item i appears. The goal is to find (approximately)
+
+                                        { (i, xi ) | xi is “large” }.
+
+Furthermore, we want to get an estimate x̂ ∈ Rn of x, such that kx̂ − xk∞ ≤ bound.
+
+
+How small can the bound be? Here is a summary of results achieved by three algorithms.
+
+               Guarantee              Method                       Bound          Space
+                 l∞ /l1            Heavy Hitters                   kxk1         O( log n )
+                                                                1
+                 l∞ /l1       Count-min Sketch [CM05]           K kx − xK k1    O(K log n)
+                                                                1
+                                                               √ kx − xK k
+                 l∞ /l2        Count Sketch [CCF02]             K           2   O(K log n)
+
+
+Remarks:
+
+    • Let xK ∈ Rn denote the K largest entries of x. Then kx − xK k1 represents total numbers of
+      of less frequent items.
+
+    • In homework, we will show that √1K kx − x2K k2 ≤ K1 kx − xK k1 .
+
+
+3.1    Preliminaries
+
+First, we are interested in how {xi } usually behaves in practice.
+
+
+Zipf ’s Law:    The ith most common word in English appears approximately 1/i times.
+
+
+Power Law:       The ith largest xi appears approximately 1/iα for some α > 0.
+Power law has been widely observed in URLs in web, frequencies in music, population in cities, etc.
+Empirically, power law approximately holds for large entries.
+Given power law, we can calculate different norms of x with parameter α,
+                                                
+                                      X n
+                                            1    1      if α > 1
+                              kxk1 =          =   log n if α = 1
+                                           iα  1−α
+                                       i=1        n      if α < 1
+
+                                    v          
+                                    u n
+                                    uX 1        1√       if α > 1/2
+                             kxk2 = t        =      log n if α = 1/2
+                                          i2α  1/2−α
+                                      i=1         n       if α < 1/2
+
+                                                     4
+                       (a) Ideal power law                              (b) Actual data, often
+
+           Figure 2: The log log plot of power law: it empirically holds for large values.
+
+And we can also calculate kx − xK k,
+                                                    1−α
+                                              n
+                                              X1    K     if α > 1
+                                                         n
+                           kx − xK k1 =          =   log K if α = 1
+                                              iα  1−α
+                                        i=K+1        n     if α < 1
+
+                                    v                1/2−α
+                                    u n
+                                    u X               K            if α > 1/2
+                                                1    p
+                       kx − xK k2 = t             =     log n      if α = 1/2
+                                               i2α  1/2−αK
+                                         i=K+1        n            if α < 1/2
+The following table summarizes how the bounds of different methods behave
+
+                       Method                 Bound equals     α>1     1/2 < α < 1
+                                                 1
+                    Heavy Hitters                K kxk1 =       1/K      n1−α /K
+                                              1
+                   Count-min Sketch           K kx − xK k1 =   1/K α     n1−α /K
+                     Count Sketch            √1 kx − xK k =    1/K α      1/K α
+                                              K           2
+
+
+We see count-sketch is much better than others when 1/2 < α < 1, which is the most common
+regime.
+
+
+3.2   Heavy Hitters Algorithm
+
+One potential way of (approximately) finding the heavy hitters is to sample a subset of the stream
+and find the most frequent item in the sampled stream. However, the sampling method has two
+issues: 1. It can not handle deletions; 2. It can not handle sparsity.
+Another approach is to hash the stream to a smaller universe B = O(K). According to pigeonhole
+principle, collision happens. However, in the following, we will argue that even count in the collided
+items, it is still a good estimate.
+
+                                                    5
+Here is the “Heavy Hitters” algorithm:
+
+  1. For r = 1 to R = O(log n), in parallel:
+     (a) Pick a pairwise independent hash function hr : [n] → [B].
+                                (r)
+     (b) Record Y (r) , where Yj = u:hr (u)=j xu , for j ∈ [B].
+                                    P
+
+                 (r)      (r)
+  2. Estimate x̂u = Yh(u) , for all r and u.
+
+  3. Compute x̂ = f (x(1) , . . . , x(R) ), where f is some function (we will specify later).
+
+
+Analysis: We first focus on any fixed hash function r and fixed item u. Without loss of generality,
+we let r = 1 and omit the superscription. Suppose it is the strict turnstile model: xu ≥ 0, ∀u, then
+the collisions only increase our estimate, x̂u − xu ≥ 0, ∀u.
+Taking the expectation of the residual gives
+                                           "                                          #
+                                                                  X
+                                E[x̂u − xu ] = E                                xu0
+                                                      u0 :h(u0 )=h(u),u0 6=u
+                                                   "                                      #
+                                                       X
+                                                                            0
+                                           =E                   xu · 1{h(u ) = h(u)}
+                                                       u0 6=u
+                                               X
+                                           =               xu0 P[h(u0 ) = h(u)]
+                                               u0 6=u
+
+                                           ≤ kxk1 /B.
+
+If B = 4K, by Markov inequality,
+                   "                          #
+                                       kxk1            E[x̂u − xu ]   kxk1 /B   K  1
+                       P |x̂u − xu | >            ≤                 ≤         =   = .
+                                        K               kxk1 /K       kxk1 /K   B  4
+
+So for any fixed u, we get x̂u − xu ≤ kxk1 /K with probability at least 3/4.
+To bound the infinity norm kx̂u − xu k∞ , we require P[|x̂u − xu | > kxk1 /K] < 1/4 for all u ∈ [n].
+The idea is to create R independent hash functions, and take the minimum of the outputs, i.e.,
+
+                                          x̂u = min x̂(r)
+                                                      u , ∀u ∈ [n].
+                                                       r
+
+                                                                      (r)
+Since we are considering the strict turnstile model: x̂u ≥ xu , ∀r, taking the minimum over all R
+estimates will get us closer to the true xu . The minimum value is bad if and only if all R estimates
+are bad, so the failure probability is (recall R = O(log n))
+                                  "                  #
+                                                kxk1      1       1
+                                P |x̂u − xu | >        ≤ R ≤ O( 2 ).
+                                                 K       4       n
+
+Using the union bound, we have that kx̂ − xk∞ ≤ kxk1 /K with probability at least 1 − 1/n.
+The total space used is O(K log n), because each hashing uses O(K) space and we repeat R =
+O(log n) times.
+
+                                                              6
+3.3   Extentions
+
+   • What if xu can be less than 0 (non-strict turnstile model) ?
+                         (r)
+     1. We still have |x̂u − xu | ≤ kxk1 /K with probability 3/4.
+     2. But min x̂(r) is bad. We can replace min with median, which gives worse constant under
+     the same assumptions.
+
+   • How to obtain bounds using kx − xK k1 /K?
+     We split x into two parts: the largest K items xK and the rest x − xK . The key idea is
+     to show that the probability of colliding with the top k most frequent items is small. More
+     specifically, the probability that item u collides with any of largest K entires of x is
+
+                              P[h(u) = h(u0 ) for some other u0 in top K]
+                              ≤ K · P[h(u) = h(u0 ) for fixed u0 6= u]
+                              = K/B.
+
+      where the last equality follows from the pairwise independence of h. Therefore, with proba-
+      bility at least 1 − K/B, h(u) will not collide with any of top K items. We can then bound
+      E[x̂u − xu ] in terms of kx − xK k1 /K as before.
+
+
+References
+
+[JL84] William B. Johnson and Joram Lindenstrauss. Extensions of Lipschitz mappings into a
+    Hilbert space. Contemporary Mathematics, 26:189–206, 1984.
+
+[LN16] Kasper Green Larsen and Jelani Nelson. Optimality of the Johnson-Lindenstrauss Lemma.
+    arXiv:1609.02094v1, 2016.
+
+[AMS99] Noga Alon, Yossi Matias, Mario Szegedy. The Space Complexity of Approximating the
+   Frequency Moments. J. Comput. Syst. Sci., 58(1):137–147, 1999.
+
+[CM05] Graham Cormode, S Muthukrishnan. An improved data stream summary: the count-min
+   sketch and its applications. Journal of Algorithms, 55.1 (2005): 58-75.
+
+[CCF02] Moses Charikar, Kevin Chen, Martin Farach-Colton. Finding frequent items in data
+    streams. International Colloquium on Automata, Languages, and Programming, Springer
+    Berlin Heidelberg, 2002.
+
+
+
+
+                                                7
+

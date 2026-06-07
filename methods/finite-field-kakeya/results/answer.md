@@ -18,8 +18,10 @@ polynomial `g` vanishes on `K`. Homogeneity extends the zeros to the cone throug
 `d+2≤gamma q` makes the zero-direction singleton irrelevant, so the chosen line
 `z+a y` supplies at least `d+2` distinct parameters with points in `K`. After
 discarding a possible zero parameter, rescaling gives `d+1` zeros of `g` on a
-line through `y`, unless `z=0`, in which case `g(y)=0` directly. Thus `g`
-vanishes on at least `delta q^n` points.
+line through `y`. If `z=0`, this already gives `g(y)=0`; if `z≠0`, the
+restriction of `g` to that line is a univariate polynomial of degree at most
+`d` with `d+1` roots, so it is identically zero and in particular vanishes at
+`y`. Thus `g` vanishes on at least `delta q^n` points.
 Schwartz-Zippel allows at most `d q^{n-1}` zeros for a nonzero degree-`d`
 polynomial, and `d/q < delta`, a contradiction.
 
@@ -41,14 +43,15 @@ polynomials of degree at most `q-1`, a space of dimension
 If `|K|` were smaller than this, a nonzero `P` of degree at most `q-1` would
 vanish on `K`. Write `P=P_0+...+P_t`, with `P_t` the highest nonzero homogeneous
 part. For a line `b+a y ⊆ K`, the univariate polynomial `P(b+a y)` has degree
-`t<q` and all `q` field elements as roots, so it is identically zero. The
-coefficient of `a^t` in this restriction is exactly `P_t(y)`; in particular, at
-top degree `q-1`, `coeff_{a^{q-1}} P(b+a y)=P_{q-1}(y)`.
+`t<q` and all `q` field elements as roots, so it is identically zero. Lower
+homogeneous pieces cannot contribute to the coefficient of `a^t`, and the
+degree-`t` piece contributes exactly `P_t(y)`.
 
-Every direction occurs, so `P_t` vanishes on all of `F_q^n`. Schwartz-Zippel
-forces `P_t=0`; applying the same argument to the next highest degree peels the
-polynomial down to a constant, which is also zero because `P` vanishes on `K`.
-Therefore no such nonzero `P` exists, and
+Every nonzero direction occurs. If `t>0`, homogeneity gives `P_t(0)=0`, so
+`P_t` vanishes on all of `F_q^n`. Schwartz-Zippel then forces `P_t` to be the
+zero polynomial, contradicting the choice of `t`. If `t=0`, then `P` is a
+nonzero constant, which cannot vanish on the nonempty set `K`. Therefore no such
+nonzero `P` exists, and
 
     |K| ≥ C(q+n-1,n)
         = (q+n-1)(q+n-2)...q / n!
@@ -66,11 +69,19 @@ The multiplicity Schwartz-Zippel bound is
     sum_{a ∈ F_q^n} mult(P,a) ≤ d q^{n-1}.
 
 With `ell` a large multiple of `q`, choose `d = ell q - 1` and
-`m = 2 ell - ell/q`. Then `d < ell q` and `(m-ell)q > d-ell`, which are the
-degree inequalities needed for the line-restriction multiplicity step. The
-leading homogeneous part is forced to vanish to multiplicity `ell` at every point
-of `F_q^n`; since `ell q^n > d q^{n-1}`, the multiplicity zero-counting bound
-kills it. Thus interpolation cannot occur under
+`m = 2 ell - ell/q`. If interpolation produced a nonzero `P` of actual degree
+`d*≤d`, then `d*≥m≥ell`. For every Hasse derivative of weight `w<ell`, the
+line restriction has degree at most `d*-w` and has all `q` field points as roots
+with multiplicity at least `m-w`. The inequality
+
+    (m-w)q > d* - w
+
+follows from `(m-w)q - (d-w) = (q-1)(ell-w)+1`. Thus those restrictions are zero,
+and their leading coefficients force every derivative of the top homogeneous
+part of weight below `ell` to vanish in every direction. The top part vanishes to
+multiplicity `ell` at every point of `F_q^n`; since
+`ell q^n > d q^{n-1} ≥ d* q^{n-1}`, the multiplicity zero-counting bound kills
+it. Thus interpolation cannot occur under
 
     |K| < C(d+n,n) / C(m+n-1,n).
 
@@ -177,19 +188,17 @@ def lagrange_top_coefficient(vals, q):
 
 def line_direction_certificate_holds(q, n):
     F = make_field(q)
-    random.seed(1000 + 10 * q + n)
     mons = homogeneous_monomials(n, q - 1)
-    P_top = {e: random.randrange(q) for e in mons}
-    if all(c == 0 for c in P_top.values()):
-        P_top[mons[0]] = 1
-    for y in product(F, repeat=n):
-        for b in product(F, repeat=n):
-            vals = [
-                peval(P_top, tuple((bi + a * yi) % q for bi, yi in zip(b, y)), q)
-                for a in F
-            ]
-            if lagrange_top_coefficient(vals, q) != peval(P_top, y, q):
-                return False
+    for mon in mons:
+        P_top = {mon: 1}
+        for y in product(F, repeat=n):
+            for b in product(F, repeat=n):
+                vals = [
+                    peval(P_top, tuple((bi + a * yi) % q for bi, yi in zip(b, y)), q)
+                    for a in F
+                ]
+                if lagrange_top_coefficient(vals, q) != peval(P_top, y, q):
+                    return False
     return True
 
 def kakeya_lower_bound(q, n):

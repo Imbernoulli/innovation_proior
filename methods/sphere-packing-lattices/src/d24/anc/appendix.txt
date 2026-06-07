@@ -1,0 +1,212 @@
+\\ PARI/GP code for the paper "The sphere packing problem in dimension 24"
+\\ by Henry Cohn, Abhinav Kumar, Stephen D. Miller, Danylo Radchenko,
+\\ and Maryna Viazovska
+\\ http://arXiv.org/abs/1603.06518
+\\ See http://pari.math.u-bordeaux.fr/ for more information on PARI.
+
+allocatemem(10^9);
+
+\\ First, a few preliminary functions to compute infinite sums:
+
+\\ Sum of a monomial n^deg times qq^n as n goes from M to infinity
+\\ qq is a variable; deg and M  are parameters
+\\ assume deg >= 0
+MonomialSum(deg,M) = if(deg==0, qq^M/(1-qq), qq*deriv(MonomialSum(deg-1,M)));
+
+\\ Evaluates sum of pol(n)*q0^(n-k) from M to infinity
+\\ pol is a polynomial in n, and q0, M, k are parameters
+{
+PolynomialSum(pol,q0,M,k) =
+  q0^(-k)*sum(j=0,poldegree(pol),
+              polcoeff(pol,j,n)*subst(MonomialSum(j,M),qq,q0));
+}
+
+\\ Now we turn to our main task: given a q-series Q with t and pi as variables
+\\ and q=r^2, show that it is nonnegative for 0 < r < c.
+
+\\ Modular forms.
+q = r^2; \\ We'll use r to denote q^(1/2)
+cutoff = 1000; \\ where to truncate q-series
+\\ bernfrac is Bernoulli number
+E(k) = 1-2*k/bernfrac(k)*sum(n=1,1000,sigma(n,k-1)*q^n)+O(q^cutoff);
+Delta = (E(4)^3-E(6)^2)/1728;
+E2=E(2); E4=E(4); E6=E(6);
+T004 = (sum(n=-100,100,r^(n^2)) + O(r^(2*cutoff)))^4; \\ Theta_00^4
+T014 = (sum(n=-100,100,(-1)^n*r^(n^2)) + O(r^(2*cutoff)))^4; \\ Theta_01^4
+T104 = r*(sum(n=-100,100,r^(n^2+n))+O(r^(2*cutoff)))^4; \\ Theta_10^4
+
+\\ Rational upper and lower bounds for pi
+piUpper = ceil(10^10*Pi)/10^10;
+piLower = floor(10^10*Pi)/10^10;
+
+\\ Process a monomial in t and pi to put in upper/lower bounds for t, pi
+\\ to obtain a lower bound, based on the sign of the coefficient and the
+\\ degrees in t and pi.
+\\ Uses global variables tLower and tUpper for lower and upper bounds on t.
+\\ Note that we use the variable pi to represent the number pi exactly.
+\\ For comparison, Pi (with a capital P) denotes a floating-point
+\\ approximation to pi in PARI.
+{
+LowerBound(x) =
+  local(y,tf,pif);
+  y = subst(subst(x,t,1),pi,1); \\ coefficient of monomial
+  if(((poldegree(x,t)>=0) && (y>0)) || ((poldegree(x,t)<0) && (y<0)),
+     tf=tLower,
+     tf=tUpper);
+  if(((poldegree(x,pi)>=0) && (y>0)) || ((poldegree(x,pi)<0) && (y<0)),
+     pif=piLower,
+     pif=piUpper);
+  return(subst(subst(x,t,tf),pi,pif));
+}
+
+\\ Prove that a power series Q is nonnegative for 0 < r < c, assuming that
+\\ the terms beyond r^LastTerm sum to at most ErrorTerm in absolute value.
+\\ Here LastTerm and ErrorTerm are global variables.
+\\ Checks for negative powers of r, just in case, but only down to -100.
+\\ Follows the approach used in Appendix A.  The parameters listed after
+\\ the definition of Prove(Q) are global variables.
+{
+Prove(Q) =
+  local(P,first);
+  for(i=-100,-1,if(polcoeff(Q,i,r)!=0,
+                   print("Error: term with negative exponent!");return(0)));
+  P = sum(i=0,LastTerm,LowerBound(polcoeff(Q,i,r))*r^i)-ErrorTerm;
+  first = 0; while(polcoeff(P,first,r)==0,first=first+1);
+  if(polcoeff(P,first,r)>0,
+     print("OK as q -> 0."),
+     print("Fails as q -> 0: ",polcoeff(P,first,r));return(0));
+  if(polsturm(P/r^first,0,c)==0,
+     print("No sign changes."),
+     print("Fails due to sign changes.");return(0));
+  print("Proved it!");
+  return(1);
+}
+
+\\ global parameters:
+LastTerm = 99;
+\\ Highest power of r to keep in the power series.
+c = 1/23;
+\\ Rational upper bound for exp(-Pi*t), suitable for t=1.
+ErrorTerm = 10^(-50)*q^6; 
+\\ Upper bound for sum of absolute values of omitted terms (after LastTerm).
+tUpper = 1/(23*r);
+\\ Upper bound for t in terms of power of r; 1/(23*r) works when t >= 1.
+tLower = 1;
+\\ Lower bound for t.
+
+\\ *** proof of phi <= 0 for t >= 1 
+
+phinum = ((25*E4^4 - 49*E6^2*E4) + 48*E6*E4^2*E2 + (-49*E4^3 + 25*E6^2)*E2^2);
+\\ "num" means numerator, where denominator is Delta^2
+\\ i.e., phinum is phi*Delta^2, etc.
+\\ coefficient bounds:
+{
+b(n) = (25*240^4 + 49*504^2*240 + 48*504*240^2*24 +
+        (49*240^3 + 25*504^2)*24^2)*(n+1)^20;
+}
+{
+print("Checking first part of Lemma A.1.");
+if(PolynomialSum(b(n),1/535,50,6) < 10^(-50),
+   print("Error term good."),
+   print("Error term bad."));
+Prove(-phinum);
+}
+
+\\ *** proof of phi <= 0 for t <= 1
+
+\\ -t^2 phi + i t phi_1 + phi_2 >= 0 for t >= 1
+
+phinum = ((25*E4^4 - 49*E6^2*E4) + 48*E6*E4^2*E2 + (-49*E4^3 + 25*E6^2)*E2^2);
+phi1num = (1/pi)*(-6*(48*E6*E4^2 + 2*E2*(-49*E4^3 + 25*E6^2)));
+\\ Removed factor of I from phi1num
+phi2num = (1/pi^2)*(-36*(-49*E4^3 + 25*E6^2));
+\\ In the coefficient bound b(n), we use t <= 1/(23*r), and there are two
+\\ factors of t, so we must incorporate a shift by r^2 in the polynomial
+\\ sum below.
+{  
+b(n) = 1/23^2*(25*240^4 + 49*504^2*240 + 48*504*240^2*24
++ (49*240^3 + 25*504^2)*24^2)*(n+1)^20
++ 1/23*6*(6*(48*504*240^2 + 2*24*(49*240^3 + 25*504^2)))*(n+1)^17  \\ 1/pi <= 1
++ (36*(49*240^3 + 25*504^2))*(n+1)^14;  \\ 1/pi^2 <= 1
+}
+{
+print("Checking second part of Lemma A.1.");
+\\ Note that 7 below accounts for extra factors of r^2 mentioned in b(n) bound.
+if(PolynomialSum(b(n),1/535,50,7) < 10^(-50),
+   print("Error term good."),
+   print("Error term bad."));
+Prove(-t^2*phinum-t*phi1num+phi2num);
+}
+
+\\ *** prof of phi - 432/pi^2 psi_S >= 0 at i t for t >= 1
+
+phinum = ((25*E4^4 - 49*E6^2*E4) + 48*E6*E4^2*E2 + (-49*E4^3 + 25*E6^2)*E2^2);
+psiSnum = -(7*T104^5*T014^2 + 7*T104^6*T014 + 2*T104^7);
+{
+b1(n) = (25*240^4 + 49*504^2*240 + 48*504*240^2*24
++ (49*240^3 + 25*504^2)*24^2)*(n+1)^20;
+}
+b2(n) = (7+7+2)*24^7*(n+1)^(7*2+6);
+{
+print("Checking first part of Lemma A.2.");
+\\ 44 is an upper bound for 432/Pi^2:
+if(PolynomialSum(b1(n),1/535,50,6) + 44*PolynomialSum(b2(n),1/23,100,12)
+   < 10^(-50),
+   print("Error term good."),
+   print("Error term bad."));
+Prove(phinum - 432/pi^2*psiSnum);
+}
+
+\\ *** prof of phi - 432/pi^2 psi_S >= 0 at i t for t <= 1
+
+\\ -t^2 phi + i t phi_1 + phi_2 - 432/pi^2 psi_I <= 0 for t >= 1
+
+phinum = ((25*E4^4 - 49*E6^2*E4) + 48*E6*E4^2*E2 + (-49*E4^3 + 25*E6^2)*E2^2);
+phi1num = (1/pi)*(-6*(48*E6*E4^2 + 2*E2*(-49*E4^3 + 25*E6^2)));
+\\ Removed factor of I
+phi2num = (1/pi^2)*(-36*(-49*E4^3 + 25*E6^2));
+{  \\ t <= 1/(23*r), and two factors of t, so shift error term by r^2
+b(n) = 1/23^2*(25*240^4 + 49*504^2*240 + 48*504*240^2*24
++ (49*240^3 + 25*504^2)*24^2)*(n+1)^20
++ 1/23*6*(6*(48*504*240^2 + 2*24*(49*240^3 + 25*504^2)))*(n+1)^17  \\ 1/pi <= 1
++ (36*(49*240^3 + 25*504^2))*(n+1)^14;  \\ 1/pi^2 <= 1
+}
+psiInum = (7*T014^5*T104^2 + 7*T014^6*T104 + 2*T014^7);
+b2(n) = (7+7+2)*24^7*(n+1)^(7*2+6);  \\ same as previous case
+{
+print("Checking second part of Lemma A.2.");
+\\ 44 is an upper bound for 432/Pi^2:
+if(PolynomialSum(b1(n),1/535,50,7) + 44*PolynomialSum(b2(n),1/23,100,14)
+   < 10^(-50),
+   print("Error term good."),
+   print("Error term bad."));
+Prove(-(-t^2*phinum-t*phi1num+phi2num - 432/pi^2*psiInum));
+}
+
+\\ *** behavior of B(t) to handle 0 < r < sqrt(2)
+
+phinum = ((25*E4^4 - 49*E6^2*E4) + 48*E6*E4^2*E2 + (-49*E4^3 + 25*E6^2)*E2^2);
+phi1num = (1/pi)*(-6*(48*E6*E4^2 + 2*E2*(-49*E4^3 + 25*E6^2))); 
+\\ Removed factor of I
+phi2num = (1/pi^2)*(-36*(-49*E4^3 + 25*E6^2));
+{  \\ t <= 1/(23*r), and two factors of t, so shift error term by r^2
+b(n) = 1/23^2*(25*240^4 + 49*504^2*240 + 48*504*240^2*24
++ (49*240^3 + 25*504^2)*24^2)*(n+1)^20
++ 1/23*6*(6*(48*504*240^2 + 2*24*(49*240^3 + 25*504^2)))*(n+1)^17  \\ 1/pi <= 1
++ (36*(49*240^3 + 25*504^2))*(n+1)^14;  \\ 1/pi^2 <= 1
+}
+psiInum = (7*T014^5*T104^2 + 7*T014^6*T104 + 2*T014^7);
+b2(n) = (7+7+2)*24^7*(n+1)^(7*2+6);  \\ same as previous case
+\\ Exponentially growing terms:
+BAD = (1/(39*q)*t-10/(117*pi*q))*Delta^2; \\ multiply leading terms by Delta^2
+
+{
+print("Checking Lemma A.3.");
+\\ Pi <= 4; 1/Pi <= 1; 44 is an upper bound for 432/Pi^2
+if(4/28304640*PolynomialSum(b1(n),1/535,50,7) + 
+   1/65520*44*PolynomialSum(b2(n),1/23,100,14) < 10^(-50),
+   print("Error term good."),
+   print("Error term bad."));
+Prove(pi/28304640*(t^2*phinum+t*phi1num-phi2num)
+      + 1/(65520*pi)*psiInum - BAD);
+}

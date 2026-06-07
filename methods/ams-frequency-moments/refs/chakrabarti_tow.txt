@@ -1,0 +1,294 @@
+AF
+T
+
+Lecture
+
+6
+
+The Tug-of-War Sketch
+
+At this point, we have seen a sublinear-space algorithm — the AMS estimator — for estimating the kth frequency
+moment, Fk D f1k C    C fnk , of a stream . This algorithm works for k  2, and its space usage depends on n
+e 1 1=k /. This fails to be polylogarithmic even in the important case k D 2, which we used as our motivating
+as O.n
+example when introducing frequency moments in the previous lecture. Also, the algorithm does not produce a sketch
+in the sense of Section 4.2.
+But Alon, Matias and Szegedy [AMS99] also gave an amazing algorithm that does produce a sketch, of logarithmic
+size, which allows one to estimate F2 . What is amazing about the algorithm is that seems to do almost nothing.
+
+6.1 The Basic Sketch
+
+DR
+
+We describe the algorithm in the turnstile model.
+
+Initialize
+:
+Choose a random hash function h W Œn ! f 1; 1g from a 4-universal family ;
+2
+x
+0;
+1
+
+3
+
+Process .j; c/:
+x
+x C ch.j / ;
+: x2
+
+Output
+
+The sketch is simply the random variable x. It is pulled in the positive direction by those tokens j with h.j / D 1,
+and is pulled in the negative direction by the rest of the tokens; hence the name “Tug-of-War Sketch”. Clearly, the
+absolute value of x never exceeds f1 C    C fk D m, so it takes O.log m/ bits to store this sketch. It also takes
+O.log n/ bits to store the hash function h, for an appropriate 4-universal family.
+
+6.1.1 The Quality of the Estimate
+
+Let X denote
+Pthe value of x after the algorithm has processed . For convenience, define Yj D h.j / for each j 2 Œn.
+Then X D njD1 fj Yj . Therefore,
+2
+
+EŒX  D E
+
+X
+n
+
+j D1
+
+fj2 Yj2 C
+
+n X
+n
+X
+i D1 j D1
+j ¤i
+
+fi fj Yi Yj
+
+
+
+D
+
+26
+
+n
+X
+
+j D1
+
+fj2 C
+
+n X
+n
+X
+i D1 j D1
+j ¤i
+
+fi fj EŒYi  EŒYj  D F2 ;
+
+CS 49, Fall 2011, Dartmouth College
+Data Stream Algorithms
+
+AF
+T
+
+LECTURE 6. THE TUG-OF-WAR SKETCH
+
+where we used the fact that fYj gj 2Œn are pairwise independent (in fact, they are 4-wise independent, because h was
+picked from a 4-universal family), and then the fact that EŒYj  D 0 for all j 2 Œn. This shows that the algorithm’s
+output, X 2 , is indeed an unbiased estimator for F2 .
+The variance of the estimator is VarŒX 2  D EŒX 4 
+linearity of expectation, we have
+EŒX 4  D
+
+EŒX 2 2 D EŒX 4 
+
+n X
+n X
+n X
+n
+X
+
+F22 . We bound this as follows. By
+
+fi fj fk f` EŒYi Yj Yk Y`  :
+
+i D1 j D1 kD1 `D1
+
+Suppose one of the indices in .i; j; k; `/ appears exactly once in that 4-tuple. Without loss of generality, we have
+i … fj; k; `g. By 4-wise independence, we then have EŒYi Yj Yk Y`  D EŒYi  EŒYj Yk Y`  D 0, because EŒYi  D 0. It
+follows that the only potentially nonzero terms in the above sum correspond to those 4-tuples .i; j; k; `/ that consist
+either of one index occurring four times, or else two distinct indices occurring twice each. Therefore we have
+EŒX 4  D
+
+n
+X
+
+j D1
+
+fj4 EŒYj4  C 6
+
+n
+n
+X
+X
+
+i D1 j Di C1
+
+fi2 fj2 EŒYi2 Yj2  D F4 C 6
+
+n
+n
+X
+X
+
+fi2 fj2 ;
+
+i D1 j Di C1
+
+
+where the coefficient “6” corresponds to the 42 D 6 permutations of .i; i; j; j / with i ¤ j . Thus,
+VarŒX 2  D F4
+
+F22 C 6
+
+n
+X
+
+n
+X
+
+fi2 fj2
+
+i D1 j Di C1
+
+ n
+X
+
+D F4
+
+F22 C 3
+
+D F4
+
+F22 C 3.F22
+
+j D1
+
+fj2
+
+2
+
+n
+X
+
+fj4
+
+j D1
+
+
+
+F4 /  2F22 :
+
+DR
+
+6.2 The Final Sketch
+
+As before, having bounded the variance, we can design a final sketch from the above basic sketch by a median-ofmeans improvement. By Lemma 5.4.1, this will blow up the space usage by a factor of
+
+
+1
+1
+O.1/  2F22
+1
+1
+O.1/  VarŒX 2 
+ log D O 2 log
+ log 
+"2 EŒX 2 2
+ı
+ı
+"
+ı
+"2 F22
+
+in order to give an ."; ı/-approximation. Thus, we have estimated F2 using space O." 2 log.ı 1 /.log m C log n//,
+with a sketching algorithm that in fact computes a linear sketch.
+
+6.2.1 A Geometric Interpretation
+
+The AMS Tug-of-War Sketch has a nice geometric interpretation. Consider a final sketch that consists of t independent
+copies of the basic sketch. Let M 2 Rt n be the matrix that “transforms” the frequency vector f into the t-dimensional
+sketch vector x. Note that M is not a fixed matrix but a random matrix with ˙1 entries: it is drawn from a certain
+distribution described implicitly by the hash family. Specifically, if Mij denotes the .i; j /-entry of M , then Mij D
+hi .j /, where hi is the hash function used by the i th basic sketch.
+Let t D 6="2 . By stopping the analysis in Lemma 5.4.1 after the Chebyshev step (and before the “median trick”
+Chernoff step), we obtain that
+
+ˇ X
+t
+ˇ
+1
+ˇ
+ˇ1
+2
+xi F2 ˇ  "F2  :
+Pr ˇ
+M
+t
+3
+i D1
+
+27
+
+CS 49, Fall 2011, Dartmouth College
+Data Stream Algorithms
+
+AF
+T
+
+LECTURE 6. THE TUG-OF-WAR SKETCH
+
+Thus, with probability at least 2=3, we have
+
+hp
+1
+1
+D p kxk2 2
+p Mf
+1
+t
+t
+2
+
+"  kfk2 ;
+
+i
+p
+1 C "kfk2  Œ.1
+
+"/kfk2 ; .1 C "/kfk2  :
+
+p
+This can be interpreted as follows. The (random) matrix M= t performs a “dimension reduction”, reducing an ndimensional vector f to a t-dimensional sketch x (with t D O.1="2 /), while preserving `2 -norm within a .1˙"/ factor.
+Of course, this is only guaranteed to happen with probability at least 2=3. But clearly this correctness probability can
+be boosted to an arbitrary constant less than 1, while keeping t D O.1="2/.
+
+The “amazing” AMS sketch now feels quite natural, under this geometric interpretation. We are simply using
+dimension reduction to maintain a low-dimensional image of the frequency vector. This image, by design, has the
+property that its `2 -length approximates that of the frequency vector very well. Which of course is what we’re after,
+because the second frequency moment, F2 , is just the square of the `2 -length.
+
+DR
+
+Since the sketch is linear, we now also have an algorithm to estimate the `2 -difference kf./
+two streams  and  0 .
+
+28
+
+f. 0 /k2 between
+
+

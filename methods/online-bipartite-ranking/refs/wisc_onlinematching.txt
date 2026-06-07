@@ -1,0 +1,198 @@
+CS787: Advanced Algorithms                                           Scribe: Zelin (Bobby) Lv
+
+Lecture 14: Online Bipartite Matching                                         Date: 03/14/2019
+
+
+
+14.1       Online Bipartite Matching
+Input: Unweighted Bipartite Graph G = (L ∪ R; E); E ⊆ L × R
+
+
+   • L is known ahead of time
+   • R is revealed one vertex at a time
+   • When v ∈ R arrives, we see all edges adjacent to v
+   • Algorithm needs to commit to a match for v before observing any future arrivals
+
+Goal: Pick a matching of maximum size.
+
+Example:
+
+
+       L                R
+
+
+
+
+Figure 14.1.1: A result graph where node of R arrives in Online Fashion (The ordering is the top
+comes first).
+
+Clearly, we found a maximal matching but not maximum matching.
+
+We see that our online Bipartite Matching is not optimal. What would you do for the first vertex
+arrives? There is not a large space we can do because all the edges seem identical.
+
+
+                                               1
+14.2       Deterministic Algorithm
+Theorem: No deterministic algorithm can get a C.R. (Competitive Ratio) < 2 for solving online
+bipartite matching.
+Proof: Consider the following case with an adversary setting:
+
+
+       L                  R
+
+
+
+
+                                  Figure 14.2.2: Adversary setting
+
+In this adversary setting, vertex edge comes with two neighbors and after it’s matched with u ∈ L,
+and a new vertex with online one neighbor as the just matched u arrives. Clearly, for the offline algo-
+rithm, we can get a matching of size |R|, but here only |R|
+                                                         2 for an online fashion. Thus, the C.R. is 2.
+
+
+Greedy Algorithm: For every v ∈ R, pick an arbitrary unmatched neighbor. This algorithm
+gives a maximal matching ⇒ C.R. = 2 in the case above.
+
+14.3       Randomized Algorithm
+Randomized Greedy Algorithm: when v ∈ R arrives, match it to a random unmatched neigh-
+bor.
+
+
+       L                  R
+
+
+
+
+In the similar setting as we have discussed for Greedy algorithm, the expected number of matching
+of first vertex v ∈ R is 1 and since it’s randomized, the expected number of matching of second ver-
+
+
+                                                  2
+tex is 12 . So the expected number of matching is 23 for this graph. And we have the C.R.= 3/2
+                                                                                            2
+                                                                                               = 43 .
+
+Here we give a tighter C.R. of the randomized greedy algorithm.
+Consider the following case that |L| = |R| = 2n:
+The maximum matching is 2n but our graph has first n vertices of L and the first n vertices of
+R forming a fully connected graph, as shown in the figure in next page. When v ∈ R of the first
+half arrives, if it’s matched to the neighbor in the second half of L, the corresponding vertex in
+the second half can be matched later. Thus we have an expected number of second half matching:
+ 1     1          1
+n+1 + n + ... + 2 = Hn+1 − 1
+The expected number of matching of this greedy algorithm is ≤ n + logn and OP T = 2n. Therefore
+C.R. ≥ 2 − o(1)
+
+
+
+
+                                                 3
+         L               R
+
+
+
+
+Figure 14.3.3: The intended Matching
+         L               R
+
+
+
+
+  Figure 14.3.4: The graph we get
+
+
+
+                 4
+14.4     The RANKING algorithm
+In [1], the authors give an algorithm with an expected competitive ration of 1 − 1/e ≈ 0.63 for
+solving the online bipartite matching.
+
+RANKING(Karp, Vazirani, Vazirani ’90):
+
+  1. Pick a uniformly random permutation for nodes
+
+  2. When v ∈ R, match it to highest ranked unmatched neighbor.
+
+Theorem 1: The Competitive Ration of RANKING is 1 − 1/e ≈ 0.63.
+Theorem 2: No randomized algorithm can do better.
+
+14.5     Primal Dual Matching Algorithm
+Let Xe be the indicator for e being in a matching. Then we can have the linear programming
+Primal and its Dual.
+
+                                         Primal                                    Dual
+                            max     Σ(u,v)∈E Xuv                min   Σu∈L αu + Σv∈R β
+          subject to    Σv∈R xuv ≤ 1,    ∀u ∈ L            subject to αu ≥ 0,    ∀u ∈ L
+                       Σu∈L xuv ≤ 1,    , ∀v ∈ R                      βv ≥ 0,   , ∀v ∈ R
+                        xu,v ≥ 0,   ∀(u, v) ∈ E              αu + βv ≥ 1,   ∀(u, v) ∈ E
+
+So we have :
+
+
+
+
+And based on the Primal-Dual linear programming, we can modify the RANKING algorithm. This
+algorithm uses real number but here we don’t care about how to store or implement the real num-
+bers.
+
+Modified RANKING:
+
+  1. Pick ∀u ∈ L, independently assign value yu ∈ [0, 1]
+
+                                                   5
+  2. When v ∈ R arrives, match it to smallest yu unmatched neighbor.
+  3. If u is matched to v, set αu := g(yu ) and βv := 1 − g(yu ), else set βv := 0
+
+Notice that this algorithm can’t always guarantee the feasible solution, but we can randomly average
+the dual solution.
+Claim 1: Primal is feasible
+Claim 2: Dual cost ≤F, which is Primal value
+Claim 3: Dual is feasible in expectation ∀(u, v) ∈ E, E[αu ] + E[βv ] ≥ 1 βv − β value of v in the
+absence of v. Then βv ≥ β = F (1 − g(yu0 ))
+If yu < yu0 , then αu = g(yu )                                        Ry
+E[αu ] + E[βv ] = E[αu |yu < yu0 ]P r[yu < yu0 ] + F (1 − g(yu0 )) = F 0 u0 g(yu )dyu + F (1 − g(yu0 )) ≥
+(want) 1 Regradless of yu0 .
+The proof of that in expectation the dual is feasible1 :
+Proof: Suppose that in the graph G \ {i} that j gets matched to i0 and we reintroduce i. Then
+              1−g(Yi0 )
+  1. βj ≥       F
+
+  2. If Yi < Yi0 , then i gets matched and αi = g(Y
+                                                  F
+                                                    i)
+
+
+
+Now we would like the following inequality to hold for any θ ≥ 1.
+                                      Z θ
+                                          g(y)      1 − g(θ)
+                        E[αi + βj ] ≥          dy +          (FixYi0 = 0)
+                                       0   F           F
+Then we are going to optimize for the largest value of F such that
+                                                      dG(θ)
+                                             G(θ) − G(0) + 1
+                                                        θ
+By solving this differential equation with boundary term g(0) = 1, we get the largest value of
+                                                    1          eθ
+                                             F = 1 − ,and g(θ)
+                                                    e          e
+
+
+
+14.6        Next Time
+We will continue on the RANKING algorithm modified based on Primal/Dual. And we will begin
+the phone sectary problem.
+
+
+References
+[1] Karp, Richard M., Umesh V. Vazirani, and Vijay V. Vazirani. An optimal algorithm for on-line
+   bipartite matching In Proceedings of the twenty-second annual ACM symposium on Theory of
+   computing, ACM, 1990.
+  1
+      Here I borrow from the previous lecture of CS 880 given by Professor Shuchi Chawla
+
+
+                                                         6
+

@@ -1,0 +1,968 @@
+Mathematical Programming 62 (1993) 557-574
+North-Holland
+
+557
+
+Laplacian eigenvalues and the maximum cut
+problem
+C. D e l o r m e
+LRI, University Paris-Sud, Orsay, France
+
+S. P o l j a k *
+KAM MFF, Charles University, Prague, Czech Republic
+Received 30 August 1990
+Revised manuscript received 3 February 1993
+
+We introduce and study an eigenvalue upper bound p(G) on the maximum cut mc (G) of a weighted graph. The
+function ~o(G) has several interesting properties that resemble the behaviour of mc (G). The following results are
+presented.
+We show that q~is subadditive with respect to amalgam, and additive with respect to disjoint sum and 1-sum.
+We prove that ~(G) is never worse that 1.131 mc(G) for a planar, or more generally, a weakly bipartite graph
+with nonnegative edge weights. We give a dual characterization of ~o(G), and show that q~(G) is computable in
+polynomial time with an arbitrary precision.
+
+Key words: Max-cut, eigenvalues, algorithms.
+
+1. Introduction
+
+Let G = ( V, E) be a weighted graph on n vertices with weight w e on the edge e. For each
+partition V = S U ( V ~ S ) of V, we have the corresponding value Ei~s, j~v~s w0. The maxcut of G, denoted by mc(G), is the number defined by
+mc(G)=max
+scV
+
+~
+
+wij.
+
+(1)
+
+i~S
+j~V~S
+
+We introduce and investigate a number ~(G), defined for every weighted graph G, which
+is alway s an upper bound on the max-cut mc(G), i.e. we have
+mc(G) ~<~p(G).
+
+(2)
+
+The number q~(G) is defined as
+p ( G ) = m i n ll~rnax(L+diag(u))n
+Eui =0
+
+Correspondence to." C. Delorme, LRI, University Paris-Sud, F-91405 Orsay Cedex, France.
+*The research has been partially done when the second author visited LRI in September 1989.
+
+(3)
+
+558
+
+C. Delorme, S, Poljak / Laplacian spectrum and max-cut
+
+where L is the Laplacian matrix of the weighted graph G with n vertices, U = diag (u) is the
+diagonal matrix with entries ui on the diagonal and Amaxis the maximum eigenvalue of the
+matrix L + U. The minimum is taken over all vectors u ~ Nn satisfying E ui = 0. Section 2
+contains the details of the definition and the proof of the inequality (2).
+Since the value q~(G) is obtained as the minimum of the function f ( u ) =
+lnAmax(L + diag(u)), it is useful to study some properties off. In Section 3 we show that
+f i s convex, lipschitzian and has unique minimum.
+The main results are presented in Sections 4, 5 and 6. In Section 4 we give a dual
+characterization of ~(G) in terms of an optimality certificate, consisting of a family of
+eigenvectors. Though this certificate cannot be, in general, used for concrete computation
+of q~(G), it has theoretical applications. The bound p ( G ) has several interesting properties.
+In many aspects, its behaviour resembles properties of mc(G), and - - perhaps due to this
+f a c t - - it also seems to well approximate mc (G). One of such properties is proved in Section
+5. We show that q~(G) is subadditive with respect to amalgams, and, moreover, additive
+with respect to 1-sums and disjoint unions of graphs. The subadditivity allows us to establish
+that q~(G) never exceeds 1.131 mc(G) for planar, or more generally, weakly bipartite
+graphs. This result is given in Section 6.
+Since the max-cut problem is NP-complete [ 13], the computational aspects are also
+studied. The number ~(G) need to be rational. However, there is a polynomial time
+algorithm to compute it with arbitrary prescribed precision. The algorithm is obtained by
+an application of the ellipsoid method, in the form given by [ 14]. Section 7 contains the
+technical details.
+The method of optimization over the "varying diagonal" (we call it a "correcting
+vector", in order to underline the combinatorial meaning) has already been used in a paper
+by Donath and Hoffman [ 10] (see also [5] ) to obtain a lower bound on the equipartition
+problem. Their bound has been later improved by Boppana [ 6]. Since our eigenvalue bound
+is quite analogous to, or perhaps even simpler, than those on the equipartition problem, we
+believe that our contribution is in a deeper study of the combinatorial properties. In some
+sense, we were rather motivated by the work of Fiedler [ 11 ], who formulated an eigenvalue
+lower bound on the graph connectivity and studied its properties. Our bound q~(G) on the
+max-cut problem improves a previous simpler bound
+mc(G) ~< ¼A.... (L)n
+given by Mohar and Poljak [ 18], which corresponds to the choice u = 0.
+
+2. Definition of the upper bound q~(G)
+Consider a loopless graph G with vertex set V, each pair {i, j} of vertices is given a weight
+wij. The number of vertices is denoted by n, and the vertices are labelled with the integers
+1, 2 ..... n. An ordinary (unweighted) graph is identified with a weighted graph where the
+weights are 1 on the edges and 0 on the non-edges.
+
+C. Delorme, S. Poljak/ Laplacian spectrum and max-cut
+
+559
+
+W e associate to a subset S of V the vector X s with n coordinates x,, = 1 if v ~ S and xL,= - 1
+
+if v ~ V~S.
+W e introduce the Laplacian matrix L = Lc with n rows and n columns. The matrix is
+symmetric and its entries are Lij = - wij for i C j and L , = E j ~ w~j. If G is an ordinary graph,
+then the Laplacian can be expressed as La = d i a g ( d ) - A where A is the adjacency matrix
+and d the vector of vertex degrees. W e will occasionally also use notation L ( G ) instead of
+Lc. It will be always clear from the context whether G is a weighted or unweighted graph.
+W e recall that the maximum eigenvalue A of a symmetric matrix M satisfies
+/~Tx
+
+)
+
+XTMX
+
+for every vector X. This inequality is called the Rayleigh principle (see for example [ 17 ] ).
+Let u = ul, u2 . . . . . un be a vector o f n reals and U = d i a g ( u ) the diagonal matrix on n rows
+and n columns with Ui~= uz. W e will call any vector u with E u~ >~0 a correcting vector (the
+entry ui is associated with vertex i).
+L e m m a 1. We have
+m c ( G ) ~< JnAmax(L+ U)
+
+f o r every correcting vector u.
+Proof. W e observe that the following identity holds:
+
+XTLX = ~ Wij(X i -- Xj) 2
+for the Laplacian L and every vector X. In particular, with X = Xs corresponding to a subset
+S c V, we have
+
+X~LXs = ~
+
+wij(Xs,-Xsj)2=4 ~
+
+w,j
+
+i~S
+jf~S
+
+which is 4 times the value of the cut induced by S.
+We also have X [ UXs = E ui(Xsi) 2 = E ui >~0 because Xsi = + 1.
+Let S induce a m a x i m u m cut. Then
+4 m c ( G ) = X [ LXs <~X[ ( L + U)Xs.
+Applying the Rayleigh principle to the vector Xs, we obtain that
+4 m c ( G ) < A,~,x(L+ U ) X ~ X s = nAm,x(L+ U).
+
+[]
+
+Based on Lemma 1, we can introduce the upper bound q~(G) which is the main notion
+studied in the paper. W e define
+
+q~(G) = m i n ¼nh
+
+....
+
+(L+ U),
+
+u
+
+the minimum being taken over all correcting vectors u (we will prove in the next section
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+560
+
+that the minimum is actually attained for some u, and so that the notation is justified). Such
+a vector u realizing the minimum will be called an optimum correcting vector.
+The optimum correcting vector u obviously satisfied El <i<,z u~= 0.
+We first state two properties of q~, namely that q~ is (i) positive-homogeneous, and (ii)
+monotone.
+L e m m a 2. (i) If each weight wij is multiplied by some positive real k, then q~ is also
+multiplied by k.
+(ii) If G and G' have the same vertices and the weight functions w and w' satisfy
+w U<<.w ~ for all pairs of vertices, then qff G) <~~(G' ).
+Proof. The first property is obvious. Let us prove the second one. We note that for every
+vector u and every vector X the relation
+x T ( L G , q- U ) x - - X T ( L G q- U ) X : X T ( L G
+
+holds.
+
+, -Lc)X>~O
+
+[]
+
+Observe that a trivial upper bound on m c ( G ) is the sum of all nonnegative weights of
+edges. We show that our upper bound q~(G) is never worse than this trivial bound.
+T h e o r e m 1. Let G be a weighted graph with weight function w. We have
+
+~)<
+
+~ we.
+We>~0
+
+Proof. Set w,~ = m a x (0, wu) for all pairs of vertices and let G' be the corresponding
+weighted graph. The second part of the lemma above says ~ ( G ) ~<qffG'). So we may
+assume that w is already non-negative. Set m = E w U, and consider the correcting vector
+defined by
+4m
+
+ui = - - - 2
+n
+
+~2 wij.
+
+(4)
+
+J
+
+We have, for every X, the relations
+4m
+x T ( L + U ) X = - - XTx - ~_, wa( Xi +Xj) 2 ~<4m XTx.
+n
+
+n
+
+Applying this to an eigenvector X associated to the largest eigenvalue "~maxof Lq- U, we
+obtain Ama×(L-}-U) ~4m/n, and hence q~(G) ~<m. []
+A simpler proof of Theorem 1 will be proposed in Section 5.
+Let us remark that the proof of Theorem 1 relied on the " g u e s s " of a good correcting
+vector. Indeed an awkward choice of a correcting vector may result in a poor bound.
+For example, consider the ordinary star K1. n-1 with the null correcting vector. Then
+¼nAmax(L(Kl.n-1)) = ¼n2 while mc(Kl, n- 1) = n - 1 = qffKl, n- l).
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+561
+
+Fig. 1. The exact graph C8,2 with mc = ~p= 12.
+We will call a weighted graph exact if it satisfies m c ( G ) = q~(G). Clearly, a graph G is
+exact if and only if some _ 1-vector x belongs to the eigenspace of Amax(L + diag(u))
+where u is a correcting vector. Although ~ ( G ) provides a good upper bound for m c ( G ) ,
+exact graphs seem to be relatively rare. Still there are several interesting examples of exact
+graphs.
+An immediate corollary of Theorem 1 is that every weighted bipartite graph with positive
+weights is exact. Also the ordinary complete graphs with an even number of vertices are
+exact. (Clearly, m c ( K z k ) = k 2 and on the other hand, with a null correcting vector, the
+maximum eigenvalue is 2k, hence q~~<k2.)
+An example is also given in Figure 1 (see [ 18, p. 349] ).
+Some construction of exact graphs will be given in Section 5. Further examples of exact
+graphs can be found in [ 18 ] and [ 7]. We prove in [ 8] that the recognition of exact weighted
+graphs is NP-complete. The complexity of the unweighted case is an open question.
+
+3. Properties off
+It is advantageous to write the definition of q~(G) in the form q~(G) = m i n , f ( u ) where
+f(u) = 41-nAmax(L+ U) and u is constrained by Z uif>0.
+In this section we establish some properties o f f It is important to show thatfattains a
+minimum which is unique. Another useful property off, the convexity, has already been
+known (see [ 10, Theorem 1] or [9, Chapter 6] ).
+T h e o r e m 2. The function f has the f o l l o w i n g properties.
+(i) f is Lipschitzian, that is [flu) - f ( u' ) [ / [ u - u ' [ is bounded by some constant.
+(ii) f is convex.
+(iii) f attains its m i n i m u m exactly once unless all the weights are null.
+Proofi Let u and u' be two vectors and U and U' the corresponding diagonal matrices.
+(i) Without loss of generality, one can assume f ( u ) < f ( u ' ) . Let Y be an eigenvector
+
+562
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+for the highest eigenvalue of L + U', with yTy= ¼n. We have YV(L+ U)Y<~f(u) and
+y T ( L + U ' ) Y = f ( u ' ) and thus
+
+O<~f(u')-f(u) = ~
+
+(u~-ui)Yai <<. ¼ m a x l u ~ - u i In.
+i
+
+T h u s f i s Lipschitzian.
+(ii) Let us give a short proof of the convexity of f for convenience. Let t be some real
+between 0 and 1. Let u" = ( 1 - t) u + tu'. Let Y be an eigenvector for the highest eigenvalue
+of L + U" with yTy= ¼ n. Then yT(L+U)Y<~f(u) and y T ( L + U ' ) ~ f ( u ' ) . By linear
+combination we obtain
+
+f(u") = yT(L + U") Y= ( 1 - t) yT(L + U) Y+ tyT(L + U') Y
+~< (1 - t)f(u) + tf(u')
+that is the convexity o f f
+(iii) Suppose that the minimum is attained at u and u', with u v~u'. By convexity it is
+also attained at u" = ½(u + u' ). Let Y be an eigenvector for the largest eigenvalue of L + U",
+with YTy=¼n. We then have y T ( L + U ) Y<~¼Amax(L+U)n and yT(L+U')Y<~
+¼A ~ax (L + U' ) n. By averaging, we see that both inequalities are in fact equalities, thus Y is
+also eigenvector for the highest eigenvalue of L + U and for the highest eigenvalue of L + U'
+which is the same real. Hence Y is an eigenvector for U' - U, with eigenvalue 0. The
+eigenspace H of L + U" is thus a subspace of the kernel K of U' - U. Let d = dim K. We
+have d < n since U va U'. Let A' be the largest eigenvalue of L + U" smaller than A (it exists
+since there are non-null entries out of the diagonal of the symmetric matrix L + U"). Let us
+define u * by u* = u ~' + ( A - A' ) ( d - n) / n if the vector with only the ith coordinate nonnull is in K and u* =ul' + ( A - A ' ) d / n for the other indices i. Then U* and U" have the
+same trace. Let us compute the quadratic form with matrix L + U*. Every vector Z is
+decomposed on Z~ that lies in H and Z2 orthogonal to H. Then
+
+ZT(L+ Cr')Z <<.2tZTz, + A'Z~ Z2
+and
+ZT(L+ U*)z=ZT(L+
+
+l f ' ) Z + ( A - A')
+
++ ( a - A') d Z~Z2 ~
+///
+
+d-n
+zITZ1
+tl
+
+dA + ( n - d) A'
+
+ZTZ< AzTz.
+
+H
+
+Thus we have found a better choice for the system, which contradicts the minimality.
+We have proven that the minimum is attained at most once. Let us now prove that it is
+attained. If max Iui] ~ w with ~ ui>~0 then max u ~
+and ~max(L-bU) >~maxi(u~+ di),
+where dl= ~j,~ w 0 is the "weighted degree" of the vertex i (see Lemma 4 of Section 7).
+Now apply the usual compactness argument to the continuous functionfthat tends to infinity
+with u on the closed half-space ~ ui >~0. []
+The convexity o f f simplifies the possible forms of the optimal correcting vector if the
+
+563
+
+C. Delorme, S. Poljak/ Laplacian spectrum and max-cut
+
+weighted graph has a non trivial group of automorphisms (preserving the weights of the
+edges).
+
+Corollary 1. Let u be the optimum correcting vector o f a weighted graph G. If vertices i
+and j belong to the same orbit then ui = uj. In particular, if G is vertex-transitive, then the
+optimal correcting vector is the null vector.
+ProoL The proof is a routine use of the convexity and group action.
+
+[]
+
+We use this corollary to compute q~for various examples (some of them are collected in
+[7] ). As a consequence of this corollary, the previous upper bound of Mohar and Poljak
+[ 18] is not improved for the vertex-transitive graphs.
+We will use later in this paper some examples:
+
+• Ordinary complete graphs:
+mc(K2~) = k 2 = q~(K2~),
+mc(K2k+1) = k ( k + 1) < ¼ ( 2 k + 1)2= q~(Kzk+i).
+• Ordinary cycles:
+mc (C2~) = 2k = q~(C2k),
+mc(C2~+l) = 2 k <
+
+(
+
+2 + 2 cos
+
+2__~) 2k+ 1
+--~-=
+
+q~(C2k+l) ~
+
+25 + 5 f 5
+3~×2k.
+
+The value (25 + 5V/5)/32 = 1.130635... comes from the 5-cycle.
+
+4. A characterization of the optimal correcting vector
+
+In this section we give a criterium to check whether a correcting vector u is optimal.
+Clearly, in case of exact graphs, it is sufficient to present a subset S which induces a cut
+of value lnAmax(L c + diag(u) ). Then we already know that
+• u is th e optimum correcting vector;
+• S induces the max-cut; and
+• the vector Xs with coordinates 1 or - 1 is an eigenvector of L c + d i a g ( u ) for the
+eigenvalue h .... (L~ + diag(u) ).
+Thus, we can see that Xs certificates the optimality of u in the case of exact graphs. We
+will formulate a more general concept of a certificate that can be used for all graphs.
+Let u be a correcting vector and ~ the eigenspace of A max(LG -~-diag ( u ) ) . We say that a
+
+564
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+finite family (X(K), K ~ K) from ~ is an optimality certificate of the correcting vector u if
+~ , ~ K ( (X(K) )i)2 = 1 for every i = 1..... n. The notion is justified by Corollary 2 below.
+We will use the linear form o-: u ~ Y'.i u~, the eigenspace go and the convex cone g~
+generated by the linear forms .r~:u ~ Y'.i xZui for all x in the eigenspace g~.
+Theorem 3. The correcting term u realizes the minimum if and only if the form o- is in the
+
+cone ~ .
+Proof. If o- is in the cone then, for every increment v with cr(L~) >/0, we have some
+x~with
+~-x(V)>~0. Then if we normalize x to xVx=¼n we have f ( u + v ) > ~
+xX(L + U + V ) x = f ( u ) + "rx(c,) >~f(u).
+If o" is not in the cone ~ , then some system v separates ~ and the form % that is ~r(v) > 0
+and z,(v) < 0 for all x v~0 in ~, and we now prove that the minimum o f f does not occur
+in u.
+Let us introduce the spheres ~cPr of vectors with xTx = r. These spheres are compact sets
+and their intersections with g~ and the orthogonal subspace ~ ± are also compact. Let a < 0
+be the maximum of xTVx on 5 '~, (~g, let b be the maximum of [xTVy] with x e ~ ( ' / ~ l
+and y ~ g ± C3&~ and let c be the maximum ofyTVy with y ~ ~ " N ~ . Let A and/z be the
+largest and second largest eigenvalues of L + U. Let x + y be a vector in &~,/4 such that
+x~
+and y ~
+±
+Then
+(x + y)T(L + U + tV) (x + y) - ¼An <~taxTx + 2tb~xTxyTy + (tc + I~-- A)yTy.
+If 0 < t < a (tz -- A) / (b 2 _ ca), the quadratic form appearing on the right hand side, with
+matrix
+I 'a
+'~
+]
+tb tc+ i x - 1
+'
+is negative definite. S o f ( u + tv) < f ( u ) on the open interval ] O, a ( l ~ - A) / (b 2 - ca) [.
+
+[]
+
+Corollary 2. A v e c t o r u is optimum correcting vector if and only if there exists an optimality
+certificate of u.
+Proof. If o-~ c~, then or= E ~ t c a~Zx(K~ where K is finite and vectors x(K) are in g~, and a~
+are positive. Clearly, one may assume that the vectors x(K) are distinct and all aK are equal
+to one. Thus, (x(~), K ~ K) is an optimality certificate. The converse implication is trivial. []
+Let us remark that the optimality certificate need not be unique. The existence of an
+optimality certificate has rather a theoretical importance than a computational use. We will
+use it in the next section to establish the additivity of q~ on 1-sums and 0-sums. It may be
+
+C. Delorme,S. Poljak/ Laplacianspectrumand max-cut
+
+565
+
+noted that every certificate can be replaced by a certificate consisting of at most n vectors
+of~.
+Example. For the ordinary triangle, we already know that u = 0 is the optimal correcting
+vector. The eigenvalues are 0 and 3. A certificate is the family of eigenvectors ( 1/V~) (0,
+~, - 1), ( 1 / v ~ ) ( 1 , o, - l ) , ( 1 / v ~ ) ( 1 ,
+- l, o).
+
+Corollary 3. Assume that G is not exact, and let u be the optimum correcting vector. Then
+the largest eigenvalue hm~x of L + U cannot be simple.
+Proof. Assume that hma x is simple, and let X be a corresponding eigenvector; we may
+assume that X has length v~n. Then the dimension of the eigenspace ~ is 1, and hence also
+the dimension of the cone ~ is 1. Since by Theorem 3 the form o-= (1, 1. . . . . 1) =
+(u ~ Ei ui) belongs to ~ , it follows that ~ contains a vector with coordinates in { - 1, 1 }.
+Hence G is exact, a contradiction. []
+The "dual characterization" by an optimality certificate corresponds, in general, to a
+subgradient characterization of a convex function. However we are not aware of any result
+that would directly yield our Theorem 3. A very close problem was studied by Overton
+[ 19] but his dual characterization has a more complicate form.
+
+5. The function q~and amalgams of graphs
+In this section we prove the subadditivity of the bound ~p with respect to amalgams.
+Subadditivity is a crucial property and will be applied later to establish a result on planar
+graphs. In special cases, namely when the graphs to be amalgamated have 0 or 1 vertex in
+common, the inequality becomes an equality.
+We describe now the amalgam of two weighted graphs G' and G". Let V' and V" be the
+vertex sets of G' and G" (the sets V' and V" may intersect). Let n', n" be the number of
+vertices and let w', w" be the weight functions of G' and G" respectively. Then the vertex
+set of the amalgam G is V-- V' W V" and its weight function w is defined by
+
+f wb + w~ i f i a n d j a r e b o t h i n V ' N V " ,
+wij ---
+
+w~
+w~j
+0
+
+if i, j are both in V' but not both in V",
+if i, j are both in V" but not both in V',
+otherwise.
+
+In other words, the Laplacian matrix L of G is the sum of the suitably extended with
+zeroes Laplacian matrices L' and L" of G' and G".
+It is easy to see that the max-cut has the following properties.
+
+Lemma 3. If G is the amalgam of G' and G", then
+mc(G) ~<mc(G') + m c ( G " ) .
+
+(5)
+
+566
+
+C. Delorme,S. Poljak/ Laplacian spectrumand max-cut
+
+If the amalgamated graphs G' and G" have at most one common vertex then
+mc(G) = m c ( G ' ) + mc(G").
+
+[]
+
+(6)
+
+The following theorem shows that ~ behaves in the same way.
+Theorem 4. If G is the amalgam of G' and G", then
+q~(G) < q~(G') + q~(G").
+
+(7)
+
+If the amalgamated graphs G' and G" have at most one common vertex then
+q~(G) = q~(G') + q~(G~').
+
+(8)
+
+Proof. The proof will consist of several steps, starting with some special cases. Let u' and
+u" be the optimum correcting vectors, and ( x ' ( ¢ ' ) , ~' E K ' ) and (x"(K"), K"EK") optimality certificates for G' and G" respectively. (These certificates are defined in Section 5.)
+(i) Assume that V' = V". We show that the inequality (7) holds. Consider a (possibly
+not optimal) correcting vector u = u' + u". Let x be the eigenvector corresponding to the
+maximum eigenvalue of the matrix L ( G ' ) + diag(u' + u") + L(G"). Assume x T x = l I V I .
+Using the Rayleigh principle, we have
+q~(G) ~ x T ( L ( G ') + diag(u' + u") + L ( G " ) x
+~< )t max(L(G') -? diag(u') )xTx + a max(L(G") + diag(u") )xTx
+
+<~,p( G') + ~( G").
+(ii) Assume that V' (] V"= O. We show that the equality (8) holds. Let a ' and k" denote
+the maximum eigenvalue of L ( G ' ) + diag(u') and L ( G " ) + diag(u") respectively. We
+construct a correcting vector u by
+
+f
+
+u~ +ee'
+ui= l,u~' +ce"
+
+if i ~ V ' ,
+if i E V " ,
+
+(9)
+
+with c~' and d ' real numbers such that n'c~' + n"c~"= 0 and k' + c~' = k" + c~". The concatenationofaneigenvectorx'forL(G') + diag(u') and an eigenvector x " for L( G") + diag(u")
+is then an eigenvector x = (x', x") for L(G) + diag(u) with eigenvalue ,~= a ' + c~'. It is
+easy to check that A is the largest eigenvalue of L ( G ) + d i a g ( u ) and that
+za- , n , + ~z,~
+n . Thus we already have proved the inequality (7).
+¼h(n'+n")=
+L
+.....
+In order to show that the equality (8) holds, we check that the correcting vector u given
+by formula (9) is already optimum for G. To prove optimality of u, we will construct an
+optimality certificate (x~, K ~ K) for G and u, from the certificates of u' and u".
+Now K is the disjoint union of K' and K". x(K) is the concatenation x' (K), 0 if K E K'
+and the concatenation 0, x"(K) if K E K". The corresponding sum is the all-one vector. This
+proves that the chosen u realizes the minimum off.
+
+C. Delorme,S. Poljak/ Laplacianspectrumand max-cut
+
+567
+
+(iii) Let G + v be obtained from G by adding an isolated vertex. Then q~( G + v) = q~(G).
+This follows immediately from part (ii).
+(iv) Let V' and V" be arbitrary, i.e. they may intersect and need not be identical. We
+show that the inequality (7) holds. One adds isolated vertices to graphs G' and G" to obtain
+the vertex set of G. This does not change the bounds q~(G') and ~(G"). Then one applies
+part (i).
+This concludes the proof of the first assertion in the theorem.
+(v) Let V' and V" intersect exactly in one vertex. We show that the equality (8) holds.
+We already know the inequality (7) from part (iv). We will construct the optimum correction vector u and a certificate of optimality.
+The proof is similar to that of part (ii). Let M ' = L ( G ' ) + d i a g ( u ' ) be the optimally
+corrected Laplacian of G', n' the number of vertices of G' and ( x ' ( K ' ) , K' ~ K ' ) the
+certificate of the minimum. We also consider the analogous objects for G".
+We introduce the correcting vector u for L ( G ) ,
+
+ui =
+
+{
+
+u~ + a '
+ul' + ~ "
+(1-n')od +(1-n")d+ui+u~'
+
+if i ~ V( G') \ V( G"),
+
+if i ~ V ( G " ) \ V ( G ' ) ,
+ifi~V(G')AV(G"),
+
+with ce' + A' = N ' + A"= (1 - n ' ) ce' + (1 - n") N'.
+Then it is easily checked that the largest eigenvalue of L (G) + diag (u) is (n'/V + n"A") /
+(n' + n " - 1 ). Moreover the eigenvectors are constituted by "glueing" an eigenvector x'
+and an eigenvector x" with the same coordinate on the common vertex i.
+From a certificate o-= ~ ~'x,(K,), it is possible to obtain a new one with the first vector x'
+satisfying x~ = 1 and the other ones satisfying x~ = 0. It suffices to replace the matrix X'
+with n rows and r = IK' I columns representing the r eigenvectors x' by the matrix X'P with
+P an orthogonal matrix with r rows and columns, the first column of which has coordinates
+PK1 =X~(~C). The same modification can be performed on the set of vectors xT.
+One then builds a certificate for u by glueing the first vectors x' and x" and completing
+each other x' (resp. x") with n " - 1 zeroes (resp. n' - 1 zeroes). []
+Theorem 4 has several applications. The most important application to planar graphs will
+appear in Section 6. Here we present as corollaries some constructions of exact graphs.
+Corollary 4. For any weighted graph G, the bound q~(G) is at most the sum of the positive
+
+weights of its edges.
+Proof. Let G be a graph with weight function w. For every edge e let Ge be the graph
+consisting only of this edge with weight we. Using subadditivity, we have ~o(G) ~<Y'.q)(Ge).
+Clearly
+q~(Ge) =
+
+( O e if we/>0,
+if We < 0 '
+
+[]
+
+Corollary 5. Any bipartite graph with non-negative weights is exact.
+
+568
+
+C. Delorme,S. Poljak/ Laplacian spectrumand max-cut
+
+Proof. Let G be a bipartite graph with a non-negative weight function w. We have
+mc(G) < ~(G) <~~ We. Since the obvious cut already gives mc = L we, these three expressions are equal. []
+
+Corollary 6. If all 2-connected components of G are exact, then G is exact.
+
+Proof. This can be proven by amalgamating these components and the remaining edges in
+such an order that the two parts to be amalgamated at each step have only one vertex in
+common. []
+
+This corollary has the following generalization.
+
+Corollary 7. Let G and G' be a pair of exact graphs. Assume that the maximum cuts of G
+and G', respectiuely, can be realized by partitions which coincide on V(~ V'. Then the
+amalgam G" of G and G' is exact as well.
+
+Proof. We have a cut of G" by combining the compatible partitions of G and G'. This
+cut has value m c ( G ) + m c ( G ' ) = q ~ ( G ) + p ( G ' ) . On the other hand we have
+q~(G") < q~(G) + q~(G') = m c ( G ) + m c ( G ' ) ~<mc(G") ~<q~(G"). []
+
+The cartesian sum (G, k) X (G', k') of weighted graphs G, G' with weight functions w,
+w' on their edges and k, k' on their vertices is the graph with vertex set V× V' (and weight
+kikl, on the vertex (i, i')), and weight function wukc on the edges (i, i'), (j, i') and
+k~wuj, on the edges (i, i') (i, j ' ) , the other edges having null weight.
+
+Corollary 8. If G and G' are exact and the weight functions on vertices k, k' are nonnegatiue, then their cartesian sum is exact.
+
+Proof. This can be proven by amalgamating the n' copies of G (with weight function
+k~,w on G X {i' }) and the n copies of G' (with the weight function kiw' on {i} × G' ).
+If optimal cuts of G and G' are given by S and S' then the cut of G X G' given by
+S X S' U (V~S) × ( V' \ S ' ) has the wanted value (see [ 18 ] ).
+
+~( ( O, k) X ( G', k') ) < ]~_~ki~( G') + ~_~ k~,~p(G)
+i
+
+ir
+
+can also be derived from the computation of the eigenvalues of
+K® (L' + U') + (L + U) ®K' where K and K' are the diagonal matrices corresponding to
+the weight functions k, k' on the vertex sets of G and G'. []
+
+C. Delorme,S. Poljak/ Laplacianspectrum and max-cut
+
+569
+
+6. Weakly bipartite graphs
+It is well known that the max-cut problem is polynomially solvable for planar graphs. We
+show that our bound ~(G) behaves well on planar graphs. The result is formulated in
+Corollary 6 below.
+We need to recall some definitions.
+The convex hull of characteristic vectors of bipartite subgraphs of a graph G is called the
+bipartite subgraph polytope and is denoted by PB( G).
+A graph G is called weakly bipartite (cf. [ 15] ) if its bipartite subgraph polytope PB (G)
+is described by the following system of inequalities:
+x~ ~< Ic l - 1
+
+for each odd cycle c,
+
+(10)
+
+eEc
+
+0~<xe ~<1 for e ~E.
+
+(11)
+
+Theorem 5. Let G be a weakly bipartite graph with non-negative weights. Then
+25 +5V/5
+q~(G) ~<
+mc(G).
+32
+
+Proof. The max-cut problem for any graph G with non-negative weights can be written as
+max{ wTxlx ~ Pu(G) }. Since G is assumed weakly bipartite, it is equivalent to the optimization problem
+max ~
+
+WeX e
+
+subjectto (10) and (11).
+
+(12)
+
+e~E
+
+Let C be the set of odd cycles in G. Using the duality of linear programming, there is a
+collection of non-negative coefficients ac, c ~ C and a collection of non-negative coefficients
+/3e, e ~ E such that
+/3e + ~
+
+c~c >~we for every edge e,
+
+(13)
+
+c~e
+
+/3~+ ~
+e~E
+
+ozc(]c ] - 1 ) = m c ( G ) .
+
+(14)
+
+c~C
+
+For an odd cycle c c G and a positive coefficient a, let c~c be the weighted cycle with all
+edges bearing weight c~. Similarly let/3e denote the single edge considered as a graph with
+the weight/3.
+Let H be the weighted graph obtained as the amalgam of the weighted graphs c~cc,c ~ C
+and/3~e, e ~ E. By (13), the weight of each edge of His at least 1 and G is clearly a suhgraph
+of H. Thus we have q~(G) ~<~o(H) by Lemma 2.
+Since H is obtained as the union of weighted subgraphs, using Theorem 4 we get
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+570
+
+~(H) 4 ~q~(%c) + ~ q ~ ( ~ e )
+= ~.Olc@( C) "t- ~[~e@( e)
+
+~<~%
+
+25+5V~
+32
+(Icl-1)+
+
+25 + 5 f 5
+3 ~
+~/3e
+
+25+5
+1(~. % ( i c l - 1 ) + ~ / 3 e) -2 5 -+ 5 d mc(G)
+3-2
+32
+
+owing to
+25+5~
+q~(c) ~< 3 ~
+
+(Icl - 1 )
+
+for odd cycles and (14). This proves the theorem.
+
+[]
+
+Since every planar graph is weakly bipartite due to a result of Barahona ( [ 1], cf. [ 15 ] ),
+we have:
+Corollary 9. Every planar graph with nonnegative weights G satisfies
+25 + 5 ~
+q~(G) ~ < - 32
+
+me(G).
+
+[]
+
+(15)
+
+Some other subclasses of weakly bipartite graphs are given in [2] and [ 12]. However a
+general characterization of weakly bipartite graphs is not known.
+
+7. Existence of a polynomial algorithm
+In this section, we will show that the number q~(G) is efficiently computable for a weighted
+graph G with rational weights. More precisely, we prove that q~(G) can be computed with
+arbitrary prescribed precision ~ > 0 by a polynomial time algorithm. The term polynomial
+means that the number of steps of the algorithm is bounded by a polynomial in the number
+of bits which are necessary to encode the input data, which in our case consist of the integer
+n, the rational symmetric matrix of weights wij and a rational precision 6 > 0. These notions
+are precised in [ 14]. We just recall definitions and a theorem from that book.
+If K is a compact subset of ~" and ~ a positive real number, S(K, e) is the set of points
+y such that the closed sphere S(y, s) centered at y with radius e meets K, and S(K, - e) is
+the set of points y such that S(y, ~) is included in K.
+A centered body (K; n, R, r, a) is a n-dimensional set K of points such that
+
+S(a, r) c K c S ( a , R).
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+571
+
+Rational membership problem RMEM. Given a vector y e Q" and a convex compact set
+K c ~", decide whether y is in K.
+This problem is slightly stronger than the weak membership problem:
+Weak membership problem WMEM. Given a vector y e Q", a positive rational e and a
+convex compact set K c Nn, either
+(i) assert y is S(K, e), or
+(ii) assert y is out of S(K, - e).
+Weak optimization problem WOPT. Given a vector c in Q" and a positive rational number
+6, either
+(i) find a vector y e Q " such that y e S ( K , 6) and cTx<~cTy+ ~ for all x e S ( K , - ~),
+or
+
+(ii) assert that S(K, - e) is empty.
+T h e o r e m 6 (Theorem 4.3.13 of [ 14] ). There exists an oracle-polynomial time algorithm
+that solves the following problem:
+Input: A rational number ~ > O, a centered convex body (K; n, R, r, ao) given by a weak
+membership oracle, and a convex function f: Nn _~ ~ given by an oracle that, for every
+x e Q" and 6 > O, returns a rational number t such that If(x) - t I ~ 6.
+Output:A v e c t o r y e S ( K , 6) such thatf(y) <~f(x) + e f o r a l l x e S ( K , - 6 ) .
+[]
+Theorem 7. There exists a polynomial time algorithm which, for a given graph G with
+rational weights and a rational number 6 > O, computes a rational vector ~ and a rational
+number X such that
+(i) f ( a ) ~<X,
+(ii) a < f ( u ) + 6for all u. []
+For simplicity, we will assume that all weights are between - 1 and 1. This is not
+restrictive since q~ is positive homogeneous. We also work with a graph on n > 2 vertices,
+since case of n ~<2 has no interest.
+We need an easy lemma from matrix theory.
+Lemma 4. Each diagonal entry mii of a real symmetric matrix M is a lower bound for the
+highest e igenvalue k max( M) and the highest sum si = mii + Ej ~ i l mij [ is an upper bound for
+~max(M).
+
+[]
+
+We now have some lemmas to apply the theory developed in [ 14].
+Let us define the polyhedron K0 c N",
+Ko u
+
+ui>~OAVi, u i ~ 3 ( n - 1 )
+
+,
+
+572
+
+C. Delorme, S. Poljak / Laplacian spectrum and max-cut
+
+and let ~7be the optimum point, i.e. f(ti) = q~(G).
+L e m m a 5. The optimum point ~ & in Ko.
+Proof. Each diagonal entry d~ of L is between 1 - n and n - 1 and each other entry is between
+- 1 and 1. Hence Amax(L) ~ 2 n - 2 and the entries d~ + uz are less than 2 n - 2 at the minimum. Hence at the minimum the terms ui are at most 3n - 3. []
+We choose B = 4 n - 2 ,
+a o = ( 0 . . . . . 0, 2n) T, r = l , R = 3 ( n - 1 )
+hmax(L+ U) <~t<~B} (this set is denoted as G(f, Ko) in [ 14] ).
+
+2. Let K = { ( u , t ) [
+
+L e m m a 6. We have S( ao, r) c K c S ( ao, R) for the L= distance.
+Proof. The first inclusion is a consequence of max(ui)+l-n<~Amax(L)<~
+max(ui) + 2 n - 2 that gives Amax~<2n- 1 if all ]ui] 's are at most 1 and 2 n + 1 < 4 n - 2 .
+The second one comes from the inequalities ui<~3n-3 and F.iui>~O that together
+give - 3 ( n - 1 ) 2 < ~ u ~ 3 ( n - 1 ) ~ 3 ( n - 1 ) :
+and 2 n - 3 ( n - 1 ) a < l - n < ~ A m a × and
+
+4 n - 2 < 2 n + 3 ( n - 1 ) 2. []
+We also notice that Amax(L + U) ~<4n - 4 if u is in K o.
+L e m m a 7. The rational membership problem RMEM is polynomially solvable for K.
+Proof. Besides the easy tests u i ~ 3 n - 3 , ~,iui>/O and t~B, we have to decide whether
+Amax(L + U) ~<t. This is equivalent to check whether t I - (L + U) is positive. This can be
+done by checking that the principal subdeterminants are non-negative. Thus the problem
+reduces to computing these n determinants. At last, the computation of the determinant is
+polynomial on the size of the matrix (see [ 14, Corollary 1.4.9 ] ). []
+In particular, we can solve (WOPT) for the minimization of t subject to (u, t) ~ K with
+e < 1. This gives us a pair (~7, i) ~ S (K, e) such that i~< t + e for all (u, t) ~ S (K, - e).
+Let (u', t') ~ K . Then there exists (u, t) ~S(K, - e) with the L~-distance of (u, t) and
+(u', t' ) at most 2e. This comes from the choice of Ko, and the slow variations of A m a x ( we
+can see that I Arnax( L + U) - A . . . . (L + U') I ~ I u - u' I like in Theorem 2).
+Hence the true minimum of Amax is between i + 8 and { - 3e.
+Note that f being Lipschitzian gives slightly improved results in comparison with the
+general theory of [ 14].
+
+8. Final remarks
+A natural question is how well the eigenvalue bound q~(G) approximates the actual value
+of the max-cut m c ( G ) , and comparison of the eigenvalue bound with other approaches.
+These questions motivate our further work on this topics.
+
+c. Delorme, S. Poljak/ Laplacian spectrumand max-cut
+
+573
+
+An important property is that q~(G) provides a bound which is asymptotically optimal,
+because the expected value of the ratio q~(G) /mc (G) tends to 1 for random graphs G with
+constant edge probabilities.
+Let G,,, p denote the random graph on n vertices with edge probability p. We have the
+following result.
+Theorem 8. Letp, 0 < p < 1, befixed. Then
+lim ~(Gn,p)
+n+~ mc(Gn,p)
+
+1.
+
+Proof. Let e denote the number of edges of Gn, p and d the average degree. We have
+mc(Gn, p) > ½e = ¼nd, since this is true for every graph. In order to estimate ~(Gn, p), we
+need a result of Juhfisz [ 16, Proposition 3]. He proved that, for a random (0, 1 )-matrix A
+with fixed densityp of l's, all the eigenvalues A but the maximum one Amaxare of magnitude
+Ihl ~<O(nl/2+~).
+Assume that the correcting vector u is chosen so that the optimized Laplacian
+matrix L + d i a g ( u ) takes the f o r m d l - A (where d is the average degree). Then
+Amax(L q- diag(u) ) = d - Amax(A) = dq- O(n l/2+e), and hence
+
+~( Gn,p) <~¼n( d+O(nll2+~) ).
+We have
+lira
+
+q~(Gn'p-----~)<~ lim ¼n(d+O(nll2+~))-- 1.
+
+n ~ mc(G,,p)
+
+n-~
+
+[]
+
+lnd
+
+The asymptotic optimality of q~(G) contrasts with the asymptotic behaviour of the bound
+from [3, 4] (computed by linear programming), for which the ratio p ( G ) / m c ( G ) tends
+to 4 on the graphs with fixed edge probabilities, and to 2 on a class of sparse graphs (see
+[ 22] ). A concrete class of sparse graphs with the latter property are the Ramanujan graphs
+[20]. Moreover, the eigenvalue bound is never worse than 1.131 multiple of the linear
+programming bound for a nonnegatively weighted graph (see [ 20] ).
+On the other hand, the worst case ratio of q~(G)/mc(G) (for G unweighted) is not
+known. The so far worst known case is with G = C5 where the ratio takes value 1.131 ....
+We conjecture that this value might be true for all graphs. A collection of graph-theoretic
+examples supporting the conjecture is given in [7].
+Computational experiments with the bound p ( G ) are reported in [21]. The current
+version of the program deals with instances of sizes up to 20.103 vertices and 2.10 6 edges.
+As a by-product, the code also produces a cut as a lower bound. This cut is typically slightly
+larger than a cut found by repeated local search in the same amount of time. The typical
+gap between the upper and lower bound is about 5%.
+A version of the code computes the exact value of mc(G) by the branch and bound
+strategy, using some theoretical results from [ 8] for the data initiation in subproblems.
+
+574
+
+C. Delorme, S. Poljak / LapIacian spectrum and max-cut
+
+Acknowledgements
+We thank the following people with whom we discussed some parts of this paper: A.
+Neumaier, M. Fukushima, T. Ibaraki, B. Mohar. We also thank two referees for their helpful
+comments.
+
+References
+[ 1] F. Barahona, "On the complexity of max-cut," Rapport de Recherche 186, Mathdmatiques appliqudes et
+Informatique, Universit6 Scientifique et m6dicale de Grenoble (Grenoble, France, 1980).
+[ 2] F. Barahona, "On some weakly bipartite graphs," Operations Research Letters 2 (1983) 239-242.
+[ 3] F. Barahona, M. Gr6tschel, M. Jiinger and G, Reinelt, "An application of combinatorial optimization to
+statistical physics and circuit layout design," Operations Research 36 (1988) 493-513.
+[ 4] F. Barahona, M. Jtinger and G. Reinelt, "Experiments in quadratic 0-1 programming," Mathematical
+Programming 44 (1989) 127-137.
+[ 5] E.R. Barnes and A.J. Hoffman, "On transportation problems with upper bounds on leading rectangles,"
+SlAM Journal on Algebraic Discrete Methods 6 (1985) 487-496.
+[ 6] R. Boppana, "Eigenvalues and graph bisection: an average case analysis," in: FOCS (1987) pp. 280-285.
+[ 7] C. Delorme and S. Poljak, "The performance of an eigenvalue bound on the max-cut problem in some
+classes of graphs," Discrete Mathematics 111 (1993) 145-156.
+[ 8] C. Delorme and S. Poljak, "Combinatorial properties and the complexity of a max-cut approximation,"
+European Journal of Combinatorics 14 (1993) 313-333.
+[ 9] V.F. Dem'ianov and V.N. Malozev, Introduction to Minimax (Wiley, New York, 1974).
+[ 10] W.E. Donath and A.J. Hofmann, "Lower bounds for the partitioning of graphs," IBM Journal on Research
+and Development 17 (1973) 420-425.
+[ 11 ] M. Fiedler, ' 'Algebraic connectivity of graphs," Czechoslovak Mathematical Journal 23 (1973) 298-305.
+[ 12] J. Fonlupt, A.R. Mahjoub and J.P. Uhry, "Compositions in the bipartite subgraph polytope," Discrete
+Mathematics 105 (1992) 73-91.
+[13] M.R. Garey and D.S. Johnson, Computers and Intractability: A guide to the Theory of NP-Completeness
+(Freeman, San Francisco, CA, 1979 ).
+[ 14] M. Gr6tschel, L. Lov~isz and A. Schrijver, Geometric Algorithms and Combinatorial Optimization, Algorithms and Combinatorics No. 2 (Springer, Berlin, 1988).
+[ 15] M. GrOtschel and W.R. Pulleyblank, "Weakly bipartite graphs and the max-cut problem," Operations
+Research Letters 1 ( 1981 ) 23-27.
+[ 16] F. Juhfisz, "On the spectrum of a random graph," in: L. Lovfisz and V.T. S6s, eds., Algebraic Methods in
+Graph Theory, Colloquia Mathematica Societatis J~inos Bolyai No. 25 (North-Holland, Amsterdam, 1982)
+pp. 313-316.
+[ 17 ] P. Lancaster, Theory of Matrices (Academic Press, New York, 1969 ).
+[ 18] B. Mohar and S. Poljak, "Eigenvalues and the max-cut problem," Czeehoslovak Mathematical Journal
+40(115) (1990) 343-352.
+[ 19 ] M.L. Overton, ' 'On minimizing the maximum eigenvalue of a symmetric matrix," SIAM Journal on Matrix
+Analysis andApplieations 9 (1988) 256-268.
+[ 20] S. Poljak, "Polyhedral and eigenvalue approximations of the max-cut problem," to appear in: Sets, Graphs
+and Numbers, Colloquia Mathematica Societatis J~nos Bolyai No: 59 (North-Holland, Amsterdam, 1991 ).
+[21 ] S. Poljak and F. Rendl, "Solving the max-cut problem using eigenvalues," Technical Report 91735-OR,
+Institut ffir Diskrete Mathematik, Universitiit Bonn (Bonn, 1991 ).
+[22] S. Poljak and Zs. Tuza, "The expected relative error of the polyhedral approximation of the max-cut
+problem," Technical Report 92757, Institut ftir Diskrete Mathematik, Universit~it Bonn (Bonn, 1992).
+
+

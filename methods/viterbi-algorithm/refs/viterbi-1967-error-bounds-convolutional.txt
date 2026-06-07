@@ -1,0 +1,706 @@
+260                                                                       IEEE   TRANS?ICTIONS    ON INFORMATION    THEORY,   VOL. IT-IS,   NO.   2, APRIL 1967
+
+uniformly    in t. Also, from Theorem A.2 and its corollary,
+
+                $ w       - m(Ol = F hw>,                          (13)
+
+both in the stochastic mean [PI] uniformly in t and almost
+surely [P,] for every t, -T 5 t _< T. Now from (ll),                         which proves ii).
+
+                                                                                                        ACKNOWLEDGMENT
+
+                                                                                The author is indebted             to D. Slepian for stimulating
+Thus, with the use of (lo),              (12), (13), and mutual              discussions.
+independence of { $ ) ,                                                                                      REFERENCES
+                                                                                                 Probability Theory, 2nd ed. Princeton, N. J.:
+                                                                             Van Nostrand, 1 960.
+                                                                                 121T. T. Kadota, “Optimum reception of binary gaussian signals,”
+                                                                             Bell Sys. Tech.J., vol. 43, pp. 2767-2810, November 1964.
+                                                                                 131T. T. Kadota. “Ootrmum recention of binarv sure and Gaussian
+                                                                             signals,” Bell Sys. ?‘ech: J., vol. 44;~~. 1621-1658, October 1965.
+                                                                                 141U. Grenander, ‘Stochastic processes and statistical inference,”
+                                                                             Arkiv fiir Matematik, vol. 17, pp. 195-277, 1950.
+                                                                                 151L. A. Zadeh and J. R. Ragazzini, “Optimum         filters for the
+                                                                             detection of signals in noise,” Proc. IRE, vol. 40, pp. 1223-1231,
+                                                                             O,+nhm      1 a.63
+                                                                                 161J. H. Laning and R. H. Battin, Random Processesin Auto-
+  =             &(t)$ b(t)- ml(t)1
+                                dt                                           matic Control. New York: McGraw-Hill.         1956. nn. 269-358.
+                                                                                 171C.. W. Helstrom, “ Solution of the dete&on integral equation
+                                                                             for stationary filtered white noise,” IEEE Trans. on Information
+                                                                             Theory, vol. IT-II, pp. 335-339, July 1965.
+   + z akl$ [x(t) - ml(t)1 t=tt                                                  181T. Kailath,    “The detection of known signals in colored
+                                                                             Gaussian noise,” Stanford        Electronics     Labs., Stanford   Univ.,
+                                                                             Stanford, Calif. Tech. Rept. 7050-4, July 1965.
+                                                                                 191T. T. Kadota, “Optimum reception of nf-ary Gaussian signals
+                                                                             in Gaussian noise,” Bell. Sys. Tech. J., vol. 44, pp. 2187-2197,
+                                                                             November 1965.
+                                                                                 [lOI T. T. Kadota, “Term-by-term        differentiability of Mercer’s
+                                                                             expansion,” Proc. of Am. Math. Sot., vol. 18, pp. 69-72, February
+                                                                             1967.
+
+
+
+
+                      Error Bounds for Convolutional Codes
+                         and an Asymptotically  Optimum
+                               Decoding Algorithm
+                                          ANDREW         J. VITERBI,             SENIOR MEMBER, IEEE
+
+
+   Ahstraci-The     probability of error in decoding an optimal con-        Increasing with rate. The upper bound is obtained for a specific
+volutional code transmitted over a memoryless channel is bounded            probabilistic nonsequential decoding algorithm which is shown to be
+from above and below as a function of the constraint length of the          asymptotically optimum for rates above Ra and whose performance
+code. For all but pathological channels the bounds are asymptotically       bears certain similarities to that of sequential decoding algorithms.
+(exponentially)  tight for rates above &, the computational      cutoff
+rate of sequential decoding. As a function of constraint length the                                 I. SUMMARY OF RESULTS
+performance of optimal convolutional codes is shown to be superior
+to that of block codes of the same length, the relative improvement              INCE Elias”] first proposed the use of convolutional
+                                                                                   (tree) codes for the discrete memoryless channel,
+    Manuscript received May 20, 1966; revised November 14, 1966.            s      it has been conjectured that the performance of
+The research for this work was sponsored by Applied Mathematics
+Division, Office of Aerospace Research, U. S. Air Force, Grant              this class of codes is potentially superior to that of block
+AFOSR-700-65.                                                               codes of the same length. The first quantitative verification
+    The author is with the Department of Engineering, University of
+California, Los Angeles, Calif.                                             of this conjecture was due to Yudkinr2’ who obtained
+VITERBI:ERRORBOUNDSFORCONVOLUTIONALCODES                                                                                                 261
+                                K- STAGE SHIFT    REGISTER
+                           i-                                I
+
+
+
+
+                                                                          b
+                                                                                                    CHANNEL SYMBOL
+              v Wq)                                                                                (SIGNAL) sELEcToR
+              INNER                                                COMMUTATOR
+              PRODUCT                                                                              CHANNEL      SYMBOLS
+              COMPUTERS                                                                               E,,~2,--~~r
+                                                                                    c
+
+
+                                        Fig. 1.   Encoder for q-ary convolutional   (tree) code.
+
+
+an upper bound on the error probability of an optimal                 the uth computer (U = 1,2, . . . v) forms the inner product
+convolutional code as a function of its constraint length,            of the vector in the shift register, which is a subsequence
+which is achieved when the Fano sequential decoding                   of a, with some fixed K-dimensional vector g,, whose
+algorithmr3’ is employed.                                             components are also elements of GF(q). The result is
+    In this paper, we obtain a lower bound on the error               a matrix multiplication       of the K symbol subsequence
+probability of an optimal convolutional code independent              of a (as a row vector) with a Kxv matrix G (whose uth
+of the decoding algorithm, which for all but pathological             column is g.) to produce v symbols of the sequence b.
+channels is asymptotically    (exponentially) equal to the            This is added to v symbols of a previously stored
+upper bound for rates above R,, the computational cutoff               (or generated) q-ary sequence c, whose total length is
+rate of sequential decoding. Also, a new probabilistic                 (L + K - 1)v symbols. The v symbol subsequence of z
+nonsequential decoding algorithm is described, which                  thus generated can be any one of qv v-component vectors.
+exhibits and exploits a fundamental property of con-                  By properly selecting the matrix G and subsequence of c
+volutional codes. An upper bound on error probability                 [or by selecting them at random with uniform probability
+utilizing this decoding algorithm is derived by random                from among the ensemble of all q”” matrices and q’
+coding arguments, which coincides with the upper bound                vectors with components in GF(q)], all possible v symbol
+of Yudkin.[‘l In the limit of very noisy channels, upper              subsequences of z can be made to occur with equal
+and lower bounds are shown to coincide asymptotically                 probability.    Finally the channel symbol selection (or
+(exponentially) for all rates, and the negative exponent              signal selection in the case of continuous channels) consists
+of the error probability,   also known as the reliability,            of a mapping of each q-ary symbol of z onto an r-ary
+is shown to be                                                        channel symbol xi of the channel input sequence x (where
+                                                                      r 2 q), as follows: let n, of the q-ary symbols be mapped
+                            c/2            0 I R 5 C/2
+    lim $ In (l/P,)   =                                               into El, n, into Ez, etc., such that
+    .,‘+m                               C/2 5 R < C
+                          C-R
+where N is the code constraint length (in channel symbols),                                          $ ni = 4.
+R is the transmission rate and C is channel capacity.
+This represents a considerable improvement over block                Thus if each symbol of z is with uniform probability
+codes for the same channels. Also, it is shown that in               any element of GF(q), the probability  distribution  of
+general in the neighborhood of capacity, the negative                the jth channel input symbol xi is
+exponent is linear in (C - R) rather than quadratic,
+as is the case for block codes.                                            p(x, = [J = ;               (i = 1, 2, *me r)   for all   f
+   Finally, a semisequential modification of the decoding
+algorithm is described which has several of the basic                and by proper choice of q and r any rational channel
+properties of sequential decoding methods.[3’ I “I                   input distribution  can be attained. Furthermore, since
+   II. DESCRIPTION AND PROPERTIES OF THEENCODER                      one q-ary data symbol thus produces v channel symbols,
+                                                                     the transmission rate of the system is
+   The message to be transmitted is assumed to be encoded
+into the data sequence a whose components are elements                                   R=lnq             nats
+of the finite field of q elements, GF(q), where q is a prime                                                                             (1)
+                                                                                                    v channel symbol
+or a power of a prime. All messages are assumed equally
+likely; hence all sequences a of a fixed number of symbols           and thus, by proper choice of q (which must be a prime
+are equally probable. The encoder consists of a K-stage              or the power of a prime) and v, any rate can be closely
+shift register, v inner-product computers, and an adder,             approximated.
+all operating over GF(q), together with a channel symbol               We note also that the encoder thus produces a tree
+selector connected as shown in Fig. 1. After each q-ary              code with q branches, each containing v channel symbols,
+symbol of the sequence is shifted into the shift register,           emanating from each branching node since for every
+262                                                                       IEEE TRANSACTIONS ON INFORMATION THEORY, APRIL 1967
+
+                 ENCODER                                                said to be totally distinct over any sequence of branches
+                                                                        for which this event does not occur.
+                 MOD 2                                                     We now proceed to derive the lower bound on error
+                 INNER PRODUCT                                          probability   for an optimal convolutional    code using
+                 COMPUTERS
+                                                                        property A) and lower bound results for optimal block
+                 I: CONNECTION                                          codes.
+                 0: NO CONNECTION
+
+                                                                                         III.   THE    LOWER BOUND
+                                                                           Suppose a magic genie informs the decoder as to the
+                                                                        exact state of each branch data symbol a< for all branches
+                                                                        i (i = 1, 2, . . * L + K - 1) except for the m consecutive
+                                                                        branches j + 1, j + 2, . . . j + m(0 5 j 5 L - m). Thus
+                                                                        to decode the tree the decoder must decide upon which
+                                                                        of the qm possible m-symbol q-ary data sequences corre-
+                                                                        sponding to these m branches actually occurred, or
+                                                                        equivalently he must decide among the corresponding
+                                                                        q’” alternate paths through the tree. To do this he has
+                                                                        available the (L + K - 1)v symbol received tree sequence
+                            ’                                           Y = (Yl, Yz, * ** Y~+~-~) where yi is the received symbol
+                                                                        sequence for the ith branch. Actually since the ai are
+                                          000 , 110 , 01I               known for all i 5 j, he needs only examine yi for i 2 j + 1.
+                                    IO0    0’        0    I   oi        Furthermore, the qm alternate paths in question, which
+                                     0    101    / 000    / 000         diverge at the (j + 1)th branch must converge again
+                           01 I             I    ’ 0         0      ’   at the (j + m + K)th branch, for since all the
+                             0            I IO      101      01 I       corresponding branch data symbols ai are identical for
+                                    001    0     ,’ 0     ,’ 0      ’
+                                      I
+                                                                        i > j + m + 1, by the (j + m + K)th branch the data
+                                          011    / 011    , 000
+                   000                      I    I  0     ’ 0       ’   symbols in the shift register will be identical for all
+                     I                    011    ,’ II0   , 011     (
+                                                                        paths in question. Thus the qm paths are totally distinct
+                                    010    0          0   ’ 0           over at most m + K - 1 branches. Now letting
+
+                                                                                                      /pm                               (2)
+                                                                                                            K
+                                                                        and having   denoted     the constraint      length     in channel
+                                                                        symbols by
+      Fig;. 2.     Tree code for p = 2, u = 3, T = 2, L = 4, K = 3.
+                                                                                                      N = Ku                            (3)
+shift of the register a potentially different set of v channel          we obtain from (l), (a), and (3)
+symbols is generated for each of the q possible values
+                                                                                                mln q = pNR.                            (4)
+of the data symbol. An example is shown in Fig. 2 for
+Q = 2, v = 3, r = 2, K = 3. The data symbol ai                          The optimal decoder for paths which are a priori equally
+is indicated below each branch while the channel symbols                likely must compute the ql” = epNRlikelihood functions
+xi are indicated above each branch.                                     p(y 1 a), where a = (ai+l, .+a ai+,) is an m-component
+   The procedure continues until L data symbols are fed                 q-ary vector which specifies the path, and y = (Y,.+~, . . .
+into the shift register followed by a sequence of K - 1                 Yi+n+R-I ) is an (m + K - 1)v = (p + l)N - v com-
+zeros. L is known 8s the (branch) tree length, and N = Ku               ponent vector, and select the path corresponding to the
+as the (symbol) constraint length of the code. The overall              greatest. The resulting error probability is lower bounded
+encoding algorithm thus produces a tree code with L                     by the lower bound L51--[71for the best block code with
+branching levels. All branches contain v channel symbols                elrNR words of length (CL + l)N - v channel symbols
+except for the qL final branches which contain N = Ku                   transmitted   over a memoryless channel with discrete
+channel symbols. The example of Fig. 2 shows such a                     input space:
+tree code for L = 4 and K = 3.
+   A basic property of the convolutional           code thus            PAP, N, R) > exp I-h%            + l>FL(R,    1.4 + o(dVlj      (5)
+generated by the K-stage shift register is the following.               where
+   A) Two divergent paths of the tree code will converge
+                                                                                     o&N) + 0          linearly   ,.JT +   00
+(i.e., produce the same channel symbols) after the
+data symbols corresponding to the two paths have been
+                                                                                 E,(R, p) = 1.u.b. I&(P) - P -&-RI
+identical for K consecutive branches. Two paths are                                         os,o_<m1
+VITERBI : ERROR BOUNDS FOR CONVOLUTIONAL         CODES
+
+and E,,(p) is the concave hull of the function
+
+  &(P) = ;E l -In T [F P(XMY                  I 41’1+p11+pI (7)
+                                                                       E&‘-O1
+where X and Y are the channel input and output spaces,
+respectively, p(y 1 x) is the channel transition probability
+distribution, and p(x) is an arbitrary probability distri-
+bution on the input space. Furthermore, the function Eo(p)
+has the following basic properties which are proved in
+Gallager:“’
+                                                                                                                                 INTERMEDIATE/L
+  a) E,(O) = 0 and E,,(p) > 0 for all p > 0,
+  b) E;(p) > 0 for all finite p, and lim,,,          E;(p)   = C
+     which is the channel capacity.
+For most channels of interest Eo(p) is itself a concave
+function. When this is not the case the channel is said
+to be pathological.[51
+   This bound, known as the sphere-packing bound, is                                                                                      R
+the tightest exponential bound for high rates. For low                                                                   C
+rates a tighter bound, which has been recently derived,17’                      Fig. 3.     Family   of functions        (p + 1) EL (R, p).
+is considered below. E,(R, p) can be obtained by solving
+the parametric equations
+                                                                    while from (8b) we have
+                EL@, 14 = J%(P) - P&(P)                      (84
+                                                                                                                                                      (12)
+                         R = +1:;(,).                        @b)
+                                                                    Combining (11) and (12) and setting the former equal
+But p = m/K can be any multiple of l/K up to L/K,                   to zero, we find that the function has a stationary point at
+since m cannot exceed L. Hence, since no particular
+                                                                                                            PR
+demands can be made on the magic genie,                                                                                      -   1.                   (13)
+                                                                                           p = l&(P)        -    P-mP)
+PAN,   R) 2        max        P&,   N, RI
+              (l/K)J!.LC(L/K)                                       Furthermore,          differentiating         (11) and using              (la),    we
+                                                                    find that
+> exp I-N     (l,K~yg~L,K)
+                        (p + ~>[EL@,1-4+ oW911 (9)
+corresponding to the least obliging           genie for the par-
+ticular R.
+                                                                    so that (13) corresponds to an absolute minimum.                                   In-
+   Thus we seek the lower envelope
+                                                                    serting (13) in (8b) yields
+          EL(R) = (l,E~~~~~L,R~6.~+ ~)EL@> 1-4.              00)
+                                                                                                     R = E’o(p)                                       (14)
+It follows from (6) and (7) and property b) that                                                                  P
+                                                                    and since I?,,(p) is concave it follows that R = go(p)/p >
+       lim (p + l)E,(R,     p) = 1.u.b. E&J) = &(a)
+        p-0                      O<P<-                              EL(p) which implies that the solution (13) for p is non-
+                                                                    negative. From (8a), (13), and (14) we obtain
+       lim (H + l)E,(R,     p) = a      for    R < C.
+        P-f,=                                                                    min (p + l)E,(R,                p) = pR = go(p).                     (15)
+The family of functions (p + l)E,(R,          p) is sketched                     O<r<m
+in Fig. 3. To find the lower envelope we must minimize              Now, since p is restricted to be a multiple of l/K, let
+E,(R, p) over the set of possible p for each R. For the             us consider altering (13) by adding a positive real number
+purposes of the lower bound we shall let L/K be as large            6 large enough to make p an element of this set. In any
+as required for the minimization.     First, let us minimize        case 6 < l/K. But changing ,Uby this amount in (9) alters
+over all positive real p and then restrict p to be a multiple       the exponent by an amount proportional to N/K = v,
+of l/K. Thus from (8a) we have                                      which is a constant parameter of the encoder a.nd hence,
+                                                                    normalized by N, is o(N). The rate is also altered by an
+                                                                    amount of the order of l/K by this change in P, but if
+                                                                    we adjust for this change by returning R to its original
+                                                                    value (14), we again alter P, by an amount of magnitude
+        = -e(P) - P&(P)+ (P + 1>ha’(P)l~                     (11)   o(N). Thus from (9), (lo), (14), and (15) we obtain
+264                                                                                               IEEETRANSACTIONSONINFORMATfON                         THEORY,APRILl967
+
+Theorem 1                                                                                                       q)(p)
+  The probability of error in decoding an arbitrarily long
+convolutional code tree of constraint length N (channel
+symbols) transmitted    over a memoryless channel is                                                                                         R
+bounded by                                                                                                                        E(R)
+
+                PE > exp I -NEL(R) + oW)lI                                                                       ,/I
+                                                                                                                 0                                             P
+where                                                                                                                  (al p< I
+                E:,(R) = ho                        (OSP<               a)           (164
+                                                                                                                P(p)
+and
+                                      R = %P>/P.                                       (16b)
+  Taking the derivative                 of (14) we find                                                                                                 E(R)
+                                                                                                                                             R
+         dR
+         -=       -mP)        -     &(P)IP
+                                                  5 0        for all        p > 0                                 J-‘--l                                       P
+         dP                       P                                                                              0
+                                                                                                                       (b) p’l
+where we have made use of the fact that go(p) is concave.
+                                                                                                    Fig. 4.   Graphical       construction       of EL(R) from I%(P).
+Also, from property b) we have lim,,,, &(p)/p             =
+E’(O) = C. Thus we obtain
+                                                                                               where
+CorollarlJ 1
+   The exponent E,(R) in the lower bound is a positive
+monotone decreasing continuous function of R for all
+OIR<C.                                                                                         p’is the solution to the equation E,,(c) = E,, and E, is
+   A graphical construction of the exponent-rate curve                                         given by (17b).
+from a plot of the function E,,(p) is shown in Fig. 4. We
+defer further consideration of the properties of (16)                                              IV. A PROBABILISTIC              NONSEQTJENTIAL             DECODING
+until after an upper bound is obtained.                                                                                          ALGORITHM
+   A tighter lower bound on error probability      for low                                         We now describe a new probabilistic      nonsequential
+rates is obtained by replacing the sphere packing bound                                        decoding algorithm which, as we shall show in the
+of (6) by the tighter lower bound for low rates recently                                       next section, is asymptotically   optimum for rates R >
+obtained by Shannon, Gallager, and Berlekamp.17’ For                                           R, = E,(l). The algorithm decodes an L-branch tree
+this bound (6) is replaced by                                                                  by performing L repetitions of one basic step. We adopt
+                                                                                               the convention of denoting each branch of a given path
+                                                                                               by its data symbol ai, an element of GE(q). Also, although
+                                                                                               GE(q) is isomorphic to the integers modulo (r only when
+where                                                                                          Q is a prime, for the sake of compact notation, we shall
+                                                                                               use the integer r to denote the rth element of the field.
+Ez =    ;y     I -lim        [P 111 F        T     p(4pb’)
+                         m                                                                         In Step 1 the decoder considers all qK paths for the
+                                                                                               first K branches (where K is the branch constraint length
+              &P(Y
+                Y                     I 4P(Y I ~‘>Yl~ = &(i3.                       (17b)      of the code) and computes all qK likelihood functions
+The straight line of (17a) is tangent to the curve of (6)                                      n;?I1 p(y, 1 ai). The decoder then compares the likelihood
+at R = [(P + 1)/p@;(p). Repeating the minimization with                                        function for the q paths:
+respect to CLwe find                                                                                                       (0, az, a, . . * 4,
+               E&l           = min [(P + l)Ez - &RI                                                                     0, a2, a3, ... ad,
+                                *                                                                                      ..................
+                                             0 < R < Elbl
+                             =E,,              -MC.                                                                    (a -      1, az, a3, . . . ad
+
+Thus, we have                                                                                  for each of the qK-l possible vectors (az, a3 . . . ar;).
+                                                                                               It thus performs qIcel comparisons each among q path
+Corollary 2                                                                                    likelihood functions. Let the path corresponding to the
+                                                                                               greatest likelihood function in each comparison be denoted
+  For low rates a tighter                        lower bound            than    that      of
+Theorem 1 is:                                                                                  the survivor. Only the q”-’ survivors of as many com-
+                                                                                               parisons are preserved for further consideration; the
+                PX > & i -NE&)                          + o(N)lJ                               remaining paths are discarded. Among the qK-’ survivors
+VITERBI:ERRORBOUNDSFORCONVOLUTIONALCODES                                                                                                                                                                              265
+
+each of the qK-’ vectors (a,, a3, . . . aK) is represented                                            it is reduced by a factor of q by the comparisons. Thus,
+uniquely, since by the nature of the comparisons no                                                   just after the (L - 1)th step there are only q survivors:
+two survivors can agree in this entire subsequence.
+                                                                                                                                  (all(L-1)                , . . * a:y;,             000 * . ’ O),
+   Step 5 begins with the computation for each survivor
+of Step 1 of the likelihood functions of the q branches                                                                           ( %l
+                                                                                                                                          (L-1)
+                                                                                                                                                           ,   ...
+                                                                                                                                                                         (L-1)
+                                                                                                                                                                      %,L-1,
+                                                                                                                                                                                     100       . . .   O),
+
+emanating from the (K + 1)th branching node and                                                                         ..*.*...........................
+
+multiplication of each of these functions by the likelihood
+function for the previous K branches of the particular
+path. This produces qK functions for as many paths of                                                 At Step L, therefore, there remains a single comparison
+length K + 1 branches, and each of the subsequences                                                   among q paths, whose survivor will be accepted as the
+a2, a3, --e aK+1 are represented uniquely. Again the qK                                               correct path. While this decoding algorithm is clearly
+functions are compared in groups of q, each comparison                                                suboptimal,    the optimal being a comparison of the
+being among the set of paths:                                                                         likelihood functions of all qL paths at the end of the
+                                                                                                      tree based on (L + K - 1)v received channels symbols,
+                        @ ii’, 0, aa, a4 - - - aK+d                                                   we shall show in the next section that the algorithm
+                        cd?,        1,       a31       a4        “’           aK+d                    is asymptotically   optimum for R > R. = E,(l) for all
+                  . . . . . . . . . . . . . . . . . . . . . . . . .                                   but pathological channels.
+                       (1)
+                             9 q   -         1,       a3,        a4       ”    ’ aK+d
+                  b    al
+                                                                                                                          V. RANDOM                                  CODINGUPPERBOUND
+where a::’ corresponds to the first branch of the survivor                                               If we now assume that the matrix G is randomly
+of a comparison performed at the first step. Again only                                               selected with a uniform distribution    from the ensemble
+the survivors of the set of g”-l comparisons are preserved                                            of qaK matrices of elements in Gl”(q) and the sequence
+and the remaining paths are discarded. The algorithm                                                  c is also randomly selected from among all possible
+proceeds in this way, at each step increasing the population                                          (L + K - l)v-dimensional vectors with components in
+by a factor of q by considering the set of q branches                                                 the same field, the channel symbols along a given path
+emanating from each surviving path and then reducing                                                  regarded as random variables have the following prop-
+again by this factor by performing a new set of com-                                                  erties18’ in addition to A):
+parisons and excluding all but the survivors.                                                            B) The probability     distribution of the jth channel
+   In particular, at Step j + 1 the decoder performs qK-’                                             symbol for any path is the same for all j, and for all paths
+sets of comparisons among groups of q paths, which we
+denote                                                                                                                  P(Xi = r;J = Pi                                            (i = 1,2,               *.. r).
+                                                                                                        C) Successive channel symbols                                                          along a given         path
+           (i) (i)                                                                                    are statistically independent
+                             (i) , 1, ai+z, ai+s, *-a aj+K),
+        kf 21 , ff22 , * *. Q?i
+       ........................................                                                       p(xl   =   ‘&I,      xZ         =        Ed,,            * ”    X(L+K--1)~           =   ‘$(L+&).)
+
+                                                                                                                                                                                                (L+K-Ijo
+      @f’ , &’        . . . a$,          q        -         1,    ai+Z,          %+a!   ‘-’   ai+K)
+
+
+where the vectors (a:;‘, ~r2 (i) . . . CY$‘) depend on the
+                                ,
+outcome of the previous set of comparisons. Again by                                                     We shall need one more property before we can proceed,
+the nature of the comparisons no two survivors can                                                    which requires a modification of the encoder:
+agree in all of the last K - 1 branches and there is a                                                   D) Symbols along arbitrary subsequences of any two
+one-to-one correspondence between each of the q”-’                                                    totally distinct paths are independent.
+survivors and the subsequences (ai+z, . . . ai+R).                                                       Reiffen”’ proved property D) for the present encoder
+   This procedure is repeated through the (L - K + 1)th                                               but only within the first K-branch constraint length.
+step. Beyond this point branching ceases because only                                                 To ensure that D) is satisfied over the entire L-branch
+zeros are fed into the shift register. Thus at step                                                   tree, we must modify the encoder. One obvious way is
+L - K + 2 the decoder compares the likelihood functions                                               to randomly select a new Kxv generator matrix G after
+for the q paths:                                                                                      each new data symbol ai is shifted into the register.
+                                                                                                      However, Massey “I has recently shown that it is possible
+  (o~if-I’+~), aiimK+l),           9 - . a:f.iJ.f2i+:, 0, aL-K+3 . . * aL, 0))                        to ensure D) by introducing only 2v new components
+  (cY~~-“+~), &fK+l) , . . . a:“,-“,‘::, 1, ar,-R+3 . 1 . aL, 0),                                     into the first two rows of the generator matrix for each
+ ................................................. .                                                  new data symbol, and simply shifting all the rows of
+                                                                                                      the previous generator matrix two places downward and
+(a$-“’ I), CI$‘~+~), - . - &!2::,                                     q - 1, aL.-K+3 . . . a,, 0)
+                                                                                                      discarding the last two rows.
+for each of the qKm2 possible vectors (a&K+3 . . * a,)                                                   We now proceed to obtain an upper bound on the
+resulting in qKe2 survivors. Thus, for this and all succeeding                                        error probability    for the class of convolutional codes
+steps the population fails to grow since all further branches                                         which possess the above properties, by analyzing the
+correspond only to zeros entering the shift register, and                                             performance of t.he decoding algorithm of the previous
+266                                                                        IEEE TRANSACTIONS ON INFORMATION                 THEORY, APRIL    1967
+section, We recall that the correct path is eliminated if               Thus, the expected probability of an error in the com-
+it fails to have the largest likelihood function in any one             parison at the (j + 1)th step is bounded by the union
+of the L comparisons among q alternatives in which it                   bound,
+is involved.
+    In particular,    let us consider the situation at the              w + 1) < 21=0pr (error caused by a possible adversary
+ (j + 1)th step. Without loss of generality, we may assume
+that the correct path corresponds to the all zeros data
+sequence. Although the comparison at this step is with                                 which diverged K + I branches back).                  (19)
+only q - 1 other paths, there is a multitude of potential
+                                                                        The zeroth term of this sum is bounded by the probability
+adversaries. Thus, with the first j + K branches of the
+                                                                        of error for a block code of (q - 1) words (the maximum
+correct path denoted by the vector 0 = (00 . . . 0), con-
+sider all the paths of the form ail’, %2                                number of possible adversaries) each of length N channel
+                                            (j) , * * * @lOO * . * 0.
+                                                                        symbols, while the Zth term (I 2 1) is bounded by the
+There is only one such path which diverged from the
+                                                                        error probability for a block code of (q - l)‘q’-’ words
+correct path K branches back: namely, the one for which
+CYp *** a!zj  (f) = 00 . . . 0. But there are q - 1 potential           each of length N + (In q/R)1 channel symbols. Since
+adversaries of this form which diverged from the correct                all symbols of each codeword are mutually independent
+path K + 1 branches back: namely, those for which                       and symbols of the correct codeword are independent of
+               (i) = Of-J . . . 0 and oc:i’ is any element of
+a;:” . . . %?i-1                                                        symbols of any other codeword, we may use the random
+                                                                        coding upper bound on block codesL5151 for the lth term.
+GF(q) except 0. Similarly, there are (q - 1)q potential
+adversaries of this form which diverged from the correct                Thus, if for the given transmission rate the convolutional
+path K + 2 branches back: namely, those for which                       encoder is mechanized, as described above, so that the
+CYif’. . . (y;f;+ = 00 * - * 0, ai1i.-1 is any element except 0,        input symbol distribution     is that which achieves the
+and a$’ is any element of GF(q). Continuing in this way,                maximum of (7), we have,
+we find that there are (q - l)q”-’ potential adversaries of
+this form which diverged K + 1 branches back. However,                  P(i + 1) < (n - 1)”exp [-~~ddl                     + $ [(a - 1)2~1--llp
+there are exactly as many potential adversaries for which
+ai+l = 2, as these are adversaries for which aj+l = 1, and                              .exp [-(N           + $f l)&(P)]
+similarly for U~+~ = 3, 4, . . . q - 1. Thus, the total
+number of potential adversaries which diverged from the
+correct path K + 1 branches back (1 = 1, 2, . e .) is
+(q - l)“q”-‘, while q - 1 paths diverged K branches back.
+    Before we can proceed to bound the error probability,
+                                                                                   =     1
+                                                                                              ’_ - q-dR’   exp [--A%(p)]      (0 < p 5 1) (20)
+we must establish that of all the potential adversaries
+which diverged from the correct path K + 1 branches
+                                                                        where E = Eo(p) - pR > 0. This bound is independent
+back only those that are totally distinct from it can
+                                                                        of j. We again use a union bound to express the error
+actually be adversaries in the comparison of likelihood
+                                                                        probability in decoding the L branch tree in terms of
+functions. We recall from property A) that two paths
+                                                                        (20) and thus obtain
+which diverge at a given branch will converge again
+after K branches if all of the next K data symbols are                   -    L-1
+identical. Furthermore, any pair of paths having data                    PE < ci=oP(i + 1)
+symbols which are never identical for K consecutive                                                                                          (21)
+branches remain totally distinct from the initial diver-                      < uq - 1) exp [-N-%(P)I                      (0 <   P I   1)
+                                                                                 1 -     p-"R
+gent branch. We now observe that by the nature of the
+decoding algorithm no two adversaries in any comparison
+                                                                        where e = Eo(p) - pR > 0 and since   - at least one code
+can agree in K (or more) consecutive branch data symbols
+                                                                        in the ensemble must have P, < P,, and E,,(p) is a
+beyond their point of initial divergence, for at the out-               monotonically increasing function of p, we have
+come of each preceding set of comparisons there was one
+and only one surviving path with a particular sequence of
+                                                                        Theorem %’
+K data symbols.
+    Thus, all the actual adversaries to the correct path at                The probability of error in decoding an L-branch q-ary
+step j + 1 are totally distinct from it and consequently                tree code transmitted     over a memoryless channel is
+the branch channel symbols are statistically independent                bounded by
+ [Property D]. Further, we have no more than q - 1
+possible adversaries to the correct path which diverged                                      P E < L(q - l) exp [-NE(R)]
+                                                                                                   1 - ge/R
+K branches (or N channel symbols) back and no more
+than (q - l)‘q’-’ possible adversaries to the correct                      1 Note that Gallager’s proof of the upper bound for block codes[sl
+path which diverged K + 1 branches (or (K + Z)v =                       requires only that the correct word symbols be independent of the
+                                                                        symbols of any incorrect word, and not that incorrect words be
+N + (In q/R)Z channel symbols) back, where 1 = 1; 2, . . . .            mutually independent.
+VITERBI:   ERRORBOUNDSFORCONVOLUTIOKAL                              CODES                                                                                               267
+
+where’                                                                                       but with p extended to fi 2 1. Thus for this range the
+                                                                                             lower bound on convolutional      codes (16) exceeds this
+                                       OiR=R,-c<R,                                   (224    for the reasons just stated. For R < EL(c), the best
+           1                                                                                 known bound for block codesL71 is E,(R) = E, - ,6R
+               Eo(P),         R.   -   c 5 R = E”(P)            -    5 <    c
+                                                            P                                 (p 2 l), while from (18) for convolutional codes we have
+                                                                                     CW      E,(R) = E, for 0 < R < E,,(c)/; > E;(6) which therefore
+           I                                               (0 <      P i        1)           exceeds the lower bound for block codes in this region
+and                                                                                          also. For pathological channels the same argument applies
+                                                                                             to &(p).
+   R. = E,(l) = max {-In cY [CP(~~P(Y
+                             x        I x)121.
+                P(Z)
+                                                                                                   VI. LIMITING          CASES AND COMPARISONS                 WITH
+Since the bound was shown for the specific probabilistic                                                                  BLOCK      CODES
+decoding algorithm described above, and e > 0 can be
+made arbitrarily small for N arbitrarily large, we have                                        Of particular interest is the behavior of the exponent
+comparing (16) and (22), whenever Eo(p) is concave,                                          in the neighborhood of capacity. We have from the
+                                                                                             properties a), b), and equation (7)
+lim ln (1/pd            = E(R) = E,(R)             for     R, 5 R < C                 (23)          2&(O) = 0,             &(O) = c,            E;‘(o) I        0.
+N-+m N
+and consequently                                                                             We must solve the parametric             equations
+                                                                                                          E,(R)      = -@cd,)                                         (254
+Corollary I
+                                                                                                                  R _ @dd
+   For all but pathological channels the specific prob-                                                                                (0 i     P I   1)              (25b)
+                                                                                                                        P
+abilistic decoding algorithm described in Section IV is
+asymptotically    (exponentially) optimum for R > R,.                                        for R in the neighborhood of C, which corresponds to p
+   Yudkin[”    has obtained an upper bound with the                                          in the neighborhood of 0. Thus, excluding for this purpose
+exponent of (22) for the undetectable error probability                                      the case in which E;‘(O) = 0, and expanding l&(p) in a
+of the Fano sequential decoding algorithm.‘31 Thus the                                       Taylor series about p = 0 neglecting terms higher than
+Fano algorithm is also asymptotically     optimum in this                                    quadratic, we obtain
+sense for R >_ R,. However, the average number of
+computations per branch is unbounded for R > R, in                                                        &l(P)    c pC + $ E;‘(O) c=zE,,(p).
+the latter, while for the nonsequential algorithm con-
+sidered here the number of computations per branch is                                        Then from (25b) and (26) we have
+proportional to qK independent of rate. Also, as we shall
+show below, the number of computations required with                                                                     p = W7 4).
+this algorithm for a convolutional      code of constraint                                                                    -E;‘(O)
+length N is essentially the same as the number required                                      Substituting in (26) and neglecting terms higher than
+by a maximum likelihood decoder for a block code of                                          linear in C - R we obtain (setting E % 0 in the upper
+block length N, all the other parameters being the same.                                     bound)
+   The random coding upper bound exponent (with E = 0)
+is greater than the random coding exponent for block
+codes for all rates (0 < R < C), as is seen by comparing
+                                                                                                   E(R) w E,(R)           = -&SP) ms(C                     -    RI.
+
+ (22) with the exponent for block codesi51 of length N:
+                                                                                             In contrast, for block codes the exponent for rates in the
+               Ro -R,                              0 < R 5 E;(l)                     (244    neighborhood of C(p = 0), as obtained by repeating the
+E(R) =                                                                                       above argument in connection with (24b), is
+           i                               E;(l)         5 R = E6(p) < C
+               WP)       -   PEZP),
+
+           I                                               (0 < p 5 1). (24b)                          E(R) = E,(R) z +i@)                      (C - R12.
+From property b) of E,,(p), we have E,!,(p) > 0. Also,
+                                                                                                Another interesting limiting case is that of “very
+from (24b) we have E,,(p)/p 2 E;(p), and the conclusion
+                                                                                             noisy” channels which includes the time-discrete white
+follows.
+                                                                                             Gaussian channel. A memoryless channel is said to be
+   The same is true also for the lower bound. For
+R > E;(i), the best known lower bound for block                                              very noisy if p(y 1 x) = p(y)0 + e,,) where IcZyI << 1
+                                                                                             for all x and g in the channel input and output spaces X
+codes[51-L7’ coincides with the sphere packing bound,
+                                                                                             and Y. For this class of channels it has been shown[‘l
+which is the same as (24b) for nonpathological channels
+                                                                                             that when the input distribution     is optimized so that
+                                                                                             1(X; Y) = C, then
+    2 If EC,“(P) > 0 for some p on the unit interval, (22b) may specify
+more than one value of E(R) for a given R. In this case we should
+choose the greater, with the result that E(R) is a discontinuous                                                  &(P)     = El(P)    =   j+y                          (27)
+function.
+268                                                                      IEEETRANSACTIONSONINFORMATIONTHEORY,APRIL                                          1967
+                                                                                                   CONVOLUTIONAL         CODES 7
+where
+
+
+                                                                                                                    BLOCK CODES
+Also
+
+                   R, = E,(l)   x 2” r-z E,
+
+and from (17b), it follows that ,i? = 1. Thus, with B = 0
+                                                                                                                        R/C
+we find from (18), (22), and (27)
+                                                                            Fig.       5.    E(R) for very noisy channels with convolutional
+                                    0 5 R < C/2.                                                            andblock      codes.
+        E(R) cz E,(R) cz C/2,                            (284
+For rates above C/2 we have from (16), (22), and (27)                                                                                         KEY:
+                                                                                                                                    P   c= I-H(p)(BITS/SYMBOLl
+                   R=Ed!&C.                                                                                                                          ,919
+                           P      1fP                                                                                                                ,531
+                                                                                                                                                     .029
+Solving for p in terms of R, and substituting         in (27),
+we obtain from (16) and (22):                                               1.0
+
+
+
+        E(R) cz E,(R) % C - R,          $R<C.            (28b)
+                                                                     E(R)
+From (28a) and (28b) we note that for very noisy channels             C
+the upper and lower bounds are exponentially        equal                   06
+
+for all rates, that they remain at the zero rate level of
+C/2 up to R = C/2 and then decrease linearly for rates                      0.4
+up to C. This is to be compared with the corresponding
+result for block codes:151
+                                                                            0.2
+  E’(R)= E,(R)                                            (29)
+                                                                             0
+                                        0 I R 5 C/4                               0           02     0.4          0.6         0.8       1.0
+                                                                                                              R/C
+          NN
+                                                                 Fig. 6.              E(R) and E,(R) for the binary symmetric channels with
+                                   C/4 _< R < 6.                                       evolutional codes (p = 0.01, p = 0.1, p = 0.4).
+The two exponents for very noisy channels (28) and (29)
+are plotted in Fig. 5. The relative improvement increases        repeat this L/K times. Consequently, the number of
+with rate. For R = R. = C/2, the exponent for con-               computations is essentially the same for the convolutional
+volutional codes is almost six times that for block codes.       code decoding algorithm described as is required for
+   While the upper and lower bound exponents are identical       maximum likelihood decoding of the equivalent block
+in the limiting case, we see from the example of the error-      code.
+bound exponents for three binary symmetric channels                 We should note, however, that since K - 1 zeros
+(with p = 0.01, p = 0.1, and p = 0.4), shown normalized          are inserted between trees of L branches, the actual
+by C in Fig. 6, that as the channel becomes less noisy           rate for convolution codes is reduced by a factor of
+the upper and lower bounds diverge for R < R,. In                L/(L + K - 1) from that of block codes, a minor loss
+fact, if for all p, E;‘(p) = 0, then Eo(p) = PC, so that         since, because of the greatly increased exponent, we can
+R, = 6. Thus, the upper bound exponent equals R.                 afford to increase L (which affects P, only linearly)
+for all R < C.                                                   enough to make this factor insignificant.
+   There remains to show that this significant improvement
+over the performance of block codes is achievable without                   VII.            A SEMI-SEQUENTIAL MODIFICATION                        OF THE
+additional decoding complexity. But we observe that                                                DECODING ALGORITHM
+in decoding L branches or L In q nats the decoding
+                                                                   We observe from (22) with the substitution                                     N = Ku =
+algorithm considered makes slightly less than LqK branch
+                                                                 K In q/R, that
+likelihood function computations or LvqK = (L/K)NqK
+symbol likelihood function computations. Now the equiv-          p                                         Ro/R
+alent block code transmits L In q nats in blocks of K In q           E                                              for 0 5 R = R, - c < R, (30)
+nats at a rate R = In q/v = K In q/N nats/symbol,
+which corresponds to transmitting      one of qK words of        for the specific decoding algorithm considered. However,
+length N symbols. Thus, the decoder must perform NqK             as we have just noted, the number of likelihood function
+symbol likelihood function computations per block and            computations per decoded branch is slightly less that qK,
+VITERBI:ERRORBOUNDSFORCONVOLUTIONALCODES                                                                                          269
+
+which means that the error probability decreases more           of the decoded path with a threshold. If it exceeds this
+than linearly with computational complexity for rates          threshold the total path is accepted as correct; otherwise
+in this region.                                                the algorithm is repeated with k increased by 1. Since
+   Now let us consider an iterated version of the previous     the last N symbols occur after the tree has stopped
+algorithm. At first we shall employ the aid of a magic         branching, these can be affected by the last K branches
+genie. It is clear that the nonsequential decoding algorithm   only since no more than K data symbols are in the coder
+can be modified to make decisions based on k branches          shift register when these channel symbols are being
+where k < K, the constraint length, and that the resulting     generated. Thus, there are only qK possible combinations
+error probability is the same as (30) with K replaced          of channel symbols for the final branches which are of
+by k. Thus suppose the decoder attempts to decode the          length N channel symbols. The upper bound on the
+L-branch tree using k = 1 and at the end of the tree           probability of error for a threshold decision involving qK
+the genie either tells him he is correct or requires him       code words of block length N selected independently isL1ll
+to start over with k = 2 and that he proceeds in this
+                                                                                    P, < 2 exp [-NE,(R)]
+way each time increasing k by 1 until he is either told
+he is correct or he reaches the constraint length K. Then,     where
+since at each iteration the number of computations is
+increased by a factor q, the number of computations per        E,(R)   = max (max
+branch performed by the end of the lcth iteration is                     P(Z) O<P<l
+q + q2 + *** + qk = [q(qk - l)/(q - l)] < 2qk. Thus,
+denoting the total number of computations per branch
+by y, we have using (30),                                                                                              OiR<C
+
+                 uq - 1)                                       and
+Prob (7 > 29”) < l _ q-e,R (q”)-““‘“f
+                                                                               R=K1nqIb                   as before.
+                                                                                        N           V
+
+                                                               By choosing N or K large enough, P, can be made
+or
+                                                               sufficiently small, although clearly it can not be as small
+                L(q - 1) r -Rn’R                               as PE of (22), which results from use of the nonsequential
+ Prob (7 > P) < 1 - q-‘/R        ’
+                          02                                   algorithm.
+                                                                 Although this algorithm is rendered impractical by the
+                               O<R=R,-,<Ro              (31)   excessive storage requirements, it contributes to a general
+which is known as a Pareto distribution. Also, we have         understanding    of convolutional    codes and sequential
+for the expected number of computations per branch             decoding through its simplicity of mechanization and
+                                                               analysis.
+7 < 2        qkP,(k -   1) <                                                           ACKNOWLEDGMENT
+       k=l
+
+                                                                  The author gratefully acknowledges the helpful sug-
+     = uq - l)q O<R=R,--e<Ro.                                  gestions and patience of Dr. L. Kleinrock during numerous
+      (1- q-~‘’R)2                                      (32)
+                                                               discussions.
+Thus, the expected number of computations per branch
+increases no more rapidly than the tree length for R < R,,                                  REFERENCES
+a feature of sequential decoding. Actually the Fano                111P. Elias, “Coding for noisy channels ,” IRE Conv. Rec.,pt. IV,
+                                                               pp. 37-46, 1955.         -        -
+algorithm has been shown”” to have a Pareto distribution           121H. L. Yudkin, ‘Channel state testing in information decoding,”
+on t,he number of computations with a higher exponent          Ph.D. dissertation, Dept. of Elec. Engrg.,.M.I.T.,   Cambridge, Mass.,
+                                                               September 1964.
+than Ro/R for R < R, and an expected number of com-                131R. M. Fano, “A heuristic discussion of probabilistic decoding,”
+putations which is independent of the tree or constraint       IEEE Trans. on Information Theory,vol. IT-g, pp. 64-76, April 1963.
+                                                                   14JJ. M. Wozencraft and B. Relffen, Sequential Decoding.Cam-
+length. However, with the Wozencraft algorithm[41 T            bridge, Mass.: M.I.T. Press, and New York: Wiley, 1961.
+increases linearly with constraint length. The major               16112. G. Gallager, “A simple derivation of the coding theorem
+                                                               and some applications,” IEEE Trans. on Information l’heory, vol.
+drawback of this scheme, besides the genie which we            IT-11, pp. 3-18, January 1965.
+shall dispose of presently, is that the number of storage          I61 R. M. Fano, Transmission of Information. Cambridge, Mass.:
+                                                               M.I.T. Press, and New York: Wiley, 1961.
+registers required at the kth iteration is qk and con-             171C. E. Shannon, R. G. Gallager, and E. R. Berlekamp, “Lower
+                                                               bounds to error probability      for coding on discrete memoryless
+sequently the required storage capacity also has a Pareto      channels,” Information and Control (to be published).
+distribution.                                                      ISI B. Reiffen, “Sequential encoding and decoding for the discrete
+                                                               memoryless channel,” M.I.T. Lincoln Laboratory, Lexington, Mass.,
+   To avoid employing the genie, the decoder must have         Rept. 25, G-0018, August 1960.
+some other way to decide whether or not the kth iteration          lQl J. L. Massey, private communication.
+                                                                   ~01 J. E. Savage, “Sequential        decoding-The      computation
+produces the correct path. One way to achieve this is to       problem,” Bell Sys. Tech.J., vol. 45, pp. 149-175, January 1966.
+compare the likelihood function for the last N symbols             [ii1 C. E. Shannon, unpublished notes.
+

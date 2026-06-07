@@ -1,0 +1,708 @@
+10.3   Infeasible start Newton method                                                     533
+
+
+   Evaluating the derivative of r, we can express (10.20) as
+    2                                                        
+     ∇ f (x) AT        ∆xpd             rdual         ∇f (x) + AT ν
+                                 =−             =−                    .        (10.21)
+        A       0      ∆νpd              rpri             Ax − b
+Writing ν + ∆νpd as ν + , we can express this as
+                  2                                    
+                   ∇ f (x) AT         ∆xpd           ∇f (x)
+                                               = −            ,                (10.22)
+                       A       0       ν+            Ax − b
+which is exactly the same set of equations as (10.19). The solutions of (10.19),
+(10.21), and (10.22) are therefore related as
+                      ∆xnt = ∆xpd ,       w = ν + = ν + ∆νpd .
+This shows that the (infeasible) Newton step is the same as the primal part of
+the primal-dual step, and the associated dual vector w is the updated primal-dual
+variable ν + = ν + ∆νpd .
+    The two expressions for the Newton step and dual variable (or dual step), given
+by (10.21) and (10.22), are of course equivalent, but each reveals a different feature
+of the Newton step. The equation (10.21) shows that the Newton step and the
+associated dual step are obtained by solving a set of equations, with the primal
+and dual residuals as the righthand side. The equation (10.22), which is how we
+originally defined the Newton step, gives the Newton step and the updated dual
+variable, and shows that the current value of the dual variable is not needed to
+compute the primal step, or the updated value of the dual variable.
+
+Residual norm reduction property
+The Newton direction, at an infeasible point, is not necessarily a descent direction
+for f . From (10.19), we note that
+              d
+                 f (x + t∆x)       =   ∇f (x)T ∆x
+              dt             t=0
+                                                                   
+                                   =   −∆xT ∇2 f (x)∆x + AT w
+                                   =   −∆xT ∇2 f (x)∆x + (Ax − b)T w,
+which is not necessarily negative (unless, of course, x is feasible, i.e., Ax = b). The
+primal-dual interpretation, however, shows that the norm of the residual decreases
+in the Newton direction, i.e.,
+           d                 2
+              kr(y + t∆ypd )k2     = 2r(y)T Dr(y)∆ypd = −2r(y)T r(y).
+           dt                  t=0
+
+Taking the derivative of the square, we obtain
+                        d
+                           kr(y + t∆ypd )k2     = −kr(y)k2 .                   (10.23)
+                        dt                  t=0
+
+This allows us to use krk2 to measure the progress of the infeasible start Newton
+method, for example, in the line search. (For the standard Newton method, we use
+the function value f to measure progress of the algorithm, at least until quadratic
+convergence is attained.)
+534                                                   10    Equality constrained minimization
+
+
+         Full step feasibility property
+         The Newton step ∆xnt defined by (10.19) has the property (by construction) that
+
+                                            A(x + ∆xnt ) = b.                                 (10.24)
+
+         It follows that, if a step length of one is taken using the Newton step ∆xnt , the
+         following iterate will be feasible. Once x is feasible, the Newton step becomes a
+         feasible direction, so all future iterates will be feasible, regardless of the step sizes
+         taken.
+             More generally, we can analyze the effect of a damped step on the equality
+         constraint residual rpri . With a step length t ∈ [0, 1], the next iterate is x+ =
+         x + t∆xnt , so the equality constraint residual at the next iterate is
+                        +
+                       rpri = A(x + ∆xnt t) − b = (1 − t)(Ax − b) = (1 − t)rpri ,
+
+         using (10.24). Thus, a damped step, with length t, causes the residual to be scaled
+                                                                                     (i)
+         down by a factor 1 − t. Now suppose that we have x(i+1) = x(i) + t(i) ∆xnt , for
+                                       (i)
+         i = 0, . . . , k − 1, where ∆xnt is the Newton step at the point x(i) ∈ dom f , and
+          (i)
+         t ∈ [0, 1]. Then we have
+                                                k−1
+                                                             !
+                                                Y
+                                         (k)
+                                       r =         (1 − t ) r(0) ,
+                                                         (i)
+
+                                                i=0
+
+         where r(i) = Ax(i) − b is the residual of x(i) . This formula shows that the primal
+         residual at each step is in the direction of the initial primal residual, and is scaled
+         down at each step. It also shows that once a full step is taken, all future iterates
+         are primal feasible.
+
+
+10.3.2   Infeasible start Newton method
+         We can develop an extension of Newton’s method, using the Newton step ∆xnt
+         defined by (10.19), with x(0) ∈ dom f , but not necessarily satisfying Ax(0) = b.
+         We also use the dual part of the Newton step: ∆νnt = w − ν in the notation
+         of (10.19), or equivalently, ∆νnt = ∆νpd in the notation of (10.21).
+
+             Algorithm 10.2 Infeasible start Newton method.
+
+             given starting point x ∈ dom f , ν, tolerance ǫ > 0, α ∈ (0, 1/2), β ∈ (0, 1).
+             repeat
+                 1. Compute primal and dual Newton steps ∆xnt , ∆νnt .
+                 2. Backtracking line search on krk2 .
+                     t := 1.
+                     while kr(x + t∆xnt , ν + t∆νnt )k2 > (1 − αt)kr(x, ν)k2 ,    t := βt.
+                 3. Update. x := x + t∆xnt , ν := ν + t∆νnt .
+             until Ax = b and kr(x, ν)k2 ≤ ǫ.
+10.3   Infeasible start Newton method                                                       535
+
+
+This algorithm is very similar to the standard Newton method with feasible start-
+ing point, with a few exceptions. First, the search directions include the extra
+correction terms that depend on the primal residual. Second, the line search is
+carried out using the norm of the residual, instead of the function value f . Finally,
+the algorithm terminates when primal feasibility has been achieved, and the norm
+of the (dual) residual is small.
+    The line search in step 2 deserves some comment. Using the norm of the residual
+in the line search can increase the cost, compared to a line search based on the
+function value, but the increase is usually negligible. Also, we note that the line
+search must terminate in a finite number of steps, since (10.23) shows that the line
+search exit condition is satisfied for small t.
+    The equation (10.24) shows that if at some iteration the step length is chosen to
+be one, the next iterate will be feasible. Thereafter, all iterates will be feasible, and
+therefore the search direction for the infeasible start Newton method coincides, once
+a feasible iterate is obtained, with the search direction for the (feasible) Newton
+method described in §10.2.
+    There are many variations on the infeasible start Newton method. For example,
+we can switch to the (feasible) Newton method described in §10.2 once feasibility
+is achieved. (In other words, we change the line search to one based on f , and
+terminate when λ(x)2 /2 ≤ ǫ.) Once feasibility is achieved, the infeasible start and
+the standard (feasible) Newton method differ only in the backtracking and exit
+conditions, and have very similar performance.
+
+Using infeasible start Newton method to simplify initialization
+The main advantage of the infeasible start Newton method is in the initialization
+required. If dom f = Rn , then initializing the (feasible) Newton method simply
+requires computing a solution to Ax = b, and there is no particular advantage,
+other than convenience, in using the infeasible start Newton method.
+    When dom f is not all of Rn , finding a point in dom f that satisfies Ax = b
+can itself be a challenge. One general approach, probably the best when dom f is
+complex and not known to intersect {z | Az = b}, is to use a phase I method (de-
+scribed in §11.4) to compute such a point (or verify that dom f does not intersect
+{z | Az = b}). But when dom f is relatively simple, and known to contain a point
+satisfying Ax = b, the infeasible start Newton method gives a simple alternative.
+    One common example occurs when dom f = Rn++ , as in the equality con-
+strained analytic centering problem described in example 10.2. To initialize New-
+ton’s method for the problem
+                                           Pn
+                             minimize − i=1 log xi
+                                                                           (10.25)
+                             subject to Ax = b,
+
+requires finding a point x(0) ≻ 0 with Ax = b, which is equivalent to solving a stan-
+dard form LP feasibility problem. This can be carried out using a phase I method,
+or alternatively, using the infeasible start Newton method, with any positive initial
+point, e.g., x(0) = 1.
+    The same trick can be used to initialize unconstrained problems where a starting
+point in dom f is not known. As an example, we consider the dual of the equality
+536                                                    10   Equality constrained minimization
+
+
+         constrained analytic centering problem (10.25),
+                                                              Pn
+                           maximize     g(ν) = −bT ν + n +                 T
+                                                                  i=1 log(A ν)i .
+
+         To initialize this problem for the (feasible start) Newton method, we must find a
+         point ν (0) that satisfies AT ν (0) ≻ 0, i.e., we must solve a set of linear inequalities.
+         This can be done using a phase I method, or using an infeasible start Newton
+         method, after reformulating the problem. We first express it as an equality con-
+         strained problem,
+                                                             Pn
+                                   maximize −bT ν + n + i=1 log yi
+                                   subject to y = AT ν,
+         with new variable y ∈ Rn . We can now use the infeasible start Newton method,
+         starting with any positive y (0) (and any ν (0) ).
+             The disadvantage of using the infeasible start Newton method to initialize prob-
+         lems for which a strictly feasible starting point is not known is that there is no clear
+         way to detect that there exists no strictly feasible point; the norm of the residual
+         will simply converge, slowly, to some positive value. (Phase I methods, in contrast,
+         can determine this fact unambiguously.) In addition, the convergence of the infea-
+         sible start Newton method, before feasibility is achieved, can be slow; see §11.4.2.
+
+
+10.3.3   Convergence analysis
+
+         In this section we show that the infeasible start Newton method converges to the
+         optimal point, provided certain assumptions hold. The convergence proof is very
+         similar to those for the standard Newton method, or the standard Newton method
+         with equality constraints. We show that once the norm of the residual is small
+         enough, the algorithm takes full steps (which implies that feasibility is achieved),
+         and convergence is subsequently quadratic. We also show that the norm of the
+         residual is reduced by at least a fixed amount in each iteration before the region
+         of quadratic convergence is reached. Since the norm of the residual cannot be
+         negative, this shows that within a finite number of steps, the residual will be small
+         enough to guarantee full steps, and quadratic convergence.
+
+         Assumptions
+         We make the following assumptions.
+            • The sublevel set
+                       S = {(x, ν) | x ∈ dom f, kr(x, ν)k2 ≤ kr(x(0) , ν (0) )k2 }         (10.26)
+               is closed. If f is closed, then krk2 is a closed function, and therefore this con-
+               dition is satisfied for any x(0) ∈ dom f and any ν (0) ∈ Rp (see exercise 10.7).
+            • On the set S, we have
+                                                                      −1
+                                                       ∇2 f (x)   AT
+                               kDr(x, ν)−1 k2 =                                  ≤ K,      (10.27)
+                                                         A         0
+                                                                             2
+10.3    Infeasible start Newton method                                                  537
+
+
+       for some K.
+
+   • For (x, ν), (x̃, ν̃) ∈ S, Dr satisfies the Lipschitz condition
+
+                      kDr(x, ν) − Dr(x̃, ν̃)k2 ≤ Lk(x, ν) − (x̃, ν̃)k2 .
+
+       (This is equivalent to ∇2 f (x) satisfying a Lipschitz condition; see exer-
+       cise 10.7.)
+
+As we will see below, these assumptions imply that dom f and {z | Az = b}
+intersect, and that there is an optimal point (x⋆ , ν ⋆ ).
+
+Comparison with standard Newton method
+The assumptions above are very similar to the ones made in §10.2.4 (page 529)
+for the analysis of the standard Newton method. The second and third assump-
+tions, the bounded inverse KKT matrix and Lipschitz condition, are essentially the
+same. The sublevel set condition (10.26) for the infeasible start Newton method
+is, however, more general than the sublevel set condition made in §10.2.4.
+    As an example, consider the equality constrained maximum entropy problem
+                                            Pn
+                         minimize f (x) = i=1 xi log xi
+                         subject to Ax = b,
+
+with dom f = Rn++ . The objective f is not closed; it has sublevel sets that are not
+closed, so the assumptions made in the standard Newton method may not hold,
+at least for some initial points. The problem here is that the negative entropy
+function does not converge to ∞ as xi → 0. On the other hand the sublevel set
+condition (10.26) for the infeasible start Newton method does hold for this problem,
+since the norm of the gradient of the negative entropy function does converge to
+∞ as xi → 0. Thus, the infeasible start Newton method is guaranteed to solve the
+equality constrained maximum entropy problem. (We do not know whether the
+standard Newton method can fail for this problem; we are only observing here that
+our convergence analysis does not hold.) Note that if the initial point satisfies the
+equality constraints, the only difference between the standard and infeasible start
+Newton methods is in the line searches, which differ only during the damped stage.
+
+A basic inequality
+We start by deriving a basic inequality. Let y = (x, ν) ∈ S with kr(y)k2 6= 0, and
+let ∆ynt = (∆xnt , ∆νnt ) be the Newton step at y. Define
+
+                         tmax = inf{t > 0 | y + t∆ynt 6∈ S}.
+
+If y + t∆ynt ∈ S for all t ≥ 0, we follow the usual convention and define tmax = ∞.
+Otherwise, tmax is the smallest positive value of t such that kr(y + t∆ynt )k2 =
+kr(y (0) )k2 . In particular, it follows that y + t∆ynt ∈ S for 0 ≤ t ≤ tmax .
+    We will show that
+
+               kr(y + t∆ynt )k2 ≤ (1 − t)kr(y)k2 + (K 2 L/2)t2 kr(y)k22      (10.28)
+538                                                          10     Equality constrained minimization
+
+
+      for 0 ≤ t ≤ min{1, tmax }.
+          We have
+                                       Z 1
+        r(y + t∆ynt )   =   r(y) +           Dr(y + τ t∆ynt )t∆ynt dτ
+                                        0
+                                                             Z 1
+                        =   r(y) + tDr(y)∆ynt +                    (Dr(y + τ t∆ynt ) − Dr(y))t∆ynt dτ
+                                                               0
+                        =   r(y) + tDr(y)∆ynt + e
+                        =   (1 − t)r(y) + e,
+      using Dr(y)∆ynt = −r(y), and defining
+                           Z 1
+                        e=     (Dr(y + τ t∆ynt ) − Dr(y))t∆ynt dτ.
+                                   0
+
+      Now suppose 0 ≤ t ≤ tmax , so y + τ t∆ynt ∈ S for 0 ≤ τ ≤ 1. We can bound kek2
+      as follows:
+                                       Z 1
+                  kek2 ≤ kt∆ynt k2         kDr(y + τ t∆ynt ) − Dr(y)k2 dτ
+                                                    0
+                                                   Z 1
+                            ≤    kt∆ynt k2               Lkτ t∆ynt k2 dτ
+                                                    0
+                            =    (L/2)t2 k∆ynt k22
+                            =    (L/2)t2 kDr(y)−1 r(y)k22
+                            ≤    (K 2 L/2)t2 kr(y)k22 ,
+      using the Lipschitz condition on the second line, and the bound kDr(y)−1 k2 ≤ K
+      on the last. Now we can derive the bound (10.28): For 0 ≤ t ≤ min{1, tmax },
+                   kr(y + t∆ynt )k2         =      k(1 − t)r(y) + ek2
+                                            ≤      (1 − t)kr(y)k2 + kek2
+                                            ≤      (1 − t)kr(y)k2 + (K 2 L/2)t2 kr(y)k22 .
+
+      Damped Newton phase
+      We first show that if kr(y)k2 > 1/(K 2 L), one iteration of the infeasible start
+      Newton method reduces krk2 by at least a certain minimum amount.
+         The righthand side of the basic inequality (10.28) is quadratic in t, and mono-
+      tonically decreasing between t = 0 and its minimizer
+                                                         1
+                                            t̄ =                < 1.
+                                                   K 2 Lkr(y)k2
+      We must have tmax > t̄, because the opposite would imply kr(y + tmax ∆ynt )k2 <
+      kr(y)k2 , which is false. The basic inequality is therefore valid at t = t̄, and therefore
+                            kr(y + t̄∆ynt )k2            ≤   kr(y)k2 − 1/(2K 2 L)
+                                                         ≤   kr(y)k2 − α/(K 2 L)
+                                                         =   (1 − αt̄)kr(y)k2 ,
+10.3   Infeasible start Newton method                                                     539
+
+
+which shows that the step length t̄ satisfies the line search exit condition. Therefore
+we have t ≥ β t̄, where t is the step length chosen by the backtracking algorithm.
+From t ≥ β t̄ we have (from the exit condition in the backtracking line search)
+
+                 kr(y + t∆ynt )k2   ≤      (1 − αt)kr(y)k2
+                                    ≤      (1 − αβ t̄)kr(y)k2
+                                                             
+                                                       αβ
+                                    =        1− 2               kr(y)k2
+                                                 K Lkr(y)k2
+                                                        αβ
+                                    =      kr(y)k2 − 2 .
+                                                       K L
+Thus, as long as we have kr(y)k2 > 1/(K 2 L), we obtain a minimum decrease in
+krk2 , per iteration, of αβ/(K 2 L). It follows that a maximum of
+
+                                    kr(y (0) )k2 K 2 L
+                                           αβ
+
+iterations can be taken before we have kr(y (k) )k2 ≤ 1/(K 2 L).
+
+Quadratically convergent phase
+Now suppose kr(y)k2 ≤ 1/(K 2 L). The basic inequality gives
+
+                    kr(y + t∆ynt )k2 ≤ (1 − t + (1/2)t2 )kr(y)k2               (10.29)
+
+for 0 ≤ t ≤ min{1, tmax }. We must have tmax > 1, because otherwise it would follow
+from (10.29) that kr(y + tmax ∆ynt )k2 < kr(y)k2 , which contradicts the definition
+of tmax . The inequality (10.29) therefore holds with t = 1, i.e., we have
+
+                 kr(y + ∆ynt )k2 ≤ (1/2)kr(y)k2 ≤ (1 − α)kr(y)k2 .
+
+This shows that the backtracking line search exit criterion is satisfied for t = 1,
+so a full step will be taken. Moreover, for all future iterations we have kr(y)k2 ≤
+1/(K 2 L), so a full step will be taken for all following iterations.
+   We can write the inequality (10.28) (for t = 1) as
+                                                                2
+                         K 2 Lkr(y + )k2          K 2 Lkr(y)k2
+                                         ≤                            ,
+                               2                        2
+
+where y + = y + ∆ynt . Therefore, if r(y +k ) denotes the residual k steps after an
+iteration in which kr(y)k2 ≤ 1/K 2 L, we have
+                                                          2k       2k
+                  K 2 Lkr(y +k )k2         K 2 Lkr(y)k2             1
+                                   ≤                             ≤        ,
+                         2                       2                  2
+
+i.e., we have quadratic convergence of kr(y)k2 to zero.
+    To show that the sequence of iterates converges, we will show that it is a Cauchy
+sequence. Suppose y is an iterate satisfying kr(y)k2 ≤ 1/(K 2 L), and y +k denotes
+540                                                     10       Equality constrained minimization
+
+
+         the kth iterate after y. Since these iterates are in the region of quadratic conver-
+         gence, the step size is one, so we have
+
+               ky +k − yk2   ≤    ky +k − y +(k−1) k2 + · · · + ky + − yk2
+                             =    kDr(y +(k−1) )−1 r(y +(k−1) )k2 + · · · + kDr(y)−1 r(y)k2
+                                                                       
+                             ≤    K kr(y +(k−1) )k2 + · · · + kr(y)k2
+                                             k−1  2
+                                             X               2 −1     i
+                                                  K Lkr(y)k2
+                             ≤    Kkr(y)k2
+                                             i=0
+                                                             2
+                                             X
+                                             k−1       2i −1
+                                                   1
+                             ≤    Kkr(y)k2
+                                             i=0
+                                                   2
+                             ≤    2Kkr(y)k2
+
+         where in the third line we use the assumption that kDr−1 k2 ≤ K for all iterates.
+         Since kr(y (k) )k2 converges to zero, we conclude y (k) is a Cauchy sequence, and
+         therefore converges. By continuity of r, the limit point y ⋆ satisfies r(y ⋆ ) = 0. This
+         establishes our earlier claim that the assumptions at the beginning of this section
+         imply that there is an optimal point (x⋆ , ν ⋆ ).
+
+
+10.3.4   Convex-concave games
+
+         The proof of convergence for the infeasible start Newton method reveals that the
+         method can be used for a larger class of problems than equality constrained convex
+         optimization problems. Suppose r : Rn → Rn is differentiable, its derivative
+         satisfies a Lipschitz condition on S, and kDr(x)−1 k2 is bounded on S, where
+
+                               S = {x ∈ dom r | kr(x)k2 ≤ kr(x(0) )k2 }
+
+         is a closed set. Then the infeasible start Newton method, started at x(0) , converges
+         to a solution of r(x) = 0 in S. In the infeasible start Newton method, we apply
+         this to the specific case in which r is the residual for the equality constrained
+         convex optimization problem. But it applies in several other interesting cases. One
+         interesting example is solving a convex-concave game. (See §5.4.3 and exercise 5.25
+         for discussion of other, related games).
+             An unconstrained (zero-sum, two-player) game on Rp × Rq is defined by its
+         payoff function f : Rp+q → R. The meaning is that player 1 chooses a value (or
+         move) u ∈ Rp , and player 2 chooses a value (or move) v ∈ Rq ; based on these
+         choices, player 1 makes a payment to player 2, in the amount f (u, v). The goal of
+         player 1 is to minimize this payment, while the goal of player 2 is to maximize it.
+             If player 1 makes his choice u first, and player 2 knows the choice, then player 2
+         will choose v to maximize f (u, v), which results in a payoff of supv f (u, v) (assuming
+         the supremum is achieved). If player 1 assumes that player 2 will make this choice,
+         he should choose u to minimize supv f (u, v). The resulting payoff, from player 1
+         to player 2, will then be
+                                             inf sup f (u, v)                              (10.30)
+                                              u    v
+         10.3   Infeasible start Newton method                                                        541
+
+
+         (assuming that the supremum is achieved). On the other hand if player 2 makes
+         the first choice, the strategies are reversed, and the resulting payoff from player 1
+         to player 2 is
+                                             sup inf f (u, v).                         (10.31)
+                                               v   u
+
+         The payoff (10.30) is always greater than or equal to the payoff (10.31); the dif-
+         ference between the two payoffs can be interpreted as the advantage afforded the
+         player who makes the second move, with knowledge of the other player’s move. We
+         say that (u⋆ , v ⋆ ) is a solution of the game, or a saddle-point for the game, if for all
+         u, v,
+                                        f (u⋆ , v) ≤ f (u⋆ , v ⋆ ) ≤ f (u, v ⋆ ).
+         When a solution exists, there is no advantage to making the second move; f (u⋆ , v ⋆ )
+         is the common value of both payoffs (10.30) and (10.31). (See exercise 3.14.)
+             The game is called convex-concave if for each v, f (u, v) is a convex function of
+         u, and for each u, f (u, v) is a concave function of v. When f is differentiable (and
+         convex-concave), a saddle-point for the game is characterized by ∇f (u⋆ , v ⋆ ) = 0.
+
+         Solution via infeasible start Newton method
+         We can use the infeasible start Newton method to compute a solution of a convex-
+         concave game with twice differentiable payoff function. We define the residual as
+                                                                   
+                                                        ∇u f (u, v)
+                                r(u, v) = ∇f (u, v) =                 ,
+                                                        ∇v f (u, v)
+
+         and apply the infeasible start Newton method. In the context of games, the infea-
+         sible start Newton method is simply called Newton’s method (for convex-concave
+         games).
+             We can guarantee convergence of the (infeasible start) Newton method provided
+         Dr = ∇2 f has bounded inverse, and satisfies a Lipschitz condition on the sublevel
+         set
+                        S = {(u, v) ∈ dom f | kr(u, v)k2 ≤ kr(u(0) , v (0) )k2 },
+         where u(0) , v (0) are the starting players’ choices.
+             There is a simple analog of the strong convexity condition in an unconstrained
+         minimization problem. We say the game with payoff function f is strongly convex-
+         concave if for some m > 0, we have ∇2uu f (u, v)  mI and ∇2vv f (u, v)  −mI, for
+         all (u, v) ∈ S. Not surprisingly, this strong convex-concave assumption implies the
+         bounded inverse condition (exercise 10.10).
+
+
+10.3.5   Examples
+         A simple example
+         We illustrate the infeasible start Newton method on the equality constrained an-
+         alytic center problem (10.25). Our first example is an instance with dimensions
+         n = 100 and m = 50, generated randomly, for which the problem is feasible and
+         bounded below. The infeasible start Newton method is used, with initial primal
+542                                                 10   Equality constrained minimization
+
+
+         and dual points x(0) = 1, ν (0) = 0, and backtracking parameters α = 0.01 and
+         β = 0.5. The plot in figure 10.1 shows the norms of the primal and dual residu-
+         als separately, versus iteration number, and the plot in figure 10.2 shows the step
+         lengths. A full Newton step is taken in iteration 8, so the primal residual becomes
+         (almost) zero, and remains (almost) zero. After around iteration 9 or so, the (dual)
+         residual converges quadratically to zero.
+
+         An infeasible example
+         We also consider a problem instance, of the same dimensions as the example above,
+         for which dom f does not intersect {z | Az = b}, i.e., the problem is infeasible.
+         (This violates the basic assumption in the chapter that problem (10.1) is solvable, as
+         well as the assumptions made in §10.2.4; the example is meant only to show what
+         happens to the infeasible start Newton method when dom f does not intersect
+         {z | Az = b}.) The norm of the residual for this example is shown in figure 10.3,
+         and the step length in figure 10.4. Here, of course, the step lengths are never one,
+         and the residual does not converge to zero.
+
+         A convex-concave game
+         Our final example involves a convex-concave game on R100 × R100 , with payoff
+         function
+                f (u, v) = uT Av + bT u + cT v − log(1 − uT u) + log(1 − v T v),       (10.32)
+         defined on
+                                dom f = {(u, v) | uT u < 1, v T v < 1}.
+         The problem data A, b, and c were randomly generated. The progress of the
+         (infeasible start) Newton method, started at u(0) = v (0) = 0, with backtracking
+         parameters α = 0.01 and β = 0.5, is shown in figure 10.5.
+
+
+
+
+10.4     Implementation
+10.4.1   Elimination
+         To implement the elimination method, we have to calculate a full rank matrix F
+         and an x̂ such that
+                                {x | Ax = b} = {F z + x̂ | z ∈ Rn−p }.
+         Several methods for this are described in §C.5.
+
+
+10.4.2   Solving KKT systems
+         In this section we describe methods that can be used to compute the Newton step
+         or infeasible Newton step, both of which involve solving a set of linear equations
+10.4   Implementation                                                                   543
+
+
+
+
+                              105
+
+
+                              100
+
+
+           krpri k2 and krdual k2
+                              10−5
+
+
+                               10−10
+
+
+                               10−15
+                                    0     2   4       6     8    10    12
+                                              iteration number
+       Figure 10.1 Progress of infeasible start Newton method on an equality con-
+       strained analytic centering problem with 100 variables and 50 constraints.
+       The figure shows krpri k2 (solid line), and krdual k2 (dashed line). Note that
+       feasibility is achieved (and maintained) after 8 iterations, and convergence
+       is quadratic, starting from iteration 9 or so.
+
+
+
+                                     1
+
+
+
+
+                           t
+
+
+
+
+                                    0.5
+
+                                      0   2   4       6     8    10    12
+                                              iteration number
+       Figure 10.2 Step length versus iteration number for the same example prob-
+       lem. A full step is taken in iteration 8, which results in feasibility from
+       iteration 8 on.
+544                                                   10   Equality constrained minimization
+
+
+
+
+                             102
+
+
+
+
+             krpri k2 and krdual k2
+
+
+
+
+                             101
+                                0          5           10       15        20
+                                               iteration number
+      Figure 10.3 Progress of infeasible start Newton method on an equality con-
+      strained analytic centering problem with 100 variables and 50 constraints,
+      for which dom f = R100   ++ does not intersect {z | Az = b}. The figure shows
+      krpri k2 (solid line), and krdual k2 (dashed line). In this case, the residuals do
+      not converge to zero.
+
+                               0.3
+
+
+
+
+                               0.2
+
+             t
+
+                               0.1
+
+
+
+
+                                      0
+                                       0   5           10       15        20
+                                               iteration number
+      Figure 10.4 Step length versus iteration number for the infeasible example
+      problem. No full steps are taken, and the step lengths converge to zero.
+10.4   Implementation                                                                         545
+
+                    105
+
+
+                    100
+
+
+           k∇f (u, v)k2
+                    10−5
+
+
+                    10−10
+
+
+                    10−15
+                         0           2            4                 6           8
+                                          iteration number
+       Figure 10.5 Progress of (infeasible start) Newton method on a convex-
+       concave game. Quadratic convergence becomes apparent after about 5 iter-
+       ations.
+
+
+
+
+with KKT form                                                      
+                                 H       AT        v                g
+                                                           =−               .       (10.33)
+                                 A        0        w                h
+
+Here we assume H ∈ Sn+ , and A ∈ Rp×n with rank A = p < n. Similar methods
+can be used to compute the Newton step for a convex-concave game, in which
+the bottom right entry of the coefficient matrix is negative semidefinite (see exer-
+cise 10.13).
+
+Solving full KKT system
+One straightforward approach is to simply solve the KKT system (10.33), which is
+a set of n + p linear equations in n + p variables. The KKT matrix is symmetric,
+but not positive definite, so a good way to do this is to use an LDLT factorization
+(see §C.3.3). If no structure of the matrix is exploited, the cost is (1/3)(n + p)3
+flops. This can be a reasonable approach when the problem is small (i.e., n and p
+are not too large), or when A and H are sparse.
+
+Solving KKT system via elimination
+A method that is often better than directly solving the full KKT system is based
+on eliminating the variable v (see §C.4). We start by describing the simplest case,
+in which H ≻ 0. Starting from the first of the KKT equations
+
+                             Hv + AT w = −g,                Av = −h,
+
+we solve for v to obtain
+                                     v = −H −1 (g + AT w).
+546                                                10    Equality constrained minimization
+
+
+      Substituting this into the second KKT equation yields AH −1 (g + AT w) = h, so we
+      have
+                                w = (AH −1 AT )−1 (h − AH −1 g).
+      These formulas give us a method for computing v and w.
+         The matrix appearing in the formula for w is the Schur complement S of H in
+      the KKT matrix:
+                                     S = −AH −1 AT .
+      Because of the special structure of the KKT matrix, and our assumption that A
+      has rank p, the matrix S is negative definite.
+
+          Algorithm 10.3 Solving KKT system by block elimination.
+
+          given KKT system with H ≻ 0.
+              1. Form H −1 AT and H −1 g.
+              2. Form Schur complement S = −AH −1 AT .
+              3. Determine w by solving Sw = AH −1 g − h.
+              4. Determine v by solving Hv = −AT w − g.
+
+
+          Step 1 can be done by a Cholesky factorization of H, followed by p + 1 solves,
+      which costs f + (p + 1)s, where f is the cost of factoring H and s is the cost of
+      an associated solve. Step 2 requires a p × n by n × p matrix multiplication. If we
+      exploit no structure in this calculation, the cost is p2 n flops. (Since the result is
+      symmetric, we only need to compute the upper triangular part of S.) In some cases
+      special structure in A and H can be exploited to carry out step 2 more efficiently.
+      Step 3 can be carried out by Cholesky factorization of −S, which costs (1/3)p3
+      flops if no further structure of S is exploited. Step 4 can be carried out using the
+      factorization of H already calculated in step 1, so the cost is 2np + s flops. The
+      total flop count, assuming that no structure is exploited in forming or factoring the
+      Schur complement, is
+                                     f + ps + p2 n + (1/3)p3
+      flops (keeping only dominant terms). If we exploit structure in forming or factoring
+      S, the last two terms are even smaller.
+          If H can be factored efficiently, then block elimination gives us a flop count
+      advantage over directly solving the KKT system using an LDLT factorization. For
+      example, if H is diagonal (which corresponds to a separable objective function),
+      we have f = 0 and s = n, so the total cost is p2 n + (1/3)p3 flops, which grows only
+      linearly with n. If H is banded with bandwidth k ≪ n, then f = nk 2 , s = 4nk, so
+      the total cost is around nk 2 + 4nkp + p2 n + (1/3)p3 which still grows only linearly
+      with n. Other structures of H that can be exploited are block diagonal (which
+      corresponds to block separable objective function), sparse, or diagonal plus low
+      rank; see appendix C and §9.7 for more details and examples.
+
+          Example 10.3 Equality constrained analytic center. We consider the problem
+                                                        Pn
+                                      minimize     − i=1 log xi
+                                      subject to   Ax = b.
+

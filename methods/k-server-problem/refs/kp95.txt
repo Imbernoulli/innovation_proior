@@ -1,0 +1,4397 @@
+On the k-Server
+
+ELIAS
+
+KOUTSOUPIAS
+
+Uniuersi@
+
+of Ca[ijomia
+
+Conjecture
+
+at Los Angeles,
+
+Los Angeles,
+
+California
+
+AND
+CHRISTOS
+Unil*ers@
+
+H.
+
+of California
+
+PAPADIMITRIOU
+at San Diego,
+
+La Jolla,
+
+Califomca
+
+Abstract. We prove that the work
+
+function
+algorithm
+for the k-server problem has a competitive
+ratio at most 2k – 1. Manasse et al. [1988] conjectured that the competitive ratio for the k-server
+at least k); previously the best-known
+upper bound was
+problem is exactly k (it is trivially
+property
+of work
+exponential in k. Our proof involves three crucial ingredients: A qaasicomexity
+that achieve
+functions, a duality lemma that uses quasiconvexity to characterize the configuration
+that exploits the duality lemma.
+maximum increase of the work function, and a po~ential jimction
+
+Categories and Subject Descriptors: F.2.2 [Analysis of Algorithms
+on discrete srractares;
+Algorithms
+and problems—computation
+algorithms
+Combinatorics—combinatorial
+Geneml
+
+Terms: Algorithms,
+
+Additional
+potential,
+
+theory,
+
+and Problems]:
+G.2. 1 [Discrete
+
+Nonnumerical
+Mathematics]:
+
+performance
+
+Key Words and Phrases: Competitive
+quasiconvexity, work function
+
+analysis, k-server
+
+problem,
+
+on-line
+
+algorithms,
+
+1. Introduction
+The
+Z,
+
+k-server
+
+which
+
+problem
+
+[Manasse
+
+et al. 1988; 1990] is defined
+
+is a (possibly
+
+infinite)
+
+set of points
+
+d (nonnegative
+real
+points x, y, and z
+
+function)
+
+that
+
+with
+
+satisfies
+
+d(x,
+
+x)
+
+= o
+
+d(x,
+
+y)
+
+= d(.Y,.X)
+
+d(x,
+
+y)
+
+< d(x,
+
+z)
+
+a symmetric
+
+the
+
++ d(z,
+
+triangle
+
+on a metric
+distance
+inequality:
+
+space
+
+function
+For
+
+all
+
+y).
+
+On the metric space .%’, k servers reside that can move from point to point. A
+possible position
+of the k servers is called a configuration;
+that is, a configuraAn earlier version of this paper appeared in Proceedings
+Theov
+
+of Computing
+
+(Montreal,
+
+of the 26th A/zmta/ ACM SymposaorZ
+Que., Canada, May ‘23-25). ACM, New York, pp. 507-511.
+
+OH
+
+Authors’ addresses: E. Koutsoupias,
+Computer Science Department,
+University of Cahfornia at
+Los Angeles, Los Angeles, CA 90095, e-mail: elias@cs.ucla.edu.;
+C. H. Papadimitriou,
+Department of Computer Science and Engineering,
+University of California
+at San Diego, 9500 Gilman
+Drive, La Jolla, CA 92093-0224, e-mail: christos@cs.ucsd. edu.
+Permission to make digital/hard
+copy of part or all of this work for personal or classroom use is
+granted without fee provided that copies are not made or distributed
+for profit or commercial,
+advantage, the copyright notice, the title of the publication,
+and its date appear, and notice is
+given that copying is by permission of ACM. Inc. To copy otherwise, to republish, to post on
+servers, or to redistribute
+to lists, requires prior specific permission and/or a fee.
+Q 1995 ACM 0004-541 1/95/0900-0971
+$03.50
+Journiil
+
+of the Assucidtion
+
+fo] Cumputlng
+
+bl,xhimxy,
+
+Vol
+
+42, Nu
+
+5, Scp(cnlhcr
+
+199?, pp. ‘171--[183
+
+972
+tion
+
+E. KOUTSOUPIAS AND C. PAPADIMITRIOU
+is a multiset
+
+we also
+
+of k points
+
+use D( X,
+
+configuration
+initially
+
+Y)
+
+for
+
+of ~%. We use capital
+
+the
+
+minimum
+
+X to configuration
+
+at a fixed
+
+X + a for X
+
+Y. We always
+
+configuration
+
+U {a} and
+
+A”.
+
+For
+
+instead
+
+since
+
+it seems
+
+occupy the same point simultaneously.
+the proofs in this paper by considering
+
+reason
+
+we
+
+have
+
+chosen
+
+to
+
+of the form
+
+~
+
+use
+
+multisets
+
+is
+would
+
+the framework
+of sets. Other than
+multisets,
+and it may be convenient
+be simply
+
+servers
+
+from
+
+the k servers
+
+and a point
+
+we use C(X)
+
+to consider
+
+– a + b, which
+
+configurations;
+
+the
+
+that
+
+X
+
+reasonable
+
+servers
+rewrite
+
+expressions
+
+assume
+
+X – a for X – {a}. Finally,
+
+of sets,
+
+for
+
+to move
+
+a multiset
+
+of all distances of all pairs of points in X.
+The reader may be wondering
+why we need
+multisets
+
+letters
+
+distance
+
+for the sum
+
+configurations
+
+to
+
+are
+
+a, we use
+
+assume
+
+to be
+
+that
+
+no
+
+two
+
+As a matter
+configurations
+
+of fact, one can
+to be sets. The
+
+to
+
+to
+
+be
+
+able
+
+necessitate
+
+use
+
+algebraic
+
+a case analysis
+
+this, there is no concrete
+for the reader to consider
+
+in
+
+reason for using
+configurations
+to
+
+sets.
+
+A request sequence p is a sequence of points of the metric space JZZ to be
+serviced by the k servers; servicing a request entails moving some server to the
+point of request. In particular,
+if p = rl rz “”. r. is a request sequence, then the
+k servers service p by passing through
+r, G Al. At step j, the cost of servicing
+
+configurations
+xl ~, A ~, A ~,. . . . A. with
+request
+r, is the cost of moving the k
+
+servers from A,. ~ to A,; that
+sum of the cost for all steps.
+
+_ ~, Al).
+
+Since
+
+an on-line
+
+choice
+of A,
+r, rz . . . rj. on
+request
+
+algorithm
+
+is, ll(A1
+cannot
+
+in advance
+
+cost for servicing
+
+base its decisions
+
+must depend
+only on A”
+the other hand, an off-line
+
+sequence
+
+The
+
+and the
+algorithm
+
+and, consequently
+
+on future
+
+competitive
+
+ratio
+
+the
+of
+
+cost
+
+the
+
+for
+
+servicing
+
+on-line
+
+in this case, A, depends
+
+our
+
+on A ~,
+
+cost for servicing
+a
+A ~. Similarly,
+let
+
+p of some
+
+on-line
+
+is roughly
+
+the
+
+algorithm
+
+requests,
+
+subsequence
+of requests
+would
+know the whole
+
+and rl rz “”. r,,. Let opt (A ~, p) denote the optimal
+off-line
+request
+sequence
+p starting
+at the initial
+configuration
+cost( A ~~.p) denote
+
+p is the
+
+algorithm.
+worst
+
+case
+
+The
+ratio
+
+cost(A(), p)/opt(AO,
+p) [Sleator
+and Tarjan
+1985]. In order
+to remove
+any
+dependency
+on the initial
+configuration
+a more careful definition
+is necessary:
+The competitive
+ratio of the on-line
+algorithm
+is the infimum
+of all c such that
+for all initial
+configurations
+A ~ and for all request sequences
+p
+
+where
+
+C may depend
+
+sequence
+
+p. An on-line
+
+cost(A{),
+
+p) < c.opt(Afl,
+
+on the
+
+initial
+
+algorithm
+
+configuration
+with
+
+competitive
+
+p) + C,
+A (I but
+ratio
+
+not
+
+on the request
+
+c is called
+
+c-competi-
+
+tiLe.
+In metric spaces .%’ with k or fewer points, an on-line
+algorithm
+can initially
+cover all points with its servers; it never again moves them and therefore,
+its
+competitive
+ratio is 1. The problem
+becomes interesting
+for metric spaces with
+at least k + 1 points. In Manasse
+et al. [1988], it was shown that no on-line
+algorithm
+can have a competitive
+ratio less that k and the following
+conjecture
+was posed:
+CONJECTURE 1.1 (THE k-SERVER CONJECTURE),
+is an on-line algorithm
+with competitive
+ratio k.
+It was also shown that the conjecture
+and when the metric space has exactly
+
+For elley
+
+metric
+
+space there
+
+holds for two special cases: when k = 2
+k + 1 points, The paging problem—the
+
+On the k-Seruer
+special
+
+Conjecture
+
+case when
+
+973
+
+all distances
+
+are the same—had
+
+already
+
+been
+
+a k-competitive
+algorithm
+in Sleator and Tarjan
+[1985].
+ture attracted
+much interest
+because
+of its simplicity,
+apparent
+centrality
+in the study of on-line problems.
+For
+
+some
+
+possible
+
+for
+
+there
+
+time,
+
+it was open
+
+all metric
+
+whether
+
+spaces.
+
+is an algorithm
+
+with
+
+any finite
+
+It was shown
+
+a finite
+
+shown
+
+to have
+
+The k-server
+its elegance
+
+conjecand its
+
+competitive
+
+in Fiat
+
+competitive
+
+ratio
+
+et al. [1990]
+
+ratio
+
+for
+
+all
+
+indeed
+
+metric
+
+spaces.
+
+Unfortunately,
+the competitive
+ratio of the algorithm
+in Fiat
+increases exponentially
+with k: It is @((k!) s). This was improved
+Grove
+
+[1991],
+
+algorithm,
+
+where
+
+the
+
+derandomization
+there
+result
+
+it was
+
+harmonic
+
+shown
+
+algorithm,
+
+technique
+
+of
+
+that
+
+a natural
+
+has a competitive
+
+Ben-David
+
+at all was
+that
+
+et al. [1990]
+somewhat
+in
+
+memoryless
+
+randomized
+
+ratio
+
+). Using
+
+et al. [1994],
+
+exists a deterministic
+algorithm
+with competitive
+of Grove [1991] was improved
+slightly in Y. Bartal
+
+0(k2k
+this
+
+establishes
+
+the
+that
+
+ratio
+0(kz4~).
+The
+and E. Grove (private
+
+communication)
+of 0(4~ logzk),
+
+to 0(2~ log k), establishing
+which was the best known
+
+a deterministic
+competitive
+ratio
+competitive
+ratio for the general
+
+case before
+
+this
+
+paper.
+
+the
+
+3-server
+
+problem,
+
+upper
+
+was an 1 l-competitive
+
+algorithm
+
+for
+
+any metric
+
+bound
+
+Specifically
+
+and Larmore
+1994].
+The lack of significant
+study
+
+of special
+
+[Berman
+
+progress
+
+cases of the
+
+(although
+
+with
+
+towards
+
+problem.
+
+et al. 1990] was a proof
+
+competitive
+
+for
+
+that
+
+a terribly
+
+the
+
+One
+
+k-server
+
+of the
+
+high
+
+[Chrobak
+
+conjecture
+
+first
+
+the harmonic
+
+the best-known
+space
+
+algorithm
+
+competitive
+
+led to the
+
+results
+
+in this
+
+area
+
+for 3 servers
+
+ratio;
+
+this
+
+result
+
+is
+
+pre-
+
+ceded the work of Fiat et al. [1990] and Grove [1991]). Attacking
+the problem
+in special metric spaces led to a k-competitive
+algorithm
+for the line [Chrobak
+et al. 1991], which
+
+was extended
+
+an O(ks) competitive
+Fiat et al. [1994].
+One of the problems
+problem
+
+is that
+
+competitive
+
+they
+
+in this
+
+Coppersmith
+
+to trees [Chrobak
+
+deterministic
+with
+are
+
+paper
+
+et al. [1993]
+
+algorithm
+
+the known
+not
+
+the
+
+competitive
+
+space-efficient
+
+is no exception).
+considered
+
+and Larmore
+
+for
+
+(the
+
+1991a]. Finally,
+was presented
+
+in
+
+algorithms
+
+for the k-server
+
+algorithm
+
+proved
+
+In order
+
+memoryless
+
+circle
+
+to address
+
+randomized
+
+this
+
+(2k
+
+– 1)
+
+problem,
+
+algorithms
+
+and
+
+showed a competitive
+ratio of k for the special class of resistive metric spaces.
+By derandomization,
+this results in a O(k 2) deterministic
+competitive
+ratio for
+resistive or approximately
+resistive
+metric
+spaces (one of them is the circle).
+Especially
+for
+and Larmore
+
+the 2-server problem,
+Irani and Rubinfeld
+[1991] and Chrobak
+[1991b]
+gave a 10-competitive
+and a 4-competitive
+efficient
+
+deterministic
+algorithm
+respectively
+and Chrobak
+and Larmore
+[1992a]
+that the harmonic
+algorithm
+is 3-competitive.
+We should also mention
+
+showed
+a series
+
+[Blum et al. 1992; Karlin
+et al. 1994; Karloff
+et al. 1994] of lower-bound
+results
+for the randomized
+version
+of the k-server
+problem
+against
+an obliuious
+ad~lersary and the absence
+
+of any interesting
+
+In this paper, we come
+establish
+an upper bound
+
+very close to proving
+of 2k – 1 (Theorem
+
+upper
+
+bound
+
+the
+4.3).
+
+for this case.
+
+k-server
+Previous
+
+conjecture:
+We
+attacks on this
+
+and other on-line problems
+involved
+a potential function,
+a numerical
+invariant
+that enables the inductive
+proof.
+(lur
+technique
+is based on more complex
+invariants,
+which
+provide
+valuable
+information
+about
+the structure
+of the
+reachable
+work functions.
+There
+are two invariants
+that proved
+crucial.
+A
+quasicorwexity
+property
+of the work functions,
+and a duality condition.
+Actually,
+quasiconvexity
+is used only in the proof of duality,
+and the main result follows
+
+E. KOUTSOUPIAS AND
+
+974
+from
+
+a potential
+
+concepts
+
+function
+
+and
+
+the
+
+may be of some general
+
+similar
+proved
+
+duality
+
+value
+
+condition.
+
+We
+
+and applicability.
+
+C. PAPADIMITRIOU
+believe
+
+that
+
+For example,
+
+these
+using
+
+a
+
+technique
+but a different
+potential
+the exact k-server
+conjecture
+was
+for the special case of metric
+spaces with k + 2 points [Koutsoupias
+
+1994; Koutsoupias
+
+and Papadimitriou
+
+2, The Work Function
+
+in preparation].
+
+Algorithm
+
+The algorithm
+we employ is the work function
+algorithm,
+a rather natural
+for this problem
+that was first made explicit
+in the work of Chrobak
+Larmore
+wanathan
+
+[1992b] and discovered
+independently
+and by McGeogh
+and Sleator.
+It
+
+by Fortnow,
+has already
+
+idea
+and
+
+Karloff,
+and Vishbeen successfully
+
+applied to other problems
+[Burley
+1993; Chrobak
+et al. 1993]. In Chrobak
+and
+Larmore
+[1992b], it was shown that the Work Function
+Algorithm
+is 2-competitive
+
+for
+
+k = 2. One
+
+extended
+Larmore
+
+Consider
+an
+p = pl p.. After
+occupy
+
+of the
+
+cost, a concept
+[1992b].
+optimal
+servicing
+
+some position
+
+ingredients
+
+of our
+
+very
+
+to
+
+similar
+
+technique
+
+the
+
+is the notion
+
+pseudocost
+
+of
+
+of the
+
+Chrobak
+
+and
+
+off-line
+algorithm
+B servicing
+a request
+sequence
+the request sequence pl the k servers of algorithm
+B
+
+X. The cost of servicing
+
+p can be divided
+
+into
+
+two parts:
+
+the cost of servicing
+the request sequence
+PI starting
+at the initial
+configuration and ending up at X and the cost of servicing
+p2 starting
+at X. An on-line
+algorithm
+A that knows algorithm
+B cannot know
+p?.
+may depend
+on the future
+request
+sequence
+compute
+
+the cost of servicing
+
+particular,
+
+algorithm
+
+p, of any possible
+
+optimal
+
+X, because
+algorithm
+
+X
+
+A can
+
+off-line
+
+algorithm.
+
+In
+
+the optimal
+
+cost of servicing
+
+PI starting
+
+at
+
+Y, for every
+
+possible
+
+A can compute
+
+AO and ending up at configuration
+leads to the following
+definition:
+
+the position
+However,
+
+configuration
+
+Y. This
+
+Fix a metric space J? and an initial
+sequence
+p define
+the work
+function
+
+configuWP from
+
+configurations
+to the nonnegative
+real numbers:
+WP(X ) is the optimal
+servicing
+p starting
+at AO and ending up at configuration
+X.
+
+cost of
+
+Definition
+ration
+
+2.1 (Work
+
+A”.
+
+For
+
+We usually
+Furthermore,
+work function
+Intuitively,
+fact
+
+that
+
+they
+
+Function).
+
+a request
+
+omit
+
+the subscript
+
+p from
+
+W. when
+
+it is obvious
+
+from
+
+the context.
+
+for a work function
+w = w~ we refer to w’ = WP, as the resulting
+from the context.
+after request r, when p and r are understood
+the importance
+
+of work
+
+encapsulate
+
+all the useful
+
+functions
+
+stems
+
+information
+
+from
+
+the almost
+
+about
+
+the past; what
+
+obvious
+an
+
+on-line algorithm
+needs to remember
+is WP, not p, because any other algorithm
+can be transformed
+to one with this property
+without
+deteriorating
+its competitiveness.
+The initial
+work function
+We(X) of a configuration
+X is merely the cost of
+moving
+the servers from
+w,(X)
+= D(AO, X).
+The value WP,(X) for
+
+the initial
+some
+
+configuration
+
+configuration
+
+X
+
+A”
+
+to the configuration
+
+can be computed
+
+X:
+
+as follows:
+
+Clearly,
+if r = X, then w~, (X) = wj(X).
+Otherwise,
+if r G X, some server
+moved from r to some point x = X and therefore
+WP,.(X) = WP,(X – x + r) +
+d(r, x) = WP(X – x + r) + d(r, x). Combining
+the two cases, we get:
+Fact 1. Let
+r is
+request
+
+w be a work
+w’(X)
+
+function;
+
+then
+
+= min{w(X
+XE.Y
+
+–x
+
+the resulting
+
+work
+
++ r)
+
+x)}.
+
++ d(r,
+
+function
+
+w’ after
+
+On the k-Server
+
+Conjecture
+
+975
+
+We also get:
+Fact
+
+2.
+
+If
+
+w is a work
+
+all configurations
+
+w(X)
+Recall
+
+that
+
+in the
+
+configuration
+
+function
+
+and
+
+r is the most
+
+recent
+
+request,
+
+then
+
+for
+
+X
+
+X;
+
+= ~ei:{w(X–x
+
+definition
+
+of
+
++ r)
+
+w(X)
+
++ d(r,
+
+x)}.
+
+we require
+
+this can be done by moving
+
+first
+
+that
+
+servers
+
+to configuration
+
+end
+
+up
+
+at
+
+Y and then
+
+to X. So we have:
+Fact
+
+3.
+
+For
+
+a work
+
+function
+
+w and two configurations
+
+w(x)
+Consider
+a work function
+r. By Fact 3, we get
+w’(X)
+
+s W(Y)
+
++D(X,
+
+Y).
+
+w and the resulting
+
+work
+
+= min{w(X–x
+
++ r)
+
++ d(r,
+
+X, Y
+
+function
+
+w’ after
+
+request
+
+work
+
+function
+
+.x)} > w(X),
+
+XEX
+
+which
+
+translates
+
+Fact
+after
+
+4.
+
+to:
+
+Let
+
+request
+
+Consider
+
+w be a work
+r. Then,
+
+function
+
+and let w’ be the resulting
+
+for all configurations
+
+a request
+
+sequence
+
+p and
+
+let
+
+X:
+
+w’(X)
+
+> W(X).
+
+A
+
+be the
+
+configuration
+
+of
+
+some
+
+on-line
+algorithm
+after
+servicing
+p. Presumably,
+the most natural
+on-line
+algorithm
+for the k-server
+problem
+is the greedy algorithm,
+which moves the
+closest server to a request;
+that is, it moves its servers to a new configuration
+A’,
+
+with
+
+r e A’,
+
+that
+
+minimizes
+
+algorithm,
+
+being
+
+too
+
+conservative,
+
+other
+
+end of the spectrum
+
+a configuration
+off-line
+that
+
+A’, with
+
+algorithm
+
+that
+
+a combination
+
+function
+
+algorithm
+
+Definition
+
+A’).
+
+It
+
+is easy to see that
+
+has no bounded
+
+competitive
+
+lies the ret,rospectizle algorithm:
+r c A’,
+
+that
+
+minimizes
+
+has its servers
+
+of these
+combines
+
+2.2 (Work
+
+D(A,
+
+Function
+
+two
+
+at A’
+
+algorithms
+
+the virtues
+
+idea
+
+seems the best so far.
+may
+
+Let
+
+be a good
+
+idea;
+
+As usual,
+
+A’, with
+
+r c A’, that
+
+minimizes
+
+let w = WP and w’ = WP,. Notice
+
+p be a request
+
+WP,(A’)
+that
+
+the
+
+is that
+
+to
+the
+
+It appears
+the
+
+work
+
+sequence
+
+and
+
+of them:
+
+let A be the configuration
+of an on-line
+algorithm
+after servicing
+function
+algorithm
+services
+a new request
+r by moving
+its
+configuration
+
+greedy
+At
+
+It moves its servers
+
+WP,(A’ ). The
+
+of both
+
+Algon7hm).
+
+the
+ratio.
+
+p. The work
+servers to a
+
++ D( A, A’).
+
+since
+
+r = A’ we can replace
+
+WP, (A’) with w(A’)
+in the above definition.
+Moreover,
+because of the triangle
+inequality
+we can assume that A’ = A – a + r for some a = A; A’ = A – a + r
+minimizes
+
+w(A’)
+
++ D(A,
+
+A’).
+
+Using
+
+this, we see that
+
+x + r) + d(x, r)} = w(A’)
++ d(a, r).
+The cost of the work function
+algorithm
+
+to service
+
+w’(A)
+
+= rein,
+
+. ~{w(A
+
+request
+
+r is simply
+
+da,
+
+–
+r).
+
+In order to bound
+the competitive
+ratio of the work function
+algorithm,
+we
+must also consider
+the cost of an c)ptimal off-line
+algorithm.
+Instead,
+it has
+proved convenic.mt to define the off-line pseztdocost, a simple and surprisingly
+accurate estimate of the off-line
+cost. The off-line
+pseudocost
+of the move from
+configuration
+A to A’ is defined to be w’(A’ ) – w(A). It is easy to see that, by
+summing
+over all moves, the total off-line
+pseudocost
+is equal to the total
+off-line
+cost (in the worst case, the final configuration
+of the on-line
+algorithm
+
+E. KOUTSOUPIAS AND C. PAPADIMITRIOU
+
+976
+k the same with
+is not
+
+the
+
+configuration
+while
+
+the final
+
+of the
+
+the on-line
+
+Consider
+
+which
+
+configuration
+
+case, by extending
+
+the
+
+off-line
+
+of the optimal
+
+request
+
+off-line
+
+sequence
+
+algorithm,
+
+the
+
+with
+
+off-line
+
+algorithm;
+
+if this
+
+requests
+
+in the final
+
+remains
+
+unaffected
+
+cost
+
+cost increases).
+
+now the sum of the off-line
+
+is equal
+
+to
+
+w’(A)
+
+pseudocost
+
+W’(A’)
+
+– W(A)
+
+– w(A).
+
+This
+
++ d(a,
+quantity
+
+over all possible
+configurations.
+Therefore,
+on-line
+cost is bounded
+above by
+max{w’(X)
+
+and the on-line
+r),
+is bounded
+
+the
+
+cost:
+
+off-line
+
+by its maximum
+
+pseudocost
+
+plus
+
+the
+
+– w(X)}.
+
+x
+
+We call this quantity
+
+the extended cost of a move. The total
+
+sum of the extended
+
+cost of all moves.
+
+a configuration
+
+A when
+
+by the definition
+
+Fact
+
+If
+
+5.
+
+off-line
+
+the
+
+total
+
+The
+
+extended
+off-line
+
+in the extended
+
+extended
+
+cost
+
+then
+
+It was first
+
+different
+
+extended
+
+form
+
+with
+
+the configuration
+
+work
+
+function
+
+called
+
+of real
+
+of the on-line
+
+algorithm
+
+of the
+
+above
+
+actual
+
+it on-line
+
+servers.
+
+is competitive,
+
+on-line
+
+pseuciocost).
+
+The
+
+the
+
+[1992b]
+advantage
+
+have to deal
+
+at all
+
+to prove
+
+the
+
+in order
+
+have
+
+cost (plus
+
+and Larmore
+
+we don’t
+
+Instead,
+
+we only
+
+on
+
+cost.
+
+c + 1 times the
+is c-competitive.
+
+by
+
+algorithm
+
+in Chrobak
+
+cost is that
+
+cost is the
+
+cost occurs
+
+we have:
+
+function
+
+introduced
+
+(they
+
+cost instead
+
+ratio,
+
+is bounded
+
+the work
+
+cost is an overestimation
+cost).
+
+in a somehow
+of using
+
+the auantitv
+
+of the competitive
+
+cost plus a constant,
+
+optimal
+
+the extended
+
+A maximizes
+
+Clea~y,
+
+extended
+
+We say that
+
+to show
+
+that
+
+that
+
+a certain
+
+inequality
+holds
+may overestimate
+
+for all work functions.
+Its disadvantage,
+the cost of the work function
+algorithm
+
+of course, is that it
+(although
+in view of
+
+our main
+
+the overestimation
+
+than
+
+result,
+
+3. Quasicorwexiy
+
+cannot
+
+be more
+
+two).
+
+and Dllaiily
+
+Facts
+
+2 and 3 provide
+
+other
+
+functions
+
+them
+
+and are different
+
+configurations
+
+factor
+
+some
+
+can satisfy
+
+from
+
+A ~). In
+
+properties
+
+both
+order
+
+of them;
+
+of the work
+
+functions.
+
+that
+
+are functions
+
+WP for all request
+to
+
+study
+
+the
+
+is, there
+
+sequences
+behavior
+
+Unfortunately,
+
+p (and
+of
+
+the
+
+that
+
+satisfy
+
+for all initial
+
+work
+
+function
+
+algorithm,
+it is important
+to understand
+better
+the properties
+of work functions. One very useful property
+is that all work functions
+are qZLasiconL)ex:
+Definition
+A, B, there
+X, Y:
+
+3.1.
+A function
+exists a bijection
+
+w(A)
+
++ w(B)
+
+w is called quasiconvex
+if for all configurations
+h: A - B such that for all bipartitions
+of A into
+
+> w(XU
+
+h(Y))
+
++ wOZ(X)
+
+U Y).
+
+(1)
+
+It is perhaps
+useful
+to visualize
+quasiconvexity
+as a discrete
+variant
+of
+convexity,
+in that the inequality
+above recalls the definition
+of convex functions
+(O <x < 1): w(A)
++ w(B) > W(X A)
+convexity
+guarantees
+that all optimal
+
++ w((1 –x) “B). In the same way that
+solutions
+lie in a compact
+set, (iterated
+
+application
+of) quasiconvexity
+implies
+that optimal
+configurations
+are transformable
+into one another
+via sequences of swaps. Notice that the union ( U )
+in the definition
+denotes the union of multisets.
+
+On the k- Semer Conjecture
+Before
+
+we
+
+following
+tion
+
+show
+
+lemma,
+
+LEMMA
+
+that
+
+all
+
+which
+
+by restricting
+
+977
+work
+
+provides
+
+functions
+
+are
+
+a stronger
+
+form
+
+the set of possible
+
+tion 3.1, then there exists a bzjection
+h’(x) = x for allx G A f’ B.
+Let
+
+PROOF.
+
+above
+
+themselves.
+
+Assume
+
+bijection
+
+h’ that
+
+h that satisfies
+
+the conditions
+
+satisfies
+
+A
+
+to
+
+B that
+
+satisfies
+
+and maps the maximum
+
+number
+
+of elements
+
+that,
+
+h’(a)
+
+from
+
+for
+
+agrees with
+
+some
+
+the same
+
+a = A n B, we have
+
+h everywhere
+
+= a
+
+need
+
+of the quasiconvexity
+
+h’ that
+
+h be a bijection
+
+the definition
+
+we
+
+the
+
+condi-
+
+bisections.
+
+If there exists a bijection
+
+3.2.
+
+quasiconvex,
+
+and
+
+except
+/l’(h-
+
+in Dej?ni-
+
+conditions
+
+and
+
+the conditions
+
+of
+
+h(a)
+
+in A n B to
+# a. Define
+
+a
+
+that
+
+*(a)) = h(a)
+
+(h’ interchanges
+the values of h on a and h- ‘(a)).
+Consider
+now a bipartition
+of A into X and Y and assume (without
+loss of
+generality)
+that h-’ (a) =X.
+If a = X, then h(X)
+= h’(X)
+and h(Y) = M(Y)
+and (1) holds for h’. Otherwise,
+when a @ X, we derive the quasiconvexity
+condition
+
+for X and Y from
+
+the quasiconvexity
+
+condition
+
+for X’
+
+= X + a and
+
+Y’ = Y – a as follows:
+Since,
+h’(Y’)
+
+h(Y’)
+
+= h’(Y’)
+
+= (X+
+
+U Y. From
+
+a)
+
+U
+
+these,
+
+= h’(X’),
+
+– a) = X
+
+U
+
+h’(Y)
+
++ w(B)
+
+h’ satisfies
+
+PROOF.
+Recall
+
+D( AC), X),
+
+Fix
+
+two
+
+3.3
+
+that
+
+use
+the
+
+where
+
+matchings
+
+U Y’)
+
+= w(X{J
+
+h’(Y))
+
++ w(h’(X)
+
+U Y).
+
+h(a)
+
+= X’
+
+U
+
+Y’ = h’(X)
+
+condition.
+
+to show
+
+induction
+
+initial
+
+All
+
+LEMMA).
+on
+
+work
+
+the following
+
+the
+
+function
+
+number
+
+w(A)
+
+= D(AO,
+
++ w(B)
+
+M(xl”,
+
+A)
+
+and
+
+holds.
+
+that
+❑
+
+lemma:
+
+work jitnctions
+
+are quasiconL’ex.
+
+a configuration
+
+X
+
+is equal
+
+to
+
+the
+
+minima
+
+of
+
+So we have
++D(AO,
+B)
+
+that
+
+B).
+realize
+
+Xj in AO is matched to some point a~ in
+h: A ~ B that maps each a~ to bj. For
+
+X and Y, w(X
+
+matchings
+
+A)
+
+M(AO,
+
+important
+
+of
+
+co fifiguration.
+
+of A into
+
+h’ maps at least
+
+of requests.
+
+WC(X)
+
+A ~ is the initial
+
+the sum of two minima
+
+Because
+
+h, it contradicts
+the assumption
+in A n B to themselves.
+
+= a for all a = A n B, and the lemma
+
+D(AfJ, A) and D (Ao, B). Each point
+A and bj in B. Consider
+the bijection
+any bipartition
+
+U
+
++ w(h(X’)
+
+(@JASICONVEXITY
+
+We
+that
+
+u h(Y’)
+
+(J h(Y’))
+
+the quasiconvexity
+
+We are now in a position
+LEMMA
+
+X’
+h(X’)
+
+> w(X’
+
+one more element in A n B to itself than
+h maps the maximum
+number
+of elements
+We conclude
+
+we have that
+and similarly
+
+we get
+
+w(A)
+
+Therefore,
+
+and h(X’)
+
+h’(Y
+
+between
+
++ h(Y))
+
++ WI(h(X)
+
+Af), X + h(Y)
+
++ Y)
+
+is equal
+
+and A [I, h(X)
+
+to
+
++ Y.
+
+Since we can rearrange
+the matchings
+M( A ~, ,4) and M( A (l, B) to obtain two
+matchings
+(not necessarily
+minima)
+between
+A,,, X + h(Y) and A”, h(X)
++ Y,
+itfollows that w(A) + w(B) > w(X + h(Y)) + w(h(X)
++ Y).
+For the induction
+step, assume that w is quasiconvex.
+We want to show that
+the resulting
+w’ after request r is also quasiconvex,
+Fix two configurations
+A and B. IJsing Fact 1 to express w’ in terms of w,
+we get that w’(A)
+= w(A – a + r) + d(r, a) for some a G A; similarly
+w’(B)
+
+E. KOUTSOUPIAS AND
+
+978
+= W( B – b + r) + d( r, b) for some
+is quasiconvex,
+
+so there
+
+satisfies the quasiconvexity
+assume that h(r) = r.
+Consider
+
+now
+
+b = 1?. The
+
+exists a bijection
+condition.
+
+a bijection
+
+h’: A ~ B that
+
+assume
+
+w’(A)
+
++ w’(B)
+
+that
+
+agrees
+
+h(Y))
+
++ d(r,
+
+a) + d(r,
+
+b)
+
++r)
+
+Uh’(Y))
+
+a) + d(r,
+
+b)
+
+the first
+
+one on Fact
+
+(B-
+
+a + r)
+
+= w’((X-a
+
+where
+
+h’(Y))
+
+inequality
+
+U
+
+is based
+
+a definition
+
+Definition
+
+3.4.
+
+respect
+
++ w(h(X
+
+except
+
+b)
+
+-
+
+a)+d(r,
+
+a + r)
+
+b)
+
+U Y)
+
+– b +r)
+
+U
+
+Y)
+
+u Y),
+
+on the quasiconvexity
+and the lemma
+
+condition
+
+of w and the second
+❑
+
+follows.
+
+to prove
+
+the next two lemmata.
+
+In
+
++w(B–b+
+
+a).
+
+first:
+
+A configuration
+
+–
+
+a)+d(r,
+
++w(B)>w(A–a+b)
+
+to WI, if A minimizes
+w(A)
+
+us to
+
+condition:
+w(A)
+
+We need
+
+3.1 allows
+
+h everywhere,
+
+b+r)+d(r,
+
++ W’(h’(x)
+
+Now we use the quasiconvexity
+
+Va~A3b~B:
+
+with
+
++ w((h’(X)
+
+1. So, w’ is quasiconvex
+
+fact, we use the weaker
+
+Lemma
+
++a!(r,
+
+w((X–
+
+> W’(xu
+
+w
+
+a = X. We have:
+
+=W((X-a+r)UY)+w
+
++ d(r,
+
+is that
+
+the requirements
+of the quasiconvexof ~ into X and Y and without
+loss
+
+=w(A–a+r)+w(B–b+r)
+
+>
+
+hypothesis
+
+A – a + r to B – b + r that
+
+Furthermore,
+
+that h’(a) = b. We show that h’ satisfies
+ity condition
+of w’. Consider
+a bipartition
+of generality
+
+induction
+
+h from
+
+C. PAPADIMITRIOU
+
+A
+
+is called
+
+the expression
+
+~ d(a,
+X=,1
+
+x)
+
+= min
+x
+
+a minimizer
+
+W(X)
+
+– Z,.
+
+(
+
+w(X)
+
+–
+
+of a point
+~ d( a, x), that
+
+~ d(a,
+.rEx
+
+x)
+
+a with
+is
+
+)
+.
+
+LEMMA
+3.5.
+Let w be a work function.
+Consider a new request at r and the
+resLLlting work fanction
+w’. If A is a minimizer
+of r with respect to w, then A is also
+
+a minimizer
+PROOF.
+
+of r with respect to w’.
+It suffices
+
+to show that
+
+w’(B)
+
+–
+
+~
+
+d(r,
+
+for all configurations
+b) > w’(A)
+
+–
+
+h~B
+
+~
+
+B:
+d(r,
+
+a)
+
+d(r,
+
+a) +w(A).
+
+OEA
+
+or equivalently:
+w’(B)
+
+–
+
+~
+
+d(r,
+
+b) +w(A)
+
+ZW’(A)
+
+b EB
+
+quasiconvexity,
+
+~
+LIEA
+
+In order to show this we need
+exists b’ = B such that
+
+Using
+
+–
+
+the following:
+
+w’(B)
+
+= w(B)
+
++d(r,
+
+we get that
+
+there
+
+exists
+
+w(B–b’+r)+w(A)>w(B
+
+From
+
+Fact
+
+1, we get that
+
+b’).
+a’ = A such that
+
+–b’+a’)+w(A–a’+
+
+r).
+
+there
+
+On the k- Serler
+Finally,
+
+since
+
+Conjecture
+
+979
+
+A is a minimizer
+
+of r, we have that
+
+wJ(B-b’+d-
+
+~
+
+d(r,
+
+b) > W(A)
+
+-
+
+~
+
+bEB–b’+a’
+
+Putting
+
+all these
+
+W’(B)
+
+d(r,
+
+a).
+
+UEA
+
+together:
+
++ W(A)
+
+–
+
+~
+
+d(r,
+
+b)
+
+bEB
+=
+
+W(B
+
+–~’
+
++r)
+
++~(r,~’)
+
++
+
+w(/1)
+
+–
+
+d(r,
+
+~
+
+b)
+
+hGB
+=w(B-b’+r)+
+
+w(A)-
+
+>w(B–b’
+
++a’)+w(A–
+
+~
+d(r,
+h= B–b’+T
+
+b)
+
+a’+
+
+~
+
+r)–
+
+d(r,
+
+bEB–br
+
+=w(B–b’
+
++a’)+w(A–
+
+a’+
+
+r)+a!(r,
+
+b)
+
+I_r
+
+a’)–
+
+~
+
+d(r,
+
+b)
+
+bEB–b’~a’
+>
+
+w(~)
+
++
+
+w(zl
+
+–LZ’
+
++d(r,
+
++7)
+
+a’)
+
+–
+
+~
+
+d(r,
+
+a)
+
+CICA
+>
+
+w(A)
+
++
+
+w’(~)
+
+–
+
+~
+a
+
+where
+
+the last inequality
+
+The following
+
+~(~,u)
+
+.4
+
+E
+
+is based on Fact
+
+lemma
+
+1. The
+
+has the same premises
+
+lemma
+
+with
+
+❑
+
+follows.
+
+Lemma
+
+3.5, but a different
+
+conclusion:
+LEMMA
+
+resulting
+
+Let
+
+3.6.
+
+w be a work function.
+
+work function
+
+extended
+
+If A is a minimizer
+cost occurs at A, that is
+w’(A)
+
+PROOF.
+that
+
+The
+
+h suffices
+
+– w(A)
+
+proof
+
+is rather
+
+to show
+
+that
+
+By Fact
+
+1, we get that
+
+there
+
+w(A–a’+
+Finally,
+
+which
+
+to the
+
+exists
+
+= w(A
+
+> w’(B)
+
+-- a’ +r)
+there
+
+r)+w(B)>w(A–
+A is a minimizer
+
+w(A
+
+-a’
+
+is equivalent
+w(A
+
++ b’)
+
+-
+
+proof
+
+of
+
+Lemma
+
++d(r,
+
+a’).
+
+exists
+
+b’ = B such that
+
+a’+b’)+w(ll-b’+r).
+of r with
+
+~
+d(r,
+ueA—c[’tfJ’
+
++b’)
+
+Notice
+
++ w(A).
+
+respect
+
+to w:
+
+a) > w(A)
+
+-
+
+~
+aEA
+
+to
+–a’
+
+3.5.
+
+B:
+
+a’ = A such that
+
+we also get that
+
+since
+
+at r and the
+
+respect to w, then
+
++d(r,
+
+a’)
+
+the
+
+– w(X)}.
+
+configurations
+
++ w(B)
+
+w’(A)
+quasiconvexity,
+
+all
+
+a new request
+
+of r with
+
+= m~{w’(X)
+
+similar
+
+for
+
+w’(A)
+
+Using
+
+Consider
+
+w’.
+
+> w(A)
+
++d(r,
+
+b’).
+
+d(r,
+
+a),
+
+first
+
+E. KOUTSOUPIAS AND C. PAPADIMITRIOU
+
+980
+Combining
+
+all these we get:
+
+W’(A)
+
+Again,
+
++ W(B)
+
+= W(A
+
+–a’
+
+>W(A
+
+–L?’+
+
+2 W(A)
+
++d(/’,
+
+> W(A)
+
++Pv’(l?).
+
+the last inequality
+
+Lemmata
+
+3.5
+
+and
+
+3.6
+
+characterizes
+
+where
+
+LEMMA
+
+3.7 (DUALITY
+
+resulting
+
+is based
+can
+
++r)
+
++d(r,
+
+a’)
+
+b’)
+
++d(r,
+
+a’) +W(B
+
+b’)
+
++W(l?-b’+r)
+
+on Fact
+
+be
+
+–b’+r)
+
+❑
+
+1.
+
+combined
+
+the extended
+
++ W(B)
+
+into
+
+the
+
+result,
+
+following
+
+which
+
+cost occurs.
+Let
+
+LEMMA).
+
+w be a work function
+
+and let w’ be the
+
+work function
+
+after request r. Then any minimizer A of r with respect to w
+is also a minimizer
+of r with respect to w’, and the extended cost of serl)icing the
+request r occurs on A.
+We call
+
+this
+
+the
+
+“duality
+
+cost) to a minimum
+
+4. A Potential
+
+lemma”
+
+because
+
+it relates
+
+for
+
+(2k
+
+– l)-CompetitiL’en
+
+Let
+
+0(w)
+
+configurations
+
+denote
+
+its minimum
+
+1. . . . . k; M w ) is called
+The
+
+LEMMA
+
+4.1.
+
+PROOF.
+
+For
+
+provide
+
+any
+
+work
+
+2, for some
+w(U)
+
+follows
+
+The next lemma
+LEMMA
+
+4.2.
+
+value
+
+all
+
+over
+
+and
+
+since
+
+of an appropriate
+
+B, = {b,,, ...,
+
+configurations
+
+of the work
+
+function
+of Q(w).
+
+jimction
+
+minimum
+
+w,
+
+the
+
+U and
+
+bl~},
+
+i =
+
+B,,
+
+i =
+
+O(w)
+
+of
+
+w.1
+
+some properties
+
+ualue
+
+the most recent request r.
+
+i = 1 “”. k:
+
+= w(U–
+
+u, + r)
+
++ d(r,
+
+this to W w, U, BI,, . ,, B~ ), using
+b,,) > –d(r,
+b,, ) we get
+
+W(W, U, B1, ...,
+and the lemma
+
+Uk}
+
+B~ ) is achieved for some U that contains
+
+By Fact
+
+If we substitute
+d(r, u,) – d(u,,
+
+the definition
+
+U = {ul, ...,
+
+the potential
+
+next two lemmata
+
+@(w, U, BI, ...,
+
+(extended
+
+ess
+
+We are now ready for the last act of the proof,
+potential.
+For
+1,...,
+k, let
+
+to maximum
+
+(minimizer).
+
+13k) >T(W,
+
+U-LL1
+
+r = U – Lil + r.
+
+u,).
+the
+
++r,131,
+
+inequalities
+
+. . ..Bk)
+
+❑
+
+estimates
+
+the potential
+
+of the initial
+
+For the initial
+
+work fanction
+
+w,(X)
+
+@( W,) =
+
+k triangle
+
+work
+
+= II(AO,
+
+function.
+X):
+
+–2C(AO).
+
+function”
+‘ Our potential differs from what is usually termed as “potential
+on-line problems by a constant multlple of the optimal off-line cost.
+
+in the literature
+
+of
+
+On the k-Server
+PROOF.
+@(we)
+j=l
+
+Conjecture
+
+981
+
+It is not hard
+
+to see that
+
+W(w, u, B*, . . ., Bk ) is
+
+of
+
+the lemma
+
+achieved
+
+follows
+
+when
+
+if the minimum
+
+U = AO
+
+and
+
+value
+
+B] = #l.
+
+for
+
+k. Consider
+a point u, = U, In the minimum
+matching
+D( A., U), u,
+is matched to some point a ● AO. By using the k triangle
+inequalities
+d(ul, blj)
+,...,
+
+LL, with
+
+a without
+increasing
+the
+minimum
+@(wc)
+of
+for U = Ao. Similarly,
+we can show that Bi = AO
+
+< d( a, u,) + d(a, d,,), we see that we can replace
+the
+value
+of
+T(w, U, Bl, . . . . B~).
+Therefore,
+~(w,
+fori=
+
+U, B1,. ... BL) is achieved
+l,...,
+k and the lemma
+
+We are now ready
+THEOREM
+
+most
+
+(2k
+
+to prove
+
+follows.
+
+❑
+
+our main
+
+result:
+
+The competitit~e
+
+4.3.
+
+ratio
+
+of the
+
+Work
+
+PROOF.
+
+Consider
+
+a work
+
+w
+
+and
+
+let
+
+value
+
+@(w’)
+
+of W(w’,
+
+U, BI, . . . . B~)
+
+A be a minimizer
+
+of r with
+
+respect
+
+function
+
+function
+after request r.
+According
+to Lemma
+4.1, the minimum
+is achieved
+Then,
+
+for Ui = r, for some i. Let
+
+by Lemma
+
+difficult
+we fix
+
+Function
+
+Algorithm
+
+is at
+
+be
+
+resulting
+
+work
+
+– 1).
+
+3.7, A is also a minimizer
+
+to see that
+
+of r with
+
+w’
+
+respect
+
+the minimum
+
+value
+
+of q(w’,
+
+B, = A. Fix the remaining
+
+points
+
+UJ and b,[, where
+
+achieves its minimum.
+Let ~,,,,, WW denote
+respect to w’ and w. From the definition
+Obviously,
+
+U, BI,..
+
+the values
+of O(w)
+
+the
+
+to w.
+
+to w’ and it is not
+
+., B~ ) is unaffected
+V(w’,
+
+U, BI, ...,
+
+if
+B~)
+
+of II! on these points with
+we get that O(w) s WW.
+
+then,
+@()’V’) – m(w)
+
+(2)
+
+> T,vr – Ww.
+
+in the definiConsider
+now the expression
+~W, – W,V. All distances appearing
+tion of Ww,, also appear in the definition
+of ‘VW,, because they are defined
+on
+the same set of configurations
+U, Bj, j = 1,.. ., k. Therefore,
+they cancel out.
+By Fact 4, w’(U) > w(U) and WI’(BJ) > W(BJ). j = 1,...,
+k. From this we get:
+TM,, – q.,
+Putting
+
+According
+service
+
+– w(A).
+
+(3)
+
+(2) and (3) together:
+O(d)
+
+minimizer
+
+> w’(A)
+
+to Lemma
+of r with
+
+request
+
+– @(w)
+
+> w’(A)
+
+3.7, the extended
+
+respect
+
+r is bounded
+
+– w(A).
+
+cost is w’(A)
+
+to w. Thus,
+
+we conclude
+
+above by @(w’)
+
+– O(w).
+
+– W(A),
+that
+
+because
+
+A is a
+
+the extended
+
+cost to
+
+Summing
+
+over all moves,
+
+we get that total extended
+cost is bounded
+above by @(wP) – @(we), were w<
+and WP are the initial
+and the final work functions,
+respectively.
+Let AO and A. be the initial
+and final configurations
+(recall that without
+loss of generality
+on-line
+
+algorithm).
+
+the off-line
+
+algorithm
+
+ends up in some configuration
+
+with
+
+the
+
+We have
+
+= 2kwP(A,1)
+
+– 2C(An)
+
+< 2kwP(A,l).
+The value of @(w~) is given by Lemma 3.5, @(w,) = – 2C(AO).
+extended
+cost is at most 2kwP(A,, ) +- 2C( AO). Because
+the
+
+Therefore,
+the
+off-line
+cost is
+
+E. ~OUTSOUPIAS AND C. PAPADIMITRIOU
+
+982
+WJ AH ), the total extended
+plus a constant
+depending
+conclude
+
+that
+
+5. Research
+
+the Work
+
+cost is bounded
+above by 2k times the off-line
+cost
+only on the initial
+configuration.
+Using Fact 5, we
+Function
+
+Algorithm
+
+is (2k
+
+– 1)-competitive.
+
+❑
+
+Directions
+
+We believe that the k-server conjecture
+is true (and that in fact the work-function algorithm
+is k-competitive);
+however, it now seems that substantial
+extension of our proof
+
+will
+
+be needed
+
+for its precise
+
+settlement.
+
+A possible
+
+research
+
+direction
+that would achieve potentially
+interesting
+partial results would extend
+the special cases of metric spaces for which the k-server conjecture
+holds. One
+such special case (metric
+spaces with k + 2 points [Koutsoupias
+and Papadimitriou,
+
+in preparation]
+
+Finally,
+
+much
+
+performance
+
+of on-line
+
+paging algorithms)
+itive analysis that
+explored
+
+was, in fact,
+
+work
+
+remains
+
+a precursor
+
+to be done
+
+algorithms
+
+and
+
+that they are supposed
+make some progress
+
+in Koutsoupias
+
+and Papadimitriou
+
+the
+
+of the present
+on bridging
+computational
+
+the
+
+proof.
+gap between
+processes
+
+(such
+
+the
+as
+
+to model. Two extensions
+of competin this direction
+are proposed
+and
+[1994].
+
+REFERENCES
+BEN-DAVID, S., BORO~IN, A., RARP, R., TARDOS, G., AND WIGDERSON, A.
+1994. On the power
+of randomization
+in on-line algorithms. Algor~thmtca 11, 1 (Jan.), 2–14.
+BERMAN, P., KARLOFF, H. J., AND TARDOS, G. 1990. A competitive
+three-server algorlthm. In
+Proceedings
+of the 1st Annz{al ACM–SIAM
+Symposzum on Dzscrete Al,,olithms.
+ACM, New York,
+
+pp. 280-290.
+BLUM, A., RARLOFF, H,, RABANI, Y., AND SAKS, M.
+1992.
+A decomposition
+theorem
+and
+of the 33rd Annual
+Symposium
+on
+bounds for randomized
+server problems. In Proceedings
+Foundations
+of Computer Sczence. IEEE. New York, pp. 197-207.
+BURLEY, W. R.
+1993. Traversing layered graphs using the work function algorithm. Tech. Rep.
+CS93-319. Dept. of Computer Science and Engineering.
+Umv. of Cahfornia at San Diego, San
+Diego, Calif.
+CHROBAK, M., KARLOFF, H. J,, PAYNE, T., AND VISHWANATHAN, S. 1991. New results on server
+problems. SIAM J. DMC. Math. 4, 172-181.
+CHROBAK, M.. AND LARMORE. L. L.
+1991a. An optimal on-line algorithm for k-servers on trees.
+SZAM J. Compuf. 20, 1 (Feb.), 144-148.
+CEIROBA~, M., AND LA.RMORE. L. L.
+1991b.
+On fast algorithms for two servers. J. Algorithms
+12, 4 (Dec.), 607-614.
+CHROBAK, M., AND LARMORE, L. L.
+1992a. Harmonic is 3-competitive
+for two servers. Tlzeoret,
+Compu[.
+Sci. 98, 2 (May), 339-346.
+CHROBAK, M., AND LARMORE, L. L.
+1992b. The server problem and on-hne games. In On-Line
+Algorithms:
+Proceedings
+of a DIMACS
+Workshop.
+DIMACS
+Series m Discrete Mathematics
+and
+Theoreflcal
+Computer
+Science, vol. 7, ACM, New York, pp. 11-64.
+CHROBAK, M., AND LARMORE, L. L.
+1994. Generosity helps or an 1l-competitive
+algorithm for
+three servers. 7. A180r. 16, 2 (Mar.) 234–263.
+CHROBAK, M., LARMORE, L. L., REINGOLD, N., AND WESTBROOK, J. 1993. Page migration
+of the Ah International
+Symposiam
+on Algoalgorithms using work functions. In Proceedings
+~ithms and Computation.
+Lecture Notes in Computer
+Science. Springer-Verlag,
+New York,
+pp. 406-415.
+COPPERSMITH, D.. DOYLE P., RAGHAVAN, P., AND SNIR, M.
+1993. Random walks on weighted
+graphs and applications to on-line algorithms
+J. ACJW 40, 3 (July), 421-453.
+1990.
+Competitive
+k-server algorithms. In Proceedings of
+F[AT, A.. RABANI, Y., AND RAVID, Y.
+the 31st Annual
+S\mposium
+on Foundations
+of Compzder
+Science. vol. 2. IEEE,
+New York,
+pp. 454-463.
+FIAT, A., RABANI, Y.. RAVID, Y,, AND SCHIEBER, B. 1994. A deterministic
+0(k3)-competitive
+11,6 (June), 572–578.
+k-server algorithm for the circle. Al,,orztionica
+
+On the k- SerLer Conjecture
+GROVE, E.
+23rd Annual
+
+1991.
+ACM
+
+983
+
+The Harmonic
+
+online
+
+Symposium
+
+O}Z T}teo~
+
+k-server algorhhm is competitive. In Proceedings
+of Computing
+(New Orleans, La., May 6-8).
+
+of the
+ACM,
+
+New York, pp. 260-266.
+2-server algorithm.
+Inf. Proc. Lett. 39, 2
+IRANI, S., AND RUBINFELD,R. 1991. A competitive
+(July), 85-91.
+randomKARLIN, A. R., MANASSE, M. S.. MCGEOCH. L. A., AND OWICKI. S. 1994. Competitive
+11, 6 (June), 542–571.
+ized algorithms for nonuniform
+problems. Algorithmic
+k-server
+and
+KARLOFF, H., RABANI, Y., AND RAVID, Y. 1994. Lower bounds for randomized
+23, 2 (Apr.), 293–312.
+motion-planning
+algorithms. SIAM J. Comput.
+KOUTSOUPIAS, E. 1994. On-line algorithms
+and the k-server conjecture.
+Ph.D. dissertation.
+Univ. Calif. at San Diego, La Jolla, Calif.
+KOUTSOUPIAS,
+E., ANDPAPADIMITRIOU,C. H. 1994. On the k-server conjecture. In Proceedings
+of the 26th Annual
+ACM
+Symposium
+on Theory of Computing
+(Montreal,
+Que., Canada, May
+23-25). ACM, New York, pp. 507-511.
+KOUTSOUPIAS,
+E., AND PAPADIMITRIOU,C. H. The 2-evader problem. In preparation.
+KOUTSOUPIAS,
+E., AND PAPADIMITRIOU,C. H. 1994. Beyond competitive analysis. In Proceedings of the 35th IEEE
+Symposiarn
+on Foundations
+of Computer
+Sicience (FOCS).
+IEEE, New
+York, 394-400.
+MANASSE,M. S., MCGEOCH, L. A., AND SLEATOR,D. D. 1988. Competitive
+algorithms
+for
+20th Annaal
+ACM
+Symposium
+on Theory
+of Computing
+on-line problems.
+In Proceedings
+(Chicgao, Ill., May 2-4). ACM New York, pp. 322-333.
+MANASSE,M. S., MCGEOCH, L. A., AND SL.EATOR,D. D. 1990. Competitive
+algorithms
+for
+11, 2 (June), 208–230.
+server problems. J. Algorithms
+SLEATOR,D. D., ANDTARJAN,R. E. 1985. Amortized efficiency of list update and paging rules.
+Comman.
+ACM 28, 2 (Feb.), 202-208.
+
+RECEIVEDJULY 1994; REVISEDMAY 1995; ACCEPTED
+FEBRUARY1995
+
+JournalOfthe Awxiiitim
+
+fm CmnputmgM~chinay Vd 42,NO 5. September1995
+
+

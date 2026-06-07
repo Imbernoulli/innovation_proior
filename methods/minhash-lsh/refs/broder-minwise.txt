@@ -1,0 +1,1777 @@
+             Min-Wise Independent Permutations
+        Andrei Z. Broder∗   Moses Charikar†   Alan M. Frieze‡
+                        Michael Mitzenmacher§
+
+
+                                          Abstract
+          We define and study the notion of min-wise independent families of per-
+       mutations. We say that F ⊆ Sn is min-wise independent if for any set X ⊆ [n]
+       and any x ∈ X, when π is chosen at random in F we have
+                                                             1
+                               Pr(min{π(X)} = π(x)) =           .
+                                                            |X|
+
+       In other words we require that all the elements of any fixed set X have an
+       equal chance to become the minimum element of the image of X under π.
+           Our research was motivated by the fact that such a family (under some
+       relaxations) is essential to the algorithm used in practice by the AltaVista web
+       index software to detect and filter near-duplicate documents. However, in the
+       course of our investigation we have discovered interesting and challenging
+       theoretical questions related to this concept – we present the solutions to
+       some of them and we list the rest as open problems.
+   ∗
+     Digital SRC, 130 Lytton Avenue, Palo Alto, CA 94301, USA. E-mail: broder@pa.dec.com.
+   †
+     Computer     Science    Department,     Stanford     University,     CA      94305,   USA.
+E-mail: moses@cs.stanford.edu. Part of this work was done while this author was a
+summer intern at Digital SRC. Supported by the Pierre and Christine Lamond Fellowship and in
+part by an ARO MURI Grant DAAH04-96-1-0007 and NSF Award CCR-9357849, with matching
+funds from IBM, Schlumberger Foundation, Shell Foundation, and Xerox Corporation.
+   ‡
+     Department of Mathematical Sciences, Carnegie Mellon University, Pittsburgh, Pennsylva-
+nia 15213, USA. Part of this work was done while this author was visiting Digital SRC. Supported
+in part by NSF grant CCR9530974. E-mail: af1p@andrew.cmu.edu
+   §
+     Digital SRC, 130 Lytton Avenue, Palo Alto, CA 94301, USA. E-mail: michaelm@pa.dec.com.
+
+
+
+
+                                               1
+1         Introduction
+The classic analysis of hashing schemes often entails the assumption that the hash
+functions used are random. More precisely, the assumption is that keys belonging
+to a universe U are hashed into a table of size M by choosing a function h uniformly
+at random among all the functions U → [M]. (The notation [M] stands for the set
+{0, . . . , M −1}. This is slightly non-standard, but convenient for our purposes.) This
+assumption is impractical since just specifying such a function requires |U| log(M)
+bits1 , which usually far exceeds the available storage.
+    Fortunately in most cases heuristic hash functions behave very closely to the ex-
+pected behavior of random hash functions; but there are cases when rigorous prob-
+abilistic guarantees are necessary. For instance, various adaptive hashing schemes
+presume that a hash function with certain prescribed properties can be found in
+constant expected time. This holds if the function is chosen uniformly at random
+from all possible functions until a suitable one is found but not necessarily if the
+search is limited to a smaller set of functions.
+    This situation has led Carter and Wegman [13] to the concept of universal hash-
+ing. A family of hash functions H is called weakly universal if for any pair of distinct
+elements x1 , x2 ∈ U, if h is chosen uniformly at random from H then
+                                                             1
+                                    Pr(h(x1 ) = h(x2 )) ≤                           (1)
+                                                            |M|
+
+and is called (strongly) universal or pair-wise independent if for any pair of distinct
+elements x1 , x2 ∈ U and arbitrary y1 , y2 ∈ [M]
+                                                                   1
+                            Pr(h(x1 ) = y1 and h(x2 ) = y2 ) =         .            (2)
+                                                                  |M|2
+
+It turns out that in many situations the analysis of various hashing schemes can
+be completed under the weaker assumption that h is chosen uniformly at random
+from a universal family, rather than the assumption that h is chosen uniformly at
+random from among all possible functions. In other words, limited randomness
+suffices. Furthermore, there exist universal families of size O(|M|2) that can be
+easily implemented in practice. Thus, universal hash functions are very useful in
+the design of adaptive hash schemes (see e.g. [12, 16]) and are actually used in
+commercial high-performance products (see e.g. [24]). Moreover, the concept of
+    1
+        We use log for log2 throughout.
+
+
+
+                                                2
+pairwise independence has important theoretical applications. (See the excellent
+survey by Luby and Wigderson [22].)
+    It is often convenient to consider permutations rather than functions. Let Sn be
+the set of all permutations of [n]. We say that a family of permutations F ⊆ Sn is
+pair-wise independent if for any {x1 , x2 , y1, y2 } ⊆ [n] with x1 6= x2 and y1 6= y2 ,
+                                                            1
+                    Pr(π(x1 ) = y1 and π(x2 ) = y2 ) =            .                (3)
+                                                         n(n − 1)
+
+   In a similar vein, in this paper, we say that F ⊆ Sn is exactly min-wise inde-
+pendent (or just min-wise independent where the meaning is clear) if for any set
+X ⊆ [n] and any x ∈ X, when π is chosen at random in F we have
+                                                        1
+                           Pr(min{π(X)} = π(x)) =          .                       (4)
+                                                       |X|
+
+In other words we require that all the elements of any fixed set X have an equal
+chance to become the minimum element of the image of X under π. Unless otherwise
+stated we shall assume that π is chosen uniformly at random in F ; otherwise, we
+shall say π is chosen with a biased distribution µ. Uniform distributions are natural
+in this setting, since in practice they are simple to represent.
+    As explained below, this definition is motivated by the fact that such a family
+(under some relaxations) is essential to the algorithm currently used in practice
+by the AltaVista Web indexing software [23] to detect and filter near-duplicate
+documents.
+    The Web [5] has undergone exponential growth since its birth, and this has lead
+to the proliferation of documents that are identical or near identical. Experiments
+indicate that over 20% of the publicly available documents on the web are dupli-
+cates or near-duplicates. These documents arise innocently (e.g. local copies of
+popular documents, mirroring), maliciously (e.g., “spammers” and “robot traps”),
+and erroneously (spider mistakes). In any case they represent a serious problem for
+indexing software for two main reasons: first, indexing of duplicates wastes expen-
+sive resources; and second, users are seldom interested in seeing documents that are
+“roughly the same” in response to their queries.
+    This informal concept does not seem to be well captured by any of the stan-
+dard distances defined on strings (Hamming, Levenshtein, etc.). Furthermore the
+computation of these distances usually requires the pairwise comparison of entire
+documents. For a very large collection of documents this is not feasible, and a
+sampling mechanism per document is necessary.
+
+                                          3
+    It turns out that the problem can be reduced to a set intersection problem by
+a process called shingling. (See [7, 11] for details.) Via shingling each document D
+gets an associated set SD . For the purpose of the discussion here we can view SD
+as a set of natural numbers. (The size of SD is about equal to the number of words
+in D.) The resemblance r(A, B) of two documents, A and B, is defined as
+
+                                              |SA ∩ SB |
+                                  r(A, B) =              .
+                                              |SA ∪ SB |
+
+Experiments seem to indicate that high resemblance (that is, close to 1) captures
+well the informal notion of “near-duplicate” or “roughly the same”.
+    To compute the resemblance of two documents it suffices to keep for each docu-
+ment a relatively small, fixed size sketch. The sketches can be computed fairly fast
+(linear in the size of the documents) and given two sketches the resemblance of the
+corresponding documents can be computed in linear time in the size of the sketches.
+    This is done as follows. Assume that for all documents of interest SD ⊆ {1, . . . , n}.
+(In practice n = 264 .) Let π be chosen uniformly at random over Sn , the set of per-
+mutations of [n]. Then
+
+                                                      |SA ∩ SB |
+              Pr(min{π(SA )} = min{π(SB )}) =                    = r(A, B).           (5)
+                                                      |SA ∪ SB |
+
+Hence, we can choose say, 100 independent random permutations π1 , . . . , π100 . For
+each document D, we store the list
+
+               S̄A = (min{π1 (SA )}, min{π2 (SA )}, . . . , min{π100 (SA )}).
+
+Then we can readily estimate the resemblance of A and B by computing how many
+corresponding elements in S̄A and S̄B are common. (For a set of documents, we
+avoid quadratic processing time, because a particular value for any coordinate is
+usually shared by only a few documents. For details see [7, 8, 11].)
+    In practice, as in the case of hashing discussed above, we have to deal with
+the sad reality that it is impossible to choose π uniformly at random in Sn . We
+are thus led to consider smaller families of permutations that still satisfy the min-
+wise independence condition given by equation (4), since min-wise independence is
+necessary and sufficient for equation (5) to hold.
+    In practice we can allow certain relaxations. First, we can accept small relative
+errors. We say that F ⊆ Sn is approximately min-wise independent with relative
+error  (or just approximately min-wise independent, where the meaning is clear) if
+
+                                              4
+for any set X ⊆ [n] and any x ∈ X, when π is chosen at random in F we have
+
+                                                   1     
+                       Pr(min{π(X)} = π(x)) −         ≤     .                     (6)
+                                                  |X|   |X|
+
+In other words we require that all the elements of any fixed set X have only an
+almost equal chance to become the minimum element of the image of X under π.
+The expected relative error made in evaluating resemblance using approximately
+min-wise independent families is less than .
+    Second, the sets of interest are usually much smaller than n. (For the situation
+discussed above the typical set has size 1000 while n = 264 .) We say that F ⊆ Sn
+is restricted min-wise independent for sets up to size k (or just restricted min-wise
+independent where the meaning is clear) if for any set X ⊆ [n] with |X| ≤ k and
+any x ∈ X, when π is chosen at random in F we have
+                                                1
+                   Pr(min{π(X)} = π(x)) =          ,     |X| ≤ k.                 (7)
+                                               |X|
+
+Of course we can consider families that are both restricted and approximately min-
+wise independent.
+    Third and finally, it turns out that whether the distribution on the family F is
+uniform or not leads to qualitatively different results.
+    Ultimately we are interested in practical families of permutations. Hence we first
+study what is the minimum size of a family that satisfies various combinations of
+requirements. Clearly if the minimum size is exponential no practical solution exists.
+It turns out that the exact min-wise property generally necessitates exponential size
+but that the approximate property can be satisfied by polynomial size families. The
+complete synopsis of our results is given in Table 1. The entries for which we have
+no bounds beyond those implied by other entries in the table are marked “?” and
+the entries for which we have no non-trivial bounds are marked “???”.
+    Starting from the opposite end we study how good is the performance provided
+by various families that are easily implementable in software. We consider pair-wise
+independent families, for which there are numerous practical implementations. In
+particular we are interested in linear transformations, since they are used in the
+AltaVista implementation and are known to perform better in some situations than
+other pair-wise independent families (see [1]).
+    The way we evaluate this performance is to consider a set X and study the
+distribution of the minimum of the image of X. It suffices to examine the two
+elements that are respectively most likely and least likely to become the minimum
+
+                                          5
+Family type                              Upper bound                                Lower bound
+
+Exactly min-wise, uni-
+                                                  4n                                    en−o(n)
+form distrib on F
+Exactly min-wise, bi-                                                                       √ n
+                                          n2n−1 − 1                                     Ω    n2
+ased distrib on F
+Exactly min-wise, re-
+stricted, uniform dis-                            ?                                     ek−o(k)
+trib on F
+Exactly min-wise, re-                            n
+                                                        !                           
+                                                                                                     n
+                                                                                                     
+                                                                                        k/2
+                                           X
+stricted, biased distrib                       j                                 Ω k2         log
+                                                 j                                                   k
+on F                                       j≤k
+                                             
+Approx min-wise, uni-              O n2 /2        (existential)                                 √ 
+                                                                                     n2 1 −        8
+form distrib on F                    ??? (constructive)
+                                                                                        (n − r) nr
+                                                                                                         
+Approx min-wise, bi-
+                                                  ???                               max        n
+ased distrib on F                                  !
+                                                                                    r≥1 1 + 
+                                                                                               r
+                                   k2 log(n/k)
+Approx min-wise, re-           O                        (existential)
+stricted, uniform dis-                  2                                                    ?
+                            4k+o(k) 2 log(log n/)
+trib on F                  2         k                  (constructive)
+                                                                                
+Approx min-wise, re-                                                     Ω min k2k/2 log(n/k),
+stricted, biased distrib                          ?                                                           !
+on F                                                                       log (1/) (log n − log log(1/))
+                                                                                          1/3
+
+
+                       Table 1: Synopsis of results – minimum size of families
+
+       since all the other elements will become the minimum with a probability in between
+       the extremal values. We consider two situations: when X is chosen to be the worst
+       set (farthest from uniform) with regard to the property of interest; and when X is
+       chosen uniformly at random, in which case we look for the expected value of the
+       bound over the random choices of X. The synopsis of our answers is given in Table
+       2, where we follow the same convention as before regarding the use of “?” and “???”.
+           Finally, we note that while our definition of min-wise independence and our
+
+
+                                                            6
+                            Bounds on the most           Bounds on the least
+      Family type
+                            probable element             probable element
+
+                             Upper             Lower       Upper          Lower
+
+                               1                                            1
+                                      
+ Pairwise independent –     O √                  ?           ???
+ worst set                      k                                        2(k − 1)
+                                               3 ln k      12 ln 2
+ Linear – worst set                ?                                        ?
+                                               π2 k         π2 k
+                                  √
+                            1 + 1/ 2
+ Pairwise independent –                         ???          ???            ?
+ random set                     k
+
+
+ Linear – random set               ?            ???          ???            ?
+
+
+              Table 2: Synopsis of results – quality of approximation
+
+subsequent results appear novel, similar ideas have appeared in the literature. For
+example, the property of min-wise independence appears to be a key feature of the
+monotone ranged hash functions described in [19]. Cohen uses the properties of the
+minimum element of a random permutation to estimate the size of the transitive
+closure, as well as to solve similar related problems [14]. Given these connections,
+as well as the history of the development of pairwise independence, we expect that
+the concept of min-wise independence will prove useful in many future applications.
+    A preliminary version of this work has appeared in [9]. Since then new con-
+structions have been proposed by Indyk [18] and others [25]. The use of min-wise
+independent families for derandomization is discussed in [10].
+
+
+2    Exact Min-Wise Independence
+In this section, we provide bounds for the size of families that are exactly min-wise
+independent. We begin by determining a lower bound, demonstrating that the size
+of the family F must grow exponentially with n.
+
+Theorem 1 Let F be min-wise independent. Then |F | is at least as large as the
+least common multiple (lcm) of the numbers 1, 2, . . . n, and hence |F | ≥ en−o(n) .
+
+                                           7
+Proof: Let X be a subset of [n] with |X| = j. Each element of X must be the
+minimum under the family F the same number of times, so j must divide |F |. This
+holds for every j ∈ {1, 2, . . . n}, so the lcm of {1, 2, . . . n} must divide |F |. That the
+lcm of the first n numbers has size en−o(n) is a well known fact of number theory [4,
+p. 76]. 2
+
+Remark 1 This proof also gives a lower bound of ek−o(k) for restricted min-wise
+independent families. Also, note that the proof does not require that the members
+of F be distinct. Hence the theorem holds even if F contains duplicates of some
+permutations.
+
+    We now describe a min-wise independent family of size less than 4n , which is
+significantly smaller than the trivial bound of n! and of the same form as the lower
+bound given above.
+
+Theorem 2 There exists a min-wise independent family F of size less than 4n.
+
+Proof: We initially assume for convenience, that n = 2r for some r. We construct
+the family of permutations recursively in stages. In the first stage, we divide the
+                                                                                   set
+                                                                                      
+                                                                                    n
+[n] into two equal halves, the top and the bottom. At the first stage, there are n/2
+ways to partition the set. Each of these can be described by an n bit string with
+exactly n/2 ones in it. Element i goes in the top half if and only if the bit string
+has a 1 in the ith position. We proceed to partition each half. Again    this can be
+                                                                      n/2
+done by choosing a n/2 bit string with n/4 ones in it. There are n/4 such strings.
+Importantly, we use the same string for each half. At the ith stage, we have the set
+divided into 2i−1 parts each of size n/2i−1 . We partition each part into two halves
+by choosing a n/2i−1 bit string with n/2i ones and using this string to define the
+partition for each of the 2i−1 parts. We continue in this way until each part has
+size 1. This process produces a permutation of the set in a natural way, with the
+topmost element receiving the smallest number in the permutation.
+    The property that each element is the minimum with the correct probability
+can be verified directly by calculation. More intuitively, when we split [n] into two
+halves, every element of X has an equal chance to go to the upper half or to the
+lower half; furthermore, all elements of X now in the top half are equally likely
+to eventually become the topmost element of X (by induction). If no elements of
+X are in the top half, then all lie in the bottom, and again (by induction) all are
+equally likely to become eventually the topmost.
+
+
+                                             8
+    The number of permutations in this family is
+                                            log
+                                             Yn      n/2i−1
+                                                           !
+                                                            .
+                                            i=1       n/2i
+                                                                                  2
+A simple calculation shows that the size of this family is 4n−O(log n) .
+    We now explain how to remove the assumption that n is a power of 2. Earlier,
+we used the fact that a j bit string with j/2 ones defines a partition of a set of size
+j into two equal halves. We now use the that fact a j bit string with l ≥ j/2 ones
+defines a partition of any set of size r ≤ j into two parts such that each is of size at
+most l. We construct the permutations in stages as before. At the beginning of the
+                                                                                    n
+ith stage, we have partitioned the set into 2i−1 parts, each of size at most d 2i−1   e.
+                                                   n          n
+We continue by choosing a string of length d 2i−1 e with d 2i e ones. We use this to
+partition each of the 2i−1 parts into two, such that the maximum size of the parts
+produced is at most d 2ni e. We perform this partition for dlog ne stages, giving us a
+min-wise independent permutation of [n]. The number of possible permutations is2
+                                           dlog ne       n
+                                                            !
+                                             Y       d 2i−1 e
+                                                         n    ,
+                                            i=1       d 2i e
+
+and hence the size of this family is also less than 4n .               2
+
+Remark 2 It is worth noting that this family has much stronger properties than
+what we actually require. For example, if instead of looking at just the minimum
+element, we look at the unordered set of the smallest j elements for any j ≤ |X|,
+this unordered set is equally likely to be any subset of X of size j.
+
+2.1      Exact problem with non-uniform distribution
+Although we focus on results for uniform distributions, we demonstrate here an
+interesting result: the lower bound of Theorem 1 can be beaten by using non-
+uniform distributions.
+
+Theorem 3 There is a family F of size at most n2n−1 − 1, such that F with an
+associated distribution µ is min-wise independent.
+   2
+     Proving directly that this number is a multiple of lcm(1, . . . , n) is an amusing exercise, at least
+for certain people.
+
+
+                                                     9
+Proof: We can write a linear program to find a F and µ satisfying the theorem.
+We have a variable xπ for each of the permutations π ∈ Sn , where xπ represents the
+weight of π according to µ. For every X ⊂ [n] and for every x ∈ X, we express the
+                                           1
+condition that Pr(min{π(X)} = π(x)) = |X|     as a linear equation in the variables
+                                   
+xπ . We have a total of nk=1 k · nk = n2n−1 − 1 constraints. This system clearly
+                         P
+
+has a feasible solution (choose an element of Sn uniformly at random; that is, put
+xπ = 1/n! for all π ∈ Sn ), and hence it has a basic feasible solution with at most
+n· 2n−1 −1 non-zero variables. This solution yields a family satisfying the conditions
+of the theorem. 2
+
+Remark 3 Although Theorem 3 beats the lower bound of Corollary 1, the size of
+the family is still exponential in n, and we will prove an almost tight lower bound
+in Section 3.4. Also, for restricted
+                                   min-wise independence, this same construction
+gives an upper bound of j=1 j · nj .
+                          Pk
+
+
+
+3     The Approximate Problem
+As the exact problem requires exponential sized families, we turn our attention to
+the approximate problem. In this section, we prove some existential upper bounds
+and constructive upper bounds as well as derive lower bounds for the approximate
+problem.
+
+3.1    Existential Upper Bounds
+We obtain existential upper bounds on the sizes of approximately min-wise inde-
+pendent families via the probabilistic method [3], by simply choosing a number of
+random permutations from Sn .
+                                                2
+Theorem 4 There exist families of size O( n2 ) that are approximately min-wise
+                                                 2
+independent and there exist families of size O( k ln(n/k)
+                                                    2
+                                                          ) that are approximately and
+restricted min-wise independent.
+
+Proof: Assume 0 ≤  ≤ 1. We apply a straightforward probabilistic argument.
+Suppose we pick f permutations uniformly at random from Sn . Consider a set
+X and an element x ∈ X. For a permutation π chosen uniformly at random,
+                       1
+Pr(π(x) = min π(X)) = |X| . Let A(x, X) be the number of permutations for which
+                                                                            1
+π(x) = min π(X). Note that A(x, X) has the binomial distribution Bin(f, |X|   ).
+
+                                         10
+                      f                                            f         f
+Then E[A(x, X)] = |X|   . Let B(x, X) be the event |A(x, X) − |X|     | >  |X| . The
+event B(x, X) is considered a bad event for the pair (x, X). We will be interested in
+bounding the probability of bad events. Applying Chernoff bounds (see for example
+[3]), we have
+                                                   f 2          f 2
+                           Pr(B(x, X)) < 2e− 3|X| ≤ 2e− 3n .
+This must hold for all pairs (x, X) such that x ∈ X ⊆ [n]. There are n2n−1 such
+pairs. Hence the probability that at least one bad event B(x, X) occurs is at most
+      f 2
+n2n e− 3n . For f > 3n(n ln22+ln n) , this probability is less than 1. Hence for this large
+an f with non-zero probability no bad event occurs, and therefore there is some
+family of permutations that is approximately min-wise independent with relative
+error .
+    For the restricted case where |X| ≤ k, the same argument holds, except now
+                                                   f 2          f 2
+                           Pr(B(x, X)) < 2e− 3|X| ≤ 2e− 3k .
+
+Again his
+          must                        pairs (x, X), but as |X| ≤ k, there are only
+                  holdfor all suitable
+                                
+Pk       n    Pk         n+i      n+k+1
+ i=1 i · i <     i=0 i ·  i
+                             =      k
+                                         such pairs. Hence the probability that at least
+                                                              f 2
+                                                         
+one bad event B(x, X) occurs is at most 2 n+k+1
+                                            k
+                                                e− 3k . For
+                                                          !
+                                3k    n+k+1
+                             f > 2 ln       + ln 2,
+                                       k
+
+this probability is less than 1, and this implies the second part of the theorem.         2
+
+Remark 4 Of course the above argument can also be used to show that selecting
+     2
+O( n2 ) permutations uniformly at random yields an approximately min-wise indepen-
+dent family with high probability. Moreover, the permutations need not be chosen
+uniformly at random from Sn , but could instead be chosen from any family that yields
+exact min-wise independence, such as the family given in Theorem 2. Although this
+would appear to provide a suitable solution for the document similarity problem dis-
+cussed in the introduction, in practice, this result does not help us. The problem is
+that one cannot conveniently represent a random permutation from Sn . Recall that a
+random permutation on n elements requires on average Ω(n log n) bits to represent,
+and in practice n = 264 . This leads us to consider simple linear permutations in
+Section 4.
+
+
+                                            11
+3.2    Constructive Upper Bounds
+Although the techniques of the last section show that sufficiently large families
+chosen at random will be approximately and restricted min-wise independent with
+high probability, they do not appear to provide a way to explicitly construct a
+suitable family. In fact, we do not even know of an efficient procedure to check that
+a randomly chosen family is approximately and restricted min-wise independent for
+given families of k and . Hence here we provide an explicit construction.
+
+Theorem 5 There exists an approximately and restricted min-wise independent
+                                 log n
+family F of size 24k+o(k) k 2 log  .
+
+Proof: The idea, similar to that in Theorem 2, is to split the set up into groups.
+Instead of initially splitting the set [n] into two equal groups, however, we instead
+split the set [n] into r random groups for a suitable r using a k-wise independent
+hash function. Since we are concerned with sets X of size at most k, it is likely that
+a k-wise independent hash function will divide the elements of X so that no more
+than k/2 fall in any hash bucket. We then continue recursively.
+    Our construction of these hash functions is based on the explicit construction
+of almost k-wise independent distributions on N bit binary strings. We use the
+following result from [2]:
+
+Proposition 1 We can construct a family of N bit strings which are δ away (in the
+L1 norm) from k-wise independence, such that log |F | is at most k +2 log( k log
+                                                                              2δ
+                                                                                 N
+                                                                                   )+2.
+
+    We use this proposition to construct an almost k-wise independent family of hash
+functions from [n] to [r], where we choose a suitable value of r later. A hash function
+mapping [n] to [r] can be described by a string of length N = n log r bits, using log r
+bits to determine the image of each of the n elements in the domain. Further, if the
+family of N bit strings is k log r-wise independent, the family of hash functions is
+k-wise independent. Each hash function h defines a permutation σh ∈ Sn as follows:
+for a hash function h, we sort all the elements of [n] in the order (h(x), x), i.e. x1
+occurs before x2 if either h(x1 ) < h(x2 ) or h(x1 ) = h(x2 ) and x1 < x2 . The sorted
+order defines the permutation σh .
+    Suppose temporarily that our family of hash functions were exactly k-wise in-
+dependent. Fix a set X of size k. We consider a hash function to be good if all
+the elements of X are hashed to distinct locations, and bad otherwise. Since the
+family of hash functions is k-wise independent, for any two elements x1 , x2 of X,
+the probability that h(x1 ) = h(x2 ) is 1/r. The probability that two elements of
+
+                                          12
+                                                               2
+X hash to the same location is thus at most k2r , and therefore the fraction of bad
+                                 2
+hash functions is at most k2r . Thus, for the family of permutations obtained, the
+probability of any element being the minimum deviates from the mean by at most
+k2
+2r
+   . If the bit strings used to construct the hash functions are actually δ away (in
+the L1 norm) from being k log r-wise independent, the deviation from the mean is
+                 2                              3
+at most δ + k2r . Choosing δ = 2k and r = k yields a deviation at most k as desired.
+      We obtain a smaller family by breaking the process of hashing [n] to [r] into
+several steps, again in the spirit of Theorem 2. We use t hash functions hi , 1 ≤ i ≤ t,
+such that hi hashes [n] to [ri ], and now r = ti=1 ri . We can view h1 as selecting
+                                                   Q
+
+the most significant bits of the hash value of each element, h2 as selecting the next
+most significant bits, and so on. Although we need h1 to be k-wise independent, we
+can use less independence with each successive hi , yielding a smaller family.
+      For our construction, we will choose hi to be almost ki -wise independent, where
+k1 = k and ki+1 = ki /2. We choose ri so that hi maps any set of size ki into
+[ri ] in such a way so that no bucket has size greater than ki+1 with probability at
+               
+least 1 − 2dlog   ke
+                     . We choose the hi close enough to ki -wise independent so that the
+                                             
+difference adds an error probability 2dlog     ke
+                                                  per level. For convenience we replace
+dlog ke by log k in the derivation below; the difference is absorbed in the order
+notation.
+      If hi were exactly ki -wise independent, the probability of having more than ki /2
+elements hashed to any location would be
+                      k                         l         ki −l                      ki /2
+                                      !
+                        i
+                                 ki        1          1                            1
+                                                                               
+                                                                          ki
+                      X
+                                                   1−                ≤2                          .
+                    l=ki /2+1
+                                 l         ri         ri                           ri
+
+                            
+For this to be less than 2 log k
+                                 requires
+
+                                             2     2
+                                                                                  
+                                log ri ≥ 2 +    log + log log k
+                                             ki    
+   or
+                                                   2
+                                                                                   
+                            ki log ri ≥ 2ki + 2 log + log log k
+                                                   
+   Hence, to generate hi , we need an almost ki log ri - wise independent distribution
+                                                      
+on n log ri bits, where the distribution should be 2 log k
+                                                           close to independent. From
+Proposition 1, this requires
+                                                                                    !
+                                     ki log ri log(n log ri ) log k
+              bi = ki log ri + 2 log                                                      + 2 bits.
+                                                   
+
+                                                       13
+Summing and ignoring lower order terms, we need 4k + 2(log k) log( log klog n ) total
+                                                                        log n
+bits, yielding a suitable constructible family of size 24k+o(k) k 2 log(  ) . 2
+
+
+3.3    Lower Bound for Uniform Families
+                                         √
+We will prove a lower bound of n2 (1 − 8) for families with the uniform proba-
+bility distribution. This shows that the n2 term in the existential upper bound of
+Theorem 4 cannot be improved.
+
+
+ 2
+      √ 6 Let F be an approximate min-wise independent family. Then |F | ≥
+Theorem
+n (1 − 8).
+
+Proof: Let |F | = f . There must be some element a such that π(a) = 1 (that is,
+a is the second smallest after the permutation) for at least f /n permutations of F .
+Fix such an a and consider z ≤ f /n such permutations. We will choose a value for
+z later. Let Z be the set of elements which occur as the smallest element in these
+z permutations (that is, b ∈ Z iff π(b) = 0 for at least one of these z permutations)
+and let S = [n] − Z. Clearly a ∈ S and |S| ≥ n − z. Consider for how many
+permutations π ∈ F it is the case that π(a) is the smallest element of π(S). This
+happens at least whenever π(a) = 0 and also for the z permutations discussed above,
+where π(a) = 1 but an element not in S has image 0 under π. But π(a) = 0 for at
+least nf (1 − ) permutations, because F is an approximately min-wise independent
+family; and for the same reason, π(a) can be the minimum element of S for at most
+ f
+|S|
+    (1 + ) ≤ f n−z
+                (1+)
+                      permutations. Hence
+
+                              f (1 − )      f (1 + )
+                                        +z ≤           .
+                                  n            n−z
+                                                              √
+Solving this equation for f and (almost) optimizing for z (z = 2f /n) yields
+                                            √
+                                      2 1−    2
+                                f ≥n      √        .
+                                       1 + 2 − 
+                                                     √
+Simplifying the above yields a lower bound of n2 (1 − 8) on |F |. 2
+
+
+
+
+                                         14
+3.4    Lower Bound for Non-Uniform Families
+We will prove a lower bound on the size of any approximately min-wise independent
+family, even non-uniform families with an associated probability distribution µ.
+Our lower bound proof also yields a lower bound for non-uniform exactly min-wise
+independent families that is very close to the upper bound of n2n−1 − 1 obtained in
+Section 2.1.
+
+Theorem 7 Let F be an approximate min-wise independent family, possibly with
+                                                      (n−r)(n)
+an associated probability distribution µ. Then |F | ≥ 1+2r nr , for any r < n.
+                                                           (r)
+
+Proof: Fix an element a and a set Z = {x1 , x2 , . . . xr } ⊆ [n] with a ∈ / Z. Let us
+say that the pair (Z, a) is satisfied if there is a permutation π in F that has all the
+elements of π(Z) as the r smallest elements of π in any order (that is, π(Z) = [r])
+and has a as the (r + 1)st smallest element (that is, π(a) = r + 1). We will show
+that most pairs (Z, a) must be satisfied for F to be an approximately min-wise
+independent family, and that in fact all pairs (Z, a) must be satisfied for F to be an
+exactly min-wise independent family,
+    Let Y = [n] − Z. By definition a ∈ Y . We consider the sets Yi = Y ∪ xi and
+count how often π(a) is the smallest element of π(Yi ). Let BS be the event that a is
+the minimum of π(S) when we choose a permutation from F under the distribution
+µ. Let B = ri=1 BYi . Then B ⊆ BY , and hence Pr(BY − B) = Pr(BY ) − Pr(B).
+              S
+
+On the other hand, the event BY − B is precisely the event that (Z, a) is satisfied.
+    We now use the inclusion-exclusion principle to calculate Pr(B) = Pr( ri=1 BYi ).
+                                                                              S
+
+It is helpful to note the following facts. First if a ∈ S2 ⊆ S1 then BS1 ⊆ BS2 and
+if a ∈ S1 ∩ S2 then BS1 ∩ BS2 = BS1 ∪S2 . Second, by the definition of approximate
+min-wise independence, 1− |S|
+                               ≤ Pr(BS ) ≤ 1+  |S|
+                                                    . We will abbreviate this by saying
+                 1±
+that Pr(BS ) = |S| , where the meaning is clear. Third, the union of i distinct Yi ’s
+has size n − r + i. Hence
+
+Pr(B) = Pr(BY1 ) + Pr(BY2 ) + · · · − Pr(BY1 ∩ BY2 ) − · · · + Pr(BY1 ∩ BY2 ∩ BY3 ) + · · ·
+      = Pr(BY1 ) + Pr(BY2 ) + · · · − Pr(BY1 ∪Y2 ) − · · · + Pr(BY1 ∪Y2 ∪Y3 ) + · · ·
+         r
+                     !
+                   r   1±
+      = (−1)i+1
+        X
+
+        i=1         i n−r+i
+
+
+
+
+                                          15
+Hence                            r
+                                                      !
+                          1± X          r  1±
+             Pr(BY − B) =      − (−1)i+1
+                          n − r i=1      i n−r+i
+                                r
+                                          !
+                                X r  1±
+                                      i
+                           = (−1)
+                            i=0   i n−r+i
+                                r             r
+                                          !                       !
+                                X r   1
+                                      i
+                                             X   r    1
+                           = (−1)         ±
+                            i=0   i n−r+i    i=0 i n − r + i
+
+To evaluate the first term in the expression above, note that it equals Pr(BY − B)
+when  is 0. That is, the term is the probability that (Z, a) is satisfied for an exactly
+min-wise independent family. Note that it depends only on n and r, and not on
+the family under consideration! In particular, we calculate it easily by computing
+                                                                         1
+the probability that (Z, a) is satisfied for the family Sn , which is (n−r)     . (Thus we
+                                                                           (nr)
+obtain the combinatorial identity
+                          r
+                                     !
+                                    r   1         1
+                              (−1)i
+                          X
+                                            =         .
+                          i=0       i n−r+i   (n − r) n       r
+
+The hint for its algebraic derivation is [21, equation 1.2.6.24].)
+                                                       2r
+   The magnitude of the coefficient of  is at most n−r   . Hence
+
+                  1             2r                    1          2r
+                        +       ≥ Pr(BY − B) ≥          −                        (8)
+             (n − r) nr        n−r                (n − r) n     n−r
+                                                                  r
+
+                              1           r
+                                          2
+    Since Pr(BY − B) ≤ (n−r)         +  n−r , the total probability mass of the permu-
+                                (nr)
+                                                                 1           2r
+tations that satisfy any given pair (Z, a) is at most p = (n−r)         +  n−r . Hence the
+                                                                   (nr)
+number of distinct pairs (Z, a) which have some permutation satisfying them must
+be at least 1/p. But every permutation satisfies exactly one (Z, a) pair. This means
+that there must be at least 1/p permutations, that is, the size of the family is at
+      (n−r)(n)
+least 1+2r nr . 2
+           (r )
+
+Corollary 1 Let F be exact min-wise independent        family,
+                                                               possibly with an associ-
+                                               n     n
+ated probability distribution µ. Then |F | ≥ d 2 e bn/2c .
+
+Proof: Plug  = 0 and r = b n2 c in the result of Theorem 7.          2
+
+
+                                              16
+Remark 5 Actually, Theorem 7 proves an even stronger corollary: Equation(8)          
+shows that the probability that (Z, a) is satisfied is positive as long as  < 1/2r nr .
+                                                                                   
+Hence, for any approximate min-wise independent family with such an , all nr (n−
+r) possible pairs (Z, a) are satisfied, and hence there are at least this many permu-
+tations. This is maximized for r = b n2 c, and hence the bound of Corollary 1 also
+holds for approximate families with an exponentially small .
+
+3.5    Lower Bound for Restricted Families
+The lower bound of Theorem 7 holds for exactly min-wise independent families. Of
+course a similar lower bound can also be given for restricted min-wise independent
+families. For suppose we want the min-wise property to hold for sets of size up to
+k. Then certainly the property must hold for the set [k], and we may think of all
+the permutations in our family as acting only on [k]. Hence by replacing the value
+n by k in Theorem 7 we have an appropriate lower bound for restricted min-wise
+independent families.
+    Using similar ideas, however, we may achieve better lower bounds on the size of
+restricted min-wise independent families. Suppose we want the min-wise property
+to hold for sets of size up to k, and consider any set X such that |X| ≤ k. For every
+X 0 ⊂ X, a ∈ X − X 0 , some permutation σ ∈ F must induce a permutation on X
+which satisfies (X 0 , a). This means that for some permutation, the only elements of
+X which occur before a are the elements of X 0 . Stating this differently, if we split X
+into disjoint sets X1 ,{a}, and X2 , then there must be some permutation σ ∈ F such
+that all the elements of X1 occur before a and all the elements of X2 occur after a.
+Such a permutation is said to satisfy the triple (X1 , a, X2 ). A triple (X1 , a, X2 ) such
+that |X1 | + |X2 | + 1 ≤ k, a 6∈ X1 , a 6∈ X2 , and X1 ∩ X2 = ∅, is said to be admissible.
+For a restricted min-wise independent family for sets up to size k, every admissible
+triple must have some permutation satisfying it. This fact is what we use to obtain
+a lower bound on the number of permutations in the family.
+    We will focus on admissible triples (X1 , a, X2 ) for a fixed a ∈ [n] and for
+|X1 | = |X2 | = b k−12
+                        c. Let s = b k−1 2
+                                           c. We call such triples
+                                                                      symmetric a-triples.
+                                                             [n−1]
+For convenience, assume a = n − 1. Then X1 , X2 ∈              s
+                                                                    , where this notation
+denotes that X1 and X2 are subsets of size s of the set [n − 1].
+    To obtain our lower bound, we will show that many permutations are needed
+to satisfy all admissible symmetric a-triples. We do this by associating the set of
+all symmetric a-triples with the edges of large graph Ga . Similarly, we associate
+all symmetric a-triples satisfied by a permutation σ with the edges of another,
+
+                                            17
+smaller graph Gσ,a . We then show, using the concept of graph entropy introduced
+by Körner [20], that many smaller graphs Gσ,a are required to cover the edges of the
+larger graph Ga . This argument will lead to our lower bound.                          
+    We now formally define the graphs Ga and Gσ,a . Let V (Ga ) = V (Gσ,a ) = [n−1]   s
+                                                                                          ;
+that is, the vertex set contains a vertex corresponding to every s element subset of
+[n − 1]. Two vertices are adjacent in Ga if the corresponding sets are disjoint. Every
+edge in Ga corresponds   to a symmetric a-triple. The edge set of Gσ,a is defined as
+follows. For X1 , X2 ∈ [n−1]
+                           s
+                               , the edge (X1 , X2 ) is present in Gσ,a if and only if the
+permutation σ satisfies the triple (X1 , a, X2 ). Since every symmetric a-triple must
+be satisfied by some permutation, for every symmetric a-triple (X1 , a, X2 ), the edge
+(X1 , X2 ) must be present in some graph Gσ,a where σ ∈ F . That is, σ∈F Gσ,a = Ga ,
+                                                                         S
+
+where here the union is over the edges of the graphs. This fact allows us to obtain
+a lower bound on the size of F using graph entropy.
+    We review briefly the basic facts about graph entropy. We begin with some
+standard concepts from information theory (see [15].) Note that in what follows
+we will use X to be a random variable, and not a set as previously, for notational
+convenience.
+
+Definition 1 (Entropy) Given a random variable X with a finite range, its en-
+tropy is given by           X
+                   H(X) = −    Pr[X = x] log Pr[X = x]
+                                     x
+
+
+Definition 2 (Mutual Information) If X and Y are random variables with finite
+ranges, then their mutual information is given by
+
+           I(X ∧ Y ) = (H(X) − H(X | Y )) = H(X) + H(Y ) − H((X, Y )).
+
+   The following definition and results about graph entropy are taken from Körner [20].
+
+Definition 3 (Graph Entropy) Let G = (V, E) be a graph. Let P be a probability
+distribution on the vertex set V . Let A(G) denote the set of all independent sets of
+G. Let P(G), the set of admissible distributions, be the set of all distributions QXY
+on V × A(G) satisfying
+
+  1. QXY (v, A) = 0 if v 6∈ A, and
+
+  2.    A QXY (v, A) = P (v) for all vertices v ∈ V .
+       P
+
+
+
+
+                                            18
+The graph entropy H(G, P ) is defined by
+                     H(G, P ) = min{I(X ∧ Y )|QXY ∈ P(G)}
+   To clarify, in the definition above, X is a random variable representing a vertex
+of G, and Y is a random variable representing an independent set of G.
+Lemma 1 (Sub-additivity of graph entropy) If G and F are graphs with V (G) =
+V (F ), and P is a distribution on V (G), then H(F ∪ G, P ) ≤ H(F, P ) + H(G, P ).
+    In our discussion, P will always be assumed to be the uniform distribution and
+will be omitted from our notation for graph entropy. It is easy to see that under
+this condition, the entropy of the complete graph on n vertices is log n. The entropy
+of the empty graph is 0. Lemma 1 is central to our lower bound proof. Recall that
+  σ∈F Gσ,a = Ga . Thus H(Ga ) ≤      σ∈F H(Gσ,a ). We will show that the entropy of
+S                                  P
+
+the graphs Gσ,a is small compared to that Ga . This will give us a lower bound on
+the size of F .
+Lemma 2 (Additivity of Graph Entropy) Let {Gi }i∈I be the set of connected
+components of a graph G. Then
+                                     X |V (Gi )|
+                            H(G) =                   H(Gi ).
+                                     i∈I   |V (G)|
+
+
+   We state a simple result about the entropy of a complete bipartite graph that
+we will need later.
+Lemma 3 Let G be a complete bipartite graph on V1 and V2 , |V1 | = n1 and |V2| =
+n2 . Then
+                                       1         1
+                          H(G) ≤ p1 log + p2 log ,
+                                       p1        p2
+             n1              n2
+where p1 = n1 +n2 and p2 = n1 +n2 .
+Proof: Let X be a random variable which is uniformly distributed over V (G) =
+V1 ∪ V2 . Let Y be a random variable such that Y = V1 when X = v for v ∈ V1 and
+Y = V2 when X = v for v ∈ V2 . With probability p1 , Y = V1 and with probability
+p2 , Y = V2 . Then H(X) = H((X, Y )) = log(n1 + n2 ). Hence,
+                                                               1          1
+       H(G) ≤ H(X) + H(Y ) − H((X, Y )) = H(Y ) = p1 log          + p2 log .
+                                                               p1         p2
+  2
+
+                                           19
+   We now compute bounds on the entropies of the graphs Ga and Gσ,a defined
+previously.
+Lemma 4
+                                                 n−1
+                                  H(Ga ) ≥ log
+                                                  s
+
+
+Proof: H(Ga ) = H(X) − H(X|Y ), where X and Y minimize I(X ∧ Y ) as in the
+definition of graph entropy. Recall that X is a random variable that ranges over
+V (Ga ) and Y is a random variable that ranges over A(Ga ), the set of independent
+setsof Ga . Since the distribution of X is uniform on V (Ga ), H(X) = log |V (Ga )| =
+log n−1
+      s
+          . Let amax be the maximum size of an independent set in Ga . By the
+Erdős-Ko-Rado theorem (see, for example, [6, Chapter 7]), the maximum size is
+achieved by the set of vertices corresponding to s element
+                                                               subsets of [n − 1] all of
+                                                     n−2
+which contain some fixed element. Thus amax = s−1 . Now,
+                                   X
+                     H(X|Y ) =            H(X|Y = A) Pr(Y = A).
+                                 A∈A(G)
+
+
+For a particular value of Y , say A ∈ A(Ga ), X is constrained to range over vertices
+v ∈A. Thus H(X|Y = A) ≤ log |A| ≤ log amax . Therefore, H(X|Y ) ≤ log amax =
+log n−2
+    s−1
+         . This yields
+                                       !                !
+                               n−1       n−2       n−1
+                  H(Ga ) ≥ log     − log     = log     .
+                                s        s−1        s
+  2
+
+Lemma 5
+                                                  1
+                                    H(Gσ,a ) ≤
+                                                 2s−1
+
+
+Proof: Recall that the graph Ga,σ has an edge (X1 , X2 ) for every symmetric a-triple
+(X1 , a, X2 ) satisfied by the permutation σ. Let S1 be the set of elements that occurs
+before a in σ and let S2 be the set of elements that occurs after a in σ. Let |S
+                                                                                1 |= n1
+and |S2 | = n2 , n1 + n2 = n − 1. Then Gσ,a has an edge between every set in Ss1 and
+
+                                            20
+                                                                                                                                
+every set in Ss2 . Thus Gσ,a has a single connected component B of size ns1 + ns2 .
+Further,
+      B isa  complete bipartite graph and the sizes of its two independent sets
+are ns1 and ns2 . By Lemma 3, we have
+                                                      n              
+                                                                            n2
+                                                                                                    n                 
+                                                                                                                           n2
+                                                             1
+                                                                   +                                      1
+                                                                                                                  +
+                                                 !                                           !
+                        1
+                       n1                                    s               s      n2                    s                 s
+    H(B) = n  n      log                                    
+                                                                   n1
+                                                                                 +    log                    
+                                                                                                                  n2
+                                                                                                                                 
+             1
+               + 2     s                                                            s
+                  s             s                                   s                                              s
+
+By Lemma 2, we get
+                        |V (B)|
+      H(Gσ,a ) =                   H(B)
+                       |V (Gσ,a )|
+                                                     n             
+                                                                       n
+                                                                                                  n               
+                                                                                                                    n
+                                                         1
+                                                                 +      2                             1
+                                                                                                              +        2
+                                            !                                           !
+                         1               n1              s              s             n2              s                s
+                  = n−1                  log              
+                                                                 n1
+                                                                             +          log              
+                                                                                                              n2
+                                                                                                                            
+                                         s                                            s
+                            s                                     s                                            s
+
+We provide an upper bound for the expression
+                                            above.
+                                                      The expression
+                                                                     above  is equal
+                                             n1     n−1           n2      n−1
+to x log(1 + y/x) + y log(1 + x/y) for x = s / s and y = s / s . As the
+function f (x, y) = x log(1 + y/x) + y log(1 + x/y)is increasing
+                                                           s        in both   x and y,
+                                                                              s
+                                  0  0          0       n1         0       n2
+we upper bound H(Gσ,a ) by f (x , y ) where x = n−1 and x = n−1 . Now
+substituting n1 = (1+α)
+                    2
+                        (n − 1) and n2 = (1−α)
+                                           2
+                                               (n − 1) yields
+                                    s                             s                     s                                   s 
+                       1+α                               1−α                         1−α                          1+α
+                                                                                                         
+    H(Gσ,a ) ≤                           log 1 +                            +                   log 1 +                                (9)
+                        2                                1+α                          2                           1−α
+The right hand side is maximized for α = 0, i.e. for n1 = n2 = n−1
+                                                                2
+                                                                   . Hence the
+                                         s−1
+maximum possible value of H(Gσ,a ) is 1/2 . 2
+                                                                                                           H(Ga )
+Since Ga =       σ∈F Gσ,a , by Lemma 1 H(Ga ) ≤                              σ∈F H(Gσ,a ). Hence |F | ≥ maxσ H(Gσ,a ) ≥
+             S                                                          P
+            
+2s−1 log n−1
+          s
+              .
+    The above argument used symmetric a-triples for a fixed value of a. We can give
+a more careful argument that looks at symmetric a-triples for all values of a. We
+define auxiliary graphs Ga and Gσ,a as before. This time, we consider all values of
+a ∈ [n]. Observe that for each a, Ga = σ∈F Gσ,a and hence H(Ga ) ≤ σ∈F H(Gσ,a ).
+                                      S                              P
+
+Summing over all a, we get
+                                            X                    X X
+                                                 H(Ga ) ≤                        H(Gσ,a )
+                                         a∈[n]                   a∈[n] σ∈F
+                                                                 X X
+                                                         =                       H(Gσ,a ).
+                                                                 σ∈F a∈[n]
+
+
+                                                                 21
+    All the graphs Ga are isomorphic and Lemma 4 gives a bound on their entropy.
+However, for a particular permutation σ, the graphs Gσ,a are not isomorphic. The
+proof of Lemma 5 shows that H(Gσ,a ) depends on the position of a in permutation
+σ. It is maximized when a is the middle element of σ and decreases as the distance
+of a from the middle element increases. The previously computed lower bound used
+                                                             1
+the fact that the maximum entropy of the graphs Gσ,a is 2s−1      . From the bound
+on H(Gσ,a ) in (9) of Lemma 5, we can show
+                                          that for any fixed permutation σ, the
+average entropy of the graphs Gσ,a is O s21s . (Here the average is computed over
+all elements a ∈ [n].) This yields a lower bound of Ω(s2s log( ns )) on the size of F .
+Recall that s = b k−1
+                   2
+                      c. Thus we obtain the following theorem.
+
+Theorem 8 Let F be any restricted min-wise independent family. Then, |F | ≥
+     k
+Ω(k2 2 log( nk )).
+
+    Also, this entire argument goes through for any approximate, restricted min-wise
+independent family for sufficiently small . In fact, we need  < 2s 1k (see Remark 5),
+                                                                          (s )
+                   1                                                          k
+and hence  < 23k/2 suffices. Thus we have a lower bound of Ω(k2 2 log( nk )) for any
+                                                                              1
+approximate, restricted min-wise independent family for  < 23k/2               , i.e. for k <
+2      1
+3
+  log(  ). In general, for given k and , we take the lower bound for the maximum
+set size k 0 such that k 0 < 23 log( 1 ) and k 0 ≤ k. This gives the following lower bound.
+
+Theorem 9 Let F be any approximate,restricted min-wise independent family. Then
+the size of F is at least
+
+                            log( 1 )(log n − log log( 1 ))               !!
+                                                                  k        n
+                 Ω min                        1                , k2 log
+                                                                  2               .
+                                             3                            k
+
+4     Linear and Pairwise Independent Families
+We now focus on the behavior of permutations most likely to be used in practice,
+linear transformations. In particular, we focus on the situation where the universe
+of elements is [p] for some prime p, and the family of permutations is given by
+all permutations of the form π(x) = ax + b mod p (with a 6= 0). Linear transfor-
+mations are easy to represent and efficiently calculable, making them suitable for
+real applications. Our results suggest that although this family of permutations is
+not min-wise independent, its performance should be sufficient in many practical
+situations.
+
+
+                                                  22
+4.1    General Upper and Lower Bounds
+As the results for linear permutations require significant calculations, we do not
+provide proofs for all the results here. We begin with a simple lower bound that
+holds not just for linear transformations but for any pairwise independent family of
+permutations; many of our results have this form.
+
+Theorem 10 For any X ⊆ [n] with |X| = k and for any x ∈ X,
+                                                            1
+                        Pr(min{π(X)} = π(x)) >
+                                                        2(k − 1)
+
+if π is chosen from a pairwise independent family of permutations.
+
+Proof: Consider a set X = {x0 , . . . xk−1 }. We will show that π(x0 ) is the smallest
+element of π(X) as often as required by the theorem. Suppose that π(x0 ) = z. If π
+is chosen from a pairwise independent family, then Pr(π(xi ) < z|π(x0 ) = z) = z/n.
+Since the probability that π maps xi to something smaller than π(x0 ) is z/n, the
+probability that π maps any element of X to something smaller than π(x0 ) is at
+most (k − 1)z/n, and hence π(x0 ) is the minimum of π(X) with probability at least
+                                                      n
+1 − (k − 1)z/n. This is non-negative for 0 ≤ z ≤ b k−1  c. Hence
+
+                                              bn/(k−1)c                  !
+                                        1        X            (k − 1)z
+               Pr(min{π(X)} = π(x0 )) ≥                    1−
+                                        n        z=0             n
+                                                 1
+                                         >
+                                             2(k − 1)
+  2
+    We have an upper bound on Pr(min{π(X)}
+                                       √        = π(x)) for all pairwise independent
+families of permutations that is O(1/ k), based on a linear programming formu-
+lation of the problem. Subsequent to our original proof, Piotr Indyk suggested a
+simpler proof for this bound [18], so we do not present it here.
+
+4.2    Linear Families, Upper and Lower Bounds
+We derive further bounds by considering specifically linear transformations. For
+instance, we show that the family of linear transformations is not even approximately
+min-wise independent for any constant .
+
+
+                                         23
+Theorem 11 Consider the set Xk = {0, 1, 2 . . . k}, as a subset of [p]. As k, p → ∞,
+with p  k,
+                                                     3 ln k
+                        Pr(min{π(X)} = π(0)) ∼ 2
+                                                    π k
+when π is a randomly chosen linear transformation of the form π(x) = ax + b mod p
+(with a 6= 0).
+
+Proof: The proof will use some basic facts about Farey series. We first remind the
+reader of the definition and some basic facts regarding Farey series; more information
+can be found in most standard number theory texts.
+
+Definition 4 The Farey series of order k consists of all irreducible fractions less
+than 1 with denominator at most k, in increasing order.
+
+   If nd11 and nd22 are two consecutive fractions in the order k Farey series then
+
+   1. n2 d1 − n1 d2 = 1.
+
+   2. (d1 , d2 ) = 1.
+
+   3. The first fraction inserted between nd11 and nd22 in a higher order Farey series is
+      n1 +n2
+      d1 +d2
+             .
+
+     To compute the fraction of time that π(0) is the minimum element of {π(Xk )},
+let us first consider all transformations π with multiplier a. Let za = mini=1,...,k {−a ·
+i mod p}. Then π(0) is minimal only for those π = ax + b mod p where b < za (note
+that za is positive!), since for the other values of b the image of the minimal element
+will lie behind π(0) = b.
+     Hence, to find the fraction of the time that 0 is the minimum element of {π(Xk )},
+it suffices to find the expected value of p1 mini=1,...,k {−a·i mod p}, which conveniently
+is also the expected value of 1p mini=1,...,k {a · i mod p}. We concentrate on the latter
+expression.
+     Consider what happens to the numbers {a · i mod p|i = 1 . . . k} as we increase
+the value of the multiplier a from 1 to p − 1. It is useful to think of the numbers
+0, . . . , p − 1 as arranged clockwise around a circle. Consider k tokens, corresponding
+to the numbers 1, . . . , k from the set Xk . For each i, we view a · i mod p as the
+position of the ith token at time a. Token i starts in position i. As we increase
+the value of the multiplier a from 1 to p − 1 all tokens move around the circle in
+clockwise direction but at different speeds: token i moves i steps for every time tick.
+
+                                           24
+    If p is sufficiently larger than k, we can think of this motion as being continuous.
+That is, we scale the circle so that its circumference is 1. Let f = ap . Then the
+distance of token i from the origin along the circle when the multiplier is a is the
+fractional part of f i. Henceforth we think of this motion of the tokens as being
+continuous, with the “time” f increasing uniformly from 0 to 1. We need to compute
+the average distance of the token closest to the origin as f increases uniformly from 0
+to 1, where distance here is measured as clockwise distance along the circumference.
+This average distance is (asymptotically) 1p mini=1,...,k {a· i mod p}, the term we wish
+to compute. (Asymptotically this approximation yields the correct answer, as the
+approximation affects only lower order terms.)
+    The token closest to the origin changes whenever a token reaches the origin. This
+happens whenever the value of f is nd for integers n and d with 1 ≤ n < d ≤ k, as
+at that point the token with speed d reaches the origin. Thus the times where the
+token closest to the origin changes are precisely the proper (less than 1) fractions
+of denominator at most k, that is, the terms of the Farey sequence of order k.
+Let nd11 and nd22 be two consecutive fractions in the Farey sequence of order k. For
+n1
+d1
+   ≤ f ≤ nd22 , the token with speed d1 is closest to the origin. This time interval has
+length nd22 − nd11 = d11d2 . During this time interval, the token starts at the origin and
+moves with a speed of d1 . Thus the average distance of this token from the origin
+during this interval is 21 · d1 · d11d2 = 2d12 .
+    To obtain the average distance over the entire interval, it suffices to take the
+appropriate weighted sum over all pairs of consecutive Farey fractions. By the
+above, the contribution from each interval [ nd11 , nd22 ] is d11d2 · 2d12 = 2d11 d2 .
+                                                                                   2
+    To find a simple form for the resulting sum, we build up, starting the appropriate
+sum for X1 = {0, 1} and building up to the set Xk . Alternatively, we may think
+of how the sum changes as we build up from the order j − 1 Farey series to the
+order j Farey series and use this to derive the appropriate sum for the order k Farey
+series. The order j Farey series is derived from the order j − 1 Farey series by
+adding all fractions of the form aj with (a, j) = 1 in their proper position. (Note
+we use the standard shorthand (a, j) for gcd(a, j).) Correspondingly, this changes
+the contribution to the summation in all intervals where a new fraction is inserted.
+Suppose a fraction is inserted between nd11 and nd22 . Then the inserted fraction must
+be nd11 +n
+        +d2
+           2
+             , where d1 + d2 = k. Before the insertion, the contribution of this interval
+         1
+was 2d1 d2 . After the insertion, the contribution becomes 2d1 (d11+d2 )2 + 2(d1 +d    1
+                                                                                             2 . Thus
+                                                                                         2 )d2
+           2
+the change is
+                                    1               1          1
+                                             +               −
+                             2d1 (d1 + d2 )2   2(d1 + d2 )d2 2d1d22
+                                                           2
+
+
+                                                 25
+                       d22 + d1 (d1 + d2 ) − (d1 + d2 )2
+                      =
+                               2d1 (d1 + d2 )2 d22
+                                 1
+                      =−
+                          2(d1 + d2 )2 d2
+Note that d1 + d2 = j. Further (j, d2 ) = 1. In fact, for every a such that (a, j) = 1,
+there exists two consecutive Farey fractions nd11 and nd22 such that d1 + d2 = j and
+d2 = a. Thus the change in the summation caused by building up from order j − 1
+to order j Farey sequences is − 2j12 (a,j)=1,1≤a≤j a1 . For the order 1 Farey sequence,
+                                    P
+
+the value of the appropriate summation is obviously 21 . Thus the value for the order
+k Farey sequence is
+                                                          
+                                  k
+                            1   X 1         X       1
+                              1−      2
+                                                                                  (10)
+                            2    j=2 j (a,j)=1,1≤a≤j a
+
+   From here one must simply evaluate the value of this expression asymptotically
+to obtain the theorem. This evaluation, unfortunately, requires some work, which
+we now detail.
+   First we note that        ∞
+                            X   1       X       1
+                                 2
+                                                  = 1.
+                            j=2 j (a,j)=1,1≤a≤j a
+
+This follows from the fact that the value for the order k Farey sequence given in
+(10) must go to 0 as k goes to infinity, since the probability any random point will
+be the closest to the origin converges to 0. Hence (10) is equivalent to
+                     ∞                           ∞
+                 1 X     1       X       1   1 X     1       X       j
+                          2
+                                           =          3
+                                                                       .
+                 2 j=k+1 j (a,j)=1,1≤a≤j a   2 j=k+1 j (a,j)=1,1≤a≤j a
+
+   We now employ a common transformation known as Möbius inversion (see, for
+example, the standard number theory text by Hardy and Wright [17, 16.6.3]). The
+Möbius inversion yields
+
+                   ∞                           ∞
+               1 X     1               j   1 X     1 X     j           r
+                               X                                 X
+                        3
+                                         =          3
+                                                         µ
+               2 j=k+1 j (a,j)=1,1≤a≤j a   2 j=k+1 j r|j   r     1≤a≤r a
+
+   From here we may proceed with straightforward algebraic manipulation. In
+what follows, we use approximations (≈) in place of equality in expressions where
+we disregard lower order terms, and we use H(j) = 1 + 1/2 + . . . + 1/j:
+
+                                           26
+                ∞                         ∞
+            1 X     1 X     j         1 X     1 X       j  j
+                                                                      
+                     3
+                          µ   rH(r) =          3
+                                                    µ(d) H
+            2 j=k+1 j r|j   r         2 j=k+1 j d|j     d  d
+                                          1 ∞                  1 j   j
+                                            X          X                    
+                                        =       µ(d)            3
+                                                                   H
+                                          2 d=1      j≥k+1,d|j
+                                                               j d   d
+                                               ∞          ∞
+                                            1X   µ(d)     X         H(i)
+                                        =
+                                            2 d=1 d3          k+1
+                                                                  e
+                                                                     i2
+                                                        i=d    d
+                                              ∞
+                                            1 X  µ(d)   Z ∞
+                                                             ln y
+                                        ≈                         dy
+                                            2 d=1 d3     k/d y 2
+                                             ∞
+                                          1X   µ(d) ln(k/d)
+                                        ≈
+                                          2 d=1 d3 (k/d)
+                                                 ∞
+                                            ln k X µ(d)
+                                        ≈
+                                             2k d=1 d2
+                                               ∞
+                                                                       !
+                                          ln k X    Y        1
+                                        =                 1− 2
+                                           2k d=1 q prime   q
+                                               ∞
+                                          ln k X     1
+                                        =         P∞
+                                           2k d=1 m=1 m12
+                                          ln k 6    3 ln k
+                                        =         =
+                                           2k π 2   π2 k
+  2
+    Theorem 11 shows that it is possible to find sets for which some element is mini-
+mal for Ω( lnkk ) of the time when random linear transformations are used. Similarly,
+under linear transformations there is a set Xk0 with k + 1 elements such that π(0) is
+the minimum element of π(Xk0 ) with probability approximately 12π2lnk 2 ≈ 0.843
+                                                                             k
+                                                                                . This
+                                                            1
+result provides an example of how much less often than k+1     of the time an element
+can be minimal when random linear transformations are used.
+Theorem 12 Consider the set Xk0 = {−k/2, . . . , 0, . . . k/2}, where k is even, as a
+subset of [p]. As k, p → ∞, with p  k,
+                                                        12 ln 2
+                         Pr(min{π(X)} = π(0)) ∼
+                                                         π2 k
+when π is a randomly chosen linear transformation of the form π(x) = ax + b mod p
+(with a 6= 0).
+
+                                         27
+Proof: As before, we think of the numbers as points moving around the circle at
+different speeds. Here, we have points moving clockwise with speed i for 1 ≤ i ≤ k/2,
+as well as points moving counterclockwise with speed i, for 1 ≤ i ≤ k/2. We want
+to determine the average distance of the point closest to the origin in the clockwise
+direction; this average distance corresponds to the fraction of the time that π(0) is
+the minimal element of π(Xk0 ).
+    For a given multiplier a, let f = ap . Let nd11 and nd22 be two consecutive Farey
+fractions of order k/2. During the interval nd11 ≤ f ≤ nd22 , the point moving clockwise
+with speed d1 is closest to the origin during the beginning of the interval. It remains
+so until the time it meets the point moving counterclockwise with speed d2 ; this point
+then remains closest to the origin at the end of the interval. The two points meet
+                         1
+at a distance d1 +d         2
+                              from the origin. The average value distance of the point closest
+to the origin during this interval is therefore d11d2 is 2(d11+d2 ) . Hence the contribution
+of this interval to the overall average value of the minimum is 2d1 d2 (d1 1 +d2 ) .
+    As in Theorem 11, to find a simple form for the resulting average distance,
+we build up by considering the change when we move from the order j − 1 Farey
+sequence to the order j Farey sequence. When the fraction nd11 +d     +n2
+                                                                        2
+                                                                          is inserted between
+                                            n1     n2
+two consecutive Farey fractions d1 and d2 , the change in the contribution of the
+interval [ nd11 , nd22 ] is
+             "                                                                      #
+          1              1                          1                 1
+                                       +                         −
+          2 d1 (d1 + d2 )(2d1 + d2 ) d2 (d1 + d2 )(d1 + 2d2 ) d1 d2 (d1 + d2 )
+          d2 (d1 + 2d2 ) + d1 (2d1 + d2 ) − (2d1 + d2 )(d1 + 2d2 )
+        =
+                   2d1 d2 (d1 + d2 )(2d1 + d2 )(d1 + 2d2 )
+                             3
+        =−
+            2(d1 + d2 )(d1 + 2d2 )(2d1 + d2 )
+                                    3
+        =−
+            2(d1 + d2 )((d1 + d2 ) + d2 )(2(d1 + d2 ) − d2 )
+
+Note that d1 + d2 = j and (d2 , j) = 1. Hence the change in the average value in
+moving from j − 1 to j is
+                                 3        X              1
+                             −
+                                 2j (a,j)=1,1≤a≤j (j + a)(2j − a)
+
+The value for the order 1 Farey sequence is 14 .
+
+
+
+                                              28
+    Hence the average distance determined by the order k/2 Farey sequence is
+                                                                      
+                                 k/2
+                        3 1 X 1        X              1
+                            −                                   .
+                        2 6 j=2 j (a,j)=1,1≤a≤j (j + a)(2j − a)
+
+   Using algebraic manipulation similar to that of Theorem 11, one can compute
+that this summation asympotitically becomes 12π2lnk2 . 2
+    Despite the seemingly bad worst-case behavior of linear transformations, we be-
+lieve that in practice they are suitable for applications, because they perform well on
+random sets. For a set X = {x0 , . . . , xk−1 } of size k, let F (X) be maxi |{π | min{π(X)}=π(x
+                                                                                      p(p−1)
+                                                                                                 i )}|
+                                                                                                       .
+That is, F (X) is the fraction of the permutations for which the most likely element
+to be the minimum is actually the minimum. (And we have just seen that F (X) can
+asymptotically reach π32 lnkk in the worst case.) We now prove that the expected value
+of F (X) when X is chosen uniformly
+                               √           at random from all sets of size k as k, p → ∞
+can be bounded by (1 + 1/ 2)/k + O(1/k 2 ). In this sense, linear transformations
+are approximately min-wise independent with respect to random sets.
+
+Theorem
+  √      13 As k, p → ∞, with p  k 2 , EX [F (X)] is bounded above by (1 +
+1/ 2)/k + O(1/k 2).
+
+Proof: We define
+                                       |{π | min{π(X)} = π(xi )}|
+                           fi (X) =                               ,
+                                                p(p − 1)
+and
+                              |{π | min{π(X)} = π(xi ) and π(xi ) = z · p}|
+                gi (z, X) =                                                 ,
+                                                p−1
+That is, consider the subset of permutations that map the ith element to zp. Then
+gi is the fraction of these permutations for which the the ith element is minimal.
+    Hereafter we suppose that the universe size p is sufficiently large that we may
+think of z as varying continuously on the unit circle from 0 to 1, instead of jumping
+discretely by 1/p. This simplification allows us to dismiss many lower order terms.
+Similarly, we will suppose that p is sufficiently large compared to k so that we may
+suppose that the k values of X are chosen with replacement, and the results will
+be equivalent asymptotically. Also, in our calculations, we will find it convenient to
+replace the p − 1 term by p in the definitions of fi (X) and gi (z, X). Since we are
+interested in asymptotics as p → ∞, this does not change our results.
+
+
+
+                                               29
+   The value we wish to bound is
+
+                              F (X) = EX [ max fi (X)],
+                                                  i=0,...,k−1
+
+where we use EX to denote that the expectation is over the random choice of the
+set X. Note also that we have the following relation:
+                                                 Z 1
+                                    fi (X) =           gi (z, X)dz.
+                                                  0
+
+   Let the fi (X) have mean µ and variance σ 2 . (Note the mean and variance are the
+same for all fi .) To bound F (X), we make use of a simple bound on the expected
+value of the maximum of several identically distributed random variables.
+
+Lemma 6 Let X1 , X2 , . . . , Xk be identically distributed random variables with mean
+µ and variance σ 2 . Then
+                                                      √
+                               E[ max Xi ] ≤ µ + σ k.
+                                     i=1,...,k
+
+Proof: We show equivalently that
+                                                          2
+                                E[ max Xi − µ]                   ≤ kσ 2 .
+                                     i=1,...,k
+
+
+                                            2                                      
+                                                                                  2
+                     E[ max Xi − µ]               ≤ E ( max Xi − µ)
+                        i=1,...,k                              i=1,...,k
+                                                                                     
+                                                                                  2
+                                                  ≤ E max (Xi − µ)
+                                                              i=1,...,k
+                                                                                     
+
+                                                                          (Xi − µ)2 
+                                                                X
+                                                  ≤ E
+                                                              i=1,...,k
+
+                                                                   E[(Xi − µ)2 ]
+                                                         X
+                                                  =
+                                                       i=1,...,k
+                                                          2
+                                                  = kσ
+
+
+  2
+
+
+
+                                                  30
+    Clearly, by symmetry EX [fi (X)] = 1/k. Hence, to find an upper bound on F ,
+we just have to bound σ 2 , the variance of fi (X). Specifically, we bound the variance
+of f0 (X).
+    We define some helpful notation. Let πa,z denote the unique linear permutation
+such that ax0 +b = z·p mod p. That is, πa,z is the linear permutation with multiplier
+a that maps x0 to z · p. Let Ma (z, X) be an indicator random variable that is 1 if
+min{πa,z (X)} = πa,z (x0 ). Thus, g0 (z, X) = p1 a Ma (z, X). Now the variance of f0
+                                                 P
+
+is just                    h                       i
+                 σ 2 = EX (f0 (X) − EX [f0 (X)])2
+                            "Z
+                                1                            Z 1                  2 #
+                     = EX           g0 (z, X)dz − EX                 g0 (z, X)dz
+                               0                                 0
+                            "Z
+                                1                                             2 #
+                     = EX           (g0 (z, X) − EX [g0 (z, X)]) dz
+                               0
+                              "Z 
+                       1         1 X
+                     = 2 EX                      Ma (z, X)
+                      p             0        a
+                                                        X                    2 #
+                                                 − EX        Ma (z, X)     dz
+                                                         a
+                              "Z
+                       1                1 X
+                     = 2 EX                      Ma (z, X)
+                      p             0    a
+                                                                                2 #
+                                                     − EX Ma (z, X)           dz
+
+   Let µa (z) = EX [Ma (z, X)]. From this definition, it is apparent that µa (z) =
+(1 − z)k−1 , as each of the images of the other randomly chosen k − 1 elements has
+probability 1 − z of being greater than z · p.
+   Hence, continuing from the last line above,
+
+                   1         1X
+                            Z                                    2                  
+              σ2 =   EX         (M a (z,  X) −  E X [Ma (z, X)])dz
+                  p2        0 a
+                   1
+                        Z 1 Z 1  X
+                 = 2 EX                  (Ma1 (z, X) − µa1 (z))
+                  p       z=0 y=0 a1 ,a2
+                                                                                          
+                                                  × (Ma2 (y, X) − µa2 (y)) dy dz
+                   1 Z 1 Z 1 X
+                                    
+                 = 2               EX [Ma1 (z, X)Ma2 (y, X)]
+                  p z=0 y=0 a1 ,a2
+
+
+                                                   31
+                                                                              
+                                                           − µa1 (z)µa2 (y)           dy dz
+                                                                                                  (11)
+
+   We now bound the last term. This will in turn bound the variance and yield the
+theorem. In order to do this, we derive an alternative expression for EX [Ma1 (z, X)Ma2 (y, X)]
+that can be be appropriately bounded.
+   Let
+             qa1 ,a2 (z, y) = Prx∈[p] (πa1 ,z (x) > z · p and πa2 ,y (x) > y · p).
+   Then
+                                                                            k−1
+                        EX [Ma1 (z, X)Ma2 (y, X)] = (qa1 ,a2 (z, y))              ,
+
+again since the other k − 1 terms of X are chosen uniformly at random.
+    We thus have expressed the value we wish to bound as the sum of the (k − 1)st
+powers of qa1 ,a2 terms. The next lemma shows that the sum of these qa1 ,a2 terms is
+fixed. As the maximum possible value of the sum of the (k − 1)st powers is achieved
+when the terms in the sum take on extremal values, together these results will allow
+us to bound a1 ,a2 EX [Ma1 (z, X)Ma2 (y, X)].
+             P
+
+
+Lemma 7
+                                      qa1 ,a2 (z, y) = p2 (1 − z)(1 − y).
+                             X
+
+                             a1 ,a2
+
+
+Proof: Consider the following experiment. We choose three values a1 , a2 , x ∈ [p]
+independently and uniformly at random. The experiment succeeds if both πa1 ,z (x) >
+z · p and πa2 ,y (x) > y · p. Clearly, the probability of success is (1 − z)(1 − y). The
+summation a1 ,a2 p · qa1 ,a2 (z, y) is simply the number of the p3 triples (a1 , a2 , x) for
+            P
+
+which the experiment succeeds. The lemma follows. 2
+   Since the total sum of the terms qa1 ,a2 is fixed, the sum a1 ,a2 EX [Ma1 (z, X)Ma2 (y, X)]
+                                                                      P
+
+is maximized when the qa1 ,a2 terms take on extremal values. Let us assume that
+z ≥ y. Then qa1 ,a2 (z, y) ∈ [1 − z − y, 1 − z]. (Of course qa1 ,a2 (z, y) ≥ 0, and hence
+the above range may not be correct if z + y > 1.) A simple calculation then yields
+the following bound (for z + y ≤ 1):
+       X
+               EX [Ma1 (z, X)Ma2 (y, X)]
+      a1 ,a2
+                                                                                             
+                                            ≤ p2 z(1 − z)k−1 + (1 − z)(1 − z − y)k−1 .
+
+
+                                                      32
+We will use this bound for the range z ≤ 1/2. For z > 1/2, we have qa1 ,a2 (z, y) ≤
+1 − z ≤ 1/2. Hence,
+
+                                 EX [Ma1 (z, X)Ma2 (y, X)] ≤ p2 (1/2k−1 ).
+                        X
+
+                        a1 ,a2
+
+
+   Substituting this bound in (11), we get:
+                  1
+                                   Z 1 Z 1  X 
+                2
+              σ = 2 EX                                   Ma1 (z, X)Ma2 (y, X)
+                 p                   z=0 y=0 a1 ,a2
+                                                                                       
+                                                            − µa1 (z)µa2 (y)     dy dz
+                        2
+                             Z 1 Z z X              h
+                    =                             EX Ma1 (z, X)Ma2 (y, X)
+                        p2       z=0 y=0 a1 ,a2
+                                                                            i
+                                                            − µa1 (z)µa2 (y) dy dz
+                          Z 1/2 Z z 
+                    ≤2                    z(1 − z)k−1 + (1 − z)(1 − z − y)k−1
+                             z=0    y=0
+                                                                        
+                                           − (1 − z)k−1 (1 − y)k−1 dy dz
+                                     Z 1   Z z
+                                                  1
+                                  +2              k−1
+                                                      dy dz
+                                      z=1/2 y=0 2
+
+
+
+   To prove Theorem 1, we need merely to compute this integral thus bounding the
+variance. This calculation is easily performed, yielding
+                                                   1
+                                          σ2 ≤         + O(1/k 4).
+                                                  2k 3
+
+This proves Theorem 13.              2
+    Simulations suggest that in fact the behavior of families of linear transformations
+on a random set X is much better than this. We conjecture that the expected value
+of F (X) converges to 1/k asymptotically.
+    Also, we note that Theorem 13 actually generalizes quite straightforwardly to
+all pairwise independent families. The notation becomes slightly more difficult, as
+one must take care to index variables and summations appropriately, but the proof
+follows the same course.
+
+
+                                                     33
+5    Acknowledgments
+The authors thank Noam Elkies for enlightening discussions regarding Farey series.
+
+
+References
+ [1] N. Alon, M. Dietzfelbinger, P. B. Miltersen, E. Petrank, and G. Tardos. Is linear
+     hashing good? In Proceedings of the Twenty-Ninth Annual ACM Symposium
+     on Theory of Computing, pages 465–474, El Paso, Texas, 4–6 May 1997.
+ [2] N. Alon, O. Goldreich, J. Håstad, and R. Peralta. Simple constructions of al-
+     most k-wise independent random variables. Random Structures and Algorithms,
+     3(3):289–304, 1992.
+ [3] N. Alon and J. H. Spencer. The Probabilistic Method. John Wiley and Sons,
+     1992.
+
+ [4] T. M. Apostol. Introduction to Analytic Number Theory. Springer-Verlag, 1976.
+
+ [5] T. Berners-Lee, R. Cailliau, A. Loutonen, H. F. Nielsen, and A. Secret. The
+     world-wide web. Communications of the ACM, 37(8):76–82, 1994.
+
+ [6] B. Bollobás. Combinatorics: Set Systems, Hypergraphs, Families of Vectors,
+     and Combinatorial Probability. Cambridge University Press, 1986.
+
+ [7] A. Z. Broder. On the resemblance and containment of documents. In Proceed-
+     ings of Compression and Complexity of SEQUENCES 1997. To appear.
+
+ [8] A. Z. Broder. Filtering near-duplicate documents. In Proceedings of FUN 98,
+     1998. To appear.
+
+ [9] A. Z. Broder, M. Charikar, A. Frieze, and M. Mitzenmacher. Min-wise indepen-
+     dent permutations. In Proceedings of the Thirtieth Annual ACM Symposium
+     on the Theory of Computing, pages 327–336, 1998.
+
+[10] A. Z. Broder, M. Charikar, and M. Mitzenmacher. Derandomization using
+     min-wise independent permutations. Draft manuscript.
+
+[11] A. Z. Broder, S. C. Glassman, M. S. Manasse, and G. Zweig. Syntactic clus-
+     tering of the Web. In Proceedings of the Sixth International World Wide Web
+     Conference, pages 391–404, 1997.
+
+                                         34
+[12] A. Z. Broder and A. R. Karlin. Multilevel adaptive hashing. In Proceedings of
+     the First Annual ACM-SIAM Symposium on Discrete Algorithms, pages 43–53,
+     San Francisco, California, 22–24 Jan. 1990.
+
+[13] J. L. Carter and M. N. Wegman. Universal classes of hash functions. Journal
+     of Computer and System Sciences, 18(2):143–154, Apr. 1979.
+
+[14] E. Cohen. Estimating the size of the transitive closure in linear time. In
+     Proceedings of the Thrity-Fifth Annual IEEE Symposium on Foundations of
+     Computer Science, pages 190–200, 1994.
+
+[15] T. Cover and J. Thomas. Elements of Information Theory. John Wiley & Sons,
+     Inc., 1991.
+
+[16] M. Dietzfelbinger, A. Karlin, K. Mehlhorn, F. M. auf der Heide, H. Rohnert,
+     and R. E. Tarjan. Dynamic perfect hashing: Upper and lower bounds. SIAM
+     J. Comput., 23(4):738–761, Aug. 1994.
+
+[17] G. H. Hardy and E. M. Wright. An Introduction to the Theory of Numbers.
+     Oxford University Press, fifth edition, 1979.
+
+[18] P. Indyk. Personal communication.
+
+[19] D. Karger, E. Lehman, T. Leighton, M. Levine, D. Lewin, and R. Panigrahy.
+     Consistent hashing and random trees: distributed caching protocols for re-
+     lieving hot spots on the World Wide Web. In Proceedings of the Twenty-Ninth
+     Annual ACM Symposium on the Theory of Computing, pages 654–663, El Paso,
+     Texas, May 1997.
+
+[20] J. Körner. Fredman-Komlós bounds and information theory. SIAM J. Alg.
+     Disc. Meth., 7(4):560–570, 1986.
+
+[21] D. E. Knuth. The Art of Computer Programming, Vol. I: Fundamental Algo-
+     rithms. Addison-Wesley, second edition, 1973.
+
+[22] M. Luby and A. Wigderson. Pairwise independence and derandomization. Tech-
+     nical Report TR-95-035, International Computer Science Institute, Berkeley,
+     California, 1995.
+
+[23] R. Seltzer, E. J. Ray, and D. S. Ray. The Alta Vista Search Revolution : How
+     to Find Anything on the Internet. McGraw-Hill, 1996.
+
+                                         35
+[24] R. J. Souza, P. Krishnakumar, C. M. Özveren, R. J. Simcoe, B. A. Spinney,
+     R. E. Thomas, and R. J. Walsh. GIGAswitch: A high-performance packet-
+     switching platform. DIGITAL Technical Journal, 6(1):9–22, 1994.
+
+[25] D. Zuckerman. Personal communication.
+
+
+
+
+                                      36
+

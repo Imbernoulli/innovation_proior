@@ -68,37 +68,6 @@ operation is useful when a line in direction `y` meets `K` many times: after
 rescaling those intersection points, one obtains many zeros on a line passing
 through `y`.
 
-**Multiplicity bookkeeping.** A sharper polynomial method asks a polynomial to
-vanish to multiplicity `m` at each point, meaning all Hasse derivatives of order
-less than `m` vanish. At a single point this imposes
-
-    C(m+n-1, n)
-
-linear conditions. The multiplicity version of Schwartz-Zippel is
-
-    sum_{a ∈ F_q^n} mult(P,a) ≤ d q^{n-1}
-
-for a nonzero polynomial of total degree at most `d`. Dvir-Kopparty-Saraf-Sudan
-combine these counts with leading-form multiplicity propagation: with
-`ell` a multiple of `q`, `d = ell q - 1`, and `m = 2 ell - ell/q`, the
-inequalities `d < ell q` and `(m-ell)q > d-ell` make the line-restriction
-multiplicity step work. The leading homogeneous part is forced to vanish to
-multiplicity `ell` at every point of `F_q^n`. Interpolation would be possible
-if
-
-    C(m+n-1, n) |K| < C(d+n, n),
-
-so the contradiction gives
-
-    |K| ≥ C(d+n,n) / C(m+n-1,n).
-
-For the chosen `d` and `m`, this ratio is
-
-    prod_{i=1}^n (ell q - 1 + i)/(2 ell - ell/q - 1 + i),
-
-which tends to `(q/(2 - 1/q))^n`, and hence gives the clean `q^n/2^n`
-sharpening.
-
 ## Baselines
 
 - **Wolff incidence bound, `|K| ≥ C_n q^{(n+2)/2}`.** This counts incidences
@@ -145,65 +114,29 @@ field arithmetic directly.
 
 ## Code framework
 
-The scaffold uses finite-field arithmetic, monomial enumeration, polynomial
-evaluation, Gaussian elimination over `F_q`, and explicit line checks. The
-certification routine is left as the algebraic step that turns Kakeya line data
-into a lower bound.
+The fixed primitives are the standard pieces of the polynomial method over a
+finite field, each of which is settled before any line data enters. First,
+*counting monomials of bounded degree*: the polynomials in `n` variables of
+total degree at most `d` form a vector space with monomial basis
+`x_1^{e_1}...x_n^{e_n}`, `e_1 + ... + e_n ≤ d`, of dimension `C(n+d, n)`, and the
+homogeneous degree-`d` slice has dimension `C(d+n-1, n-1)`. Second, *existence of
+a low-degree polynomial vanishing on a small set by parameter counting*: imposing
+vanishing at a point is one homogeneous linear equation in the coefficients, so
+whenever a set `S` has strictly fewer points than the dimension of the chosen
+polynomial space, linear algebra produces a nonzero polynomial of degree at most
+`d` that vanishes on all of `S`. Third, *a polynomial vanishing on too many
+points must be zero*: by Schwartz-Zippel a nonzero polynomial of total degree at
+most `d` has at most `d q^{n-1}` zeros, and in one variable a nonzero polynomial
+of degree at most `q-1` cannot vanish at all `q` field elements; combined with
+the homogeneity remark, ordinary vanishing on a set extends to the cone through
+it, so a line through the origin that meets the zero set in more than `deg`
+points forces the relevant univariate restriction to vanish identically.
 
-```python
-from itertools import product
-from math import comb
-
-def make_field(q):           # q prime in the executable checks
-    return list(range(q))
-
-def monomials_up_to_degree(n, d):
-    return [e for e in product(range(d + 1), repeat=n) if sum(e) <= d]
-
-def homogeneous_monomials(n, d):
-    return [e for e in product(range(d + 1), repeat=n) if sum(e) == d]
-
-def peval_mon(exps, pt, q):
-    t = 1
-    for v, e in zip(pt, exps):
-        t = (t * pow(v, e, q)) % q
-    return t
-
-def peval(poly, pt, q):
-    return sum(c * peval_mon(e, pt, q) for e, c in poly.items()) % q
-
-def nullspace_dim(rows, ncols, q):
-    """Dimension of {c : A c = 0} over F_q."""
-    pass
-
-def schwartz_zippel_bound(d, q, n):
-    return d * q**(n - 1)
-
-def vanishing_dim(point_set, q, n, d):
-    mons = monomials_up_to_degree(n, d)
-    rows = [[peval_mon(e, pt, q) for e in mons] for pt in point_set]
-    return nullspace_dim(rows, len(mons), q)
-
-def vanishing_polynomial_exists(point_set, q, n, d):
-    return vanishing_dim(point_set, q, n, d) > 0
-
-def contains_full_line(point_set, q, direction):
-    """Does point_set contain an affine line in the given direction?"""
-    pass
-
-def is_plane_kakeya(point_set, q):
-    """Check one representative of each projective direction in F_q^2."""
-    pass
-
-def quadratic_plane_kakeya(q):
-    """Quadratic small Kakeya construction in F_q^2 for odd prime q."""
-    pass
-
-def line_direction_certificate_holds(q, n):
-    """Return whether the algebraic certificate attached to line directions holds."""
-    pass
-
-def kakeya_lower_bound(q, n):
-    # TODO: certify the algebraic lower-bound step.
-    pass
-```
+The open slot is the bridge that turns these fixed primitives into a size bound
+without adding new combinatorial estimates. It must start from the hypothesis
+that a Kakeya set `K` is small enough for interpolation to produce a nonzero
+low-degree polynomial vanishing on `K`, then use only the affine-line data in all
+directions to force a contradiction with the zero-counting primitives above. The
+certificate has to specify which polynomial space is counted, how the line
+directions impose global vanishing information, and how the resulting dimension
+count becomes a constant-times-`q^n` lower bound.

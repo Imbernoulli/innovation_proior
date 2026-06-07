@@ -1,0 +1,1217 @@
+Chapter 8: Fast Convolution
+
+       Keshab K. Parhi
+          Chapter 8 Fast Convolution
+
+• Introduction
+• Cook-Toom Algorithm and Modified Cook-Toom
+  Algorithm
+• Winograd Algorithm and Modified Winograd Algorithm
+• Iterated Convolution
+• Cyclic Convolution
+• Design of Fast Convolution Algorithm by Inspection
+
+
+
+Chap. 8                                                2
+Introduction
+• Fast Convolution: implementation of convolution algorithm using fewer
+     multiplication operations by algorithmic strength reduction
+• Algorithmic Strength Reduction: Number of strong operations (such as
+     multiplication operations) is reduced at the expense of an increase in the
+     number of weak operations (such as addition operations). These are best suited
+     for implementation using either programmable or dedicated hardware
+• Example: Reducing the multiplication complexity in complex number
+     multiplication:
+      – Assume (a+jb)(c+dj)=e+jf, it can be expressed using the matrix form, which
+        requires 4 multiplications and 2 additions:
+                                                     e c −d a
+                                                      f  = d c ⋅ b
+                                                               
+      – However, the number of multiplications can be reduced to 3 at the expense of 3
+
+                                  ac − bd = a(c − d ) + d (a − b)
+        extra additions by using:
+
+                                  
+                                  ad + bc = b(c + d ) + d (a − b)
+Chap. 8                                                                                  3
+     – Rewrite it into matrix form, its coefficient matrix can be decomposed as
+       the product of a 2X3(C), a 3X3(H)and a 3X2(D) matrix:
+                           c − d   0   0  1 0 
+             e  1 0 1                  ⋅ 0 1  ⋅ a = C ⋅ H ⋅ D ⋅ x
+          s=  =       ⋅
+                                  +
+                                                     b
+                              0   c   d 0
+                                            
+             f  0 1 1                               
+                            0      0   d  1 −1
+           • Where C is a post-addition matrix (requires 2 additions), D is a pre-addition
+             matrix (requires 1 addition), and H is a diagonal matrix (requires 2 additions to
+             get its diagonal elements)
+     – So, the arithmetic complexity is reduced to 3 multiplications and 3
+         additions (not including the additions in H matrix)
+•   In this chapter we will discuss two well-known approaches to the design of
+    fast short-length convolution algorithms: the Cook-Toom algorithm (based
+    on Lagrange Interpolation) and the Winograd Algorithm (based on the
+    Chinese remainder theorem)
+
+
+
+
+Chap. 8                                                                                     4
+Cook-Toom Algorithm
+• A linear convolution algorithm for polynomial multiplication based on
+  the Lagrange Interpolation Theorem
+• Lagrange Interpolation Theorem:
+
+            Let β 0 ,...., β n be a set of     n + 1 distinct points, and let f ( β i ) , for i
+     = 0, 1, …, n be given. There is exactly one polynomial          f ( p ) of degree n or less
+     that has value    f ( β i ) when evaluated at β i for i = 0, 1, …, n. It is given by:
+
+                       n               ∏(p − β )         j
+
+      f ( p) = ∑ f ( β i )
+                                        j ≠i
+
+                      i =0            ∏ (β − β )
+                                       j ≠i
+                                                i            j
+
+
+
+
+Chap. 8                                                                                            5
+• The application of Lagrange interpolation theorem into linear
+  convolution
+                 Consider an N-point sequence     h = {h 0 , h1 ,..., h N −1 }
+          and an L-point sequence x = {x 0 , x1 ,..., x L − 1 } . The linear
+
+          convolution of h and x can be expressed in terms of polynomial
+          multiplication as follows: s ( p ) = h ( p ) ⋅ x ( p ) where
+           h ( p ) = h N − 1 p N − 1 + ... + h1 p + h0
+          x ( p ) = x L −1 p L −1 + ... + x1 p + x 0
+          s ( p ) = s L + N − 2 p L + N − 2 + ... + s1 p + s 0
+          The output polynomial s ( p ) has degree
+                                                         L + N − 2 and has
+          L + N − 1 different points.
+
+
+
+Chap. 8                                                                          6
+• (continued)
+
+              s ( p ) can be uniquely determined by its values at L + N − 1
+     different points. Let {β 0 , β 1 ,..., β L + N − 2 } be L + N − 1
+
+     different real numbers. If s ( β i ) for i = {0 ,1,..., L + N − 2 } are
+
+     known, then s ( p ) can be computed using the Lagrange interpolation
+     theorem as:
+
+                L+ N −2∏(p − β )                j
+
+      s( p) = ∑ s( β )          j ≠i
+
+                       ∏ (β − β )
+                            i
+                   i =0                  i       j
+                                j≠i
+     It can be proved that this equation is the unique solution to compute linear
+     convolution     for   s( p)       given   the   values   of
+                                                                   s( β i ) ,   for
+     i = {0,1,..., L + N − 2}.
+
+Chap. 8                                                                               7
+• Cook-Toom Algorithm (Algorithm Description)
+
+          1.   Choose L + N − 1 different real numbers β 0 , β 1 ,⋅ ⋅ ⋅β L + N −2
+          2.   Compute h ( β i ) and x ( β i ) , for i = {0 ,1,⋅ ⋅ ⋅, L + N − 2}
+          3.   Compute s ( β i ) = h ( β i ) ⋅ x ( β i ) , for i = {0,1,⋅ ⋅ ⋅, L + N − 2}
+
+                                                          ∏(p − β )
+                                                         L+ N −2                    j
+
+                                        s ( p) = ∑ s( β )               j ≠i
+                       s ( p )
+                                                          ∏ (β − β )
+                                                                   i
+          4.   Compute         by using                    i =0                i     j
+                                                                       j ≠i
+• Algorithm Complexity
+     – The goal of the fast-convolution algorithm is to reduce the multiplication
+       complexity. So, if βi `s (i=0,1,…,L+N-2) are chosen properly, the
+       computation in step-2 involves some additions and multiplications by
+       small constants
+     – The multiplications are only used in step-3 to compute s(β i). So, only
+       L+N-1 multiplications are needed
+
+
+Chap. 8                                                                                     8
+     – By Cook-Toom algorithm, the number of multiplications is reduced from
+       O(LN) to L+N-1 at the expense of an increase in the number of additions
+     – An adder has much less area and computation time than a multiplier. So,
+       the Cook-Toom algorithm can lead to large savings in hardware (VLSI)
+       complexity and generate computationally efficient implementation
+• Example-1: (Example 8.2.1, p.230) Construct a 2X2 convolution algorithm using
+    Cook-Toom algorithm with β={0,1,-1}
+     – Write 2X2 convolution in polynomial multiplication form as
+       s(p)=h(p)x(p), where h ( p ) = h0 + h1 p x ( p ) = x 0 + x1 p
+                              s ( p ) = s0 + s1 p + s2 p 2
+     – Direct implementation, which requires 4 multiplications and 1 additions,
+       can be expressed in matrix form as follows:
+
+                               s0   h0      0
+                              s  = h                x 
+                               1  1         h0  ⋅  0 
+                                               h1   1 
+                                                        x
+                               s 2   0
+
+
+
+Chap. 8                                                                           9
+• Example-1 (continued)
+     – Next we use C-T algorithm to get an efficient convolution implementation
+       with reduced multiplication number
+               β 0 = 0 , h ( β 0 ) = h0 , x ( β 0 ) = x 0
+               β 1 = 1, h ( β 1 ) = h0 + h1 , x ( β 1 ) = x 0 + x1
+               β 2 = 2, h ( β 2 ) = h0 − h1 , x ( β 2 ) = x 0 − x1
+     – Then, s(β0), s(β1), and s(β 2) are calculated, by using 3 multiplications, as
+         s ( β 0 ) = h( β 0 ) x ( β 0 ) s ( β1 ) = h( β1 ) x ( β1 ) s ( β 2 ) = h( β 2 ) x ( β 2 )
+     – From the Lagrange Interpolation theorem, we get:
+                             ( p − β 1 )( p − β 2 )             ( p − β 0 )( p − β 1 )
+          s( p) = s(β 0)                              + s( β1)
+                           ( β 0 − β 1 )( β 0 − β 2 )          ( β 1 − β 0 )( β 1 − β 2 )
+                           ( p − β 0 )( p − β 1 )
+               + s (β 2)
+                         ( β 2 − β 0 )( β 2 − β 1 )
+                                  s(β1) − s(β 2 )                        s(β1 ) + s(β 2 )
+                  = s( β 0) + p(                  ) + p 2 (− s ( β 0 ) +                  )
+                                         2                                      2
+                  = s 0 + ps 1 + p 2 s 2
+
+
+
+Chap. 8                                                                                              10
+• Example-1 (continued)
+     – The preceding computation leads to the following matrix form
+       s0        1        0    0   s( β0 ) 
+      s  =  0             1   − 1  ⋅  s ( β 1 ) 2 
+       1        
+       s 2     − 1     1    1   s ( β 2 ) 2 
+                     1      0     0  h(β 0 )               0             0          x ( β 0 )
+                =  0       1         
+                                 − 1 ⋅  0               h(β 1) 2         0         ⋅  x(β )
+                                                                                              1 
+
+                     − 1   1    1   0                   0         h ( β 2 ) 2   x ( β 2 ) 
+                  1         0    0   h0              0                    0          1       0 
+                                                                                                         x 
+               =  0         1   − 1 ⋅  0      ( h 0 + h1 ) 2              0            
+                                                                                         ⋅ 1      1 ⋅ 0
+                                                                                                  
+                                                                      ( h 0 − h1 ) 2  1 − 1   1 
+                                                                                                          x
+                  − 1      1    1   0             0
+     – The computation is carried out as follows (5 additions, 3 multiplications)
+                                 h + h1                 h − h1
+       1.    H 0 = h0 ,   H1 = 0           ,    H2 = 0             (pre-computed)
+                                     2                    2
+       2.    X 0 = x0 ,   X 1 = x0 + x1 ,       X 2 = x0 − x1
+       3. S 0 = H 0 X 0 ,   S1 = H 1 X 1 ,       S2 = H 2 X 2
+       4.    s0 = S 0 ,    s1 = S 1 − S 2 , s 2 = − S 0 + S1 + S 2
+
+
+Chap. 8                                                                                                         11
+     – (Continued): Therefore, this algorithm needs 3 multiplications and 5
+       additions (ignoring the additions in the pre-computation ), i.e., the number
+       of multiplications is reduced by 1 at the expense of 4 extra additions
+     – Example-2, please see Example 8.2.2 of Textbook (p.231)
+• Comments
+     – Some additions in the preaddition or postaddition matrices can be
+       shared. So, when we count the number of additions, we only count one
+       instead of two or three.
+     – If we take h0, h1 as the FIR filter coefficients and take x0, x1 as the signal
+       (data) sequence, then the terms H0, H1 need not be recomputed each
+       time the filter is used. They can be precomputed once offline and stored.
+       So, we ignore these computations when counting the number of
+       operations
+     – From Example-1, We can understand the Cook-Toom algorithm as a
+       matrix decomposition. In general, a convolution can be expressed in
+       matrix-vector forms as  s0   h0 0 
+                                   s  =  h h  ⋅  x0      or s = T ⋅ x
+                                    1        1 0   x 
+                                   s 2   0 h1   1 
+Chap. 8                                                                             12
+     – Generally, the equation can be expressed as
+                      s =T ⋅ x =C⋅ H⋅ D⋅ x
+          • Where C is the postaddition matrix, D is the preaddition matrix, and H is a
+            diagonal matrix with Hi, i = 0, 1, …, L+N-2 on the main diagonal.
+     – Since T=CHD, it implies that the Cook-Toom algorithm provides a way
+       to factorize the convolution matrix T into multiplication of 1 postaddition
+       matrix C, 1 diagonal matrix H and 1 preaddition matrix D, such that the
+       total number of multiplications is determined only by the non-zero
+       elements on the main diagonal of the diagonal matrix H
+     – Although the number of multiplications is reduced, the number of
+       additions has increased. The Cook-Toom algorithm can be modified in
+       order to further reduce the number of additions
+
+
+
+
+Chap. 8                                                                                   13
+Modified Cook-Toom Algorithm
+
+• The Cook-Toom algorithm is used to further reduce the number of
+  addition operations in linear convolutions
+                                                          L+ N −2
+                 Define s ' ( p ) = s ( p ) − S L+ N −2 p         . Notice that the
+
+          degree of s ( p) is L + N − 2 and S L + N − 2 is its highest order
+
+          coefficient. Therefore the degree of s' ( p) is L + N − 3 .
+
+• Now consider the modified Cook-Toom Algorithm
+
+
+
+
+Chap. 8                                                                               14
+• Modified Cook-Toom Algorithm
+
+     1.   Choose L + N − 2 different real numbers β0, β1,⋅ ⋅ ⋅βL+N −3
+     2.   Compute h(βi ) and x(βi ) , for i = {0,1,⋅ ⋅ ⋅, L + N − 3}
+     3.   Compute s(βi ) = h(βi ) ⋅ x(βi ) , for i = {0,1,⋅ ⋅ ⋅, L + N − 3}
+                                                          , for i = {0,1,⋅ ⋅ ⋅, L + N − 3}
+                                                  L+N−2
+     4.   Compute s' (βi ) = s(βi ) − sL+ N−2βi
+
+                                              L+N−2 ∏( p− β )            j
+
+                                 s' ( p) = ∑s' (β )           j≠i
+
+     5. Compute s' ( p) by using                    ∏(β − β )
+                                                          i
+                                                i=0                 i     j
+                                                              j≠i
+                                                L+N −2
+     6.   Compute s( p) = s' ( p) + sL+N −2 p
+
+
+
+
+Chap. 8                                                                                      15
+• Example-3 (Example 8.2.3, p.234) Derive a 2X2 convolution algorithm using the
+    modified Cook-Toom algorithm with β={0,-1}
+          Consider     the    Lagrange   interpolation   for      s' ( p) = s( p) − h1 x1 p2   at
+          {β0 = 0, β1 = −1}.
+          First, find s ' ( β i ) = h( βi ) x( β i ) − h1 x1 βi
+                                                                  2
+
+
+                 β0 = 0,    h(β0 ) = h0 ,    x(β0 ) = x0
+                 β1 = −1, h(β1) = h0 − h1, x(β1) = x0 − x1
+     – and
+                 s ' ( β 0 ) = h( β 0 ) x( β 0 ) − h1x1β 0 = h0 x0
+                                                             2
+
+
+                 s ' ( β 1 ) = h ( β1 ) x( β 1 ) − h1x1β 1 = ( h0 − h1 )( x0 − x1 ) − h1x1
+                                                         2
+
+
+
+        • Which requires 2 multiplications (not counting the h1x1
+          multiplication)
+     – Apply the Lagrange interpolation algorithm, we get:
+                                        ( p − β1)          ( p − β0 )
+                     s'( p) = s'( β0 )            + s'(β1)
+                                       (β0 − β1)           ( β1 − β0 )
+Chap. 8
+                             = s'( β0 ) + p(s' (β0 ) − s'(β1))                                      16
+• Example-3 (cont’d)
+     – Therefore, s ( p ) = s ' ( p ) + h1x1 p 2 = s0 + s1 p + s2 p 2
+     – Finally, we have the matrix-form expression:
+                                s0     1         0       0  s'(β 0 )
+                                s  = 1           −1      0  ⋅  s ' ( β 1 ) 
+                                1      
+     – Notice that              s 2   0       0       1   h 1 x 1 
+
+                              s'(β 0 )   1           0      0  s( β 0 )
+                              s'( β )  = 0           1     − 1  ⋅  s ( β 1 ) 
+                                     1   
+     – Therefore:             h 1 x 1   0         0      1   h 1 x 1 
+           s0  1           0      0  1         0        0  s ( β 0 )
+           s  = 1
+           1               −1     0  ⋅  0    1       − 1  ⋅  s ( β 1 ) 
+           s 2   0      0      1   0      0        1   h 1 x 1 
+                      1      0       0   h0              0           0  1            0 
+                                                                                                  x 
+                   =  1     −1      1  ⋅  0       h 0 − h1        0  ⋅  1      − 1  ⋅  0 
+                                                                                          1   1 
+                                                                                                   x
+                       0    0       1   0             0           h1   0
+
+Chap. 8                                                                                                   17
+• Example-3 (cont’d)
+     – The computation is carried out as the follows:
+        1.    H 0 = h0 ,       H 1 = h0 − h1 ,      H 2 = h1   (pre-computed)
+         2.   X 0 = x0 ,       X 1 = x0 − x1 ,      X 2 = x1
+         3. S 0 = H 0 X 0 ,    S1 = H 1 X 1 ,     S2 = H 2 X 2
+         4.    s0 = S 0 ,   s1 = S 0 − S1 + S 2 ,   s2 = S2
+     – The total number of operations are 3 multiplications and 3 additions.
+        Compared with the convolution algorithm in Example-1, the number of
+        addition operations has been reduced by 2 while the number of
+        multiplications remains the same.
+•   Example-4 (Example 8.2.4, p. 236 of Textbook)
+•   Conclusion: The Cook-Toom Algorithm is efficient as measured by the
+    number of multiplications. However, as the size of the problem increases, it is
+    not efficient because the number of additions increases greatly if β takes
+    values other than {0, ±1, ±2, ±4}. This may result in complicated pre-addition
+    and post-addition matrices. For large-size problems, the Winograd algorithm is
+    more efficient.
+
+Chap. 8                                                                          18
+ Winograd Algorithm
+• The Winograd short convolution algorithm: based on the CRT (Chinese
+   Remainder Theorem) ---It’s possible to uniquely determine a nonnegative integer given
+   only its remainder with respect to the given moduli, provided that the moduli are relatively
+   prime and the integer is known to be smaller than the product of the moduli
+• Theorem: CRT for Integers
+
+                      []
+  Given ci = Rmi c (represents the remainder when c is divided by mi ), for
+
+   i = 0,1,...,k , where mi           are moduli and are relatively prime, then
+
+        k            
+   c =  ∑ci Ni Mi  modM , where M = ∏k mi , Mi = M mi ,
+        i =0                                  i =0
+
+
+  and Ni is the solution of Ni M i + ni mi = GCD( Mi , mi ) = 1 , provided
+
+  that 0 ≤ c < M
+
+
+ Chap. 8                                                                                    19
+•     Theorem: CRT for Polynomials
+             Given c ( p) = Rm( i ) ( p)[c( p )] , for i=0, 1, …,k, where m ( i ) ( p) are
+                    (i )
+
+
+                                                k (i )                            
+    relatively prime, then c( p) =  ∑ c ( p ) N ( i ) ( p )M ( i ) ( p )  mod M ( p ) , where
+                                                i =0                              
+     M ( p) = ∏i =0 m (i ) ( p) , M (i ) ( p) = M ( p ) m (i ) ( p) , and N (i ) ( p) is the solution of
+                k
+
+
+
+ N (i ) ( p ) M (i ) ( p ) + n (i ) ( p) m (i ) ( p ) = GCD ( M (i ) ( p ), m (i ) ( p)) = 1 Provided that the
+ degree of c( p ) is less than the degree of M ( p)
+• Example-5 (Example 8.3.1, p.239): using the CRT for integer, Choose
+      moduli m0=3, m1=4, m2=5. Then M = m0m1m2 = 60, and M i = M mi .
+      Then:
+                         m0 = 3, M0 = 20, (−1)20 + 7(3) = 1
+                         m1 = 4, M1 = 15, (−1)15 + (4)4 = 1
+                         m2 = 5, M2 = 12, (−2)12 + (5)5 = 1
+        – where Ni and ni are obtained using the Euclidean GCD algorithm. Given
+          that the integer c satisfying 0 ≤ c < M , let ci = Rmi [c ].
+
+
+Chap. 8                                                                                                      20
+•   Example-5 (cont’d)
+     – The integer c can be calculated as
+                 k           
+            c =  ∑ ci Ni M i  mod M = (−20∗ c0 − 15∗ c1 − 24∗ c2 ) mod60
+                 i=0         
+     – For c=17, c0 = R3 (17) = 2, c1 = R4 (17) = 1, c2 = R5 (17) = 2
+            c = (−20∗ 2 − 15∗1 − 24∗ 2) mod60 = (−103)mod 60 = 17
+
+•   CRT for polynomials: The remainder of a polynomial with regard to modulus
+     pi + f ( p) , where deg( f ( p )) ≤ i − 1, can be evaluated by substituting pi by
+    − f ( p) in the polynomial
+•   Example-6 (Example 8.3.2, pp239)
+
+                    (a).     [            ]
+                                  Rx+2 5x2 + 3x + 5 = 5(−2)2 + 3(−2) + 5 = 19
+                    (b).   R [5x + 3x + 5] = 5(−2) + 3x + 5 = 3x − 5
+                                   x +2
+                                              2
+
+
+                            [5x + 3x + 5] = 5(−x − 2) + 3x + 5 = −2x − 5
+                                    2
+
+                                          2
+                    (c). R   x + x+2
+                              2
+
+
+
+
+Chap. 8                                                                             21
+• Winograd Algorithm
+     – 1. Choose a polynomial m ( p ) with degree higher than the degree of
+       h ( p ) x ( p ) and factor it into k+1 relatively prime polynomials with real
+       coefficients, i.e., m ( p ) = m ( p ) m ( p ) ⋅ ⋅ ⋅ m ( p )
+                                         ( 0)    (1)        ( k)
+
+
+
+
+     – 2. Let M ( p ) = m( p ) m ( p ). Use the Euclidean GCD algorithm to
+                   (i)                         (i)
+
+
+       solve N ( i ) ( p ) M (i ) ( p ) + n ( i ) ( p ) m ( i ) ( p ) = 1 for N ( i ) ( p ) .
+
+     – 3. Compute: h (i )
+                          ( p ) = h ( p ) mod m (i)
+                                                    ( p ),                 x ( i ) ( p ) = x ( p ) mod m ( i ) ( p )
+                   for i = 0,1,⋅ ⋅ ⋅, k
+
+
+     – 4. Compute: s ( i ) ( p ) = h ( i ) ( p ) x ( i ) ( p ) mod m ( i ) ( p ),         for     i = 0,1,⋅ ⋅ ⋅, k
+
+     – 5. Compute s ( p ) by using:
+                                                k
+                                    s ( p ) = ∑ s ( i ) ( p ) N (i ) ( p ) M ( i ) ( p ) mod m ( i ) ( p )
+                                               i=0
+
+
+
+
+Chap. 8                                                                                                                22
+• Example-7 (Example 8.3.3, p.240) Consider a 2X3 linear convolution as in
+    Example 8.2.2. Construct an efficient realization using Winograd algorithm
+    with               m ( p ) = p ( p − 1)( p 2 + 1)
+     – Let: m ( 0 ) ( p ) = p , m (1) ( p ) = p − 1, m ( 2 ) ( p ) = p 2 + 1
+     – Construct the following table using the relationships M ( i ) ( p ) = m ( p ) m ( i ) ( p )
+        and   N ( i ) ( p ) M ( i ) ( p ) + n ( i ) ( p ) m ( i ) ( p ) = 1 for i = 0,1, 2
+           i     m (i ) ( p )          M (i ) ( p )                n (i ) ( p )            N ( i ) ( p)
+          0          p              p3 − p 2 + p −1               p2 − p +1                 −1
+          1        p −1                   p3 + p                  (
+                                                              − 12 p 2 + p + 2    )            1
+                                                                                               2
+
+          2        p2 +1                  p2 − p                 − 12 ( p − 2)             1
+                                                                                           2   ( p − 1)
+     – Compute residues from h ( p ) = h0 + h1 p ,                  x ( p ) = x0 + x1 p + x2 p 2 :
+                                  h ( 0 ) ( p ) = h0 ,               x ( 0 ) ( p ) = x0
+                             h (1) ( p ) = h0 + h1 ,         x (1) ( p ) = x0 + x1 + x2
+                            h ( 2 ) ( p ) = h0 + h1 p ,   x( 2 ) ( p ) = ( x0 − x 2 ) + x1 p
+
+
+
+Chap. 8                                                                                                   23
+• Example-7 (cont’d)
+            s ( 0 ) ( p ) = h0 x0 = s0 ( 0 ) ,       s (1) ( p ) = ( h0 + h1 )( x0 + x1 + x 2 ) = s0 (1)
+
+            s ( 2 ) ( p ) = ( h0 + h1 p )(( x 0 − x 2 ) + x1 p ) mod( p 2 + 1)
+                    = h0 ( x0 − x2 ) − h1 x1 + ( h0 x1 + h1 ( x0 − x 2 )) p = s0 ( 2 ) + s1( 2 ) p
+                                             (0 )           (1)                ( 2)
+     – Notice, we need 1 multiplication for s ( p ), 1 for s ( p ), and 4 for s ( p )
+     – However it can be further reduced to 3 multiplications as shown below:
+                                                       h                 0                0        x 0 + x1 − x 2 
+                 s 0 ( 2 )  1                 − 1  0
+                                                                                            0  ⋅  x 0 − x 2 
+                                          0
+                 (2)  =                           ⋅ 0         h 0 − h1
+                 s1   1               −1       0 
+                                                        0            0                h 0 + h1        x1       
+     – Then:
+                         2
+          s ( p ) = ∑ s ( i ) ( p ) N ( i ) ( p ) M (i ) ( p ) mod m (i ) ( p )
+                     i=0
+
+                 = −s[       (0 )
+                                    ( p )( p − p + p − 1) +
+                                          3      2                 S (1 ) ( p )
+                                                                        2         ( p + p) +
+                                                                                    3           S(2) ( p)
+                                                                                                   2        ( p3 − 2 p 2 + p)   ]
+                         mod( p 4 − p 3 + p 2 − p )
+
+
+Chap. 8                                                                                                                    24
+• Example-7 (cont’d)
+     – Substitute s ( 0 ) ( p ),   s (1) ( p ),    s ( 2 ) ( p ) into s ( p ) to obtain the following
+       table
+                      p0               p1               p2                  p3
+                                   − s0                                − s0
+                            (0)             (0)          (0)                     (0)
+                       s0                           s0
+                                            ( 1)                                 (1 )
+                         0         1
+                                   2   s0               0               1
+                                                                        2   s0
+                                                   − s0
+                                            (2)              (2)                 (2)
+                         0         1
+                                   2   s0                              1
+                                                                       2    s0
+                                                                     − 12 s 1
+                                            (2)                                   (2)
+                         0         1
+                                   2   s1               0
+
+
+
+     – Therefore, we have
+                      s0   1               0     0           0   s0(0) 
+                     s    − 1                                                     
+                       =                   1     1           1   12 s 0 ( 1 ) 
+                        1
+                                                                    ⋅
+                      s2   1               0    − 2          0   12 s 0 ( 2 ) 
+                                                                                 
+                      s3  − 1              1     1          − 1   12 s 1 ( 2 ) 
+
+
+
+Chap. 8                                                                                                 25
+• Example-7 (cont’d)
+     – Notice that
+                                                  h0      0        0               0             0           x0       
+ s0 (0 )
+              1                           0  
+                                                                                                  0   x 0 + x 1 + x 2 
+                                                                                                           
+                    0     0       0                      h0 + h1
+ 1 (1 )                                  0  
+                                                     0      2       0               0
+ 2 s0  = 0       1     0       0
+                                                 ⋅ 0      0        h0
+                                                                                    0             0  ⋅  x 0 + x1 − x 2 
+ 1 s (2)     0   0     1       0        − 1                     2
+                                                                               h1 − h 0                                
+ 21 0 ( 2 )                                      0     0        0                             0   x0 − x 2 
+                                            0  
+                                                                                  2
+ 2 s 1     0   0     1       1
+                                                   0                                         h 0 + h1
+                                                                                                                     
+                                                           0        0               0              2            x1
+     – So, finally we have:
+                                                              h0          0              0        0          0 
+             s0   1                                0  
+                                                                                                              0 
+                              0        0        0                        h 0 + h1
+            s    − 1       1        2        1    − 1  
+                                                                0            2            0        0
+              = 
+               1
+                                                            ⋅ 0           0              h0
+                                                                                                   0          0 
+            s2    1        0       − 2       0     2                                 2
+                                                                                                 h1 − h0            
+                                                            0          0              0                   0 
+                   − 1                         − 1 − 1 
+                                                                                                    2
+             s3             0       0
+                                                              0          0              0        0
+                                                                                                           h 0 + h1
+                                                                                                                    
+                                                                                                               2
+
+                                    1        0    0 
+                                    1        1    1   x 0 
+                                    
+                                  ⋅ 1        1 − 1  ⋅  x 1 
+                                                     
+                                    1        0 − 1   x 2 
+                                     0      1    0 
+
+Chap. 8                                                                                                                  26
+• Example-7 (cont’d)
+     – In this example, the Winograd convolution algorithm requires 5
+       multiplications and 11 additions compared with 6 multiplications and 2
+       additions for direct implementation
+• Notes:
+     – The number of multiplications in Winograd algorithm is highly dependent
+       on the degree of each m ( i ) ( p ). Therefore, the degree of m(p) should be as
+       small as possible.
+     – More efficient form (or a modified version) of the Winograd algorithm
+       can be obtained by letting deg[m(p)]=deg[s(p)] and applying the CRT to
+
+               s ' ( p ) = s ( p ) − h N −1 x L −1 m ( p )
+
+
+
+
+Chap. 8                                                                             27
+Modified Winograd Algorithm
+     – 1. Choose a polynomial m ( p ) with degree equal to the degree of s ( p )
+       and factor it into k+1 relatively prime polynomials with real coefficients,
+       i.e., m ( p ) = m ( 0 ) ( p ) m (1) ( p ) ⋅ ⋅ ⋅ m ( k ) ( p )
+     – 2. Let M ( p ) = m( p ) m ( p ), use the Euclidean GCD algorithm to
+                   (i)                         (i)
+
+
+       solve N ( i ) ( p ) M (i ) ( p ) + n ( i ) ( p ) m ( i ) ( p ) = 1 for N ( i ) ( p ) .
+
+                   h ( i ) ( p ) = h ( p ) mod m ( i ) ( p ),            x ( i ) ( p ) = x ( p ) mod m ( i ) ( p )
+     – 3. Compute:
+                   for i = 0,1,⋅ ⋅ ⋅, k
+
+     – 4. Compute: s '( i ) ( p ) = h ( i ) ( p ) x ( i ) ( p ) mod m ( i ) ( p ),      for i = 0 ,1,⋅ ⋅ ⋅, k
+     – 5. Compute s ' ( p ) by using: k
+                                    s ' ( p ) = ∑ s '( i ) ( p ) N ( i ) ( p ) M ( i ) ( p ) mod m ( i ) ( p )
+                                                     i=0
+
+
+     – 6. Compute                s ( p ) = s ' ( p ) + h N −1 x L −1 m( p )
+
+
+
+Chap. 8                                                                                                              28
+• Example-8 (Example 8.3.4, p.243 ): Construct a 2X3 convolution algorithm
+    using modified Winograd algorithm with m(p)=p(p-1)(p+1)
+     – Let m ( p ) = p , m ( p ) = p − 1, m ( p ) = p + 1
+              (0 )                    (1)                           ( 2)
+
+
+     – Construct the following table using the relationships M ( p ) = m ( p ) m ( p )
+                                                                         (i)    (i)
+
+        and    N ( i ) ( p) M ( i) ( p ) + n ( i) ( p )m ( i) ( p ) = 1
+          i    m (i) ( p )         M (i) ( p )                   n (i ) ( p )          N ( i ) ( p)
+          0        p                p 2 −1                         p                     −1
+          1      p −1                p2 + p                    − 12 ( p + 2 )             1
+                                                                                          2
+
+          2      p +1                p2 − p                    − 12 ( p − 2 )             1
+                                                                                          2
+
+
+     – Compute residues from h ( p ) = h0 + h1 p ,              x ( p ) = x0 + x1 p + x2 p 2 :
+                                 h ( 0 ) ( p ) = h0 ,               x ( 0 ) ( p ) = x0
+                             h (1) ( p ) = h0 + h1 ,       x (1) ( p ) = x0 + x1 + x2
+                             h ( 2 ) ( p ) = h0 − h1 ,     x( 2 ) ( p ) = x0 − x1 + x 2
+                             s '( 0 ) ( p ) = h0 x0 ,    s '(1) ( p ) = ( h0 + h1 )( x0 + x1 + x 2 ) ,
+                             s '( 2 ) ( p ) = ( h0 − h1 )( x0 − x1 + x 2 )
+
+Chap. 8                                                                                                  29
+• Example-8 (cont’d)
+     – Since the degree of m ( i ) ( p ) is equal to 1, s '( i ) ( p ) is a polynomial of
+       degree 0 (a constant). Therefore, we have:
+          s( p) = s' ( p) + h1 x2 m( p)
+                = [− s' (− p + 1) +
+                        ( 0)     2          S '(1)
+                                              2
+                                                     ( p + p) +
+                                                         2          S '( 2 )
+                                                                      2
+                                                                                                           ]
+                                                                               ( p 2 − p) + h1 x2 ( p 3 − p)
+                = s'(0) + p( s'(21) − s'(22 ) − h1 x2 ) + p 2 (−s'(0 ) + s'2 + s'2 ) + p3 ( h1 x2 )
+                                                                                  (1 )   ( 2)
+
+
+
+
+     – The algorithm can be written in matrix form as:
+
+           s0   1            0      0              0   s '( 0 ) 
+          s   0                                            (1) 
+           1 =               1     −1             − 1   s '2 
+                                                            ⋅ s '( 2 )
+           s2   − 1          1      1              0      2 
+                                                                  
+           s3   0            0      0              1   h1 x 2 
+
+
+
+
+Chap. 8                                                                                                        30
+• Example-8 (cont’d)
+     – (matrix form)
+           s0   1    0     0       0   h0       0          0        0
+          s   0      1    −1      − 1   0   h 0 + h1
+                                                                0        0 
+           1 =                          ⋅           2
+           s2   − 1 1      1       0  0         0        h 0 − h1
+                                                                         0
+                                                                       
+                                                                  2
+
+           s3   0    0     0       1  0         0          0        h1 
+                  1  0     0
+                  1            x0 
+                      1     1  
+                ⋅            ⋅ x1
+                  1 − 1    1  
+                              x 2 
+                  0  0     1
+
+     – Conclusion: this algorithm requires 4 multiplications and 7 additions
+
+
+
+
+Chap. 8                                                                         31
+Iterated Convolution
+• Iterated convolution algorithm: makes use of efficient short-length
+  convolution algorithms iteratively to build long convolutions
+• Does not achieve minimal multiplication complexity, but achieves a
+  good balance between multiplications and addition complexity
+• Iterated Convolution Algorithm (Description)
+     – 1. Decompose the long convolution into several levels of short
+       convolutions
+     – 2. Construct fast convolution algorithms for short convolutions
+     – 3. Use the short convolution algorithms to iteratively (hierarchically)
+       implement the long convolution
+     – Note: the order of short convolutions in the decomposition affects the
+       complexity of the derived long convolution
+
+
+
+
+Chap. 8                                                                          32
+• Example-9 (Example 8.4.1, pp.245): Construct a 4X4 linear convolution
+    algorithm using 2X2 short convolution
+     – Let h ( p ) = h0 + h1 p + h2 p + h3 p ,           x ( p ) = x0 + x1 p + x2 p 2 + x3 p 3
+                                         2  3
+
+           and s ( p ) = h ( p ) x ( p )
+     – First, we need to decompose the 4X4 convolution into a 2X2 convolution
+     – Define     h' ( p) = h + h p, h' ( p) = h + h p
+                         0          0     1        1          2      3
+
+                       x '0 ( p) = x0 + x1 p,    x'1 ( p ) = x2 + x3 p
+     – Then, we have:
+            h( p) = h'0 ( p) + h'1 ( p) p2 , i.e., h( p) = h( p, q) = h'0 ( p) + h'1 ( p)q
+            x( p) = x'0 ( p) + x'1 ( p) p2 , i.e., x( p) = x( p, q) = x'0 ( p) + x'1 ( p)q
+          s( p) = h( p) x( p) = h( p, q) x( p, q)
+                = [h'0 ( p) + h'1 ( p)q]⋅ [x '0 ( p) + x'1 ( p) q]
+                = h'0 ( p) x'0 ( p) + [h'0 ( p) x'1 ( p) + h'1 ( p) x'0 ( p)]q + h'1 ( p) x'1 ( p)q 2
+                = s'0 ( p) + s'1 ( p) q + s'2 ( p)q 2 = s( p, q)
+
+Chap. 8                                                                                            33
+• Example-9 (cont’d)
+     – Therefore, the 4X4 convolution is decomposed into two levels of nested
+       2X2 convolutions
+     – Let us start from the first convolution s'0 ( p) = h'0 ( p) ⋅ x'0 ( p) , we have:
+                h'0 ( p) ⋅ x'0 ( p) ≡ h'0 ⋅x'0 = (h0 + h1 p) ⋅ (x0 + x1 p)
+                      = h0 x0 + h1 x1 p 2 + p[(h0 + h1 ) ⋅ (x0 + x1 ) − h0 x0 − h1 x1 ]
+     – We have the following expression for the third convolution:
+              s' 2 ( p) = h'1 ( p) ⋅ x '1 ( p) ≡ h'1⋅ x'1 = ( h2 + h3 p) ⋅ ( x2 + x3 p)
+                     = h2 x2 + h3 x3 p 2 + p[(h2 + h3 ) ⋅ ( x2 + x3 ) − h2 x2 − h3 x3 ]
+     – For the second convolution, we get the following expression:
+               s'1 ( p) = h'0 ( p) ⋅ x '1 ( p) + h'1 ( p) ⋅ x'0 ( p) ≡ h'0 ⋅ x'1 + h'1⋅ x'0
+                      = [(h'0 +h'1 ) ⋅ ( x '0 + x'1 ) − h'0 ⋅ x'0 −h'1⋅ x'1 ]
+
+
+                               : multiplication                   : addition
+
+Chap. 8                                                                                       34
+• Example-9 (Cont’d)
+      • For [(h'0 + h'1 ) ⋅ ( x'0 + x'1 )], we have the following expression:
+
+            (h'0 +h'1 ) ⋅ ( x'0 + x'1 ) = [(h0 + h2 ) + p(h1 + h3 )]⋅ [(x0 + x2 ) + p(x1 + x3 )]
+                   = (h0 + h2 ) ⋅ ( x0 + x2 ) + p2 (h1 + h3 ) ⋅ ( x1 + x3 )
+                  + p[(h0 + h1 + h2 + h3 ) ⋅ ( x0 + x1 + x2 + x3 )
+                       − (h0 + h2 ) ⋅ ( x0 + x2 ) − (h1 + h3 ) ⋅ (x1 + x3 )]
+
+                     This requires 9 multiplications and 11 additions
+     – If we rewrite the three convolutions as the following expressions, then we can get
+       the following table (see the next page):
+
+                h'0 x'0 ≡ a1 + pa2 + p 2 a3
+                h'1 x'1 ≡ b1 + pb2 + p 2 b3
+                (h'0 + h'1 ) ⋅ ( x'0 + x'1 ) ≡ c1 + pc2 + p 2 c3
+
+Chap. 8                                                                                     35
+• Example-9 (cont’d)
+
+          p0    p1       p2         p3        p4       p5       p6
+          a1    a2       a3                  b1        b2      b3
+                         c1        c2        c3
+                         − b1      − b2      − b3
+                         − a1      − a2      − a3
+                                                    Total 8 additions here
+     – Therefore, the total number of operations used in this 4X4 iterated
+       convolution algorithm is 9 multiplications and 19 additions
+
+
+
+
+Chap. 8                                                                      36
+Cyclic Convolution
+• Cyclic convolution: also known as circular convolution
+• Let the filter coefficients be h = {h0 , h1 ,⋅ ⋅ ⋅, hn−1} , and the data
+  sequence be x = {x0 , x1,⋅ ⋅ ⋅, xn−1} .
+     – The cyclic convolution can be expressed as
+             s( p) = hΟ n x = [h( p) ⋅ x( p)]mod( p n −1)
+     – The output samples are given by
+                  n −1
+            si = ∑ h((i −k ) ) xk ,   i = 0,1,⋅ ⋅ ⋅, n − 1
+                  k =0
+          • where   ((i − k )) denotes (i − k ) mod n
+• The cyclic convolution can be computed as a linear convolution
+  reduced by modulo p − 1 . (Notice that there are 2n-1 different output
+                         n
+
+  samples for this linear convolution). Alternatively, the cyclic
+  convolution can be computed using CRT with m( p ) = p n − 1 , which
+  is much simpler.
+
+Chap. 8                                                                      37
+• Example-10 (Example 8.5.1, p.246) Construct a 4X4 cyclic convolution
+  algorithm using CRT with m ( p ) = p − 1 = ( p − 1)( p + 1)( p + 1)
+                                         4                      2
+
+
+     – Let h ( p ) = h0 + h1 p + h2 p 2 + h3 p 3 , x ( p ) = x0 + x1 p + x2 p 2 + x3 p 3
+     – Let     m ( 0 ) ( p ) = p − 1, m (1 ) ( p ) = p + 1, m ( 2 ) ( p ) = p 2 + 1
+     – Get the following table using the relationships M ( i ) ( p ) = m( p ) m ( i ) ( p )
+       and N ( i ) ( p ) M ( i ) ( p ) + n ( i ) ( p ) m ( i ) ( p ) = 1
+          i     m(i) ( p)           M (i ) ( p)                   n(i) ( p)             N (i ) ( p)
+          0      p −1           p3 + p2 + p −1            − 14 ( p2 + 2p + 3)               1
+                                                                                            4
+
+          1       p +1          p3 − p2 + p −1              1
+                                                            4   ( p − 2p + 3)
+                                                                  2
+                                                                                            − 14
+          2      p2 +1                 p2 −1                          1
+                                                                      2                     − 12
+
+     – Compute the residues
+                                    h ( 0 ) ( p ) = h0 + h1 + h2 + h3 = h0 ( 0 ) ,
+                                     h (1) ( p ) = h0 − h1 + h2 − h3 = h0 (1) ,
+                         h ( 2 ) ( p ) = (h0 − h2 ) + (h1 − h3 ) p = h0 ( 2 ) + h1( 2 ) p
+
+Chap. 8                                                                                               38
+• Example-10 (cont’d)                                                                                                : multiplication
+                               x ( p ) = x 0 + x1 + x 2 + x3 = x 0 ,
+                                ( 0)                                                         (0 )
+
+
+                                x (1) ( p ) = x0 − x1 + x 2 − x3 = x0 (1) ,
+                    x ( 2 ) ( p ) = (x 0 − x 2 ) + (x1 − x3 ) p = x0 ( 2 ) + x1 ( 2 ) p
+                             s (0 ) ( p ) = h ( 0) ( p) ⋅ x( 0 ) ( p ) = h0 ⋅ x0 = s0 ,
+                                                                                          ( 0)          ( 0)         ( 0)
+
+
+                              s (1) ( p ) = h (1) ( p ) ⋅ x (1) ( p ) = h0 ⋅ x0 = s0 ,
+                                                                           (1)  (1)  (1 )
+
+                                         ( 2)
+                                                                      [
+                    s ( 2) ( p) = s0 + s1 p = h ( 2 ) ( p ) ⋅ x ( 2) ( p) mod( p 2 + 1)
+                                                   ( 2)
+                                                                                                        ]
+     – Since
+                            = h0(      ( 2)
+                                              ⋅ x0
+                                                     ( 2)
+                                                            − h1 ⋅ x1
+                                                               ( 2)        ( 2)
+                                                                                 0)+ p(h x       ( 2)
+                                                                                                        1
+                                                                                                         (2 )
+                                                                                                                   + h1 x0
+                                                                                                                      ( 2)   ( 2)
+                                                                                                                                    )
+                                                                            (                           ) (
+        s 0 ( 2 ) = h0 ( 2 ) x0 ( 2 ) − h1( 2 ) x1 ( 2 ) = h0 ( 2 ) x 0 ( 2 ) + x1( 2 ) − h0 ( 2 ) + h1 ( 2 ) x1( 2 ) ,             )
+                                                                            (                           ) (
+        s1 ( 2 ) = h0 ( 2 ) x1( 2 ) + h1( 2 ) x0 ( 2 ) = h0 ( 2 ) x0 ( 2 ) + x1 ( 2 ) + h1( 2 ) − h0 ( 2 ) x0 ( 2 ) ,               )
+     – or in matrix-form
+                                               h0( 2 )                      0                                 x 0( 2 ) + x1( 2 ) 
+                                                                                                               0
+       s 0 ( 2 )  1        0         − 1                                                                                     
+       (2)  =                             ⋅ 0                     h1( 2 ) − h0( 2 )                       ⋅           (2)
+                                                                                                      0              x 0         
+       s1  1               1          0 
+                                               0                            0                           (2)  
+                                                                                                 h0 + h1   x1
+                                                                                                  (2 )                    (2)       
+                                                                                                                                   
+     – Computations so far require 5 multiplications
+
+Chap. 8                                                                                                                                 39
+• Example-10 (cont’d)
+     – Then      2
+      s( p) = ∑ s( i ) ( p) N ( i ) ( p)M ( i ) ( p) mod m( i ) ( p)
+                i=0
+
+               [
+             =s (    )+s (
+                   ( 0)
+                               ) + s ( )]+ s ( p ⋅
+                           p 3 + p 2 + p +1
+                                                   ) (1)     p 3 − p 2 + p −1
+                                                                   −4
+                                                                                          (2)   p 2 −1
+                                                                                                 −2
+                                                                                                             ( 2)             p 2 −1
+                                                                                                                               −2
+
+             = ( + + )+ p ( − + )+ p ( + − )
+                   0              4                  0                                    0                  1
+                 s0( 0 )    s0(1)     s0( 2 )          s0( 0 )     s0( 1)       s1( 2 )            ( 0)
+                                                                                                2 s0      s0(1)     s0( 2 )
+                   4          4         2                4           4            2                4        4         2
+
+                            (
+                  + p 3 14 s0( 0 ) − 14 s0(1) − 12 s1( 2 )              )
+     – So, we have
+                      s 0  1                 1           1           0   14 s 0( 0 ) 
+                      s  1                                                            
+                      1 =                    −1          0           1   14 s 0(1 ) 
+                                                                            ⋅ 1 (2)
+                      s 2  1                 1          −1           0   2 s0 
+                                                                          1 (2) 
+                      s 3  1                 −1         0           − 1  2 s1 
+
+
+Chap. 8                                                                                                                                40
+• Example-10 (cont’d)
+     – Notice that:
+      14 s0(0)  1      0 0 0 0
+      1 (1)  
+      4 s0  = 0        1 0 0 0 
+                                     ⋅
+      12 s0(2)  0      0 1 0 −1 
+      1 (2 )                    
+      2 s1  0        0 1 1 0
+              14 h0(0)        0         0              0                  0           x0(0) 
+                                                                                                       
+              0
+                           1
+                           4   h0(1)     0              0                  0                   x (1)
+                                                                                                   0      
+              0               0       1 (2 )
+                                        h               0                  0          ⋅  x0( 2) + x1(2) 
+                                      2 0
+                                                                                                        
+              0               0         0      1
+                                                    (h − h )
+                                                     ( 2)
+                                                     1
+                                                            (2 )
+                                                            0              0           x0
+                                                                                                   ( 2)
+                                                                                                          
+                                                                     (              )
+                                                2
+              0                                                   1   (2 )
+                                                                            −   ( 2)             ( 2)   
+                              0         0              0            h
+                                                                   2 0
+                                                                              h1       1       x        
+
+
+
+Chap. 8                                                                                                41
+• Example-10 (cont’d)
+     – Therefore, we have
+       s0  1         1              1         0          − 1
+      s    1       −1           1             1           0 
+        = 
+          1
+                                                                  ⋅
+       s2  1       1            −1            0           1 
+                                                             
+       3
+        s    1       −1           −1          −1            0 
+              h 0 + h1 +4 h 2 + h 3                 0                  0                0                     0             
+                                           h 0 − h1 + h 2 − h 3                                                             
+                       0                            4                  0                0                       0           
+                       0                            0                h 0 − h2
+                                                                                         0                       0           ⋅
+                                                                         2
+                                                                                 − h0 + h1 + h 2 − h3                        
+                       0                            0                  0                 2
+                                                                                                                 0           
+                                                                                                       h 0 + h1 − h 2 − h 3 
+                       0                            0                  0                0                       2           
+             1           1            1          1 
+             1                                          x0 
+                       −1             1         − 1   
+                                                         x1 
+             1         1              −1        −1 ⋅ 
+                                                      x 
+             1           0            −1         0   2
+                                                 − 1   
+                                                          x3
+              0         1            0
+
+Chap. 8                                                                                                                           42
+• Example-10 (cont’d)
+     – This algorithm requires 5 multiplications and 15 additions
+     – The direct implementation requires 16 multiplications and 12 additions
+       (see the following matrix-form. Notice that the cyclic convolution matrix
+       is a circulant matrix)
+
+            s 0   h0        h3     h2      h1   x 0 
+           s  h             h0     h3      h 2   x 1 
+            1 =  1                               ⋅
+            s2   h2         h1      h0     h3   x 2 
+                                                  
+            s 3   h3        h2      h1     h0   x3 
+• An efficient cyclic convolution algorithm can often be easily extended
+  to construct efficient linear convolution
+
+• Example-11 (Example 8.5.2, p.249) Construct a 3X3 linear convolution
+  using 4X4 cyclic convolution algorithm
+
+Chap. 8                                                                        43
+• Example-11 (cont’d)
+                                                      {         }
+     – Let the 3-point coefficient sequence be h = h0 , h1, h2 , and the 3-point
+                               {
+       data sequence be x = x0 , x1 , x2  }
+     – First extend them to 4-point sequences as:
+                 h = {h0 , h1, h2 ,0}, x = {x0 , x1, x2 ,0}
+     – Then the 3X3 linear convolution of h and x is
+                                 h0 x0        
+                          h x +h x                         h0 x0 + h2 x2 
+                              1 0      0 1                 h x +h x 
+                 h ⋅ x = h2 x0 + h1x1 + h0 x2     hΟ4 x =                      
+                                                                  1 0     0 1
+
+                                                          h2 x0 + h1x1 + h0 x2 
+                             h  x  + h  x                                      
+                                                             h2 x1 + h1x2 
+                                2 1     1 2
+                                h2 x2        
+
+
+     – The 4X4 cyclic convolution of h and x, i.e. hΟ 4 x , is:
+
+
+
+Chap. 8                                                                               44
+• Example-11 (cont’d)
+     – Therefore, we have s( p ) = h( p) ⋅ x( p) = hΟ n x + h2 x2 ( p − 1)
+                                                                     4
+
+     – Using the result of Example-10 for hΟ 4 x , the following convolution
+       algorithm for 3X3 linear convolution is obtained:
+
+            s 0  1       1    1      0    −1     − 1
+            s  1         −1   1      1    0       0 
+            1                                        
+            s 2  = 1     1    −1    0      1      0 ⋅
+            s  1         −1   −1    −1     0      0 
+                                                        
+            3 
+            s 4   0   0    0      0     0      1 
+
+                      (continued on the next page)
+
+
+
+
+Chap. 8                                                                        45
+• Example-11 (cont’d)
+
+            h 0 + h41 + h 2         0               0             0                 0            0 
+                               h 0 − h1 + h 2                                                        
+                  0                  4
+                                                     0             0                 0            0 
+                  0                 0             h0 − h2
+                                                                   0                 0            0 
+          ⋅                                          2
+                                                             − h 0 + h1 + h 2
+                                                                                                      
+                  0                 0               0              2
+                                                                                     0            0 
+                  0                 0               0             0
+                                                                                h 0 + h1 − h 2
+                                                                                                  0 
+                                                                                     2
+                                                                                                      
+                 0                 0               0             0                 0           h 2 
+            1          1       1 
+            1 − 1              1 
+                                   x0 
+            1          1      − 1  
+          ⋅                        ⋅  x1 
+            1          0      − 1
+                                        x 2 
+            0          1       0  
+                                  
+             0        0       1 
+
+Chap. 8                                                                                               46
+• Example-11 (cont’d)
+   – So, this algorithm requires 6 multiplications and 16 additions
+
+• Comments:
+   – In general, an efficient linear convolution can be used to obtain an
+     efficient cyclic convolution algorithm. Conversely, an efficient
+     cyclic convolution algorithm can be used to derive an efficient
+     linear convolution algorithm
+
+
+
+
+Chap. 8                                                                 47
+Design of fast convolution algorithm by
+inspection
+• When the Cook-Toom or the Winograd algorithms can not generate an
+  efficient algorithm, sometimes a clever factorization by inspection may
+  generate a better algorithm
+• Example-12 (Example 8.6.1, p.250) Construct a 3X3 fast convolution
+  algorithm by inspection
+     – The 3X3 linear convolution can be written as follows, which requires 9
+       multiplications and 4 additions
+                                                 s0           h0 x0          
+                                                 s   h x + h x 
+                                                  1         1 0      0 1     
+                                                 s2  = h2 x0 + h1 x1 + h0 x2 
+                                                                             
+                                                 s3   h2 x1 + h1 x2 
+                                                 s4        h2 x2          
+
+Chap. 8                                                                              48
+• Example-12 (cont’d)
+     – Using the following identities:
+            s1 = h1x0 + h0 ⋅ x1 = (h0 + h1 ) ⋅ (x0 + x1 ) − h0 x0 − h1x1
+            s2 = h2 x0 + h1 x1 + h0 x2 = (h0 + h2 )( x0 + x2 ) − h0 x0 + h1x1 − h2 x2
+            s3 = h2 x1 + h1x2 = (h1 + h2 )( x1 + x2 ) − h1x1 − h2 x2
+
+     – The 3X3 linear convolution can be written as:
+
+           s0   1        0       0      0    0    0
+           s  − 1        −1      0      1    0    0
+           1                                         
+                                                                  (continued on
+           s2  = − 1     1      −1      0    1    0 ⋅
+          s   0          −1     −1      0    0    1
+                                                                 the next page)
+           3 
+           s 4   0     0      1      0    0    0 
+
+
+
+Chap. 8                                                                                 49
+• Example-12 (cont’d)
+
+       h0   0    0      0          0          0      1     0   0
+      0     h1   0      0          0          0   0      1   0 
+                                                                         x0 
+      0     0    h2     0          0          0  0         0   1  
+     ⋅                                              ⋅              ⋅  x1 
+      0     0    0    h0 + h1      0          0  1         1   0
+                                                                          x 2 
+      0     0    0       0      h0 + h 2      0  1         0   1  
+                                                                  
+       0   0    0      0          0       h1 + h2   0   1   1 
+     – Conclusion: This algorithm, which can not be obtained by using
+       the Cook-Toom or the Winograd algorithms, requires 6
+       multiplications and 10 additions
+
+
+
+
+Chap. 8                                                                          50
+

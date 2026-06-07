@@ -1,11 +1,11 @@
-# The Christofides–Serdyukov algorithm for metric TSP
+# The Christofides-Serdyukov algorithm for metric TSP
 
 ## Problem
 
 Given a complete graph on `n` cities with a metric distance function `d` (nonnegative, symmetric,
 triangle inequality `d(x,y) <= d(x,z) + d(z,y)`), find a minimum-cost Hamiltonian tour. The exact
-problem is NP-hard; the algorithm returns, in `O(n^3)` time, a tour of length at most `3/2` times the
-optimum `OPT`.
+problem is NP-hard, so exact polynomial time is not expected unless P = NP. The algorithm returns,
+in `O(n^3)` time, a tour of length at most `3/2` times the optimum `OPT`.
 
 ## Key idea
 
@@ -36,10 +36,11 @@ not increase the cost (triangle inequality).
 ## Analysis (ratio 3/2)
 
 - **`d(T) <= OPT`:** the optimal tour minus an edge is a spanning tree, no cheaper than the MST.
-- **`d(M) <= OPT/2`:** let `N*` be a shortest tour on `O`. Shortcutting `OPT` down to `O` gives a
-  feasible tour on `O` with cost at most `OPT`, so `d(N*) <= OPT`. Since `|O|` is even, the cycle
-  `N*` splits by alternating its edges into two perfect matchings `N1, N2` with
-  `d(N1) + d(N2) = d(N*)`. So `d(M) <= min(d(N1), d(N2)) <= d(N*)/2 <= OPT/2`.
+- **`d(M) <= OPT/2`:** list the odd-degree vertices `O` in the order the optimal tour visits them.
+  Shortcut each segment between consecutive `O`-vertices to get a cycle `C_O` on `O` with
+  `d(C_O) <= OPT`. Since `|O|` is even, alternating the edges of `C_O` splits it into two perfect
+  matchings `N1, N2` with `d(N1) + d(N2) = d(C_O)`. So
+  `d(M) <= min(d(N1), d(N2)) <= d(C_O)/2 <= OPT/2`.
 - **Combine:** the Eulerian circuit of `H` uses each edge once, costing `d(T) + d(M) <= (3/2) OPT`;
   shortcutting preserves the bound.
 
@@ -54,6 +55,7 @@ from networkx.utils import not_implemented_for
 
 
 @not_implemented_for("directed")
+@nx._dispatchable(edge_attrs="weight")
 def christofides(G, weight="weight", tree=None):
     """3/2-approximation for metric TSP on a complete graph with the triangle inequality."""
 
@@ -79,8 +81,9 @@ def christofides(G, weight="weight", tree=None):
     L = G.copy()
     L.remove_nodes_from([v for v, degree in tree.degree if not (degree % 2)])
 
-    # 3. Minimum-weight perfect matching on O. min_weight_matching transforms weights to
-    #    max_weight + 1 - w and calls max_weight_matching (Edmonds blossom) with maxcardinality=True.
+    # 3. Minimum-weight maximum-cardinality matching on O. min_weight_matching sets
+    #    new_weight = (max_edge_weight + 1) - original_weight and calls max_weight_matching
+    #    with maxcardinality=True; on complete even O this is perfect.
     MG = nx.MultiGraph()
     MG.add_edges_from(tree.edges)
     edges = nx.min_weight_matching(L, weight=weight)

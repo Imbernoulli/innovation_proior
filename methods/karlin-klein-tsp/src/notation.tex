@@ -1,0 +1,144 @@
+\iffalse
+\vfill\eject\section{Cheatsheet}
+\label{app:notation}
+{\small
+
+\subsection*{Global notation}
+
+ \begin{tabular}{|l |l |} 
+  \hline\hline
+$\{x_e\}_{e \in E}$ & solution to TSP LP relaxation   ($E$ is support, excluding $(u_0, v_0)$) \\
+$\{z_{e}\}_{e \in E \cup E^*}$ & $z = (x+OPT)/2$, where $E^*$ is support of OPT \\
+$\{s_e\}$ & slack vector for edges in $E$\\
+$\{s^*_{e^*}\}$ & slack vector for OPT edges \\ 
+$z_e/2 + s_e + s^*_e\quad\forall e \in E \cup E^*$ & a proposed O-join solution\\
+$A_T$ for $A$ a set of edges & number of edges in $A \cap T$ \\
+ \hline\hline
+\end{tabular}
+
+
+
+
+
+\subsection*{Cut-related}
+
+\noindent
+ \begin{tabular}{|l |l |} 
+ \hline
+Cut-related and hierarchy  &  \\ 
+notation and terminology & \\
+ \hline\hline
+ $\eta$ near-min-cut $S$ & $\delta(S) \le 2 + \eta$\\
+polygon $S$ & connected component of cuts crossed on one side. \\
+&Looks almost like a cycle $a_0, a_1, \ldots a_{m-1}$ with $a_0$ removed.\\
+hierarchy $\cH$ & laminar family of degree cuts and polygon cuts (\cref{def:hierarchy})  \\
+$\p(S)$ & parent of $S$ in hierarchy $\cH$\\
+$\p(f)$ &  parent of lowest cut containing $f$ in hierarchy $\cH$\\
+$\cA(S)$-- atoms of $S$ & children of $S$ in $\cH$ i.e., $\cA(S):=\{u\in \cH: \p(u)=S\}$.\\ 
+$\delta^\uparrow(u)$  & for $u,S \in \cH$ with $\p(u) = S$, these are the edges in $\delta(u)\cap\delta(S)$,\\
+$\delta^\rightarrow(u)$  & for $u,S \in \cH$ with $\p(u) = S$, these are the edges in $\delta(u) \smallsetminus\delta(S)$.\\
+$E^\rightarrow (S)$ & edges between atoms of $S$\\
+bottom edge $f$ & $\p(f)$ is a polygon cut \\
+top edge bundle $\bbe= (u,v)$ &  set of edges $f= (u',v')$ where $u' \in u $, 
+$v' \in v$\\
+& \quad \quad $\p(u) = \p(v)$ not polygon, $u,v,u',v' \in \cH$\\
+top edge $f$ & in a top edge bundle  \\
+satisfied cut $S$ & $\delta(S)_T$ even or $y(\delta(S))\ge 1$\\
+ \hline
+\end{tabular}
+
+\subsection*{Payment-related}
+\noindent
+ \begin{tabular}{|l |l |} 
+ \hline
+Payment related notation/defns & Meaning/reference \\ 
+ \hline\hline
+half-edge (bundle) $\bbe$  &  $x_\bbe \in 1/2 \pm \eps_{1/2}$ (\cref{def:halfedges})\\
+%good edge $f \in \bbe$ & (\cref{def:goodedges})\\
+\hline
+Polygons -- \cref{sec:happypolygons} & \\
+$A,B,C$ partition of $\delta(S)$ for $S$ polygon 
+&   $A= E(a_1, a_0)$, $B = E(a_{m-1}, a_0)$, $C$ rest of $\delta(S)$,\\
+\quad\quad where $S = \{a_1, \ldots , a_{m-1}\}$, $a_0 = \overline S$ & satisfies $x(A), x(B) \ge 1- \eps_\eta$, $x(C) \le \eps_\eta$\\
+polygon $S$ happy & $A_T, B_T$ odd and $C_T = 0$\\
+polygon $S$ left-happy (resp. right-happy) & $A_T$ (resp. $B_T$) odd and $C_T = 0$\\
+$\cE_S$ for polygon $S$ & the event that $S$ is happy and\\
+& \quad\quad marginals of $\delta(S)$ are approx preserved (\cref{def:max-flow-event})\\
+\hline
+Degree cuts -- \cref{sec:211goodedges} 
+& \\
+$A,B,C$ degree partitioning of degree cut $S$ & partition of  $\delta(S)$ into ``pseudo-triangle'' \\
+&\quad\quad
+where $x(A), x(B) \ge 1- \eps_{1/1}$ (see \cref{def:abcdegpartitioning})\\
+2-2 good edge bundle $\bbe = (u,v)$ &  event $\delta(u)_T, \delta(v)_T$ even
+has probability $\Omega (1)$ (\cref{def:goodedges})\\
+$E_g$ & set of (2-2) good edges in $E$ \\
+2-1-1 happy/good edge & \cref{dfn:211happygood}\\
+2-2-2 happy/good edges & \cref{dfn:222happygood}\\
+ \hline
+ Matching -- \cref{sec:matching} &\\
+ $\eps_F$-fractional edge $e$ & $\eps_F \le x_e \le 1- \eps_F$\\
+ $F_u$, $Z_u$ & \cref{lem:matching} \\
+ \hline
+ reduction and increase events & \cref{sec:payment} \\
+ \hline
+\end{tabular}
+
+
+\subsection*{Important constants}
+\begin{center}
+ \begin{tabular}{|l |l |} 
+
+ \hline\hline
+ $\eta \le 10^{-12}$  & Initially, worry only about $\eta$ near mincuts of $z$\\
+ & which are $2\eta$ near mincuts of $x$\\
+$\eps_{1/2} = 0.0001$ & how close to 0.5 for $e$ to be half edge \\
+ $\eps_\eta = 14 \eta \le \eps_{1/2}^2$ & After reduction to hierarchy using OPT edges, care\\
+ & only about $\eps_\eta$ near mincuts of $x$\\
+  $\eps_{1/1}= \eps_{1/2}/12  = 0.00000833 $ & $1-\eps_{1,1}$ is lower bound for A,B parts of ABC degree partitioning\\
+ $p = 0.005 \eps_{1/2}^2$   & probability of 2-1-1 and 2-2-2 good events\\
+ $\eps_M = 0.00025$ & perturbation of marginals with bottom edge reduction (\cref{lem:maxflow}) \\
+ $\tau = 0.571 \beta$ & top edge reduction \\
+ $\beta = \eta/4.1$ & bottom edge reduction\\
+ $\eps_P = 3.9 \cdot 10 ^{-17}$ & final gain on each edge in O-join is $\eps_P \eta$\\
+ $\eps_F = 1/10$ & constant related to $x (\delta^\uparrow(u))$ \\
+ $\eps_B = 21 \eps_{1/2}$  & matching constant to handle bad edges\\
+ other assumptions & $\eps_\eta \le  \eps_{1/1}/100$, $\eps_\eta \le \eps_{1/2}^2$, $\eps_\eta \le 10 ^{-10}$, $\eps_M \le 0.0005$\\
+ \hline
+\end{tabular}
+\end{center}
+
+\subsection*{Frequently used lemmas}
+\noindent
+ \begin{tabular}{|l |l |} 
+ \hline
+Some of the frequently &  Informal statement \\ 
+\quad\quad used lemmas  &\\
+ \hline\hline
+\cref{lem:cutdecrement} & Union, intersection, set difference, complement of near-min-cuts is a near-min-cut \\
+\cref{lem:nmcuts_largeedges} & characterization of crossing near-min-cuts
+ \\
+\cref{lem:shared-edges} & Near-min-cuts share at most fraction $\approx 1$ of edges.
+\\
+\cref{fact:treeIndep} & conditioned on $S$ a tree, $S$ and $G /S$ are independent.
+ \\ 
+\cref{fact:updown}, \cref{fact:e1}, \cref{sec:SRdistns} & negative association, stochastic dominance and other properties of SR distributions.
+\\
+\cref{lem:logconcaveexpecation} & tail and expectation bounds for log-concave sequence\\
+\cref{thm:rayleigh_expectconstprob}, \cref{lem:SR>=} & probability bounds for Bernoulli sums \\
+\cref{lem:treeconditioning} & near-min-cut  very likely to be tree; conditioning it to be a tree increases marginals \\
+&\quad\quad inside a bit and decreases marginals outside a bit. \\
+\cref{lem:treeoneedge} & If $A, B, A\cup B$ near-min-cuts then  likely to be one edge between $A$ and $B$ in tree.\\
+\cref{lem:SRA=nA} & lower bounds on conditional probabilities (see \cref{sec:Gurvits})\\
+\cref{lem:bottompaymentprob}, \cref{lem:bottompayment-polyprob} & probability a cut is odd (or happy), given a polygon ancestor is reduced\\
+\cref{thm:badedges} & conditions under which top edge is bad \\
+\cref{thm:probabilistic} & characterization of top edges incident to atom $v$ in degree cut \\
+\cref{cor:poly-reduction} & polygon reduction lemma \\
+\cref{lem:matching} & matching between edges inside cut $S$ and edges in $\delta(S)$\\
+ \hline
+\end{tabular}
+
+
+}
+\vfill\eject
+\fi 

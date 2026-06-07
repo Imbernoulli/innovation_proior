@@ -1,0 +1,480 @@
+Quicksort
+By C. A. R. Hoare
+
+A description is given of a new method of sorting in the random-access store of a computer. The
+method compares very favourably with other known methods in speed, in economy of storage, and
+in ease of programming. Certain refinements of the method, which may be useful in the optimiz-
+ation of inner loops, are described in the second part of the paper.
+
+Part One: Theory highest address and moves downward. The lower
+The sorting method described in this paper is based on pointer starts first. If the item to which it refers has a
+the principle of resolving a problem into two simpler key which is equal to or less than the bound, it moves
+subproblems. Each of these subproblems may be up to point to the item in the next higher group of
+resolved to produce yet simpler problems. The process locations. It continues to move up until it finds an
+is repeated until all the resulting problems are found to item with key value greater than the bound. In this
+be trivial. These trivial problems may then be solved case the lower pointer stops, and the upper pointer
+by known methods, thus obtaining a solution of the starts its scan. If the item to which it refers has a key
+original more complex problem. which is equal to or greater than the bound, it moves
+down to point to the item in the next lower locations.
+Partition It continues to move down until it finds an item with
+The problem of sorting a mass of items, occupying key value less than the bound. Now the two items to
+consecutive locations in the store of a computer, may be which the pointers refer are obviously in the wrong
+reduced to that of sorting two lesser segments of data, positions, and they must be exchanged. After the
+provided that it is known that the keys of each of the exchange, each pointer is stepped one item in its appro-
+items held in locations lower than a certain dividing line priate direction, and the lower pointer resumes its
+are less than the keys of all the items held in locations upward scan of the data. The process continues until
+above this dividing line. In this case the two segments the pointers cross each other, so that the lower pointer
+may be sorted separately, and as a result the whole mass refers to an item in higher-addressed locations than the
+of data will be sorted. item referred to by the upper pointer. In this case the
+In practice, the existence of such a dividing line will exchange of items is suppressed, the dividing line is
+be rare, and even if it did exist its position would be drawn between the two pointers, and the partition
+unknown. It is, however, quite easy to rearrange the process is at an end.
+items in such a way that a dividing line is brought into An awkward situation is liable to arise if the value of
+existence, and its position is known. The method of the bound is the greatest or the least of all the key values
+doing this has been given the name partition. The in the segment, or if all the key values are equal. The
+description given below is adapted for a computer danger is that the dividing line, according to the rule
+which has an exchange instruction; a method more given above, will have to be placed outside the segment
+suited for computers without such an instruction will be which was supposed to be partitioned, and therefore the
+given in the second part of this paper. whole segment has to be partitioned again. An infinite
+The first step of the partition process is to choose a cycle may result unless special measures are taken.
+particular key value which is known to be within the This may be prevented by the use of a method which
+range of the keys of the items in the segment which is ensures that at least one item is placed in its correct
+to be sorted. A simple method of ensuring this is to position as a result of each application of the partitioning
+choose the actual key value of one of the items in the process. If the item from which the value of the bound
+segment. The chosen key value will be called the has been taken turns out to be in the lower of the two
+bound. The aim is now to produce a situation in which resulting segments, it is known to have a key value which
+the keys of all items below a certain dividing line are is equal to or greater than that of all the other items of
+equal to or less than the bound, while the keys of all this segment. It may therefore be exchanged with the
+items above the dividing line are equal to or greater item which occupies the highest-addressed locations in
+than the bound. Fortunately, we do not need to know the segment, and the size of the lower resulting segment
+the position of the dividing line in advance; its position may be reduced by one. The same applies, jmuratis
+is determined only at the end of the partition process. mutandis, in the case where the item which gave the
+The items to be sorted are scanned by two pointers; bound is in the upper segment. Thus the sum of the
+one of them, the /ower pointer, starts at the item with numbers of items in the two segments, resulting from
+lowest address, and moves upward in the store, while the partitioning process, is always one less than the
+the other, the upper pointer, starts at the item with the number of items in the original segment. so that it is
+
+10
+Quicksort
+
+certain that the stage will be reached, by repeated items to be sorted, it is sufficient to adopt the rule of
+partitioning, when each segment will contain one or no always postponing the processing of the larger of the
+items. At this stage the process will be terminated. two segments. *
+Quicksort Estimate of Time Taken
+
+After each application of the partitioning process The number of key comparisons necessary to partition
+there remain two segments to be sorted. If either of a segment of N items will depend on the details of the
+these segments is empty or consists of a single item, then method used to choose the bound, or to test for the
+it may be ignored, and the process will be continued on completion of the partition process. In any case the
+the other segment only. Furthermore, if a segment number of comparisons is of the form N ~— kA, where
+consists of less than three or four items (depending on A may be —1, 0, I, 2.
+the characteristics of the computer), then it will be The number of exchanges will vary from occasion to
+advantageous to sort it by the use of a program specially occasion, and therefore only the expected number can
+written for sorting a particular small number of items. be given. An assumption has to be made that the value
+Finally, if both segments are fairly large, it will be of the bound is a random sample from the population
+necessary to postpone the processing of one of them of key values of the items in the segment. If this
+until the other has been fully sorted. Meanwhile, the assumption is not justified by the nature of the data
+addresses of the first and last items of the postponed being sorted, it will be advisable to choose the item
+segment must be stored. It is very important to econo- which yields the bound value at random, so that in any
+mize on storage of the segment details, since the number case the assumption of randomness will be valid.
+of segments altogether is proportional to the number In the calculations which follow, use is made of the
+of items being sorted. Fortunately, it is not necessary principle of conditional expectation. We consider
+to store the details of all segments simultaneously, since separately the case where the bound is the rth in order
+the details of segments which have already been fully of magnitude of all the key values in the segment; the
+sorted are no longer required. value of the conditional expectation of the quantity
+
+The recommended method of storage makes use of which interests us may now be expressed quite simply as
+a nest, i.e. a block of consecutive locations associated a function of r. The rule of conditional expectation
+with a pointer. This pointer always refers to the states that if each conditional expectation is multiplied
+lowest-addressed location of the block whose contents by the probability of occurrence of the condition, and
+may be overwritten. Initially the pointer refers to the they are summed over the whole range of conditions, the
+first location of the block. When information is to be result gives the unconditional or absolute expectation.
+stored in the nest, it is stored in the location referred to According to the assumption of randomness, all the
+by the pointer, and the pointer is stepped on to refer values of r between | and AN inclusive are equally likely.
+
+to the next higher location. When information is taken
+
+: |
+from the list, the pointer is stepped back, and the so that they each have a probability of 4): If, therefore.
+
+information will be found in the location referred to by the expression which gives the conditional expectation
+the pointer. The important properties of a nest are on assumption of a given r is summed with respect to r
+that information is read out in the reverse order to that and divided by N, we obtain the value of the absolute
+in which it is written, and that the reading of information expectation of the quantity concerned.
+automatically frees the locations in which it has been Consider the situation at the end of the partition
+held, for the storage of further information. process, when the bound was the rth key value in order
+
+When the processing of a segment has to be postponed, of magnitude. As a result of the final exchange, the
+the necessary details are placed in the nest. When a item which yielded this key value will occupy the rth
+segment is found to consist of one or no items, or when position of the segment, and the r — | items with lesser
+it has been sorted by some other method which is used key value will occupy the r — | positions below it in
+on small segments, then it is possible to turn to the the store. The number of exchanges made in the
+processing of one of the postponed segments: the course of the partition process is equal to the number
+segment chosen should always be the one most recently of items which originally occupied the r — | positions
+postponed, and its details may therefore be read from of the lower resulting segment, but which were removed
+the nest. During the processing of this segment, it because they were found to have key values greater than
+may be necessary to make further postponements, but the bound. The probability of any key value being
+now the segment details may overwrite the locations _N-re-
+used during the processing of the previous segment. greater than the bound is — N . and therefore the
+This is, in fact, achieved automatically by the use of a expected number of such items among the r — | items
+nest.
+
+It is important to know in advance the maximum * A description of Quicksort in ALGOL (Hoare, 1961) is rather
+number of locations used by the nest; in order to ensure deceptively simple, since the use of recursion means that the
+
+; - . : administration of the nest does not have to be explicitly described.
+that the number of segments postponed at any one time The claim to a negative sorting time in the reference is, of course,
+
+never exceeds the logarithm (base 2) of the number of due to a misprint.
+
+11
+Quicksort
+
+which originally occupied what was to be the lower The validity of the solution may be proved by substi-
+resulting segment is: tuting in the original equation, and showing that the
+(Vr — Dr —1) result is an algebraic identity. For simplicity, the
+N coefficients of >) 7,, c, 6, and a should be considered
+
+i
+
+Summing with respect to r, dividing by MN, and adding
+one for the final exchange of the item which yielded the
+bound. we get the absolute expectation of the number
+of exchanges:
+
+separately. The correctness of the first three coeffi-
+
+cients is easily established. In verifying the coefficient
+
+of a, the following identities are used. Writing Wy for
+N
+
+an — 1 4 2 2
+
+6 6N M+11Pr N+ 1 M- |
+
+ain Ty, we get
+
+and Vy for the coefficient of
+
+This figure may be reduced by 7 if the final exchange is
+: ; ; . ; Vy =(N + IN — 2)Wy. — MN DW (1)
+always omitted in the case when the item which provided
+the bound is already in its correct position. In general _ 2 VN + 1)Wy - N
+it will not be worth while to test for this case. N ,
+Given the expected theoretical number of comparisons No
+and exchanges, it should be quite easy to calculate the =— Y} V,+N. from (1)
+expected time taken by a given program on a given Nom
+computer. The formula for the time taken to partition
+
+. . It is interesting to compare the average number of
+a segment of N items will take the form = P in
+
+comparisons required to sort N items, where N is very
+
+aN b+ ¢ large, with the theoretical minimum number of compari-
+
+Ne sons. We consider the case M = 2, and find the
+
+where the coefficients a, 6 and c are determined by the expected number of comparisons by putting a= 1,
+
+loop times of the program. The expected time taken b= c =T, = 0 in the formulae of the last paragraph.
+
+to sort N items will be denoted Ty. We shall suppose When N is very large, all terms except the largest may
+
+that a different method of sorting is used on segments be ignored. The figure obtained for the expected
+of size less than M. The values of T, for r < M are number of comparisons is
+taken as given. We shall find a recursive relationship N |
+
+to give the values of 7, for r > M. 2N>— ~ 2N log, N.
+
+rf
+
+Suppose that the value of the bound chosen for the
+
+first partition is the rth in order of magnitude. Then h ‘cal mini ber of 7
+the time taken to sort the whole segment of N items is The theoretical minimum average number of compari-
+
+equal to the time taken to partition the N items, plus sons required to sort N unequal randomly-ordered items
+the time taken to sort the r —I items of the lower may be estimated on information-theoretic considera-
+
+resulting segment, plus the time taken to sort the tions. As a result of a single binary comparison, the
+
+N —r — 1 items of the upper resulting segment. This maximum Sito) oh which may be destroyed is —log 2,
+assertion must also be true of the expected times while the original entropy of the randomly ordered data
+is —log N!; the final entropy of the sorted data is zero.
+Ty =T,+Ty ,+aN+b+ c The minimum number of comparisons required to
+N achieve this reduction in entropy is
+on condition that the first bound was the rth. Summing ;
+with respect to r and dividing by N we get the uncondi- —log M! = log, N!~ N log, N.
+
+tional expectation —log 2
+Ty = 2 S T,+aN+b6~ ©, N> M. The average number of comparisons required by
+N 1 N Quicksort is greater than the theoretical minimum by a
+The exact solution of this recurrence equation is* factor of 2 loge 2~1-4. This factor could be reduced
+AN — 1) Mel (N = Ie by the expedient of choosing as the bound for each
+ye — T, + —— partition the median of a small random sample of the
+M(M — 1) ‘1 M(M ~ 1) items in the segment. It is very difficult to estimate the
+7 a +) _ 1p saving which would be achieved by this, and it is possible
+ein that the extra complication of the program would not be
+Np AN 41) justified. Probably more worthwhile is the attempt to
+= [208 —~l) yy -—- 82 ft Ne 4a reduce as far as possible the actual time taken by the
+Mri? M1 innermost comparison cycle, and a number of simple
+
+* We adopt the convention that a sum is zero if its upper bound programming devices to achieve this will be described
+is less than its lower bound. in Part Two of this paper.
+
+12
+Quicksort
+
+A Comparison of Quicksort with Merge Sorting When it finds an item with key greater than the bound,
+
+The National-Elliott 405 computer has a delay-line this item is copied into the locations to which the upper
+working store of 512 locations, and a magnetic-disc pointer now refers. The upper pointer is stepped down,
+backing store of 16.384 words. The average access and proceeds on its downward scan of the data. When
+time for the working store is 0-8 msec and eeondce it finds an item with key lower than the bound, this item
+access time for a block of 64 words in the backing store is copied into the locations referred to by the lower
+is 32 msec. There are 19 words of immediate-access pointer. The lower pointer is then stepped up, and the
+storage, which are used to contain instructions and process is repeated until both the pointers are referring
+working space of the inner loops; the time taken by to the same item. Then the item which has supplied the
+such loops is about 0-15 msec per instruction. bound is copied from working space into the locations
+
+Table 1 gives a comparison of times taken by to which the pointers refer. Throughout the process,
+Quicksort and a merge sorting method, both pro- the stationary pointer refers to locations whose contents
+grammed by Mr. P. Shackleton for the 405. The times have been copied elsewhere, while the moving pointer
+were measured automatically by the computer in tests searches for the item to be copied into these locations.
+on random data conducted by Mr. D. J. Pentecost. The expected number of copying operations is obvicusly
+
+The figures relate to six-word items with a single-word twice the corresponding figure for exchanges.
+
+key.
+Table 1 Cyclic Exchange
+On a machine with single-address instructions, which
+NUMBER OF ITEMS MERGE SORT QUICKSORT has the facility of exchanging the contents of accumulator
+and store, it is more economical to perform long
+500 2min 8 sec 1 min 21 sec sequences of exchanges at one time. A single exchange
+1,000 ' 4min48sec | 3min 8sec operation involves reading to the accumulator, exchang-
+1,500 | 8 min I5 sec* | 5 min 6 sec ing with store, and writing to store, giving 3N instructions
+2,000 11 min Osec* | 6 min 47 sec to perform N exchanges. If these exchanges are
+
+performed cyclically all at the same time, one exchange
+
+|
+instruction can take the place of a read and a write
+
+* These figures were computed by formula, since they cannot
+
+be achieved on the 405 owing to limited store size. instruction in all the exchanges except the first and the
+last. Thus only one read instruction, one write instruc-
+Part Two: Implementation tion, and 2N — 1 exchange instructions are required.
+
+Further economy is achieved in the case of multi-word
+items by the fact that the count of words exchanged need
+be tested only once for each N-fold exchange of each
+word of the item.
+
+The method of Quicksort allows all exchanges to be
+saved up until the end of the partitioning process, when
+they may be executed together in a cyclic movement.
+In practice, the values of the pointers at the time when
+they come to a halt are stored in a list for later exchang-
+ing. The number of locations which can be spared to
+hold this list will be a limiting factor in the gain of
+efficiency.
+
+In the implementation of a sorting method on a given
+computer, it is often possible to make adaptations which
+will ensure optimization of the innermost loops. Quick-
+sort turns out to be exceptionally flexible; a number of
+possible variations are described below. The choice of
+which variation is adopted on any given computer will,
+of course, depend on the characteristics of the computer.
+In making the decision, the theoretical estimate of time
+taken for various values of a, 6, c, and M should be used
+to determine the optimal method; it will not be necessary
+to write and test a large number of different programs.
+
+Partition without Exchange
+
+On some computers the exchange operation would Optimization of the Key Comparison Loop
+
+involve copying one of the items into workspace while Most sorting methods require that a test be made
+the other item overwrites the locations which it occupied. every time that a pointer is stepped, to see whether it
+On such a computer it would be advantageous to avoid has gone outside its possible range. Quicksort is one
+exchanging altogether, and a method of achieving this of the methods which can avoid this requirement by the
+is described below. use of sentinels. Before embarking on the sort, sentinels
+
+The item chosen to yield the bound should always be in the form of items with impossibly large and small
+that which occupies the highest-addressed locations of key values are placed at each end of the data to be
+the segment which is to be partitioned. If it is feared sorted. Now it is possible to remove the pointer test
+that this will have a harmfully non-random result, a from the key comparison cycle: the test is made only
+randomly chosen item should be initially placed in the when both pointers are stopped and an exchange is just
+highest-addressed locations. The item which yielded about to be made. If, at this time, the pointers have
+the bound is copied into working space. Then the not crossed, the exchange is made and the partition
+upper and lower pointers are set to their initial values, process is continued. If they have crossed over, the
+and the lower pointer starts its upward scan of the store. partition process is ac an end.
+
+13
+Quicksort
+
+If the value of the bound is the greatest or the least no harm will be occasioned by choosing as characteristic
+(or both) of the key values of items in the segment being value the lowest possible value of the key word.
+partitioned, then one (or both) of the pointers will Now whenever a segment is to be partitioned, the
+move outside the segment; but no harm can result, value chosen as the bound is compared with the charac-
+provided neither pointer moves outside the area in teristic value of the segment. If it is greater, parti-
+which the whole mass of data is stored. The upper tioning is performed with the modification described in
+sentinel, having a key value necessarily greater than the last paragraph. If, however, they are equal, then
+that of the bound, will stop the lower pointer, while the it is the upper pointer which is made to stop on
+lower sentinel will stop the upper pointer. The fact encountering an item with key value equal to the bound.
+that two extra key comparisons are made on every Thus all items with key values equal to the characteristic
+application of the partition process will be more than value are collected together in the /ower resulting
+compensated on fairly large segments by the omission segment, and when this segment comes to be partitioned,
+of pointer comparison from the innermost loop. comparison may be made of the next word of the keys
+
+(if any).
+Multi-word Keys The adoption of this refinement means that when the
+
+When the keys, with respect to which the sorting is processing of a segment is postponed, the position of
+performed, extend over more than one computer word, the key word which is next to be considered, and the
+then a long time may be spent on comparing the second characteristic value for the segment, must be stored
+and subsequent words of the key. This is a serious together with the positions of the first and last items.
+problem, since it often happens that a large number of On many machines, the extra book-keeping will be
+items share a very few values for the first words of their justified by the consequent optimization of the innermost
+keys. The problem is aggravated when the items are comparison loop.
+
+nearly sorted, and it is necessary to make many compari-
+sons between keys which are identical except in their
+
+last word. The method described below is due to Multilevel Storage
+
+Mr. P. Shackleton. Quicksort is well suited to machines with more than
+The principle of the method is to compare only a one level of storage, for instance a fast-access working
+single word of the keys on each application of the store on magnetic cores and a backing store on magnetic
+partitioning process. When it is known that a segment discs or drums. The data in the backing store are
+comprises all the items, and only those items, which partitioned repeatedly until each resulting segment may
+have key values identical to a given value over their be contained in the fast-access store, in which it may be
+first n words, then, in partitioning this segment, compari- sorted at high speed.
+son is made of the (” + 1)th word of the keys. A varia- The partitioning process can be applied quite economi-
+tion of the method of partitioning is adopted to ensure cally to data held on a magnetic drum or disc backing
+that all items with identical values of the key word store. The reason for this is that the movement of the
+currently being compared (and consequently identical pointers allows serial transfer of information held
+over earlier words of their keys) are gathered together adjacently in the backing store, and such transfers are
+in one segment as quickly as possible. usually faster than if more scattered random access were
+The variation consists in altering the criteria which required. This is particularly true if information can
+determine the stopping of the pointers. If we ensure only be transferred between the backing store and main
+that all items with key values equal to the bound are store in large blocks. The time lost in searching for
+placed in the upper of the resulting segments, then we information on the backing store may be reduced to
+may associate with each segment its so-called charac- insignificant proportions, provided that it does not take
+teristic value, which is the greatest value equal to or less an exceptionally long time to search for information at
+than all the key values of the segment (using the expres- one end of the store immediately after transferring
+sion key value to mean the value of the word of the key information at the other end. This condition is satisfied
+which will be compared when the segment is partitioned). by many magnetic drums or disc stores; it is obviously
+Furthermore, each segment must contain all the items not satisfied by a magnetic-tape store, on which the
+with key value equal to the characteristic value of the method of Quicksort cannot usefully be applied.
+
+segment. This is easily achieved by making the lower
+pointer stop whenever it meets an item with key value
+
+equal to the bound, so that such an item will be trans- Conclusion
+
+ferred to the upper segment. The value of the bound Quicksort is a sorting method ideally adapted for
+may obviously be taken as the characteristic value of sorting in the random-access store of a computer. It is
+the upper resulting segment, while the characteristic equally suited for data held in core storage and data
+value of the lower resulting segment is the same as that held in high-volume magnetic drum or disc backing
+of the original segment which has just been partitioned. stores. The data are sorted in situ, and therefore the
+Where this rule does not determine the characteristic whole store may be filled with data to be sorted. There
+values (as in the case of the original mass of data), then is no need to sort simultaneously with input or output.
+
+14
+Quicksort
+
+The number of cycles of the innermost comparison loop large enough random-access store to make interna
+is close to the theoretical minimum, and the loop may sorting worth while.
+
+be made very fast. The amount of data movement
+
+within the store is kept within very reasonable bounds. Acknowledgement
+
+Quicksort is therefore likely to recommend itself as the This paper is published by kind permission of Elliott
+standard sorting method on most computers with a Brothers (London) Ltd.
+
+Reference
+
+Hoare, C. A. R. (1961). Algorithm 63, Partition; Algorithm 64, Quicksort; Communications of the ACM, Vol. 4, p. 321.
+
+Zero-Address Computers
+
+By P. Wegner
+
+The literature on digital computers makes a distinction arrays, need be specified only by a single “data descriptor”
+between one-address, two-address and three-address machines, in such a directory, the number of bits required to reference
+where the nature of the beast is determined by the number of such a directory will be smaller than the number of bits
+references to the main random access memory permitted in a required to reference the memory as a whole. An indirect
+single instruction of the basic machine code. After some addressing technique of this kind eliminates the need to refer
+initial confusion, the one-address machine emerged as the to operands explicitly in terms of the memory location which
+dominant type, and its pre-eminent position has been largely they occupy, so that data transmission instructions of this kind
+unchallenged during the past five years or so. may, in some sense, be regarded as zero-address instructions.
+
+I should like to draw attention to the fact that the position The principal remaining class of memory-address references
+of the one-address machine is being challenged by a new is that of labels. Labelling, and transfers to labels within a
+type of animal which, on the basis of the above classification, program, may also be dealt with by a program directory
+must be called a zero-address machine. technique. A machine like the Burroughs B 5000, which
+
+The basic arithmetic operations are of the three-operand references operands and labels through a program directory,
+type. For instance, the operation C = A —B has two may therefore be regarded as a zero-address computer.
+operands as input and one operand as output. Three-address Zero-address computers are more economical in_ their
+machines permit basic machine instructions to refer to the utilization of memory space for programs than one-address
+three operands explicitly. Two-address machines refer to two computers, since it is unnecessary to provide space in an
+operands explicitly, and one operand (usually the result) instruction for referencing a memory location. For instance,
+implicitly. One-address machines refer to one operand the B 5000 has 12-bit instructions and permits four instruc-
+explicitly, and assume that an arithmetic operation, such as tions to a computer word.
+
+ADD, finds its second operand in an independently specified Furthermore, the fact that arithmetic and logical opera-
+register and stores its result in a second, possibly identical, tions in such an instruction code are “pure” operations,
+independently specified register. unencumbered by operands, gives rise to a closer corre-
+
+A zero-address instruction can be defined as one where the spondence between mathematical source language and basic
+location of all relevant operands is specified by convention, machine code than is the case in one-address computers.
+so that no operand need be designated explicitly. Zero- The constituent + in a mathematical source language has a
+address logical and arithmetic operations are available in precise counterpart in the target language; and, in general.
+computers like the English Electric KDF 9 or the Burroughs source language constituents retain their identity in the target
+B 5000, in which all operands required as input to an arith- language, although the order of their appearance may be
+metic operation are previously stored in a group of temporary changed. This correspondence leads to simpler and faster
+storage registers with last-in-first-out properties, variously translation programs than in the case of one-address machines.
+known as a nesting store, a stack or a pushdown store. Further- To sum up, there are three principal advantages in a zero-
+more, the result of an arithmetic operation on operands in address basic machine code:
+
+the pushdown store is left in a register in the pushdown
+store from which it may immediately be used for further
+zero-address arithmetic operations. For instance, three-
+address operations, such as addition, perform the addition
+operation on the two top registers of the pushdown store,
+reduce the size of the pushdown store by deleting the top
+register, and store the result in the new top register (previously
+the second register), where it is available for immediate use
+for subsequent computation.
+
+By means of a pushdown store it is possible to specify
+
+1. Machine language instructions can be short, since no
+explicit reference to operands in a large random-access
+memory is required.
+
+2. The structure of the machine language is close to the
+structure of mathematical source languages, leading to
+fast translation procedures.
+
+3. Execution of sequences of arithmetic and logical opera-
+tions is speeded up since the number of references to
+random-access memory is reduced.
+
+arithmetic and logical operations without explicit reference In view of these advantages, computers with zero-address
+to an operand. However, a machine which is truly a zero- arithmetic and logical machine instructions operating through
+address machine, requires elimination of references to a pushdown store have probably come to stay. The case for
+operands for all operations, including data transmission zero-address operations for all classes of basic machine
+Operations typified by FETCH and STORE. This is accom- instructions is not quite as compelling. However, a con-
+plished in the Burroughs B 5000 by channelling all references sistent zero-address instruction code, permitting only indirect
+to operands through an operand directory known as the references to locations in the random-access memory, has a
+“Program Reference Table.’’ Since grouped data, such as great deal to be said for it.
+
+15

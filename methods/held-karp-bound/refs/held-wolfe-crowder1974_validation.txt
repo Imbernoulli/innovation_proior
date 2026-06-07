@@ -1,0 +1,1222 @@
+Mathematical Programming 6 (19 74) 62-88. North-Holland Publishing Company
+
+
+
+
+            VALIDATION OF SUBGRADIENT OPTIMIZATION
+
+                                      Michael HELD
+                      IBM Systems Research Institute, New York, U.S.A.
+
+                       Philip WOLFE, Harlan P. CROWDER
+             IBM Watson Researeh Center, Yorktown Heights, New York, U.S.A.
+
+
+                                   Received 6 August 1973
+                        Revised manuscript received 26 November 1973
+
+
+
+    The "relaxation" procedure introduced by Held and Karp for approximately solving a large
+linear programming problem related to the traveling-salesman problem is refined and studied
+experimentally on several classes of specially structured large-scale linear programming prob-
+lems, and results on the use of the procedure for obtaining exact solutions are given. It is con-
+cluded that the method shows promise for large-scale linear programming
+
+
+
+
+1. Introduction
+
+   A wide variety of mathematical programming problems can be given
+the form
+
+             maximize w(Tr), rr ~ S ,                                                     (1.1)
+where
+
+             w(Tr) = min { c k + 7r. Ok: k = 1 , . . . , K } ,                            (1.2)
+
+c k is a scalar, v k = (Okl .... ,13kn) is a real n-vector for all k, and S is a
+closed convex subset of E n . (Tr. v k above denotes the inner product.) If
+K is finite and S is a polyhedron, then the problem is alinear program-
+ming problem; otherwise it is the general problem of maximizing a con-
+cave function over S, for any concave function has such a representa-
+tion [22, p. 102]. This paper reports some experiments testing an un-
+usual and surprisingly successful procedure for the numerical solution
+                   M. Held et aL, Validation of subgradient optimization         63
+
+
+of certain problems of this kind. We call this procedure a s u b g r a d i e n t
+method.
+   If the constraint set S can be specified by a simple set of linear in-
+equalities (as it is in the problems we consider) and K is small, then our
+problem is just an ordinary linear programming problem, and we think
+it is best solved by the simplex method for linear programming. In the
+problems we are concerned with, however, K is vast-finite, but easily of
+the order of n! with n around 100. We therefore make no effort to
+write out the data c k , v k explicitly for all k, but rather suppose them so
+defined that, g i v e n 7r, the task of then finding c k , v k for which the
+minimum of (1.2) is assumed is reasonably convenient. That task, called
+"column generation", is central to most schemes for the solution of
+very large linear programming problems (a good account of which is
+given by Lasdon [15, Chapter 4]). As we have discussed elsewhere
+[24], all problems amenable to treatment by the Dantzig-Wolfe de-
+composition procedure can be cast in the form (1.1), (1.2).
+   A first encounter with the kind of method reported here was
+described by Held and Karp [11] in their work on the traveling-sales-
+man problem, for which they devised a function w of the type (1.2)
+constituting a kind of "pseudo-dual" for that problem; its maximum
+value provided excellent bounds for their branch-and-bound algorithm.
+Having tried both a steepest-ascent procedure and a simplex method
+using column generation for maximizing w, and finding them dis-
+hearteningly slow, they invented a "subgradient" method which turned
+out to be highly effective. Subsequently, A.J. Hoffman pointed out
+that their procedure could be viewed as an application of a method
+discussed by Agmon [2] and Motzkin and Schoenberg [117] for the
+solution of linear inequality systems, and Held and Karp presented the
+procedure from that point of view. We have recently found a sizable
+body of Russian literature dealing with the theory of subgradient
+methods, which apparently originated with Shot [23i], and has perhaps
+been best expounded by Poljak [20, 211; we recommend his work for
+a discussion of the algorithm in more general spaces and for theoretical
+results on the rate of convergence.
+   Despite the mathematical interest of the A g m o n - M o t z k i n - S c h o e n -
+berg work and that of the Russians, there appears to be little computa-
+tional experience with the m e t h o d beyond that reported by Held and
+Karp. References in the Soviet literature to computational experience
+are at best cryptic. For example, quoting in full one of the two such
+references we have found [21]: "The effectiveness of the methods
+64                  M. HeM et aL, Validation of subgradient optimization
+
+
+described here has also been confirmed by practical experience in their
+application".
+   In the next section we present the subgradient m e t h o d as we have
+been using it. The next three sections give the formulations and compu-
+tational results for the three types of problems we have tried: the
+assignment problem, the "noninteger" traveling salesman problem, and
+a multicommodity network flow problem. In each case the m e t h o d
+proved to be effective: convergence seemed fairly rapid. We have not
+tried to compare it with other methods for overall efficiency as meas-
+ured, say, by operation counts or running time. Our aim was simplyto
+determine whether subgradient optimization would work at all on some
+readily accessible problems.
+   For all of the problems we were able, in one way or another, to
+establish the provably optimal solutions. In Section 6 we show how this
+was done, and give some general results connecting the approximate
+solutions the subgradient procedure obtains with the exact solutions.
+The last section presents what we think our computational experience
+adds up to, and what we hope it portends for other kinds of important
+mathematical programming problems.
+
+
+2. The subgradient m e t h o d
+
+     Let us first take S = E n, so the problem (1. l) is just
+
+             max w(rr) ,                                                    (2.1)
+where, as before,
+             w(rr) = m i n { c k+rr.vk: k = 1, ..., K }       .             (2.2)
+
+Throughout this paper we suppose w to be bounded above. Since it is
+piecewise linear, there then exists at least one point rr* such that
+w(rr*) = w* = max w.
+   For any rr, the minimum of (2.2) is assumed for at least one value of
+the index k. Denote by V(rr) the set of all n-vectors Ok such that the
+minimum is assumed for the index k:
+
+             V ( l r ) = { Ok: c k + r r . v k = w(rr), k = 1, ..., K } .   (2.3)
+
+V(~r) will usually be a singleton; when it is, the function w is differ-
+                      M. Held et aL, Validation of subgradient optimization          65
+
+
+entiable at rr, and the single member of V(rr) is the gradient Vw(rr). If
+ V(Tr) is not a singleton, then w is not differentiable at rr; b u t the notion
+of differentiability has been extended to give us what we need. (The
+material of the next paragraph is taken from [22, Section 23], with the
+appropriate changes made for concave, rather than convex, functions.)
+   The n-vector u is a s u b g r a d i e n t at x ~ E n of the concave function
+f on E n if
+
+            f ( y ) - f ( x ) <_ u. (y - x )                                     (2.4)
+for all y E E n. The set of all subgradients at x is the compact, convex
+set 0f(x) called the s u b d i f f e r e n t i a l . The function f has the directional
+derivative
+                                     f ( x + td) - f ( x )
+            i f ( x ; d) = lim
+                           t-+ 0 +            t
+
+for any x, d e E n , and
+
+            f'(x;d)    = m i n { d . u : u ~ 0f(x)} .
+
+ A necessary and sufficient condition that x maximize f is that
+i f ( x ; d ) <- 0 for all d, or equivalently that 0 ~ Of(x). For the concave
+ function w of (2.2), 0w(rr) is the convex hull of V(lr), and
+
+   w'(rr;d) = min{d-v: v ~ V(rr)} = m i n ( d . V k : c k + Ir.v k = w(rr) } .
+
+   Fig. 1 sketches contours of the function
+
+            w(rr) = m i n { - r q , rq -          2 r r 2 , rr 1 + 2 r r 2 } .
+
+
+At the point (2, 1¼), V(rr) is the singleton ( ( - 1 , 0)}; at any point on
+the ray 7i"1 < 0 , If 2 = 0 it is the doubleton {(1, 2), (1, - 2 ) } ; at the origin,
+which maximizes w, it has three members. The function fails to be
+differentiable only on three rays issuing from the origin - but that is
+just where we want to be, so we cannot escape the lack of differenti-
+ability.
+   It is certainly possible to use 0w to define a direction of steepest
+ascent for any point which does not solve the problem, and develop a
+close analogue of the m e t h o d of steepest ascent for our problem; several
+such proposals have been made [3, 5, 8, 9]. We take the view, however,
+that finding the entire set V0r) in order to get a locally " b e s t " direction
+66                 M. Held et al., ValMation of subgradient optimization
+
+
+
+
+                                         Fig. 1.
+
+
+is too heavy a computational requirement for the problems of interest
+to us, and we suppose that, for any 7r, we obtain only a unique
+
+             v(~) = vk c V(~)                                              (2.5)
+
+as a result of the evaluation (2.2) of wOO. This restriction has the result
+that at a point like zr = (1, 1) in the above example we cannot obtain
+a direction of ascent; w'(zr; d) < 0 for each d c V0r). We will, courage-
+ously, use the direction v0r) nevertheless.
+   Another respect in which the algorithm below differs from the usual
+steepest ascent prescription is in making no effort to maximize w in the
+chosen direction. First, because that would entail a very heavy compu-
+tational burden; secondly, because the method of choice of direction
+hardly makes that advisable. Our choice of step length depends only
+very modestly on the behavior of the function.
+
+The subgradient algorithm
+     Given 7r° ~ E n and the sequence (tj) of positive scalars, called step
+sizes, define the sequence (Trj} by
+
+            lry+l = lrY+tjvOr y)     f o r j = O, l, ....                  (2.6)
+                     M. HeM et al., Validation of subgradient optimization       67
+
+
+   Some theoretical results relating to an appropriate choice of step size
+for the algorithm have been given. The most general result [20] is that
+w(rd) will converge to its maximum w* under merely the conditions
+
+
+                                ,;                                            (2.7)
+                        ,,'=0
+
+  Alternatively, using the choice
+
+                     ¢v -
+
+              = x/                   2                                        (2.8)
+
+
+(where [.I denotes the Euclidean norm) with ¢v < max w(Tr), and for
+each j, e < Xj <_ 2 for some fixed e > 0, the sequence w(zr/) either con-
+verges to w, or a point 7rJ is obtained such that w(Trj) >_ ~ (cf. [ 11, 21 ] ).
+This choice is almost a direct application of the A g m o n - M o t z k i n -
+Schoenberg procedure for the determination of a point 7r such that
+w(Tr) _> ~, that is, a point satisfying the inequalities
+
+           u.v k 2 ~ v - c k ,           k = 1,...,K                          (2.9)
+
+   The main idea of the proofs of convergence is this: Let rr* be any
+point in the optimal set, i.e., w(rr*) = w*. Since v(Trj) ~ ~w(IrJ), relation
+(2.4) says
+
+           w* -w(~J)<_v(~J).(~* - ~J),                                       (2.10)
+
+so that if rrJ is not optimal, then the direction v(rd) makes an acute
+angle with the ray from rrJ through rr*. Consequently, if tj were suffi-
+ciently small, the point rr]+1 would be closer to rr* than was rrJ. Thus
+the sequence approaches the optimal set, although the objective values
+w(rrJ) are not monotonic.
+   There seems to have been no theoretical study of the rate of con-
+vergence of the general algorithm determined by (2.7), but Agmon [2]
+has shown linear convergence of his procedure to a solution of the
+inequalities (2.9). Poljak [211 has shown that if (2.8) is used with the
+underestimate ~ replaced by w*, the (unknown) maximum value of w,
+then geometric convergence obtains. Oetlcli [19] has shown geometric
+convergence of an iterative m e t h o d based upon subgradient directions
+for simultaneously approximating both the primal and dual solutions by
+solving a system of inequalities.
+68                   M. HeM et aL, ValMation of subgradient optimization
+
+
+   Our practical work has been guided by (2.8); however, an over-
+estimate ~ of the maximum of w was used instead of the r e c o m m e n d e d
+underestimate ~, which would be hard to find. We observed that the
+results did not seem to depend critically on the exact value of ~. Of
+course, it is necessary that tj -~ O, but (2.8) will not accomplish this if
+used with an overestimate ~ unless we choose a sequence X/ which
+tends toward zero. We have tried a number of ways to choose such a
+sequence and the results are reported on in Sections 3, 4 and 5. Gener-
+ally (but not always) a good rule is to set X = 2 for 2n iterations (where
+n is a measure of the problem size), and then successively halve both
+the value of X and the number of iterations until the number of itera-
+tions reaches some threshold value z; X is then halved every z iterations
+until the resulting tj is sufficiently small. We note that this procedure
+violates the condition Nt] = oo. It is thus possible to converge to a point
+not in the eptimal set, although in our work that almost never
+happened. We would particularly point out choice of step size as an area
+which is imperfectly understood.
+   In many cases we found t h a t the algorithm terminated in a finite
+number of iterations with an optimum solution (cf. Sections 3 and 5).
+This seems to occur whenever the optimal set {re: w(rr) -- w* } is of full
+dimension. Since rr/ approaches the optimal set and does not stop
+moving until v(lfl)= 0, and v(rr)= 0 is the unique subgradient in the
+interior of the optimal set finite termination is then quite likely; to
+avoid it you would have to be unlucky enough to hit the boundary of
+the optimal set infinitely often !
+   When the constraint set S is a proper subset of E n, the step (2.6)
+should be modified to
+
+                 =    Ps(7/+ §.v(7/)),                                     (2.11)
+
+where Ps is the operator projecting E n onto S, that is, for any x ~ E n,
+the point Ps(x) is the unique point of S nearest x. Using the convexity
+of S it is easy to show that when the point rfl ÷1 given by (2.6) is closer
+to a solution 7r* than is rfl, the same is true of the point given by (2.1 1),
+and that the convergence results given above hold equally well here.
+The problem studied in Section 5 requires such a projection. Note that
+here, as is obvious for the unconstrained problem, if rr/+1 = ~r], then rrj
+is optimal, for if v(lr]) 4= O, then the hyperplane c/+ v(Tr/).Tr = w(rrj)
+separates S from the set {rr: w(rr) _> w(lr/)), and those sets meet at ~ .
+                  M. Held et al., Validationof subgradient optimization            69
+
+
+
+3. The assignment problem
+
+   Given n jobs, n men, and the n-by-n matrix A = (aij} giving the cost
+for which man i will do j o b j, the assignment problem is that of finding
+a one-to-one assignment of men to jobs that will minimize the total
+cost. A solution is evidently that set of integers Xir achieving
+
+           m i n l ~i,r
+                     a i r X i r : ~iX i r = l' ~r Xir=     all xir >-- O } "   (3.1)
+
+   It is well known [18] that among the solutions to the above linear
+programming problem w i t h o u t the integer requirement will be found
+one that is integral, so the optimal value sought is also that of the dual
+of the linear program, namely
+
+           max{~iTri+~Pr:Tri+Pr<--air}
+                              r                           for all i, r.         (3.2)
+
+Given rr, the p which maximizes the dual objective is evidently given by
+Pr = rains [asr - rrs ], so the dual objective may be written
+
+           wOO = ~ rri + ~ min[asr - r r s] ,                                   (3.3)
+                       i          r   s
+
+
+a piecewise linear concave function. In order to exhibit w in the form
+(2.2), define an assignment as a function from 1, ...,n to 1, ..., n: A(r) is
+the man assigned to j o b r (at this point we do not require that each j o b
+be assigned to a different man). Enumerating all possible assignments
+A 1, A 2 ..... A K (K=nn), set the cost of an assignment
+                   n
+
+           Ck = r~l= aAk(r)r ,
+
+and
+           (Ok)i = 1 - [number of indices r for which A k (r) = i].             (3.4)
+
+Then (2.2) holds.
+    The iterative step (2.6) from zr to rr + tv(zr)has this description:
+Given rr, assign each j o b r to a man i who will do it cheapest, as meas-
+ured by the modified costs air - zri. Then 1 -viOr) is the number of j o b s
+to which man i has been assigned. If he has been assigned to no job,
+then lri is increased; if he has been assigned to more than one job, then
+zri is decreased. If vOrJ) = 0, then A k assigns exactly one man to each
+70                 M. HeM et al., Validation of subgradient optimization
+
+
+job. A k then solves the assignment problem, 7rj solves its dual, and the
+iteration terminates.
+   In our first experiments, using problems of order n <_ 30 and random-
+ly generated aij (uniformly distributed over 1, 2, ..., 200), we were
+startled to find that the procedure usually terminated in v(~r/) = 0. The
+explanation lay in the fact that such problems usually have a unique
+optimal assignment. The theorem below shows that then the set of
+optimal rr is of full dimension, so that, as argued in Section 2, termina-
+tion is nearly certain.
+
+Theorem 3.1. I f an optimal assignment p r o b l e m o f order n has a unique
+solution, then the optimal set f o r its associated p r o b l e m (3.3) is o f
+dimension n.
+
+Proof. By the strict complementary slackness theorem, there exist
+optimal for (3.1) and x, p optimal for (3.2) such that 2jr = 0 implies
+~i + Pr < air for all i, r. If the assignment problem has the unique opti-
+mal assignment A, then (3.1) has the unique solution "2it = 6i, A(r), SO
+that
+            for each r, mins[asr         #s] is assumed uniquely at s = A ( r ) .
+                                                                             (3.5)
+Let II be the set of all 7r such that
+
+           air - 7ri > aA(r),r - 7rA(r)       for all r, i vs r .            (3.6)
+
+By (3.4), v(rr) = 0 for rr ~ II. II is clearly convex and open, and a subset
+of the optimal set (indeed, it is easy to show that it is precisely the
+interior of the optimal set). Since (3.5) shows II to be nonempty, the
+theorem is proven.
+
+   On the other hand, suppose that the optimal assignment is not
+unique. To simplify a rather complicated discussion, suppose that there
+are just two optimal assignments, assigning men 1 and 2 indifferently
+to jobs 1 and 2, so that at1 +a22 =a21 +a12. When rr is sufficiently close
+to the optimal set, min[asr - zrs] will be assumed for s = 1 or 2 when
+r = 1 or 2. Indeed, for both r = 1 and r = 2, the minimum is assumed for
+s = 1 if zr2 - z r 1 < a21 --all = A, and for s = 2 if rr2 - z r 1 > A. Thus v(zr)
+has either the form ( - 1 , 1, ...) or ( 1 , - 1 , ...) in these cases, and also
+when 7r 2 - - 7r 1 = A if ties are settled in the same way for r = 1 as for r = 2.
+                M. HeM et al., Validation of subgradient optimization                             71
+
+
+The procedure drives the sequence 7r/ toward approximate satisfaction
+of 7/"2 --71" 1 = A , but v(Tri)= 0 never happens. The examples reported
+below do not have unique optimal assignments, and v(TrJ) = 0 was never
+encountered.
+   There are many ways to perturb the data of an assignment problem
+so that the perturbed problem has a unique solution which is an opti-
+mal assignment for the unperturbed problem, but even if there were no
+better way to solve an assignment problem (and we think there is [7,
+Chapter III] ), we would not recommend that approach to ensure termi-
+nation. The general approach to determining optimality given in Section
+6 has worked quite well in our tests and, we think, terminates the
+algorithm in fewer iterations.
+   We tested the subgradient method on three large symmetric assign-
+ment problems. These problems were obtained by treating certain
+traveling-salesman problems, the data for which is in the literature, as
+assignment problems. Problem A42 was derived from the 42-city prob-
+lem of Dantzig, Fulkerson and Johnson [4]; problem A48 from the
+48-city problem of Held and Karp [ 12] ; and problem A57 from the
+57-city problem of Karp and Thompson [13]. (The only alteration con-
+sisted in changing the diagonal entries from zero to a number so large
+that no diagonal entry appeared in an assignment.)
+   The results are summarized in Table 1. There ~ is the upper estimate
+used in (2.8) to compute the step size, and w*, as before, is the optimal
+value. Figs. 3.1 and 3.2 plot, every ten iterations, the least (symbol [])
+and greatest (symbol o) value found during the previous ten iterations
+of the quantities w(TrJ), logl0(w*-w(Tr/)), for the, problem A42. The
+last plot. clearly shows the linear convergence of w(Trj) to w*. It should
+be noted that linear convergence is virtually assured by our step-size
+choices, provided convergence happens at all.
+
+
+                  600
+
+                                                                           an l n m n   nun
+                   500                         oo • • " =a e S e * "
+                                                           Q
+                         •   OoooO                 0           D o
+
+
+                  400- oo                     oo
+                                   o o
+                         o    o          []
+
+                  300              J                   I             I         i              I
+                                   50              I00               150    200           250
+
+
+
+                                  Fig. 3.1. (Problem A42).
+72                    M. Held et al., ValMation o f subgradient optimization
+
+
+                                                 Table 1
+                                          Assignment problems
+
+                                  X                     iterations                 best w
+
+     Problem A42                  2                  84                            454.00
+     ff~ = 692                    1                  42                            470.05
+     w* = 532                     1/2                21                            512.01
+                                  1/4                10                            516.75
+                                  1/8                 5                            526.78
+                                                    162
+                                  (then X ~ X/2 every 5 iterations; w = 531.994 at iteration 252)
+
+     Problem A48                  1                     96                         9069.14
+     N = 12196                    1/2                   48                         9413.79
+     w* = 9870                    1/4                   24                         9738.26
+                                  1/8                   12                         9795.85
+                                  1/16                   6                         9832.83
+                                  1/32                   5                         9831.57
+                                                    191
+                                  (then h ~ M2. every 5 iterations; w = 9869.91 at iteration 307)
+
+     Problem A57                  1                 114                            9185.62
+     if; = 13696                  1/2                57                           10121.73
+     w* = 10553                   1/4                28                           10345.09
+                                  1/8                14                           10427.58
+                                  1/16               10                           10520.43
+                                                    223
+                                  (then h +- X/2 every 10 iterations; w = 10552.91 at iteration 405)
+
+
+
+                  5
+                        t~
+
+                  2     •     ~o~oooo
+                              •             g o
+                                                               Q     D
+
+                                                                         D   []
+
+
+
+
+      h0C)
+
+
+
+              -I                                                                        D
+
+
+
+
+             -2                                                                         •       o
+
+
+
+             -5               n             n       I          n              L             I        I
+                   0         30            60      90         120            150        180         210
+
+                                         Fig. 3.2. (Problem A42).
+                 M. Held et al., Validation of subgradient optimization    73
+
+
+4. The non-integer symmetric traveling-salesman problem
+
+   Let the n × n symmetric matrix (ci/) specify the weights assigned to
+the edges of the complete undirected graph with vertex set { 1, 2, ..., n}.
+Any subgraph G may be represented by 0-1 variables xi], i = 1,2 .... , ] - 1,
+] = 2, 3, ..., n, where xi! = 1 if the arc (i]) is present, and xi] = 0 other-
+wise. The weight of any subgraph G is ~'i,] ciyxi]" The traveling-salesman
+problem seeks a tour (a cycle passing through each vertex exactly
+once) of minimum weight. Dantzig, Fulkerson and Johnson [4] have
+given an integer linear programming formulation for this problem
+involving a combinatorial number O(2 n - l ) of constraints. By shrewd
+choice of some of those, and ad hoc combinatorial arguments, they
+found the first known solution of the famous "42-city" traveling-sales-
+man problem. Held and Karp [ 10, 11 ] considered the same formulation
+with the 0-1 constraints deleted and replaced by 0 <_ xi] <_ 1. The result-
+ing program is an ordinary linear program (still, of course, with O(2 n-1 )
+constraints) the solution of which provides lower bounds on the solu-
+tion of the traveling-salesman problem. They showed that this linear
+program could be cast in the form (2.1), (2.2): Define a 1-tree as a tree
+(a cycteless connected subgraph spanning the vertex set {2, 3, ..., n),
+together with two distinct edges incident on vertex 1. If the 1-trees are
+numbered 1, 2, ..., K (---l(n - 2)(n - 1)n-2), then in (2.2), c k is the
+weight of the k th 1-tree and (v x)i = dxi - 2, where dki is the degree of
+vertex i in 1-tree k.
+   The results given by Held and Karp [ 11 ] include the three traveling-
+salesman problems we report on here. They used the subgradient algo-
+rithm simply with t] = l, apparently not a bad choice for these prob-
+lems, since the number of steps they required to reach a reasonable
+value of w was as low as twice that taken by the present method.
+   Our results, using the rules given in Section 2, are summarized in
+Table 2 and Figs. 4.1, 4.2. The data for the three problems, T42, T48
+and T57, are those for the assignment problems A42, A48 and A57,
+cited in Section 3, and the displays are constructed in the same way.
+
+
+5. The multicommodity maximum flow problem
+
+   A directed network consists of a set N = {1, 2, ..., n} of nodes, a
+subset A of ordered pairs (i, ]) of elements taken from N, called the
+arcs of the network, and non-negative numbers ci] associated with each
+74          M. Held et aL, Validation o f subgradient optimization
+
+
+                                       Table 2
+                             Traveling-salesman problems
+
+                             h                             iterations       best w
+
+     Problem T42             2                               84             642.62
+       = 720                 1                               42             689.35
+     w* = 697                1/2                             21             693.95
+                             1/4                             10             695.22
+                             1/8                              5             696.23
+                                                            162
+                             (then h +- h/2 every 5 iterations; w = 696.99 at iteration 230)
+
+     Problem T48             2                               96              9599.14
+       = 12363               1                               48             11143.48
+     w* = 11444.5            1/2                             24             11299.14
+                             1/4                             12             11375.72
+                             1/8                              6             11410.43
+                                                            186
+                             (then h ~ h/2 every 6 iterations; w = 11443.2539 at itera-
+                             tion 282)
+
+     Problem T57             2                             114              12505.78
+     ff~ = 13151             1                              57              12789.22
+     w* = 12907.5            1/2                            28              12876.62
+                             1/4                            14              12898.65
+                             1/8                             7              12899.14
+                                                           220
+                             (then h ,-- X/2 every 7 iterations; w = 12907.4297 at itera-
+                             tion 304)
+
+
+
+
+           8OO
+
+
+           7OO
+
+
+           60O      •   []       o   o   o    ~   []   o
+
+
+
+
+           5OO
+
+
+          4o%            I
+                        30
+                                         I
+                                         60
+                                                       I
+                                                       90
+                                                                  I
+                                                                  120
+                                                                        I
+                                                                        150      180
+                                                                                     I
+                                                                                         210
+
+
+                                 Fig. 4.1. (Problem T42).
+                   M. HeM et at, Validation of subgradient optimization                                        75
+
+
+
+                                3
+
+                                         30DOOOO~O
+                                 2 -O°oOOOo              °    ODO0
+                                                             OO0 o    O~
+                                                                     O0
+                                 I                                        OD
+                      A                                                         D
+
+                      X~                                                            D
+
+                           o_   0
+                                                                                    O0
+                                                                                         D
+
+                                -I
+                                                                                              °~n
+                                -2                                                               o~
+
+                                -3             I              I            I              I            I
+                                     0        50              100         150            200      250
+                                           Fig. 4.2. (Problem T42).
+
+arc (i, ]), called the capacity of arc (i, ]). There are 2/) special nodes in
+the network: s 1, s 2 ..... s ° and t 1, t 2 ..... t D . The node s d is called the
+source for c o m m o d i t y d, and ta is called the s i n k for c o m m o d i t y d. It
+is not required that these 2D special nodes be distinct except that
+S d --/= t d for each d = 1, ..., D.
+    A set of non-negative numbers xij is-called a s i m u l t a n e o u s f l o w of
+commodities if the following are satisfied:
+                                                    D
+            for every (i, ]) ~ A ,                 E              <_ e/j,                                    (5.1)
+                                                   d=l
+
+and for every node i, and for every c o m m o d i t y d = 1, 2, ..., D,
+
+
+                E      X/a/. -     E      xa =                                      ifi=~             , ta   (5.2)
+            {/:(~/)~A}         {/:~:j57~-4}    ~_ a                                 ffi
+
+F o r each arc (i, ]) and for each d, x~. represents the amount of flow of
+c o m m o d i t y d in arc (i, ]). The constraints (5.1) express the fact that the
+different commodities share a scarce resource, arc capacity. We call va
+the value of the flow of c o m m o d i t y d. The m u l t i c o m m o d i t y maximum
+flow problem seeks a simultaneous flow which m a x i m i z e s ]~D=I v d.
+This particular statement of the problem is sometimes called the node-
+arc formulation [7].
+76                   M. Held et al., Validation of subgradient optimization
+
+   In order to exhibit the multicommodity maximum flow problem in
+the form (1.1), (1.2), we apply a resource-allocation decomposition
+procedure 1. In this approach the "scarce resources", arc capacities,
+are allocated among the competing commodities. Let the network have
+R arcs and let c r denote the capacity of arc r. Letting 7rra be the
+amount of the capacity of arc r dedicated to the flow of c o m m o d i t y d,
+we require
+             D
+
+             ~    Trrd = Cr       for all r,
+            d=l
+                                                                                  (5.3)
+                  rrra >- 0       for all r, d.
+
+Any R D dimensional vector rr = {rrra } satisfying (5.3) is called an allo-
+cation. Clearly, given any allocation, the multicommodity flow problem
+decouples into D single-commodity flow problems: Let Fd(Tr) be the
+maximum flow value for c o m m o d i t y d, given the allocation 7r, and let
+                        D
+            wOO =             Fd0r).                                              (5.4)
+                      d=l
+
+Then we seek an allocation rr which maximizes w(rr).
+   We proceed to show how (5.4) can be written in the form (1.2). A
+cut qd for c o m m o d i t y d is a set of arcs of the network whose deletion
+breaks all paths from s a to t ~. Relative to the allocation 7r, the capacity
+included in qd is ]~r~q 7rrd" Letting Qd b e the set o f all cuts for com-
+                            d
+modity d, the max-flow, min-cut theorem for single c o m m o d i t y flows
+[7] asserts that
+
+            Fd(rr) = min ~             nrd,
+                        qd~Qd rEq d
+so that
+            w(rr) =        min         ~-1 ~-I 7rrd.
+                      qlEQ1 ..... qD~QD d rGqd
+
+Each selection (ql .... ,qD ) of cuts from Q I X . . . X Q D defines an R D -
+dimensional vector v = {Vrd ), where vra = 1 if r e qa, and is zero other-
+wise; we suppose the (probably astronomically large) set of all such v
+
+1 This was suggested to us by R.M. Karp. Subsequently we found G.B. Dantzig had proposed
+  this approach [ 1 ].
+                   M. Held et al., Validation of subgradient optimization               77
+
+
+numbered v I , ..., v K in any fashion. The multicommodity flow problem
+becomes
+
+            max w(rr) ,
+
+where
+            w(Tr) = min(zr.Vg: k = 1, ..., K}                                        (5.5)
+and
+
+
+            {
+            d~=l "lrrd = Cr
+
+                7rrd > 0
+                                 (r = 1, 2, ...,R)
+
+                                 ( r = 1,2, . . . , R ; d = 1,2, ...,D).
+                                                                                     (5.6)
+
+
+This problem is clearly in the form (1.1), (1.2).
+   Because of the simple nature of the constraints (5.6), the projection
+operator required for the subgradient procedure (cf. eq. (2.11)) has a
+particularly simple characterization. Given some # = (erd } ~ E R D ' we
+must find 7r = (Zrrd }, minimizing lTr -- #12 and satisfying (5.6). Noting
+that trr - ~l 2 = ~,r]~d(Trrd -- ~rd )2, we see that we need only find, for
+each r, the point (Trrl, ..., "lrrd) , minimizing ZdOrrd --~rd )2 under the
+constraints Ed Zrrd = Cr' rrrd >- 0 for all d. In general, we want to solve
+the quadratic programming problem:
+
+            min{½lx-XL2: N i x / =         c, allx/>_ 0, j = 1, ..., n} .
+
+   By the K u h n - T u c k e r t h e o r e m [14], necessary and sufficient condi-
+tions that x solve the last-stated problem are the existence of multipliers
+X and Vl, ..., v n such that
+
+            x j - 2] = v] - X,       v/>_ O,       x/v/= 0       for all j.
+
+If we set
+            x/(X) = max { 2 / - X, 0 } ,        vj(X) = m a x { - ( 2 ] - X), 0} ,
+
+then the K u h n - T u c k e r conditions are satisfied, for x = x(X), v = v(X),
+and we have x _> 0. It is then only necessary to find that value, X* of X
+for which Njx](X) = c, and we have the solution. Since N/x/(X) is non-
+increasing as a function of X, piecewise linear, and attains every non-
+negative value, this is readily done. Suppose the coordinates of 2
+78                  M. HeM et at, Validationof subgradientoptimization
+
+ordered 21 _< 22 <        < 2 n . The "breakpoint" values of X between, and
+outside of, which     2/x/(X)  is linear, are 21, 22 .... ,2n, and its value for
+X=Xj (J= 1, 2, ..., n ) i s E~=j+I ( ~ / - 2j).
+  Since Y,~=lx/(X*)= c fo~-any 2 : < X*, xr(X*)= 0 and E:.n=s+l( 2 / -
+> c. Thus ~c:(X*) = 0 for J = 1, 2, ..., J 0 , where                         2:)
+
+
+           J0 = m a x { J : 2j+l +'"- J+          > Xj }
+
+
+and it is merely necessary to choose X* such that
+              y/                   /:/
+
+
+             E x:(X*)= E (ejo X * ) = c ,
+           /=So+l                f=Jo+l
+i.e.,                       P/
+
+                   -c+     ~      2/
+           X* -          /=:°+1
+                         n - Jo
+
+   We tried the subgradient procedure on a variety of multicommodity
+flow problems. For each problem the capacities were randomly chosen
+integers. The problems "Complete 1" and"Complete 2 " represent com-
+plete networks (all possible arcs present). "Bipartite" is a network with
+an essentially bipartite structure. Problem "Test" was especially con-
+structed for testing the program and algorithm. " R a n d o m " is a random-
+ly chosen subnetwork of the complete network. "Circle" was con-
+structed so that the arc-chain linear programming formulation [7]
+would be small - there are only two chains from source to sink for
+each commodity; thus the total number of columns in the linear pro-
+gram is only 40.
+   In every case the algorithm terminated because the optimal set of rr
+was fully dimensional. This need not always be the case: we have con-
+structed the problem sketched in Fig. 5.1 whose optimal set contains
+no open set. The algorithm converged to a very accurate solution, but
+showed no signs of terminating.
+   Results on the six problems we studied are summarized in Table 3,
+and a plot of the value of w for the even-numbered iterations for prob-
+lem Complete 1 in Fig. 5.2. The data for the first three of these prob-
+lems will be found in the Appendix to this paper.
+       M, HeM et al., Validation o f subgradient optimization       79
+
+
+                              Table 3
+                    Multi-commodity flow problems
+
+                         h              iterations       best w
+
+Problem Random
+   w* = 361              2                7               361
+   25 nodes
+   172 arcs
+   4 commod.
+Problem Complete 1
+   w* = 1924             2               28              1888.45
+   14 nodes              1               14              1916.47
+   182 arcs              1/2              3              1924
+   4 commod.                             45
+Problem Bipartite
+   w* =4935              2               60              4911.81
+   30 nodes              1               30              4931.99
+   285 arcs              1/2              6              4935
+   15 commod.                            96
+Problem Test
+   w* = 172              2               29               172
+   17 nodes
+   40 arcs
+   3 commod.
+Problem Circle
+   w* = 38               2               40                19,94
+   10 nodes              1               20                30.80
+   20 arcs               1/2             10                34.01
+   20 commod.                            70
+                         (then h ~- ~./2 every 10 iterations;
+                         w terminated at 38 at iteration 115)
+Problem Complete 2
+   w* = 19777            2                60             18138.21
+   30 nodes              1                30             19318.71
+   870 arcs              1/2              15             19708.84
+   10 commod.            1/4               6             19777
+                                         111
+
+
+
+
+                     ~100      I0 --e   I0 _ ? 0
+
+
+
+
+            Fig. 5.1. Numbers indicate arc capacities.
+80                    M. Held et al., Validation of subgradient optimization
+
+
+
+            2000
+                                                                         O O O O Q O
+                                             •    •
+               1750
+
+            1500
+
+          ~I 1250
+
+            I000
+
+               75O
+                           P     I       I            I    I   I     I          I      I    t
+               5000       5      I0     15        20      25   30   55        40       45   5O
+                                      Fig. 5.2. (Problem Complete 1).
+
+
+6. Establishing optimality
+
+   The m e t h o d of this paper differs from almost all other optimization
+procedures in not containing, as part of its machinery, an effective test
+for the optimality of its solutions.. Since the point of our experimental
+work was to see how well the method would approximate optimality,
+we were obliged to develop such tests in order to evaluate the answers
+we got. The material of this section is thus a contribution to the art of
+obtaining the exact solution of a large linear programming problem
+with the assistance of subgradient optimization, but it is only a small
+step in that direction. We are content, at this time, to have some suffi-
+cient conditions for optimality which are satisfied by the data of the
+problems we have studied.
+   We will discuss optimality conditions here only for the unconstrained
+problem; the exact solutions of our one type of constrained problem -
+multicommodity flow - were obtained directly (see Section 5).
+Throughout this section we will study the sequence {rr! } given by (2.6),
+supposing only that the step sizes satisfy conditions (2.7). Then we
+know [20, 21 ] that
+
+           lim w(lr/) = w *          = max       w = w(rr*)    for some ; r * .
+          ]~
+
+  Our results require that the sequence {rr/) be bounded. A condition
+ensuring this is given by
+
+Theorem 6.1. I f for all 7r~ 0 there exists v k (k = 1, ..., K ) with 7r'v k < 0,
+then any sequence {Tr/ } satisfying (2.6), (2.8) is bounded.
+                    M. Held et al., Validation of subgradient optimization      81
+
+
+Proof. If {rr/} is not bounded, then there is a subsequence on which
+Irr]i -+ ~ and a point rr which is the limit of ~]/t~/L on the subsequence.
+Now on the subsequence
+
+                 - Ck        rr/    kl     wOr])
+           rain       + . •v             = ~ - ~:0
+             k t-17r/[ ilr!L                 17rlL
+
+(since w(~ ]) -~ w*), so we have 7r.o k ~__ 0 for all k, which proves the
+theorem.
+
+   The condition just established is readily checked for the traveling-
+salesman problem. The condition does not hold for the assignment
+problem in the formulation of Section 3, because wOO is unchanged if
+rr= (Trl, ..., lrn) is replaced by Or 1 + ~ , ..., 7rn + ~ ) for any e; but if~r is
+normalized by requiring always 7r1 = 0, say, then the condition is easily
+checked.
+   To shorten notation below, we shall write
+
+           l)] = o(7r/) = Vk(]),      C ] = Ok(i) ,
+
+where k(]) is the index chosen at step ] in the calculation (2.2) of w(~/).
+Note that the infinite sequences {c/}, (v ]} have only finitely many
+distinct members.
+   Writing the problem (2.2) as the linear programming problem
+
+           max{z: z - i f . o k ~ Ck for all k } ,
+
+we find its dual to be the problem
+
+           min[~ckYk: ally k >_ O , ~ Y k = 1,~. --VkYk=O ] .                (6.1)
+
+To the extent that the subgradient algorithm is clever about its choices
+v] o f subgradients, we can expect the important part of the above
+problem to be represented by the choices v ], v ]+:, ... for sufficiently
+large J. Thus for integers J < J* we define the linear programming
+problem P(J, J*) as:
+
+
+           min            c] y.: ally] _> 0, ~ y] = 1, ~ -v/y/= 0 .
+                 t] = J      ]                ~J            j
+82                M. Held et aL, Validation of subgradient optimization
+
+
+Lemma 6.2. For any J there exists J* so that P(J, J*) is feasible.
+
+Proof. If not, then the convex hull of the finite set {v J, v s+l , ... } does
+not contain the origin. The nearest point d 4= 0 to the origin in that set
+is such that d.v ! >_ Idl 2 for allj ~ J, so f o r j > J
+                               1.-1                          1"-1
+           d.;r/=d.I~rJ + ~           tivi]>_d.;rJ+id,2 ~ ti,
+                               i=J                           i=J
+
+which tends to ~ as j ~ ~ , contradicting the boundedness assumption
+on {~r1.).
+
+Theorem 6.3. For any J there exists J* so that the solution o f P(J, J*)
+solves the linear programming problem (6.1).
+
+Proof. Let K be the set of all indices k actually chosen in the calculation
+of w in (2.2) for some ], J <_j <_J*. For J* sufficiently large, K contains
+all the indices that will ever be chosen, and P(J, J*) is feasible. Define
+the function N by
+
+           ~(Tr) = min{c k + 7r'vk: k ~ Y~} .
+
+Then, just as for the original problem, the problem max ~(rr) is the dual
+of P(J, J*), and since the latter is feasible, the former has a finite solu-
+tion. Thus the subgradient algorithm applied to ~, started at 7r = 7rJ,
+yields a sequence {~J+l .... , } such that
+
+           lim V~(#/) = max ~ = Value [P(J, J * ) ] ,
+          1.--*
+
+the left-hand equality expressing the convergence of the algorithm for
+~, and the right-hand equality the duality theorem for linear program-
+ming. But the restriction to K has in no way altered the choices made
+by the algorithm; ~ / = rr/and ~ ( ~ / ) = w(~r/) f o r ] _> ar, so
+
+           lira w(Trj) -- Value [P(J, J * ) ] .
+
+
+Since the left-hand term is a lower bound for the value of the problem
+(6.1) and the right-hand term is an upper bound for it, the theorem is
+proved.
+                 M. HeM et aL, Validation of subgradient optimization   83
+
+   The theorems just proved were not used in a systematic way to
+determine the optimal values of the functions w for the various prob-
+lems reported above. The theorems were, in fact, developed later. We
+give two examples of the ad hoc means actually used to determine opti-
+mal solutions for those problems for which the algorithm did not
+terminate.
+   We ran the algorithm on problem A42 until we felt it could not do
+much more: At 319 iterations, w reached 531.9939 (the optimal value
+must, of course, be an integer). At that point we calculated all the
+reduced costs a i r - gri - - P r (they are nonnegative by construction)
+and found that we could clearly distinguish those that were nearly zero
+(less than 10 - 4 ) from the remainder (all greater than 0.1). There were
+48 of the former, as against a minimum possible number of 42, hence
+only six men and six jobs not decisively assigned at this stage. It was a
+simple matter to find, by hand, a one-one assignment using only the
+nearly zero positions, which was thus a "nearly optimal" assignment.
+Its cost turned out to be 532, so it was indeed optimal.
+   Solutions of the traveling-salesman problems were found using
+Theorem 6.3 above, but in the special way described here for T42. We
+had noticed in all our runs long series of steps in which successive sub-
+gradients satisfied the relation vi = o ]+1 in all but a few components,
+so we continued the algorithm to 1850 iterations and an objective value
+of 696.9999985, where we found v 185° + / ) 1 8 5 1 = 0. The corresponding
+costs c j were 688 and 706. Since ½[688 + 7061 = 697, we have estab-
+lished the optimality of the resulting "fractional solution" 10185o +
+½v1851. (Dantzig, Fulkerson and Johnson [4] exhibited a fractional
+solution of value 698 but no optimal solution.)
+
+
+7. Conclusions
+
+   Our results show that subgradient optimization is effective for
+approximating the maximum of certain piecewise linear concave func-
+tions; to us, it is surprisingly effective. It has performed well on large
+optimization problems of the kind normally encountered in applica-
+tions of decomposition to combinatorics - problems in which the
+Dantzig-Wolfe decomposition algorithm, for example, tends to "tail
+off'' and require an excessive number of iterations. Naturally we hope
+that it will perform as well when used on more general linear program-
+ming problems of decomposable structure, but at this point we cannot
+84               M. HeM et aL, Validation of subgradient optimization
+
+
+ say. Neither do we know whether the algorithm suggested by the
+results of the previous section (the building up of the "core problem"
+P(J, J*) by the subgradient method, and the solution of the core
+problem by, say, the simplex method) will be generally efficient; that
+procedure, and variants such as the "Boxstep" procedure of Marsten
+and Blankenship [1_61, need much more exploration.
+   When "resource allocation" decomposition can be used, as we did
+with the multicommodity flow problem, then a feasible solution is
+always at hand; but of course, when the procedure is applied to the
+dual of the problem of interest - as above with the assignment and
+traveling-salesman problems - one has, unless the procedure "luckily"
+terminates, only an approximation to the values of optimal dual vari-
+ables and an approximation (a lower bound) to the optimal objective
+value. Indeed, the procedure has shown its practical usefulness so far in
+just that way: in making branch-and-bound practical in the Held-Karp
+solution of traveling-salesman problems [ 11 ], and the work of Fisher
+and Shapiro in integer programming [6]. We feel, however, that in any
+particular problem there will b e sufficient structure to permit the con-
+struction of an optimal, or nearly optimal, solution to the original prob-
+lem without great difficulty.
+   Briefly, we think that subgradient optimization holds promise for
+alleviating some of the computational difficulties of large-scale optimi-
+zation. It is no panacea, though, and needs careful work to make it
+effective, but its basic simplicity and its wide range of applicability
+indicate that it deserves to be more widely studied.
+
+
+Appendix
+
+   An established canon of research in the physical sciences is that
+experiments must be designed and described so as to be reproducible.
+There is no reason for the mathematical sciences to be less demanding;
+it should be possible for the reader of a paper to duplicate every find-
+ing, right down to the least digit, provided he has access to the same
+systems. (An exception must be made for one source of error in compu-
+tational experiments: the execution time of a program will depend on
+other jobs being run concurrently, and we do not think it feasible in
+general to eliminate or control that source.) The primary requirements
+are a complete description of the algorithm and problem data. Of these,
+the latter is often violated. This is regrettable, since it has led to a
+                                                HeM et al., ~lMation ~ ~ r a d ~ n t                                                                             opt~at&n                    85
+
+
+
+
+0   0       0           0           0           0            0           0           0       0           0       ~           ~           ~           0           0
+
+
+0   0   0           0           0           0        0           0       0           0       ~           ~       ~       0           ~       0               0       0
+
+
+0   0       0           0           0           0            0           0           0       0           0       ~           ~           ~           0           0           0       0
+
+
+
+
+                                                                                                                                                                                             0
+
+
+
+
+0   0   0       0           ~           ~        0           0       0           0       0       0       0       0       0           0       0           0       0       0       0       0
+
+
+0   0   0       ~           ~           0        0       0           0           0       0       0       0       0       0       0           0           0       0       0       0       0
+
+
+0 0 0 0 ~ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+
+0   0   ~       0       0           0       0        0       0       0           0       0       0       0   0       0       0           0       0           0   0       0
+
+
+0   0   ~       0           0       0           0        0       0           0       0       0       0       0       0       0       0           0       0       0       0       0       0
+
+
+0 ~ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+
+0 ~ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+
+~   0   0       0       0           0       0        0           0       0       0       0       0       0       0       0       0       0           0       0       0       0       0   0
+
+
+~ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+04
+                     M. Held et al., Validation of subgradient optimization                   87
+
+    0 16        7    12         88        58     59        51   93   34   19   28   49   15
+   71    0     35    55         69        57     58        82   62   98    5    4   60   84
+   44  30       0    18         14        19     11        34   30   82   54   71   17   66
+   29  59      81      0        67        97     45        63   18    8   80   88   64   33
+   72  84      36    81          0         6     64        74   41    7   91   81   31    7
+   73  73      81    .20        16         0     80        74   80   61   26   94    5   39
+   86  78      64    90         61         I      0        71    8    5   33   35   47   71
+   57    9     49    62         20        72     67         0   28   79   66   61   40   75
+   62  52      16    55         67        20     16        17    0   26   93   51   11   12
+   60  30      55    73         21        67     93        65   97    0   64   54    6   94
+    0 15       88    38         20        21     10        41   49   41    0   69   37   50
+   30    0     29    66         28        25     23        56   19   28   67    0   62   51
+   20  51       0    54         89        56     40        63   70   98   35   15    0   58
+   50  78      24      0        77        11     36        77   45   34    7   81   78    0
+
+SOURCE NODES:               1         2      3         4
+SINK NODES:                11        12    '13        14
+
+                                                  Table A3
+                                          Capacities for Complete 1
+
+
+
+
+dearth of "benchmark" problems in the literature, which in turn has
+made it almost impossible to compare algorithms.
+   We have described the algorithm used in our experiments in about
+as much detail as possible short of giving the computer programs. Our
+calculations were done variously on the IBM 360, Models 91 and 67 at
+the IBM Research Center, Yorktown Heights, using the FORTRAN and
+PL/I languages. Sources of the data for the assignment and traveling-
+salesman problems were cited at the end of Section 3. We have found
+no large multi-commodity flow problems in the literature, and offer
+here the data for the first three such problems we generated. For
+reasons of space, we have omitted the remaining three; they are avail-
+able from the authors.
+
+
+References
+
+ [1] J. Abadie and M. Sakarovitch, "Two methods of decomposition for linear programming",
+     in: Proceedings of the Princeton symposium on mathematical programming, Ed. H.W.
+     Kuhn (Princeton University Press, Princeton, N.J., 1970) pp 1-23.
+ [2] S. Agmon, "The relaxation method for linear inequalities", Canadian Journal of Mathema-
+     tics 6 (1954) 382-392.
+ [3] D.P. Bertsekas and S.K. Mitter, "Steepest descent for optimization problems with non-
+     differentiable cost functionals", in: Proceedings of the 5 th annual Princeton conference
+     on information sciences and systems, 1971.
+88                   M. HeM et aL, Validation of subgradient optimization
+
+  [4] G.B. Dantzig, D.R. Fulkerson and S.M. Johnson, "Solution of a large-scale traveling-sales-
+      man problem", Operations Research 2 (1954) 393-410.
+ [5] V.F. Dem'janov, "Seeking a minimax on a bounded set", Soviet Mathematics Doklady 11
+      (1970) 517-521. [Translation of: DokladyAkademiiNauk SSSR 191 (1970).]
+ [6] M.L. Fisher and J.F. Shapiro, "Constructive duality in integer programming", Working
+      Paper OR 008~72, Operations Research Center, Massachusetts Institute of Technology,
+      Cambridge, Mass. (April, 1972).
+ [7] L.R. Ford, Jr. and D.R. Fulkerson, Flows in networks (Princeton University Press, Prince-
+      ton, N.J., 1962).
+ [8] A.M. Geoffrion, "Elements of large-scale mathematical programming", Management
+      Science 16 (1970) 652-691.
+ [9] R.C. Grinold, "Steepest ascent for large-scale linear programs", SIAM Review 14 (1972)
+      447-464.
+[10] M. Held and R.M. Karp, "The traveling-salesman problem and minimum spanning trees",
+      Operations Research 18 (1970) 1138-1162.
+[11] M. Held and R.M. Karp, "The traveling-salesman problem and minimum spanning trees:
+      part 11", MathematicalProgramming 1 (1971) 6-25.
+[12] M. Held and R.M. Karp, "A dynamic programming approach to sequencing problems",
+      Journal of the Society for Industrial and Applied Mathematics 10 (1962) 196-210.
+[13] L.L. Karg and G.L. Thompson, "A heuristic approach to solvingtraveling-salesman prob-
+      lems", Management Science 10 (1964) 225-248.
+[14] H.W. Kuhn and A.W. Tucker, "Nonlinear programming", in: Proceedings of the second
+      Berkeley symposium on mathematical statistics and probability, Ed. J. Neyman (Universi-
+      ty of California Press, Berkeley, Calif., 1951)pp. 481-492.
+[15] L.S. Lasdon, Optimization theory for large systems (Macmillan, London, 1970).
+[16] R.E. Marsten and J.W. Blankenship, "Boxstep: a new strategy for Lagrangian decomposi-
+      tion", Department of Industrial Engineering and Management Sciences, Northwestern
+      University, Evanston, Ill. (March, 1973).
+[17] T. Motzkin and l.J. Schoenberg, "The relaxation method for linear inequalities", Canadian
+      Journal of Mathematics 6 (1954) 393-404.
+[18] J. yon Neumann, "A certain zero-sum two-person game equivalent to the optimal assign-
+      merit problem , in: Contributions to the theory of games, Vol. II, Eds. H.W. Kuhn and
+      A.W. Tucker, Annals of Mathematics Study No. 28 (Princeton 15niversity Press, Princeton,
+      N.J., 1953).
+[19] W. Oettli, "An iterative method, having linear rate of convergence, for solving a pair of
+      dual linear programs", MathematicalProgramming 3 (1972) 302-311.
+[20] B.T. Poljak, "A general method of solving extremum problems", Soviet Mathematics
+      Doklady 8 (1967) 593-597. [Translation of Doklady AkademiiNauk SSSR 174 (1967).]
+[21] B.T. Poljak, "Minimization of unsmooth functionals", U.S.S.R. ComputationalMathema-
+                                                                       v         v         .   .   .
+
+      tics and Mathematical Physics 14-29. [Translation of: ~urnal Vycislitei'noi Matematlkl 1
+      Matemati~esko~ Fiziki 9 (1969) 509-521.]
+[22] R.T. Rockafellar, Convex analysis (Princeton University Press, Princeton, N.J., 1970).
+[23] N.Z. Shot, "On the structure of algorithms for the numerical solution of optimal planning
+      and design problems", Dissertation, Cybernetics Institute, Academy of Sciences U.S.S.R.
+      (1964).
+[24] P. Wolfe, M. Held and R.M. Karp, "Large-scale optimization and the relaxation method",
+      in: Proceedings of the 25th national ACM meeting, Boston, Mass. (August 1972).
+

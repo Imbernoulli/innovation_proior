@@ -1,0 +1,1358 @@
+                                                                                      m.v-_
+
+
+
+
+  NASA   Techmcal   Memorandum    86847
+
+
+
+
+  Discovery of the Kalman Filter as
+  a Practical Tool for Aerospace and
+  Industry
+  Leonard A. McGee and Stanley F. Schmidt
+
+ :MASA-_N-6bS_7)         r,ISCOVERY    OF   IHE     K&L_&M
+_ILTS_     AS   A PBACTICA£      '_CCL EC_    At.ROSPACE      AND
+INL_Ub:_Y     {l_,a._A)  _/4 1: HC A_]2/MI;     A0l    CSCL   17G
+                                                                            Ui_c_3_
+                                                                    G3/O_   0_9u5
+
+
+
+
+  November   1985
+
+
+                                                              ,,;   _cc_sDe]'...._'
+                                                                                                                          kEJ
+
+
+NASA       Technical        Memorandum           86847
+
+
+
+
+Discovery of the Kalman Filter as
+a Practical Tool for Aerospace and
+Industry
+Leonard       A.   McGee,        Ames      Research   Center,     Moffett     Field,    California
+
+Stanlev      F. Schmidt,         Analytical     Mechanics       Associates,     Inc.,   Mountain     View,   California
+
+
+
+
+Nuvember           1985
+
+
+
+
+Nal_onat     Aeronautics         and
+Space      Administration
+
+Ames Research Center
+Moffetl    F_eld    Calrfornra     94035
+                                            DISCOVERY          OF     THE      KALMAN         FILTER           AS    A PRACTICAL
+
+
+                                                         TOOL       FOR       AERCSPACE            AND        INDUSTR?
+
+
+                                                  Leonard        A. McGee            and     Stanley           F.     Sc,hmidt*
+
+
+                                                                      Ames         Research        Center
+
+
+
+
+                                                                                     SUMMARY
+
+
+
+
+           The       Kal_n         filter          in    its     various            forms        has     become           a    fundamental             tool       for     ana-
+lyzing          and    solving              a broad        class         of    estimation              problems.                The       first       publicly          known
+application                 was    made       at     NASA      Ames          Research        Center           in the           early       1960s       during        feasi-
+bility          studies           for       cifcumlinear              navigation             and       control            of    the       Apollo       space        cap-
+sule.           This        paper       recounts           the      furtunate              sequence           of     events          which       led       the    research-
+ers     at      Ames        Research          Center        to      the       early        discovery           of     the       Kalman          filter        shortly
+after        its       introduction                into     the       literature.                 Th      sclentific                 breakthroughs                and     refor-
+mulations             that        were       neces3ary           to      transform           Kalm_'s               work        into       a useful          tool     for      a
+specific             aerospace              application           are         described.               The     resulting               extended            Kalman       filter,
+as    it     is now          known,          is often          still          referred           to simply            as       the     Kalman         filter.           As    the
+filter's             use     gained          in popularity                   in the        scientific              co,rnunity,             the       problems        of
+implementation                    on    sn_li        _paceborne               and    airborne            computers              led       to    a "square-root"
+formulation                 of    the       filter       to overcome                numerical            difficulties                  associated             with      compu-
+ter     word         length.            The       work     that       led      to    this        new     formulation                 is also          discussed,
+including             the        first       airborn       _ computer               implementation                   and       flight          test    which        was
+conducted              in    1972.           Since       then       the       applications               of    the        extended             and    square-root
+formuiations                 of     the      Kalman        filter            have    grown        rapidly            throughout                the    aerospace
+industry.
+
+
+
+                                                                               INTRODUCTION
+
+
+
+
+           In     1960,          Dr.    Kalman          published             his    now-famous               paper,           "A    New       Approach          to Linear
+Filtering             and        Prediction             Problems"             (ref.        I).     That        paper           made       a significant              contri-
+bution          to     the       field       of    linear        filtering             by    removing               the       stationary             requirements             of
+the     Weiner          filter          and       presenting             a    sequential           solution               to    the       time-varying              linear
+filtering             problem.               Kalman's          solution             was     particularly                  suited          to    the    dynamical             state
+estimation              needs          of    the     space       age         (ref.     2).        Co_cnly             known          as    the       Kalman       filter,
+the     new       formulation                had     a major          effect          in    related           academic              and    engineering              cir-
+cles.           Although            the      first       uses       of       the    Kalman        filter            were       in aerospace                applications,
+the     relative             simplicity              and    versatility                of    the       formulation                  resulted          in    its     rapid
+adaptation              for       utili_ation               in many           other        fields.            The     Kaiman           fiiter         in    its
+various
+           *Analtyical                 Mechanics           Associates,                Inc.,       2483        Old     Middlefield                 Way,      Mountain
+View,        CA      94043.
+
+
+
+
+                                                                                                                                                                                     \
+      forms       is clearly                established                as    a    funda_ntal                  tool        for    analyzing              and       solving           a       broad
+      class       of     _timatlo_                problems.
+
+
+                 The     events            that     led      to    the       current           widespread                 use    of     the     Kalman            filter        are
+      recounted             here       to    _h_       best       of    our       recollections.                      The       descriptions                 given        in    (ref.             3)
+      are       expanded,           giving          greater            insight           ir to the            many        problem8        that          had       to be        overcome,
+      as    well       as     the      extremely             fortunate              sequence             of     events          that     resulted             in the           discovery
+      of    the    filter           and      its       successful                implementation.
+
+
+                 The     paper         describes             how       the       need        for       a filter           such    as     Kalman's             arose        from
+      NA_SA's      early         work        on     the      manned          lunar           mission,           even       before        that       mission             was     selected
+      as    a    national           program.                Also       described              is why          Kalman's           work     was       introduced                 at       a
+      near-perfect               time        and       why       this       near-ideal                 solution           to    the     midcourse             navigation
+      problem          might        have          _ne       undiscovere_                 except          for       a fortunate            meeting             between           Dr.
+      Schmidt           (one     of        the    present          authors)              and       Kalm_n.
+
+
+                 Kalman's           work         was    a    large          step     forward,                but     its       usefulness           for       the       Apollo
+      mission          was      limited           by    certain             features           of       the     formulation.                  We    recount             the     events
+      that       resulted             in    the     scientific               breakthrough                    and     the       reformulation                 that       transformed
+      Kal_n's        work   into                 the    extremely                useful        tool          that     is now           knowm       as    the       "extended
+      Kal_n        filter."
+
+
+                 The     reasons            for     and      events          that        took          place       during        the     development                of     navigation
+      systems           for     the        Apollo       and       Lockheed           C-SA          aircraft           programs           and       the       way     in which                   the
+      results           from     those           key    programs              led       to a square-root                       Formulation              of    the       Kalman
+      filter,           which       had      features             suitable              for    aircraft              applications,                 are       described.                     A
+      discussion              then         follows          of    the       development                 of     the    first       known         aircraft             flight             exper-
+      iment       in which             the       performance                of    a square-root                    for_Jlation            coded          for       an     airborne
+      computer           was     validated.
+
+
+                 The     paper         concludes             with       a discussion                    of     the    tremendous               range         of    problems                 to
+      which       the       extended             and    square-root                 Kalman             filters        are       being     applied             in     today's
+      highly           technical            world.
+
+
+                 The     authors            acknowledge                their        indebtedness                   to Joseph            R. Carlson,                George           P.
+      Callas,           Eleanor            V. Harper,             John        D. McLean,                Rodney        H.       Perry,     and       Gerald           L.    Smith,                who
+      assisted           _terially                with       the       analysis              efforts;           without          their        help       and       support,                 the
+      original           circumlunar                feasibility                  studies            leading          to    the        discovery          of       the     Kalman
+      filter       would         have        been       impossible.
+
+
+
+
+                                THE        FIRST        APPLICATION                OF    THE           KALMAN        FILTER:           APOLLO           MISSION
+
+
+
+
+                                                                        The      Need         for       a New        Filter
+
+
+                 In the         fall        of    1959,          Dr.    Harry           J.    Goett,           then       Director        of       NASA's          Goddard              Space
+      Flight           Center         (GSFC),          i_vited          Dr.       Sehmidt              and     other       members        of       Dr.       Goett's           former
+      division           at     Ames        Research             Center          (ARC)        to       meet     with       the        Space     Task         Group        located                at
+
+
+
+
+                                                                                                   2
+
+
+
+
+LL_
+Langley Research Center to discuss the future mannedspacecraft                                                                       program.               (See
+(ref.     4)    for     a history              of     the    Apollo          program.)              Dr.     Goett        was       eager        to get
+feasibility           studies  under                  way    at    the       NASA       research           centers        to       _efine          guidelines           for
+the manned           lunar mission.
+
+
+         Of    major        interest           to     the    present          authors          were        the    areas        in which              the    Dynamics
+Analysis        Branch        at     Ames       should          concentrate              its     research           efforts.              The        principal
+outcome        of many        meetings              of    the     Space       Task       Group        was    the       identification                      _ two
+potential         areas       of     research             for     the    Branch.              The     first       was     midcourse                navigation           and
+guidance        for     the    circumlunar                  mission,          and       the    secor._       was       the     autopilot              design          for
+large,        flexible        body        liquid-fuel              boosters.
+
+
+         The    Dynamics            Analysis             Branch        had    only       eight        analytically                 oriented           research
+persons--too            few     to carry              out    two       very       complex        research           programs.                 The     most       logical
+choice,        considering               personnel           experience,                seemed        to    be    the     booster             autopilot           design
+problem.          But       after        many       discussions,              enthusiasm              grew       for     the       midcourse             navigation
+and     guidance        problem,           and        there       was    finally          a    unanimous            decision             for       the     Branch       to
+work     in that        area.            Certainly,             it was        an    ambitious              undertaking,              one        that       presented             a
+greater        challenge            to    Branch          personnel           than       had     been       faced        before.
+
+
+         The    primary        emphasis               in the       Branch          was    rapidly           brought           to    bear        on    the    need       tc
+develop        the     concepts           and       technology           for       a completely              self-contained                     system.           This
+meant     the     software           for       the       mission        would       have       to     be    resident           in a       reliable,              on-board
+digital        computer        with        considerable                 memory          and    relatively              high        computational                 speed.
+The     midcourse           algorithms              would       have     to       be as       efficient           as     possible.                 The     system,
+with     pilot/navigator                  inputs,           would       have       to    navigate           and     guide          the    spacecraft              from
+injection         into       a circumlunar                  trajectory,             around          the     Moon       and     back       to       Earth,        satisfy-
+ing     very    restrictive               entry          corridor        requirements                 on    return        to       Earth.
+
+         Having        selected           the       problem        area       and       directed           our    attention              to     a conceptual
+design        for a     solution           to       the     problem,          it was          clear        that     we    were       facing           a rather
+massive        effort        with        a staff          that     was       utterly          inexperienced               in many             of     the    required
+tasks     (such        as    lunar        trajectory              analysis).              Perhaps           if we        had       fully        comprehended                the
+necessary         effort       we        would        have      reconsidered              our       choice        of     problem          area        for     the
+Branch        research        effort.               Basically,           we       were    starting           with        nothing           in      the     way    of
+analytical           software            tools.           Ames     had       an    IBM    704,        which       would        be    our        simulation
+computer.            Fortunately,               Fortran           was    made       available              to us       early        in our           research
+efforts,        but     software           for        the    machine          was       quite       limited.             For       example,           later       on,
+when     we    were     preparing              the       software         to do         the    Kalman         filter          matrix          operations,              we
+had     to write        all    of        our    own       matrix-handling                 subroutines.                   We    soon        found,          however,
+that     the    double        indexing              needed        for    matrix          operations              ran     so    slowly           that       our    matrix-
+handling        subroutines               had       to be       rewritten            to use         single         indexing.              Otherwise,              a
+circumlunar            trajectory              with       a Kalman           filter       would        have        taken       hours          of     computer          time.
+
+
+         The    first        step        was     to      build     a    trajectory             analysis           program           capable           of    simulating
+a trajectory            to the           Moon       and     return.           Fortunately,                 Dr.    Clarence           Gates           and    others          at
+the     Jet    Propulsion            Laboratory               (JPL)      gave       us    invaluable              assistance              and        counseling
+based     on    their        work        in this          area.         Probably          the       most      timely          aid    was        in the        form      of
+an    ephemeris         tape        containing              the     positions            of     the    Sun       and     the       Moon       versus         time.          By
+mid-1960, we could calculate                                free-return              trajectories                 to    the       Moon       and       were
+investigating              linear perturbation     methods   that                                    looked   promising   for calculating                                      and
+implementing              small velocity   changes    to simulate                                     midcourse    correction.
+
+
+         Most of the research                         was going well at                        that time with the exception    of                                   naviga-
+tion;     that is, the use of                         pilot observations                        of external  bodies to esti_te                                      the
+vehicle state.    We                   had assumed   from the beginning    that this would                                                   De accomplished                        by
+the crew operating                     an inertially   referenced  optical   sensor on the                                                   spacecraft   to
+measure         the      elevation,            azimuth,        and        subtended              angles       of       Earth       and       Moon.           The     ques-
+tion     was       how    to     process        such        data     in an        efficient             manner.             To        this       end,     we    had
+reviewed           the    iterative            weighted,           least-squares                    estimator           in use          by       JPL    and     decided
+that     it was          not     only     too       complex        for     state-of-the-art                      on-board              computers             but     would
+also     put       a severe          burden      on     the    IBM        704    we       were       using       for       simulation.                  We     had      also
+considered            taking         multiple         optical         tracking             measurements                 and       filtering              them       with        a
+polynomial.               Although           this     appeared            to be       a     simple         enough          procedure,              the       accuracy               of
+the resulting              state        estimation   was              not       adequato             for     the       level       of      optical           measurement
+accuracy  that             could        be achieved.
+
+
+         Some       of    the     staff       had     been     working           with          Weiner       filter          theory           for       several          years
+and     had     made      successful            applications               of    that          theory       to     the      problems              of    guidance           and
+navigation    for beam-rider   and homing  missiles.     Because                                                      the lunar vehicle    navigation
+problem    had obvious  similarities   to missile   navigation,                                                       we wondered  whether    the
+Weiner        filter       theory        could        be applied.                The       difficulties                were        the       nonlinearity                 of
+the     problem          and     the    requirement,               for     lunar          vehicle          navigation,                of     an    irregular
+series        of    discrete           measurements            (whereas              missile           navigation               had     assumed          continuous
+measurements).                  We     could     not     find       an    approach              that       would       permit           applications                 of    the
+Weiner        filter       theory        without        making           approximations                    that       would        either          severely
+restrict           the    observation            system   or destroy  the                           inherent   accuracy.                      Obviously,    a new
+approach           was    needed   for          computing   the estimated                            state   from on-board                     measurements--a
+way that would                 not     overburden           our     simulation                 facilities             or    an     on-board             computational
+capability.
+
+
+
+
+                                                      Discovery           of     the       Kalman          Filter
+
+
+         In retrospect                 it seems        almost        incredible                 that       the     next         sequence           of    events
+should        have       taken       place      and    that        Dr.    Kalman's              work       should          be    so     quickly          recog-
+nized.         The       authors        recall        those        events        in       the       following          way.           Dr.     Schmidt,             at     Ames,
+and     Dr.     Kalnm%n, at            the    Research         Institute              for       Advanced           Study          (RIAS),          had       been
+acquaintances              for       several        years.          In    the        fall       of     1960, Dr.            Kal_n,            unaware           of      the
+work     we    were       doing,        called        and     arranged           to visit             Dr.    Schmidt             to discuss              topics           of
+mutual        interest.              It was      during        this       very        f_rtunate             visit          that       Kalman           presented           his
+now     famous        paper       to members           of     the    staff           of    the       Dynamics          Analysis              Branch.            Because
+the     staff       had    been        thinking        of     filter        theory             as    a way       of    _,andling             the       problem,           the
+presentation              hit    a     responsive           chord.          In particular,                   the       sequential                 solution           fea-
+tures     of       Dr.    Kalman's           formulation            were        of    interest             because          they        could          certainly
+relieve        some       of    the     computational               problems              we    were       facing          with       the     IBM       704.         Thus,
+even     though          the    theory        was     linear        and     our       application                nonlinear,                Dr.     Schmidt           thought
+the approach might have somemerit for                                            our       application              and       assigned             key     staff        mem-
+bers     to    carefully             examine          the     paper.
+
+
+         That       was       not    _n easy          task        and    a great           deal       of     difficulty             was       experienced               in
+understanding                 Dr.    Ka_man's           paper       because           of       the    relatively              new       state        space        approach
+to control              problems          used     by      Dr.     Kalman.            The       notation,           as       well       as    the        concepts,           used
+by    Dr.     Kalman          were       also    very        difficult           for       practicing              engineers             to       grasp.          On    his
+next     trip       to GSFC,             Dr.    Schmidt           arranged          to meet           with        Dr.    Kalman          at       RIIAS to discuss
+the    paper        further.              It was        at    this       meeting           that       the     method          of    applying              Dr.     Kalman's
+_heory        to a nonlinear                   system        became          clear        to    Dr.     Schmidt.              He    realized              that     the
+linear        perturbation                concepts           we    had       been     using          in our        guidance             studies           could        be    used
+to produce              the    linear          system        needed          to apply           Dr.     Kalman's             theory.              Thus,     the        combi-
+nation        of    Dr.       Kalman's          linear        filter          theory           with     the       _inear       perturbation                 methods              we
+were     already          using          gave    us a        potential           solution             to     the    nonlinear                navigation            problem
+and    also        to some          of    the    problems           posed        by       the       speed     and       storage          limitations               of       the
+IBM    704     computer.                 Clearly,          the     meeting          at     RIAS       resulted           in the          breakthrough                  we
+needed,        and we immediately                      made plans to produce    a digital                                     simulation    program   to
+evaluate        and validate   the                    Kalman formulation.    Whether   the                                    Kalman   filter   would
+provide        the       state       estimation              accuracies             necessary              for     circumlunar                navigation
+remained           an    open       question          and     was       of    considerable                 concern.
+
+
+
+                                                      Modification                  of    the        Formulation
+
+
+         The       trajectory             analysis           work       that     had       been       progressing              in the             meantime         had
+given us           some insight   into the problem   of how to schedule   the time                                                                of the         simulated
+on-board           optical  measurements  and course   corrections  we planned  to                                                                use to         accomplish
+the    navigation              and       guidance          function.             The       schedule           called          for       optical           measurements
+to be       taken        in a short             sequence,           with        the       measurements              evenly          spaced           iD    time.            The
+sequences           could        be separated                by    relatively              long       periods           of    time.           The        starting           time
+of    the     measurement                sequences           and    the       timing           of    the     course          corrections                 would     be
+variables           for       later       analysis.               These       features              were     permitted             by    the       numerical            inte-
+gration        routine           used      to solve           equations             of     motion           for    the       trajectory.                  The     key
+features           of    the     routine         were        its    ability              to vary        the       integration                step        (time)        over       a
+wide     range          and    the       ability        to    be    stopped           and       restarted           at       any    arbitrary              time.            The
+variable           step-size             was    critical           to us        because             it brought           the       IBM       704     computation
+time     down       to a value             that       at     least        let    us       consider           doing       the       problem.
+
+
+         Dr.       Kalman's          original           formulation              would          have       required           an    on-board              crew     to make
+a continuous              sequence             of optical           measurements                    equally        spaced           in time          throughout              the
+lunar       mission,           an     impractical             scenario.               Therefore,              to     implement               our     measurement                 and
+course-correction                    schedule,             the     original              formulation              had    to be          revised.            The        solu-
+tion     to the          problem          was    obtained           by decomposing                     the    original             formulation               into       a
+discrete-time                 update       portion           and    a discrete-time                     optical          measurement                 update        portion
+which       provided           a much          more     natural           and       intuitively              appealing             way       of    expressing
+Dr.     Kalman's          algorithm.               Looking          back,        the       decomposition                 seems          almost           trivial;           at
+the     time,       however,             it was       a major           and     critical             step     forward          and       one        in    which        an
+unrecognized              error          could     have       been        disastrous.
+                                                               The Extended Kalman Filter
+
+      The original studies using perturbation methods and the above mentioned decom-
+position of the filter   were based on a linearization  about a nominal (reference)
+trajectory,    it soon becameapparent that a relinearization   about the current esti-
+mated state might offer substantial advantages over the technique previously used.
+We    reasoned            that       "on     the    average,"               the    estimated                 state          would       be       closer           to     the
+actual,        or        true,       state      than       to    the        reference,                 or    nominal,             state          and     thus          the     lin-
+earity        of    the        approximation               would       be        retained              better          than       with          a nominal,               or    refer-
+ence,        state.            The     correctness              of    this        presum_ption                was       borne          out       in a        rather           extreme
+incident.             An       accidental           error        in     input           conditions                to    a simulation                   run        caused        the
+true     trajectory              to     remain        in an          orbit        around           Earth,          but       the       estimated              trajectory                  had
+the     proper        starting              conditions           for        a    lunar        transfer             trajectory.                    The        simulated
+optical        measurements                  used     to       estimate           the        position             of    the       space          vehicle           were        inten-
+tionally           sparse         in the        early          part    of        the     run       because             the       trajectories                 were        quite
+nonlinear            in that           regicn.            At    first,           the     Kalman-filter                      estimator                caused        some        rela-
+tively  large              overshoots  in the estimated    state                                        owing  to the nonlinear  effects,                                           but
+the estimated               state soon successfully    converged                                         close  to the true state.    This
+modification               to     the       implementation                  has    come           to    be    known          as     the         "extended              Kalman
+filter."
+
+
+
+
+                                       Development              and    Testing               of    the       Fi_ter          Simulation
+
+
+         The       design         of    the     digital          simulation                  program             proceeded             fairly           rapidly           once        it
+was     cle?rly           understood            how       the    Kalman            filter          w_s       to    be       implemented.                     The       transition
+matrix        for        the    discrete           filter        time           update        remained             a problem,                   however.               This     matrix
+was     to be        used        to transform              a    position               and    velocity             error          state          at    one        time        into        a
+new     error        state        at    a     later       time.         It       is a key              element          in       the    Kalman-filter
+formulation.
+
+
+         Another           group        at     Ames       specializing                  in software                accepted              the         task     of       developing
+the     programs           to     compute           the    transition                  matrix          using       data          from       a    stored           lunar        trajec-
+tory.         The: data           were       not     equally           spaced           in    time,          and       as    a    result             interpolation                  would
+                                                                                                                                                                                                b
+be    required            to     retrieve           the    desired              position           and       velocity             at     a specified                   time.          A
+set     of    variational               equations              would        then        be evaluated                   from       the       trajectory                 data      to
+produce         the       transition            matrix.               It was           thought          that       this          approach             would         be    rela-
+tively        fast        and     would        reduce          the     computational                    time       on       the       IBM       70_     over        that       of     the
+straightforward                   approach           of    simply           solving           the       variational                   equations              by     integrating
+an additional                  set     of     18 complicated,                    second-order                    differential                   equations•                As     it
+turned        out,        the        software        development                  task       was       much       more        difficult                than       originally
+thought.
+
+
+         By        the    time        the     simulation              program           implementing                   the       Kalman          filter           was        coded        in
+Fortran            and    the        coding        extensively              verified,              the        group         working             on     the     transition
+matrix        expected               their     software           could           be    completed                in a few             additional               weeks.            Every-
+one     was        extremely           eager        to give           the       Kalm_n-filter                    program          a     try.           When        the       time     came
+and     passed           for     the       transition           matrix            program          to       be    operational,                    it was           becoming
+increasingly               clear        that          work        should             be    stopped         on       this        approach                  because           it was
+producing           software            that          was        taking          much        longer           to    execute            than           was       originally
+expected.             The       only        remaining                alternative                  was     to       integrate               the        additlona_                 18 second-
+order     differential                  equations                 along          with        those        for        the       true,         reference,                 and       estimated
+trajectories.                   ;[though              this        was       a setback              in the            IBM       704     time           budget           for       the
+Kalman-filter               simulation                 program,                 compensating                  savings           were        made           by    the        discovery
+that     the     transition                 matrix              could       be       inverted           merely            by    rearranging                     terms.
+
+
+         At    this        point        we       were           about       6 months              behind           the     schedule                  we    had       set     for        our-
+selves.             It was        decided             to        build       a    test        program           to debug               the       modular              software            for
+computing           the     transition                 matrix.                  In    this        way,        the     modular              elements              could           be used
+directly         by       the     Kalman-filter                      simulation                  program           with        very        few        changes.               The        test
+program        was        put     together                 in a       few       days        from     coding              that        was     borrowed                 from       other
+programs         we       had     developed.                     Very       little           debugging               time       was        required              because            most          of
+the     complex           software           was           by    then       already              ranning           in other            programs                 and     because              the
+problem        was        very        straightforward.                           This        new     program              produced               the       transition               matrix
+from     injection              into        the        translunar                 trajectory              to periselene                         (closest             approach            to       the
+Moon).         It     is also           used           to       produce          a     transition              matrix               from        trans-Earth                 injection              to
+perigee.            The     matrix           elements                were         then       punched           on        cards        to        be    read           into     the       simula-
+tion     program           for        use    with           the       guidance              laws     to       compute               course           corrections.
+
+         In     the       Kalman-filter                     program,              the       transition               matrix           for        a time-update                     of       the
+covariance            matrix           was        always          available                 by     integrating                 the         18 second-order                       differen-
+tial     equations               in    the        simulation                program              from     injection                  to the           time       of     the        first
+optical        measurement                  and        then          from       that        measurement                  time        to the           next       and        so     on.           The
+product        of     all        these       matrices                 gave        the       transition               matrix           from           injection              to     the       time
+of     the     latest       optical               measurement.                       This        matrix        was        required               by       the    mideourse                  cor-
+rection   algorithm.    The variational                                              equations            could be solved  about either   the
+reference    or the estimated   states.                                              Later   the          program was modified   to do the return
+(inbound)            trajectory                  by    reinitializing                       at     periselene               with       a,lother              stored           transition
+matrix         from       periselene                  to    Earth         reentry.
+
+         The        digital           simulation                 program             was     designed               to     integrate                 nonlinear              differential
+equations            for        the    true           trajectory,                 the       nominal            (or       reference)                  trajectory,                 and        the
+estimated            trajectory.  The simulated                                           optical        measurements                  were calculated                           as func-
+tions of            the true state plus additive                                           biases        and noise.                   The Kalman-filter                           algorithm
+accepted         these measurements    and provided   incremental   changes  in the estimated
+state.          The difference   between  the estimated    state and nominal   state was used                                                                                               in the
+midcourse            correction                  algorithm.                 This           algorithm               gave        the         _V        vector           required              to
+drive         the     estimated              position                to   the         nominal           position               at    periselene                  at    the       end        of     the
+outbound            and     perigee              at    the       end      of      the       inbound            trajectory.                      To    simulate               the       mid-
+ course        correction,                  the       computed               6V           vector        was        added        to    the        estimated                  trajectory
+ directly.             Random          magnitude                 and      pointing               errors            were        added        to       the     computed                  AV
+      :tot     to     simulate              control             system           errors,           and     the       result           was        added           to    the        true
+      aJectory.             The       covariance                 matrix           of       the     estimated               state           was       also        increased               in a
+ manner        corresponding                     to    the        statistics                of     the     simulated                 control               system           errors.
+
+          When        the       simulation                 program           was          finally        ready           for        a test           run        on    the        IBM     704,          it
+ took     a little              over        an    hour          of    execution               time.            The        first        run       showed              disappointing
+results         in the state estimation scheme. Naturally,                                                       we were              shocked.            What       if        the
+Kalman        filter        did    not        work?           men,          an    error           was    found         in the          way     we     were      calling              a
+subroutine.               On     the     second         run         everything               worked           fine{
+
+
+         By    early        1961,        the       si_lation                program            had      been     used          extensively             co    validate                the
+extended         Kalman          filter        and       the        guidance            laws       we    had     developed.                   OUr     very      encouraging
+results         indicated             that     on-board              optical            measurements                 combined           with        the     knowledge                of
+the    equations            of    motion           could        yield        adequate              accuracy           for        the    circumlunar
+navigation/guidance                      problem.               This        was        the     breakthrough                that        we     had     set    out          to
+achieve        at     the      beginning            when        we     had       selected            the midcourse                    navigation            and      guidance
+for     the    circumlunar               mission           as       the     study        area        for       the     Dynamics              Analysis        Branch.                 At
+that     time        it was       clear        that        we       had     achieved              a potentially                  significant              result             for
+on-board         navigation              systems.               Our       studies            indicated           that          the     extended           Kalman             filter
+wculd        give     accuracies              comparable               to    those           of    weighted            least-square                 estimators,                 but
+with     a tremendous                 reduction            in requirements                        for    on-board              computer            memory         and        compu-
+tational         speed.           We     had       not,       however,             verified             that        the    extended            Kalman           filter          could
+be    mechanized            and       operated           properly            with         the      flight        computers                 available         at       this
+time.
+
+
+         As     it    turned          out,     we       had     been        fortunate              in the        way       we     had        chosen       to mechanize
+the     computations               for       the    extended              Kalman          filter.              The     order          chosen        in which              to
+multiply   the three matrices  in the measurement    update                                                            equation,  that is,                        (KH)P
+rather   than K(HP) was the most numerically    sbable   of                                                           the two possibilities                         we could
+have     selected.                As a       result,           we     had    no        apparent              computer           round-off           difficulties.                         If
+we     had    done        things        differently,                  however,            we      might        have       found         that       double-precision
+matrix        operations              were     necessary               with        a    resultant              large           increase        in computer                   time,
+which,         in turn,          would        have       _de          the        filter        appear          much       less        attractive             for      space-
+craft        applicaticns.
+
+
+
+                                               Dissemination                     of     the       Simulation              Results
+
+
+      As we recall, two of the first persons                                                    (outside              of Ames)             that we told of our
+results  were Dr. John V. Breakwell  and Dr.                                                   Charlotte              Striebel,             both of Lockheed
+Missiles            and    Space        Company           (LMSC).                Both     Dr.        Break-well            and    Dr.        Striebel           were         suffi-
+ciently         impressed              with     the       results            to       begin       further            research           on    their       part          to
+explain         the       equivalences               to other              trajectory                determination                methods           in use           at      the
+time.
+
+
+          At about             this     same       time         in early              1961,       Dr.        Schmidt           told     Dr.    Battin           of      our
+results.            Dr.    Battin        was       at     t_         Instrumentation                     Laboratory              of     the    Massaehusets                    Insti-
+ tute    of     Technology              and     was       engaged            in studies                 of    the     Apollo           mission.             Dr.      Battin           had
+been         independently              engaged           in work            along           lines       similar           to    those        of    Dr.      Kalman            but
+was     unfamiliar               with    Dr.        Kalman's              work.          In September                 1961,          Dr.     Battin         published                an
+ Instrumentation                  Laboratory              Report            titled           "A Statistical                    Optimizing           Navigation                 Proce-
+ dure     for       Space        Flight"           (ref.        5).         In    the        introduction                 to    his     report,           Dr.     Battin             made
+ the     following             statement:
+
+
+
+
+                                                                                         8
+                    The        formulation              of     an    optimum        linear        estimator             as    a    recursion
+                    operation              in which            the    current        best       estimate             is combined              with
+                    newly           acquired           information            to    produce          a    still       better           estimate
+                    was        presented           by       Kalman.         The     author        is      indebted           to
+                    Dr. Stanley   F. Schmidt    for directing his attentions    to
+                    Kalman's  excellent   work.    In fact, the original   application                                                              of
+                    Kalman's  theory                    to space navigation                     was made by Schmidt   and
+                    his associates.                      The work described                     in the following  sections
+                    of     this       paper        was       done     without        any       detailed          knowledge              of
+                    Schmidt's              activities           ....
+
+
+Dr.    Battin        continued               to    investigate              using        the    filter          fo:     application                to    the      Apollo
+navigation           system.               Later,           Potter     (ref.        6),     working            with     Dr.       Battin       at       MiT,      devised
+the    first        square-root               filter           implementation,                 which       was       used     for       the    Apollo          system.
+His    formulation                  could     not       handle        random        forcing          functions,              out       it was        useful        for
+implementation                  in    small-word-size                  on-board           computers,              such       as    that       of     the      Apollo
+system.            Still        later,        Potter's              implementation              was       included           as    part       of     other        square-
+root     implementations                     that       could        handle        random       forcing           functions.                 Some       of    these
+implementations                     will     be discussed              later.
+
+         The       word        of    our     work       began        to spread           rapidly          throughout              scientific,                academic,
+and    engineering                  circles.            During        the     summer        and      fall       of    1961,        many       visitors            from     all
+parts        of    the     country           had       come     to discuss           the       work       we    had     done.           In the          summer        of
+1961     two       papers           (refs.        7 and        8),    which        were     shortened             versions             of    two     NASA      reports
+(refs.        9 and        10) published                    in the     following            year,         were       presented              in San       Francisco          at
+an    American           Astronautical                  Society         (AAS)       conference.                 This     was       the       first       formal
+introduction               of       our    work        on    navigation            and    guidance             studies        for       the    circumlunar
+mission           before        a group           of    scientists            and    engineers.                 Because           of    the    extreme            interest
+in the        Apollo           program        and        the    potential           our     work         held     for       that       program,          extensive
+informal           discussions               were       held        after     the    conference                with     many       representatives                    of
+
+both     government                 and     industry.
+
+         During          the early period,                      Dr. Schmidt           and his staff of researchers   at Ames                                           can
+be     credited          with the following                      technical           breakthroughs  which led to this first                                            major
+application               of    the       Kalman         filter.
+
+         I.        Demonstration                  that        Kalman's        original           theory         could        be    adapted           to nonlinear
+problems.
+
+      2.           Development               of the extended Kalman                            filter,  which  linearized   about                              the
+current           best estimate               of the state to reduce                            the effects   of nonlinearities                                in the
+
+problem.
+
+         3.        Decomposition                  and        reformulation           of     Kalman's             original          algorithm               into    sepa-
+rate     time-update                  measurement-update                    portions            so    that      measurements                 could       b_    prcce_3_d
+at     any     arbitrary              time        interval.
+
+
+
+
+                                                                                     9
+                                                                                                                                                                                 %
+                      4.     Demonstration, by meansof                                   a    comprehensive                     digital         simulation,            using          items
+             (I)-(3)        above,           of     the    Kalman           filter's          potential                 application             to a     nonlinear,              on-board
+             spacecraft           navigation               and       guidance           problem.
+
+                      5.     Dissemination                     of    the     results          of        the       simulation             work    to     the    M!T     Instrumenta-
+             tion     Laboratory              for        possible           inclusion              in    the       Apollo          on-board        guidance          and     control
+             system.
+
+                      6.     Dissemination                     of    inforn_tion              on        the       Ames       Kalman       filter        work     to a       large
+             segment        of    the        _cientific              and     aerospace              co,unities                  through         presentations               and       formal
+             papers.
+
+                      It should              be     noted       that        at    this       point           in    time       (1961)       no    problems         had       been
+             experienced               in the        digital           simulations                 owing          to    truncation             or modeling           errors.
+             Later,        however,           many        researchers                 began        to    report          substantial             problems         of      instability
+             with     Kalman          filtering,               problems           on    which           considerable                effort       and     research           would          De
+             expended.
+
+
+
+                                                                           FURTHER        FILTER              IMPROVEMENTS
+
+
+
+
+                                                                       Support          for        the       Apollo          Mission
+
+
+                      Following              Dr.     Schmidt's              departure              from       ARC       in    late       1961    to     Join     Lockheed             Mis-
+             siles     and       Space        Company,              the     staff       at     ARC       continued              to apply         the     extended           Kalman
+             filter        to problems               of       interest           to    NASA        for       the       Apollo       program.
+
+                      From       mid-1962            to mid-1964,                 research              at    ARC       was     directed         to     three     general             areas
+             uslng   essentially                    the       same     software          with           the       same       Earth-Moon          and     Moon-Earth              trajec-
+             tories:
+
+
+                      I.     To        study        the       effect        of    modeling              errors          of    secondary          importance            and       of    off-
+             design        conditions               on    optimal           estimation              of       a space          vehicle          trajectory.
+
+
+                      2.     To        study        the       effect        of    the    relatively                    short       word    length        accommodated                 by
+             most     of    the        airborne           computers              of    that        time.
+
+
+                      3.     To        study        the       effect        on midcourse                 guidance             of    using       ground         radar      tracking              in
+             addition        to on-board                  observation                 data.         It was             during       the    early        phases       of     this       work
+             that     the        "divergence"                 problem        was       first        noticed.                 Apparently,           the    problem           chosen           for
+             the     initial           studies           with       the     extended           Kalman             filter        was      not    particularly              sensitive
+             to nonlinearities,                      effects           of    computer              round-off,                unmodeled          parameters,            or    a priori
+             statistics.                As mentioned                 earlier,           the        computer              round-off         problem        was     first          noticed
+             and     occurred           when        the       sequence           of    multiplying                 three        matrices         together         was       changed.
+             Inittall},               this     led       to    the     assumption              that          computer           round-off          was    the     only       prob-
+             lem.      Our        discovery              was     comunicated                  to    Dr.       Schmidt           by Mr.         Gerald     Smith,           but     little
+             was     done        at    ARC     at    this        _ime       because           the       problem           and      the    filter        formulation              we    were
+             using     seemed           quite        stable.              When        undertaken              some        time      later,       the     first       attempts              to
+
+
+
+
+                                                                                                    10
+
+
+
+
+L   ......
+fix     the    computer                 rour s-_3f            problem           involved         working            with       the       covarianee                   matrix           P
+to make        it symmetric                    wlth          nonnegative           eigenvalues.                     After       computing                    P        in    the
+1ormal        way,       some           fixes          were     tried,          four     of    which          are       mentioned          here.                 First,          by
+forcing            P     to        be    symmetric              by    selecting           either           the      upper       or       lower          off-dia{onal
+elements           and       using           on!y       those        diagonal           elements           to      form       a symmetric                matrix.                 3eccr_d,
+by averaglng                 the        off-diagonal                 terms       to force           symmetry.                 Third,       the          same          as    5he
+second,        then          computing                 the    off-diagonal               correlation                coefficients,                       if any             ma_niz_aes
+were     greater             than        one,          the    coefficients               would        be      printed          and       the       prograz, J 5toppeC.
+And     fourth,          by        adding          a    s,_ll        positive           number        to      all       of    the    diagonal                terms          of     the
+eovariance              matri:[,             P, after          measurement               and     time-update                  operations.                    This          fix     asso-
+ciated        numerical                 truncation              errors          with     process           noise,            thus    _liowing                an       increase             in
+the     covariance                matrix           after        numerical          operations.
+
+
+         As we          recall           it,       the       third     and       fourth        fixes          worked          best       but       during             the    time
+that     work          was    going           on       another        problem           was    being          uncovered,             both          at    ARC          and    el2e-
+where.         The       new        problem             was    most        apparent           after        a series            of    very          accurate                measure-
+ments        had       been        processed             by     the    filter,           causing           the      covariance             matrix                 P        to become
+so    "small"           that        additional                measurements               would        be      essentially                ignored             by       _he
+filter.            When       this           happened,           only       very        small       corrections                to    the       estimated                   state
+would        be computed                 as    the       result        of       a measurement,                    and    the    estimated                state             would
+diverge        from          the        true       state.            The    basic        problem           here         is due       to    modeling                   errors.              The
+use     of    "pseudonoise"                     in the          time-update              proved          quite          effective          against                this       problem.
+
+
+         Other          researchers                    were     encountering              computational                      difficulties                because             of
+round-off.               For        example,             a Honeywell,                  Inc.     interoffice                  memorandum             by       R.       C.    K.     Lee,
+dated        July       8,     1964,          recommended              that       the     syn_netry               problem       with           P        be       solved          by
+computing              only        the       diagonal           plus       the    upper        triangular                elements          of       the          matrix.              The
+mei_orandum             also        recommended                 that       the    problem           of        P     becoming             negative-definite                            after
+a measurement                 update           be       overcome           by    using        the     equivalent               but       more       symmetric
+expression
+
+
+                                         Pt+1          = [I - Kt+IH]Mt,                 I[I - Kt+IH] T + Kt+IRK                           +I       '
+
+where
+
+                                               Mt+1           : #p    T + Q        ,
+
+                                                                                                         -I
+                                               Kt+ I : Mt+IHT(HMt÷IHT                          + R)
+
+
+This     equation              for           Pt+1        is     frequently              referred           to as         Joseph's          formulation
+(ref.   11).             It reduces                    to Kalman's              measurement    equation                       when the gain                       Kt+ !          is
+opti_l,    as            shown.   It                   is also the              general   equation   for                      the covariance                      matrix          after
+a state         change             owing        to an         arbitrary           gain.
+
+
+         The       results              of    the       filter        research           in support                of    the     Apollo            program
+(refs.         12-14)          made          clear       the     following:
+
+
+          I.       How        to    include             astrodynamic              constant            uncertainties                  and       bias-type                   errors          in
+the     estimation                 process,             and     how    to       compute         the      performance                of    a system                subjected                to
+unrecognized                 or     ignored             bias     errors.
+
+
+
+                                                                                         11
+         2.       Thai for the particular                              cL._o_lunar                 trajectories             being        in,/e_ti&Jted,                        the
+simulat[uon             computer   word mantissa of 2i bits was adequate_   but that some computa-
+tions could             be carried   out with the lesser  precision.  It also verified   that when
+the     covariance             matrix           P      is a too-optimistic                          representation                of     estimated                state
+errors,          external          measurements                  are     given         too     little         weight.
+
+         3.       That       ground           radar     data       are       generally              superior          to    on-board             measurem             nts        for
+estimating             the     trajectory              of    the       spacecraft,              but      that       use     of    radar          data       does          not
+save significant   midcourse                            correction   fuel, and control   of the                                        trajectory                endpoint
+is not greatly   enhanced.                             These results   supported  the ultimate                                         decisions                to have the
+primary          Apollo        navigation              conducted             from       the     ground,          using          ground          radar       data          with        a
+backup        system         on    the        spacecraft.                It was         an     important            and     timely           result.
+
+
+
+
+                                        Application               of     t_e      Filter        to    the      Agena        Program
+
+
+         Meanwhile,               at    the     Lockheed           Missiles             and     Space         Company,           in    1961,          Dr.       Schmidt              had
+his     first      oppcrt_nity                 to    process           actual          measurement             data        with       the       extended             Kalman
+filter        developed            at    ARC.         The        purpose          of    the     effort         was     to       validate             the    performance
+of    the     Agena      upper          sta_e,        using        Earth-based                 tracking          data       from       the       downrange                sta-
+tions and telemetry    data from the vehicle.     A general-purpose   postflight                                                                                analysis
+program  was developed   which  combined tracking   data from several    stationj                                                                               with the
+model       of    the    equations              of    motion           for     the      vehicle.              The     error       state          included
+tracking-measurement                         biases         and    location             errors,          as    well        as    coefficients                   of    a
+propulsion             model       for       the     thrust        of     the      Agena        upper         stage.
+
+
+         The      procedure             developed            for       the     operation             was      to use        the       tracking
+data     during         coast          phases        to estimate               position            and     velocity             and    ccvarianee                matrix             of
+errors at the initiation                             ana     termination   of the thrust  phase.  The thrust                                                      phase was
+thep handled by starting                             the     program   with the initial  state and covariance                                                      matrix
+(from       coast-phase                da_..),       with        the    error          state       expanded           to    include             coefficients                   of
+the     thrust         model.           Tracking            data       during          the    thrust          phase        was    processed                in     the      normal
+manner.           At    the       termination               of    the     thrust,            the     state       estimate             from       the       postburn
+tracking         d. Ca was             used     as    a measurement                    of    the     six-component                state          vector,             with       its
+covariance             matrix          used     to    characterize                 the       accuracy.                                                                                     %
+                                                                                                                                                                                            {
+
+         This development                      added        the    following                techniques           to    the       applications                   technology
+of    the Kalman   filter:
+
+
+         I.      A bad-data              rejection               technique             was    developed             which        compared             the       measurement
+residual         magnitude              to     its    standard            deviation            as     computed             f_'o_ the            Kalman-filter
+measurement             update          algorithm.                If    the       resisual           magnitude             exceeded              n        times       the
+standard   deviation,                    the measurement                     was rejected.    The                     value       of        n        used       was       3,
+corresponding    to a                   3-3igma  residual                    ,_%gnitude test.
+
+
+         2.      The     Kalman          filter        was        used       as    a data          compression              algorithm                to    form       an
+equivalent   measurement                        and eovariance                  matrix          from       the      multitude           of       measure_nents
+taken during    the coast                       phases  of the                 vehicle.
+
+
+
+
+                                                                                       12
+         3.       An    iterative             approach             using        backward          integration                and     forward             filtering          was
+developed           to remove            effects             of    nonlinearities                 from       the     estimate.                 _nis       was    not       data-
+smoothing,             but    simply          an     equivalent             procedure             to    the    weighted,                least-squares                 esti-
+mators        in use         at    that        time.
+
+
+         4.       The     Kalman         filter             was    used     to estimate                parameters              in the          measurement             and
+equation-of-motion                      models.
+
+
+
+
+                                              Development              of       the    Kalman-Schmidt                   Filter
+
+
+         After         moving          to Philco-WDL                 (now       Ford    Aerospace             and       CommLnications                    Corp.)       in
+1962,       Dr.     Sch_midt           began       work       on     the    development                of    a general-purpose                       error-analysis
+program        for      GSFC.           During          this       effort,        the       so-called          Kalman-Schmidt                       filter       (ref.        15)
+was     developed,            largely           as      a    result        of    the    encouragement                   of     Dr.      F.     0.    Von       Bun    at
+GSFC.         Earlier,            the    extended             Kalman        filter          had     been      referred             to     by    some       authors
+(ref.       16) as        the      Kalman-Schmidt                    filter,          probably          because           of    a desire             to give          credit
+for     the    application               technology                which        resulted          in the       extended              Kalman          filter.           The
+"Kalman-Schmidt"                   filter          as       referred        to here,           includes             the      effects           of    (but       does       rot
+solve       for}       &_lected          error          states.            As a       result,          a means          of     optimally             compensating
+for modeling              errors         is provided,                 when       it    is known             which       model        errors          in the          filter
+equations           are      significant.                    This     filter          was    provided          as       one     option          in the          general-
+purpose        error-analysis                   program            delivered           to GSFC          (ref.        17).
+
+
+         In addition               to    the       Kalman-Schmidt                 filter,           the      developments                 at    Philco-WDL             added
+the     following            techniques              to      recursive           filtering             technology:
+
+
+         I.       General          computational                   techniques           for       saving       machine             time        by    taking          account
+of    the     sparsity            of    the     trarsition             matrix          and     symmetry            of     the      covariance              matrix.
+
+         2.       Mathematical                 formulation             for       comb       ning       on-board           inertial             sensor          measure-
+ments       with       ground-tracking                      data.
+
+
+         3.     Ad hoe technique   _'ur adding                                  pseudorandom                forcing          functions              to    minimize          the
+effects        of numerical  errors.
+
+
+
+
+                                             DEVELOPMENT              OF    THE       SQUARE-ROOT             FORMULATION
+
+
+
+
+                                                    The       C-SA     Aircraft             Navigation             System
+
+
+         By     1966,        the       advantages             of     the    extended           Kalman         filter           were       widely          recognized.
+When     Lockheed            became          the     prime          contractor          for       the       C-5A     aircraft,               the     Kalman          filter
+was     specified            for       the     navigation             system.           The       contract           for       the      C-5A        navigation
+system        was      won    by       Northrop             Corp.,     which,          in turn,             hired       Dr.     Schmidt             as    a consultant
+for     the     Kalman-filter                  development.                 The       filter        combined            inertial             data        and    data       from
+various        navigational                  aids       to    produce           the    state        estimate            of     the      aircraft.               This       was
+the     first       opportunity                either         of     the    authors           had      been    afforded              to      participate              in the
+
+
+
+                                                                                      13
+development            of a real-time system  on                               boa, u an aircraft,                       even though they had hoped
+for a NASA            program as early as 1961.                                 The C-SA system,                        to the best of the authors'
+knowledge,            was       the     first          real-time          application                 of     a    Kalman           filter        on      board         an
+aircraft.
+
+
+         During           the     development             of       the    C-5A       navigation                  system,           the    real-world                 problems
+of    selecting            appropriate                 error       states,          adding        error           estimates              to     the      system         outputs,
+working         with       a    limited          word     size,          and     making          the        whole       computational                    burden         work
+within         the    time-frames                of     small       computers              had    to        be    confronted.                  Many        of    the        model
+and     numerical              compensation              techr !ques             (refs.          18 and           19) were           put       to a        demanding               test
+by    this      developmental                   work.         Also,       data       compression                  metnods           that       use       measurement
+averaging            for       saving       computational                 time       at     a    small           expense        in       accuracy             were      per-
+fected        by     John       Weinberg          while        working          with        Schmidt              and    Lukesh           at    Northrop
+(ref.     20).         This        development                definitely             pointed           out        the       need     for       a general               square-
+root     filter        formulation                that        could       include           random           forcing          functions               and       wor_        pPop-
+erly     with        the       fixed-point              arithmetic             of    the        available              on-board           computers;                 that     is,       a
+method        was     needed           wherein          the    filter's             error        covariance                 would        be    computed              and     propa-
+gated  in square-root                     form and             would  therefore    require                          less computational                           precision
+to maintain   filter                    stability.              However,   because    such                         a formulation   was                        not available
+for     this       system,         the      standard           extended             Kalman        algorithm,                 with        the    epsilon              tech_lique
+and other            ad hoe       procedures,                 was    used       for       controlling                  numerical              problems           caused           by
+round-off            (refs.       18 and 20).
+
+
+         The       additional              complexity              of making          an        extended           Kalman          filter        work           with        the
+C-5A     navigation              system          had     thoroughly             convinced              Dr.        Schmidt          of     the    need           for    a
+square-root            formulation                including              random       forcing              functions           for        airborne              applica-
+tions.          Being          aware       of    Potter's           square-root                 measurement                 update        formulation                 for     the
+Apollo        mission,           he     personally             made       several          attempts               to    find       an     efficient              square-root
+filter   method   that would allow use of random    forcing                                                        functions              in the time-update
+algorithm.      In early  1968, he successfully  developed                                                         a method              (refs. 21 and 22) that
+looked        promising           for       application              on    a small,              fixed-point                 on-board           computer.                   (The
+reader should   consult   reference                                 23 for a good                 sum_ary              of    the     history             of     the    square-
+root filter   development   during                                 this time.)
+
+
+
+
+                    Flight        Test      of     RAINPAL          with       the        First       Airborne              Square-Boot               Filter
+
+
+         In     1969,       Mr.       L.    A. McGee           (one       of    the       present           authors)           proposed              a    flight-test
+program        to     support           the      Shuttle           development             work        by        testing       the        Kalman          filter            in an
+on-board  configuration                          to validate   its performance   with a highly   accurate    ranging
+device manufactured     by                       Cubic Corporation    of San Diego,  California.     Studies    had
+indicated            that       the     potential             navigational                accuracy           of        such    a system              was        so    great
+that     a highly           accurate             and     independent                assessment              of     its       navigational                 performance
+would     be       essential,              if    the    results           were       to    be     accepted              b,    the        scientific              commun-
+ity.      The        test       site       meeting        these          requirements                 was        the    Army's          White        Sands           Missile
+Range     (WSMR)           in New          Mexico.            At    the    time,          the     cinetheodolite                     system           in operation                 on
+the     WSMR       test        range       was    believed           to    be       the    most        accurate              system           in the          nation         for
+determining            the       actual          position           and    velocity              of    an    aircraft              during        approach,
+
+
+
+
+                                                                                     14
+                                                                             ORiGt._L-           F;X'E         _
+                                                                             OF     POOR         QUALITY
+
+landing,          and        rollout.              The       flight-test                 aircraft             was     to    be       a Convair              CV-340        with        a
+gross         takeoff         weight          of       44,000          lb.         The    on-board             computer              would     be       a    ruggedized
+XDS-920          with        a 24-bit-word                   length           and    a     32K      memory.               Based       on     previous             studies         of
+the     effect          of    computer             word         length         on    Kalman-filcer                    performance              and          the     limited
+amount          of memory           available,    as                   well as the               need         to avoid            as many numerical   dLffi-
+culties          with the           Kaln_n   filter                    as possible,               the         decision            was made to incidde    in this
+project          an     evaluation                of    a square-root                    formulation                 of    the       Kalman        filter           _hat      _ould
+include          random         forcing            functions.
+
+
+           In    1970,        McGee,          G.       L.    Smith,           and    others          at       ARC     issued          a request              for       proposal
+for     the      development                 of    software             to     implement             and       test        (in       flight)        a       square-root
+Kalman          filter        with       random             forcing           functions             on       a 24-bit,            fixed-point                ×DS-920          compu-
+ter     along         with      such         other          software           as    would          be       required           ir order           to       develop          a com-
+plete       airborne            navigation                  system.            This       system,             later        called          RAINPAL,              was     to be        a
+precision             approach           and       landing             navigation              system.
+
+
+         The      competition                 for       the       software           development                   work     on       the     RAINPAL             system       was         won
+by    Analytical              Mechanics                Associates,                 Inc.     (gMA),            based        on     the      square-root                 formulation
+capable          of     handling             random          forcing           functions             which           had    recently           been          developed            by
+Dr.     Schmidt,             who    would          be       leading           the    AMA       team.           The        original           formulation                 used
+Potter's          algorithm              for       a    measurement                 update          and       a modified              Gram-Schmidt                 algorithm
+for     the      time        update          in    order          to    include           the       random           forcing          functions.                  The     Gram-
+Schmidt          triangularization                          algorithm              was    used       to       reduce        the       non-square                 augmented
+square-root              covariance                matrix          to        a square          form          required           by    the     square-root                 filter
+formulation.                  Mr.       Paul       Kaminski,                 a doctoral             candidate              at    Stanford           University
+{ref.      23),         demor_strated                  to    Dr.       Schmidt           that       another           triangularization                          algorithm            _y
+Householder              could          be    used          for    the        time       update          and       save     computational                    operations               over
+the     modified             Gram-Schmidt                   algorithm.               At     this         time,        it made             little        difference               which
+algorithm             was     implemented,                   so    the        decision           was         made     to    proceed           using          the       faster
+Householder              algorithm.                    Although              Potter's          algorithm              was       used       in the           Apollo        system,
+the     RAINPAL          system          is       believed             to     be    the     first            application              of     the    complete              square-
+root     filter          technology,                   including              process          noise,          on-board              an    aircraft.
+
+
+         The      RAINPAL           system             was    initiated              at     ARC      but,          before         the      flight           tests        were
+started,   it became   a joint                               program   with NASA's                           Manned   Spacecraft                   Center   (MSC)                and
+the Army's   Instrumentation                                 Directorate   at WSMR                           (WSMR-ID).     Ames'                  interest   was                that
+of    flight          testing           and       validating                 a square-root                   Kalman        filter          with     inertial              aiding;
+MSC's       interest           was       to       investigate                 new    concepts                which        might       be     suitable             for     naviga-
+tion     of      the     Space          Shuttle             Vehicle           (SSV);        and      the       WSMR-ID            interest          was          a desire         to
+investigate              new       concepts             offering              promise          for       a    future        instrumentation                       system         at
+WSMR.
+
+
+         Overall,             the       square-root                Kalman           filter          was       under        considerable                 scrutiny.                Fail-
+ure     caused          by    divergence,                   computer           round-off,                or    many        other          potential              causes       would
+
+have     been         a severe           blow          to    the       proponents              of    the       square-root-filter                           technology.               _he
+square-root              filter,   newever,   performed                                  flawlessly                once it had been debugged   earl_in
+the software              development,      in fact, it                                  soon became                possible  to place the square-_ot
+Kalman          filter        above          all       suspicion              when       software             problems           occurred.                  With       the    stan-
+dard     formulation,                   the       filter          would        always          have          been     suspect             because           of     its
+
+
+
+                                                                                          15
+                                                      ORIGINAL   F;.:'_    I-3
+                                                     OF POOR QUALITY
+
+propensity to diverge or develop negative eigenvalues,                 which     could    cause    very
+peculiar transients in the navigation estimate.
+
+     It is rare   in the development       of a system     such as RAINPAL         that the opportunity
+for early validation is possible.  The RAINPAL validation (refs. 24-26) was provided
+by the theodolite trackir_ system at WSMR, which is nationally recognized for its
+accuracy.  The flight-test results showed that with only three range measurements
+versus seven theodolites, on the final approach to touchdown the RAINPAL system gave
+position and velocity estimates that were smoother and had accuracies of the same
+order as those of the WSMR system.  Obviously, the RAINPAL system could be operated
+as an independent reference system against which other systems could be tested or
+evaluated.
+
+      Since the fllght test of the RAINPAL           system in January 1972, Dr. Schmidt                   has
+designed several other square-root-filter            applications  for aircraPt systems
+(ref. 27),   including    systems    for ARC, which    were   flight      tested on ....
+                                                                                     TOL aircraft            and
+on helicopters.    The same basic square-root approach developed for the RAINPAL
+system was used   in these filters.  The early versions of these filters used an
+experimental microwave landing system (MLS) ca!led MODILS as a primary landing aid
+(refs. 28-31).   The later versions used a prototype MLS and were flight tested on a
+helicopter (refs. 32 and 33).
+
+
+
+                      Other Airborne   Applications     of a Square-Root         Filter
+
+
+     During the time the RAINPAL system was being readied                  for flight test at WSMR,
+other researchers were also developing square-root Kalman                  filters for airborne
+applications.   One of the best examples of this work was done by Intermetrics,   Inc.
+for the Completely Integrated Reference Instrumentation   System (CIRIS) unOer devel-
+opment at Hollo_an Air Force Base.    This system was very :imilar to the RAINPAL
+system in that it employed inertial aiding from _n inertial navigation system                              and
+also _mployed precision measurements to transponders many miles apart on the
+ground.  The precision ranging system was a Cubic CR-100 system, which produced both
+range and range rate from the aircraft to the ground transponder.  This was a later
+and much   improved    version   of the Cubic system     used    by the RAINPAL          system,   which
+provided only precision range from the aircraft to the ground transponder system.
+Details of this work were published in 1973 by Widnall (ref. 34), who described
+simulation results for a new square-root algorithm devised by Carlson (ref. 35).
+Carlson's algorithm maintained the covariance square-root matrix in triangular form,
+but, more importantly,       reduced   the computation     time from      that of the Householder/
+Potter method.   This was a significant step forward,             because for a moderate number
+of states, Carlson's method would approach the speed              of the standard extended
+Kalman-filter  formulation.         This improvement in speed substantially overcame                      one of
+the most serious complaints         leveled against the square-root  formulation.
+
+
+
+
+                                                16
+                                    The        Square-Root                Filter        Successfully              Tested        in Space
+
+
+         In        1975      Bierman            (ref.       36)      introduced              his     U-D    factorization                 of     the      Kalman            filter
+which appears                 to be the most efficient    s%uare-root                                        method        to be developed                          '-date:
+it uses only                 slightly more computer   time than the                                         standard        extended  Kalman                         _   -er.
+(It    should           be     noted          that     the      U-D       factorizatiol,                 is not     actually          a     square-root                   method
+in that        _hree           matrix          prcduets             are    required             to define         the     covar£ance                matrix.               With
+this     a    gorithm           there           is no       requirement               for       square-root          operations.)                    This           work,
+carried        out        at    JPL       draws        on      the    work       of     Dyer       and     McReynolds           in     1969         (ref.           37)     whose
+filter        algorithms                 were       successfully                used       for     the     navigational              computations                    on     the
+Mariner        10 Venus-Mercury                        space         mission          in     1973.         This     success          further           established
+the    reliability                  of    the       sequential             square-root               filter       concept         for       real-time                opera-
+tions.         Thus,           except          for     the      intuitive             familiarity               provided        by     the       standard             extended
+Kalman        filter,           there          seem       to    be ample           reasons           for    using        the    square-root                 formulation
+in all        future           applications.
+
+
+         Two       different              types        of      square-root              filters          have     been     developed.                  The          first        may
+be    regarded            as    a    factorization                   of    the     standard             extended         Kalman        filter          algorithm;                 it
+basically           leads           to    the       square          root    of     the       error       covariance            matrix.              The     second
+involves           the       square           root     of      the    information                 matrix,        which     is defined                as     the       inverse
+of    the     error          covariance              matrix.              Each     of      these        algorithms         has       attributes                 to    recom-
+mend     it for           certain             applications.
+
+
+
+                                                                          CONCLUDING              REMARKS
+
+
+
+
+         It    is clear              that        the      relatively             simple           and    straightforward                  sequential,                 extended
+Kalman        filter           used       by     the      authors          in    the       early        1960's      can    be     adequate             as       a    fundamen-
+tal    analytical               tool          for    solving          some       estimation              problems.             Certainly,              persons
+attempting              to     construct             a Kalman             filter        without          experience            would        be      tempted           to     take
+this     route          because           of     the      intuitive             statistical              familiarity.                However,             success            or
+failure        with          this        approach           may      be    dependent              on many        factors,         such         as    computer               round-
+off    errors,            inadequate                statistical             models           and    nonlinearities                in the            problem,              any     or
+all    of which              may     trigger           the      filter's           potential             instability            or     inaccuracy.                    Some
+rather        pragmatic              yet       effective             solutions             to     some     of    these     problems              have       been
+devised,           as     we    have          seen     in the         foregoing              history.            Which     of     the       pragmatic                solutions
+to use        often          depends           on    correctly             identifying              the     problem        and       applying             the        proper
+amount        of    ad       hoc     stabilization                   or    "fix."            If    the     filter        is being           run      on     a       large
+machine,           extra        precision              arithmetic               may     be a       reliable         solution           to      the     problem              of
+numerical            instability,                   but     stability            problems           may     still        remain       because             of        mismodel-
+ing.   In the case                       of    an    airborne             application,              extra        precision           is often             not        a practi-
+cal alternative.
+
+
+         It appears                 that       those        experienced               in applying               Kalman     filters             to    real-world
+problems           are       abandoning              the       ad    hoc    stabilization                  techniques           and       the       standard              filter
+formulation               in    favor          of    algorithms              that       are       numerically            better       conditioned.                        The
+
+
+
+
+                                                                                        17                                                                                             %
+                                                                                                                                                                                       %
+square-root  filter,   by its                             nature,   is inherently    more                       stable          and       better        conditioned
+than the standard    extended                             Kalman-filter    formulation.
+
+
+        Square-root              algorithms                have       gained        acceptance            rather          slowly          despite           their
+superior        performance                as    reported,             for     example           i_: (refs.          24,25,32-34).                     Some     of    the
+reluctance           of       potential          users          probably           stems       from      the    fact       that       the     early          algorithms
+ran    slower        than       the       standard          Kalman          formulation,               and     the     faotorization                   techniques
+appeared        too       complicated                and    used       too     much       computer            storage          as    well     as       computer
+time.
+                                                                                                                                                                                    I
+
+
+
+
+         As mentioned                earlier,             the    Kalman        filter          has     been     used       in a       variety           of    fields.
+Recently,           a special             issue       of    the       IEEE     Transations              on     Automatic             Control           (ref.        38)    was
+devoted        to    papers          on    applications                that        were     as    wide        ranging          as    possible           in    their
+subject        matter.           The       papers          cover       such        diverse        subjects           as    spacecraft              orbit       deter-
+mination,           prediction             of    cattle          populations               in France,           radar          tracking,           navigation,
+ship     motion,          natural          gamma          ray    spectroscopy               in oil-           and    gas-well             exploration,               mea-
+surement        of       instantaneous                flow       rates,        and       estimation            and     prediction             of       unmeasurable
+variables           in    industrial             processes,                on-line         failure        detection             in nuclear              plant
+instrumentation,                 and       power          station          control        systems.             In many          cases,        the       solutions              in
+these     papers          were        implemented               and    were        operationally               successful.                  Indeed,          the     broad
+applieation              of    the     filter         to    seemingly              unlikely          problems          suggests             that       we    have     only
+scratched           the       surface       when          it comes          to possible              applications,                  and     that       we    will
+likely     be       amazed       at       the    applications                 to    which        this     filter          will       be    put     in the          years
+to come.
+
+
+         This       history          of    Kalman          filtering           has       naturally            dwelt       on    the       events        that        took
+place     at    _RC,          LMSC,       Philco-WDL,                and    Analytical            Mechanics            Associates,               Inc,         The
+recording           of    those        events         is elmost             totally         dependent           on     the      recollections                 of     and
+personal        contacts             made       by    the       authors.            Omissions            in    this       work,       of     which          there     are
+undoubtedly              some,       should          be    attributed              to    our     ignorance           of    some       pertinent              events,
+failures        of       memory,          the     inevitable               limitations            of     time,       and       to    the     mushrooming
+publication              of    papers       about          the       Kalman        filter        which        has     taken         place     since          the     early
+1960's.         For       those        interested               in    further           details,         the    authors             counsel        a    perusal           of
+the     various          references             cited       herein          and     of     the    many        other       papers          they     in turn           are
+certain        to    suggest.
+
+
+
+
+                                                                                    18
+                                                                                 REFERENCES
+
+
+
+
+        I ,   Kalman,        R. E:           A new       approach           to    Linear          filtering          and       prediction           problems.
+                 Trans.           ASME,          Set.    D,     J.    Basic       Eng.,       vol.       82,       Mar.       1960,    pp.        35-45.
+
+
+          .   Kailath,           T.:        A view       of     three       decades          of    linear          filtering          theory.        IEEE        Tran.
+                  Inf.       Theory,             vol.    I T-20,           no.    2,    Mar.       1974.
+
+
+          .   Schmidt,           S.    F.:        The    Kalman        filter:            its      recognition                and    development            for    aero-
+                 space           applictions.                 AIAA     J.    Guidance             Control,          vol.       4,    no.     I, Jan.-Feb.              1981,
+                 p.     4
+
+
+          .   Brooks,        C.       G.;    Grimwood,             J. M.;        and    Swerson,L.             S.:        Chariots           for    _pollo.            Th___ee
+                 NASA History   Series,                         U.S.       Government             Printing          Office,          Stock        Number     033-000-
+                 00768-0,  1979.
+
+
+          .   Battin,        R.       H.:        A statistical              optimizing             navigation             procedure           for    space
+                 flight.               Report          R-341,        Massachusetts                Inst.       of Tech.,             Cambridge,         Mass.,          Sept.
+                  1961.
+
+
+          .   Battin,        R.       H.:    Astronautical                 Guidance.              New    York:           McGraw       Hill,        1964,
+                 pp.        303-340.
+
+
+          .   Smith,        G.    L.;       and    Schmidt,           S.    F.:        The    application                of    statistical           filter        theory
+                 to optimal                 trajectory             determination              on-board             a circumlunar              vehicle.
+                 Paper           61-92,          American          Astronautical              Society          Meeting,             Aug.     1961.
+
+
+          .   McLean,        J.       D.;    and       Schmidt,        S.    F.:        Optimal          filtering             and    linear        prediction
+                 applied              to    an    on-board           navigation          system          for       the    circumlunar              mission.
+                 Paper           61-93,          American          Astronautical              Society          Meeting,             Aug.     1961.
+
+i __
+
+          .   Smith,        G.    L.:       Schmidt,          S.     F.;    and    McGee,          L.    A.:        Application              of    statistical
+                 filter           theory          to    the     optimal          estimation             of    position          and     velocity           on-board        a
+                 circumlunar                 mission.              NASA     TR    R-135,          1962.
+
+
+       10.    McLean,        J.       D.;    Schmidt,           S.    F.;    and       McGee,       L.       A.:     Optimal          filtering            and    linear
+                 prediction                 applied        to a mideourse                navigation                system       for     the       circumlunar
+                 mission.                  NASA    TN    D-1208,           1962.
+
+
+       11.    Joseph,        P.       D.:        Space    control           systems--attitude,                      rendezvous,              and    docking.
+                 Course           Notes,          Engineering              Extension          Course,          University             of     California           at     Los
+                  Angeles,             1964.
+
+
+       12.    Smith,  G. L.:   Secondary   errors                                and    off-design  conditions                         in optimal           estimation
+                  of space vehicle   trajectories.                                     NASA TN D-2129,   1964.
+
+
+
+
+                                                                                       19
+13.   McGee,     L.    A.:        Effect        of      reduced           computer           precision          on    a midcourse                navigation
+         and guidance   system                     using          optimal           filtering           and    linear          prediction.               NASA
+         TN D-3382,   1966.
+
+
+14.   Smith,     G.    L.;       and    Harper,           E.      V.:        Midcourse           guidance         using         radar        tracking          and
+         on-board           observation              data.             NASA     TN    D-2238,           1964.
+
+
+15.   Users    Manual        for       the    Mark        II Error             Propagation              Program.              WDL-TR2758,             Philco
+         Western           Defense        Laboratories,                   Palo       Alto,       Calif.,        Feb.          1966.
+
+
+16.   Bellantoni,           J.    F.;     and      Dodge,           K.    W.:        A square-root               formulation               of    the     Kalman-
+         Schmidt           filter.           AIAA       Paper          67-90,        New     York,       Jan.     1967.
+
+
+17.   Schmidt,        S.    F.:        Application                of     state       space       methods         to navigation                  problems,"
+         Advances           in Control             Systems,              vol.       3, C.     T.    Leondes,          ed.           New    York:       Academic
+         Press,        1966.           (Originally                available           as     Philco       WDL     Tech.         Report          No.    4,    July
+         1964.)
+
+
+18.   Schmidt,        S.    F.:        Estimation              of      state        with    acceptable            accuracy             constraints.
+         Report 67-4,              Analytical                Mechanics              Associates,           Inc.,       Mountain             View,       Calif.,
+         Jan. 1967.
+
+
+19.   Schmidt,        S.    F.:        Compensation                 for      modeling         errors          in orbit          determination                prob-
+         lems.         Report       67-16,           Analytical                Mechanics           Associates,                Inc.,       Mountain          View,
+         Calif.,        Nov.       1967.
+
+
+20.   Schmidt,        S.    F.;    Weinberg,              J.      D.;     and       Lukesh,        J.    S.:      Case         study       of    Kalman
+         filtering           in the          C-5     aircraft             navigation             systems.            IEEE       Case       Studies          Semi-
+         nar,     Ann       Arbor,        Mich.,          June         1968.         (Also       AGARDograph              139,       Feb.       1970.)
+
+
+21.   Schmidt,        S.    F.:        Final       report           for      mission        analysis           guidance             study.
+         Report   68-23,               Analytical              Mechanics             Associates,              Inc.,       Mountain           View,      Calif.,
+         Jan.   1969.
+
+
+22.   Schmidt,        S.    F.:        Computational                   techniques            in Kalman           filtering.                Theory       and
+         Applications              of     Kalman          Filtering,                AGARDograph           139,       Feb.       1970.
+
+
+23.   Kaminski,        P.    F.;       Bryson,          A.     E.;       and    Schmidt,           S.    F.:      Discrete             square         root
+         filtering:               A survey           of      current           techniques.               IEEE     Trans.            _uto.       Control,
+         vol.     AC-16,          pp.     727-736,             Dec.       1971.
+
+
+24.   Schmidt,        S.    F.;    Smith,          G.     L.;       Hegarty,          D.     M.;    Carson,          T.       M.;    Merrick,          R.    B.;
+         and     Conrad,          B.:        Precision              navigation             for     approach          and       landing          operations.
+         Paper        14-3,       Joint       Automatic                Control        Conference,               1972.
+
+
+25.   McGee,     L.    A.;       Smith,       G.     L.;       Hegarty,             D. M.;       Carson,        T.    M.;       Herri:k,          R.     B.;
+         Schmidt,           S.    F.;     and      Conrad,             B.:      Flight        results          from       a    st_idy of         aided       iner-
+         tial     navigation              applied            to     landing          operations.               NASA       TN    D-7302,          1973.
+
+
+
+                                                                               20
+     26.   Schmidt,        S.    F.;     BJork_n,           W.    S.;    and       Conrad,          B.:        Ne,    mechanization              equations
+              for     aided          inertial        navigation          systems.              NASA       CR-2352,          1973.
+
+
+     27.   Schmidt,        S.    F.:      Experiences             in    the    development                of    aided       INS    for    aircraft.
+              AGARD        Lecture        Series          No.    82,    1976.
+
+
+           Schmidt,        S.    F.:      A Kalman          filter       for       the    STOLAND          system.           NASA       CR-137668,           !975.
+
+
+           Schmidt,        S     F.;     and    Mann,       F.    I.:     A three-axis                Kalman          filter       for    the     STOLAND
+              flight           test    system.            NASA    CR-137939,             May       1976.
+
+
+     30.   Schmidt,        S.    F.;     and    Mohr,       R.    L.:     _avigat_on                systems          for    approach        and       landing
+              of     VTOL       aircraft,            NASA       CR-152335,          1979.
+
+
+     31.   Schmidt,        S.    F.;     Flanagan,          P.    F.;    and       Sorenson,          J.       A.:     Development             and     flight
+              tests of a Kalman  filter   for                           navigation             during          terminal        area      landing        opera-
+              tions.  NASA CR-3015,   1978.
+
+
+     32.   Foster,      J.      D.;    McGee,        L.    A.;    and    Dugan,          D.    C.:        Helical          automatic        approaches           of
+              helicopters              with     microwave          landing          systems.              NASA       TP-2109,        1982.
+
+
+     33.   McGee,     L.       A.;    Foster,        J.    D.;    and    Xenakis,             G:     Automatic             helical       rotorcraft
+              descent           and    landing        using       a microwave             landing          system.           J. Guidance,              Control,
+              and     Dynamics,           vol.       7,    no.    4,    July-Aug.             198_.
+
+
+     3u,. Widnall,         W.    S.:      Optimal          filtering          and    smoothing             simulation             results        for    CIPIS
+               inertial          and     precision          ranging       data.           AIAA       Paper        73-872,         1973.
+
+
+     35.   Carlson,        N.    A.:      Faster          triangular          formulation             of       the    square-root           filter.           AIAA
+              J.,     vol.       11, no.        9,    Sept.       1973.
+
+
+     36.   Bierman,        G.    L.:      Factorization                methods       for       discrete           sequential            estimation.
+              Mathematics              in Science           and    Engineering,                vol.        128.       New    York:        Academic
+               Press,          1977.
+
+
+     37.   Dyer,     P.;       and    McReynolds,           S.:        Extension          of       square-root             filtering        to    include
+               process          noise.         J.    Optimization             Theory          Applications,                vol.    3,    no.     6,
+               pp.    444-459,           1969.
+
+
+     38.   IEEE     Trans.       Auto.        Control,          vol.    AC-28,       no.       3,    Mar.        1983.       Special        issue       on
+              applications               of    Kalman       filtering.
+
+
+
+
+                                                                              21
+j-
+     1    Report        _.                                                             I       2.   Go_mvn_t        Acc_sion            No.                                3.    RIcililnt'l               Clillol           No.
+
+         NASA           TM-86847                                                       l
+ 4        T,tie _            _it;e                                                                                                                                         5.    Report             _te
+                                                                                                                                                                            No_ember                             1985
+         DISCOVERY                     OF THE KALMAN                                FILTER  AS                     A PRACTICAL
+                                                                                                                                                                           6.    Piriorminl                Orlliniilitiorl          Glde
+         TOOL FOR                     AEROSPACE AND                                INDUSTRY
+
+     7    Aurar(s)                                                                                                                                                         fl.   lle,r'fixrilirlt          Orlllnization            Report    No.
+
+
+         Leonard                     A.      McGee             and           Stanley                  F.        Schmidt                                                          85424
+                                                                                                                                                                          10.    Work         Unit         No.
+
+          _f_mi_               Crgln,_ti_           Name       e_      _
+
+         Ames Kesearcb   Center                                                                                                                                           11.    Contrict             or    Gr_nt            No.
+
+         Moffett  Field,  CA 94035
+
+                                                                                                                                                                          13,    Type         of     Report          md        Period      Covered
+
+ 12       S_nsocin           9 Agency         _me        and   Aodresi
+                                                                                                                                                                                 Technical                              Memorand                     ;
+         National    Aeronautics                                             and           Space               Administration                                             14 S_inl     _                                     Code
+         Washington,     DC 20546                                                                                                                                            532-06-11
+ 15       _D_e_ntary                  Not_
+
+         Point           of Contact:     Leonard   McGee and                                                                S.          F. Schmidt,   MS 210-9,   Ames
+                        Research   Center,   Hoffett  Field,                                                                CA          94035  (415-694-5443    or FTS                                                             464-5443)
+
+"_        A_tract
+
+                        The           Kalman                 filter                in          its       various               forms                  has       become           a       fundamental                                  tool
+         for analyzing     and solving     a broad class of estimation          problems.      The first
+         publicly    known application      was made at NASA Ames Research            Center   in the
+         early   1960s during    feasibility     studies    for circumlinear       navigation     and
+         control    of the Apollo    space capsule.       This paper recounts         the fortunate
+         sequence    of events   which   led the researchers       at Ames Research        Center    to the
+         early   discovery   of the Kalman      filter   shoztly    after its introduction         into the
+         literature.      The scientific     breakthroughs      and reformulations        that were
+         necessary    to transform     Kalman's   work into a useful        tool for a specific        aero-
+         space application      are described.       The resulting      extended    Kalman    filter,   as
+         Jt is now known,      is often    still referred      to simply    as the Kalman      filter.     As
+         the filter's     use gained    in pepu!arity      in the scientific       community,     the prob-
+         lems of implementation        on small spaceborne       and airborne      computers     led to a
+         "square-root"     formulation     of the filter      to overcome    numerical     difficulties
+         associated    with computer     word length.       The work that led to this new formu-
+         lation   is also discussed,       including    the first airborne       computer     implementa-
+         tion and flight      test which was conducted         in 1972.     Since then the applica-
+         tions of the extended       and square-root       formulations     of the Kalman      filter   have
+         grown                rapidly                    throughout                        the         aerospace                   industry.
+
+
+
+ 17       Key      W_           (SuijlJeSt_         by    Auth.(s))                                                               18.     Oiitributi=          S_tement
+
+         Kalman   filter                                                                                                                   Unlimited
+         State-estimation
+         Navigation
+         Square-root                            filter                                                                                                       Subject             category                         - 04
+
+
+ 19       _¢=ity             Omif.        (of thtirel)OCi)                                 I _"      Slllxi_     Clllit     (of   lhil        iiJl|
+                                                                                                                                                                          i,,.,,,o.o,,>,,
+                                                                                                                                                                                     24                                   1,2 A02
+                                                                                                                                                                                                                               _°,"
+         Unclassified                                                                      I         Unclassified
+
+                                                                "For       site   by the Nliio_ll          Technical      Informltlol_            Service,   Sprinifld,   Virllnil          22161
+
+
+
+                                                                                                                                                                                                                                                         •i!
+

@@ -1,0 +1,347 @@
+CS 369M: Metric Embeddings and Algorithmic Applications
+
+September 27, 2018
+
+Lecture 2: Embeddings into ℓ∞
+Lecturer: Moses Charikar
+
+1
+
+Scribe: Margalit Glasgow
+
+Introduction
+
+This lecture covers some basic embedding results for embedding metric spaces into ℓ∞ . These ideas
+are used in other embedding results, e.g., Bourgain’s theorem which provides embeddings into ℓ2 .
+
+2
+
+Embeddings into ℓ∞
+
+We begin by showing that any finite metric embeds isometrically into ℓ∞ .
+Theorem 2.1. Every 𝑛-point metric space (𝑉, 𝑑) embeds isometrically into ℓ∞ .
+Proof. Let 𝑉 = {𝑣1 , . . . 𝑣𝑛 }. We will map each point 𝑣 ∈ 𝑉 to a vector of length 𝑛, where
+the 𝑖th coordinate
+⎞ is the distance between 𝑣 and 𝑣𝑖 . Formally, define 𝑓𝑖 (𝑣𝑗 ) = 𝑑(𝑣𝑖 , 𝑣𝑗 ), and let
+⎛
+𝑓1 (𝑣𝑗 )
+𝑓 (𝑣𝑗 ) = ⎝ · · · ⎠.
+𝑓𝑛 (𝑣𝑗 )
+Claim 2.2. For any 𝑣𝑖 , 𝑣𝑗 , we have ‖𝑓 (𝑣𝑖 ) − 𝑓 (𝑣𝑗 )‖∞ ≥ 𝑑(𝑣𝑖 , 𝑣𝑗 ).
+Proof.
+‖𝑓 (𝑣𝑖 ) − 𝑓 (𝑣𝑗 )‖∞ = max |𝑓𝑘 (𝑣𝑖 ) − 𝑓𝑘 (𝑣𝑗 )| ≥ |𝑓𝑖 (𝑣𝑖 ) − 𝑓𝑖 (𝑣𝑗 )| = 𝑑(𝑣𝑖 , 𝑣𝑗 ).
+𝑘
+
+Claim 2.3. For any 𝑣𝑖 , 𝑣𝑗 , we have ‖𝑓 (𝑣𝑖 ) − 𝑓 (𝑣𝑗 )‖∞ ≤ 𝑑(𝑣𝑖 , 𝑣𝑗 ).
+Proof. By the triangle inequality, for any 𝑘,
+|𝑓𝑘 (𝑣𝑖 ) − 𝑓𝑘 (𝑣𝑗 )| = |𝑑(𝑣𝑖 , 𝑣𝑘 ) − 𝑑(𝑣𝑘 , 𝑣𝑗 )| ≤ 𝑑(𝑣𝑖 , 𝑣𝑗 ).
+
+The theorem follows from the two claims.
+The embedding in the proof used 𝑛 coordinates. Do we need to all 𝑛 coordinates to construct
+an isometric embedding?
+The answer is no: 𝑛 − 1 coordinates suffice. If we remove any one coordinate, it is easy to check
+that the first claim still holds (plugging in 𝑗 instead of 𝑖 if necessary). Eliminating a coordinate
+cannot increase the ℓ∞ norm, so the second claim also holds.
+However, we cannot use less than 𝑛 − 1 coordinates without allowing some distortion.
+If we do allow for some distortion, we can drastically reduce the number of coordinate. The following theorem yields an upper bound for the number of coordinates necessary to achieve distortion
+𝐷.
+1
+
+Theorem 2.4 (Upper Bound). Let 𝐷 = 2𝑞 − 1 ≥ 3 be an odd integer. Given an 𝑛-point metric
+space (𝑉, 𝑑), there exists an embedding with distortion 𝐷 of (𝑉, 𝑑) into ℓ𝑘∞ with 𝑘 = 𝑂(𝑞𝑛1/𝑞 ln 𝑛).
+√
+For example, for distortion 𝐷 = 3, we get an embedding into 𝑘 = 𝑂( 𝑛 ln 𝑛) dimensions. For a
+smaller value of 𝐷, we cannot find an embedding with a number of dimensions that is asymptotically
+better than needed for the isometric embedding described above.
+Theorem 2.5 (Lower Bound). There is an 𝑛-point metric space (𝑉, 𝑑) such that every embedding
+of (𝑉, 𝑑) into ℓ∞ with distortion 𝐷 < 3 requires Ω(𝑛) dimensions.
+√
+For 𝐷 = 3, there is a lower bound of Ω( 𝑛) dimensions, and there are similar matching lower
+bounds for 𝐷 = 5, 7, and possibly more (see Corollary 15.3.4 in [2]).
+We will prove the upper bound in Theorem 2.4 using a mapping called a Fréchet embedding.
+Definition 2.6. A Fréchet embedding is a map 𝑓 : (𝑉, 𝑑) → ℓ𝑘𝑝 which consists of 𝑘 functions 𝑓𝑖 (one
+per coordinate), each of which has the form 𝑓𝑖 (𝑣) = 𝑑(𝑣, 𝐴𝑖 ), where 𝐴𝑖 ⊂ 𝑉 . The distance 𝑑(𝑣, 𝐴)
+is the minimum distance between a point 𝑎 ∈ 𝐴 and the point 𝑣.
+More generally, we will sometimes allow scaling by constants 𝛼𝑖 in the definition of Fréchet
+embeddings, that is, each coordinate will be given by 𝑓𝑖 (𝑣) = 𝛼𝑖 𝑑(𝑣, 𝐴𝑖 ).
+Fact 2.7. Fréchet embeddings (without scaling) are non-expanding for a single coordinate, that is,
+for every 𝑖,
+|𝑓𝑖 (𝑢) − 𝑓𝑖 (𝑣)| ≤ 𝑑(𝑢, 𝑣).
+This property of Fréchet embeddings follows from the triangle inequality. Since for every 𝑢, 𝑣,
+𝑑(𝑢, 𝐴) ≤ 𝑑(𝑢, 𝑣)+𝑑(𝑣, 𝐴) (convince yourself why), we get that |𝑓𝑖 (𝑢)−𝑓𝑖 (𝑣)| = |𝑑(𝑢, 𝐴𝑖 )−𝑑(𝑣, 𝐴𝑖 )| ≤
+𝑑(𝑢, 𝑣).
+Note that the isometric embedding into ℓ∞ that we saw earlier today is a Fréchet embedding.
+We are now ready to prove Theorem 2.4.
+Proof of Theorem 2.4. Since we will use a Fréchet embedding and the target metric is ℓ∞ , the
+embedding will be non-expanding (‖𝑓 (𝑢) − 𝑓 (𝑣)‖∞ = max |𝑓𝑖 (𝑢) − 𝑓𝑖 (𝑣)| ≤ 𝑑(𝑢, 𝑣)). Hence in order
+𝑖
+
+to prove that the embedding has distortion 𝐷, it suffices to show that for some coordinate 𝑖, we
+1
+have |𝑓𝑖 (𝑢) − 𝑓𝑖 (𝑣)| ≥ 𝑑(𝑢, 𝑣).
+𝐷
+Recall that for a point 𝑣 ∈ 𝑉 and radius 𝑟 ∈ R≥0 , the (closed) ball 𝐵(𝑣, 𝑟) around 𝑣 of radius
+𝑟 contains all the points in the metric space that are within distance 𝑟 from 𝑣, that is, 𝐵(𝑣, 𝑟) =
+{𝑢 ∈ 𝑉 | 𝑑(𝑢, 𝑣) ≤ 𝑟}. The open ball is defined similarly as 𝐵 𝑜 (𝑣, 𝑟) = {𝑢 ∈ 𝑉 | 𝑑(𝑢, 𝑣) < 𝑟}.
+The intuition behind the proof is as follows. To get a difference |𝑓𝑖 (𝑢)−𝑓𝑖 (𝑣)| ≥ Δ for coordinate
+𝑖, we need to have some 𝑟 such that 𝐵 𝑜 (𝑢, 𝑟 + Δ) ∩ 𝐴𝑖 = ∅, but 𝐵(𝑣, 𝑟) ∩ 𝐴𝑖 ̸= ∅ or vice versa
+(replace the roles of 𝑢 and 𝑣). This would imply that 𝑑(𝑢, 𝐴𝑖 ) ≥ 𝑟 + Δ while 𝑑(𝑣, 𝐴𝑖 ) ≤ 𝑟 (or the
+same with the opposite roles). If we can find 𝑟 such that the number of points in 𝐵 𝑜 (𝑢, 𝑟 + Δ) is
+not too large compared to 𝐵(𝑣, 𝑟), we can pick 𝐴𝑖 at random and hope for it to intersect 𝐵(𝑣, 𝑟)
+but not 𝐵 𝑜 (𝑢, 𝑟 + Δ) (see Figure 1).
+The embedding of (𝑉, 𝑑) into ℓ𝑘∞ will be a Fréchet embedding constructed in the following way:
+∙ Let 𝑝 = 𝑛−1/𝑞 .
+∙ For 𝑗 = 1, . . . , 𝑞, let 𝑝𝑗 = min{1/2, 𝑝𝑗 }.
+2
+
+𝐴𝑖
+
+𝑣
+
+𝑟+Δ
+
+𝑟
+
+𝑢
+
+Figure 1: The random set 𝐴𝑖 intersects 𝐵(𝑣, 𝑟) but not 𝐵 𝑜 (𝑢, 𝑟 + Δ).
+∙ Let 𝑚 = ⌈24𝑛1/𝑞 ln 𝑛⌉.
+∙ Let 𝑘 = 𝑚𝑞 be the number of coordinates in our embedding.
+∙ For each 𝑖 ∈ [𝑚], 𝑗 ∈ [𝑞], let 𝐴𝑖𝑗 be a random sample of points in 𝑉 with density 𝑝𝑗 , i.e., each
+point 𝑣 ∈ 𝑉 is chosen to be in 𝐴𝑖𝑗 independently with probability 𝑝𝑗 . Our mapping is the
+Fréchet embedding with these 𝑘 sets.
+We proceed to show that this randomized construction returns an embedding with distortion 𝐷
+with probability at least 1/2. We say that a subset 𝐴𝑖𝑗 is good for (𝑢, 𝑣) if |𝑑(𝑢, 𝐴𝑖𝑗 ) − 𝑑(𝑣, 𝐴𝑖𝑗 )| ≥
+1
+𝑑(𝑢, 𝑣).
+𝐷
+Lemma 2.8. For any pair 𝑢, 𝑣 ∈ 𝑉 , there exists some 𝑗 such that if 𝐴𝑖𝑗 is a random sample of
+points from 𝑉 where each point is sampled with probability 𝑝𝑗 , then
+Pr[𝐴𝑖𝑗 is good for (𝑢, 𝑣)] ≥ 𝑝/12.
+Before we prove the lemma, let us first show how it can be used to complete the proof of the
+theorem. For any pair 𝑢, 𝑣 ∈ 𝑉 ,
+(︁
+𝑝𝑚
+𝑝 )︁𝑚
+1
+Pr[no 𝐴𝑖𝑗 is good for (𝑢, 𝑣)] ≤ 1 −
+≤ 𝑒− 12 ≤ 2 .
+12
+𝑛
+(︂ )︂
+𝑛
+By the union bound, since there are
+pairs (𝑢, 𝑣), the probability that there exists a pair with
+2
+(︂ )︂
+1 𝑛
+no good 𝐴𝑖𝑗 is less than 2
+≤ 1/2 < 1. Hence, there exists some choice of sets 𝐴𝑖𝑗 for which
+𝑛 2
+the mapping has distortion 𝐷. The probability of success (that is, choosing an embedding with
+distortion 𝐷) can be amplified by choosing larger 𝑚.
+Finally, we prove Lemma 2.8. Recall that we want to find a coordinate with distance at least
+
+3
+
+𝑑(𝑢, 𝑣)/𝐷. Define Δ = 𝑑(𝑢, 𝑣)/𝐷. Consider the following sequence of balls:
+𝐵0 = 𝐵(𝑢, 0)
+𝐵1 = 𝐵(𝑣, Δ)
+𝐵2 = 𝐵(𝑢, 2Δ)
+···
+{︃
+𝐵(𝑢, 𝑞Δ)
+𝐵𝑞 =
+𝐵(𝑣, 𝑞Δ)
+
+𝑞 is even
+𝑞 is odd
+
+Our goal is to find two consecutive balls 𝐵𝑡 and 𝐵𝑡+1 such that the number of points in 𝐵𝑡+1
+is not much greater than the number in 𝐵𝑡 . For each 𝑡, define 𝑛𝑡 = |𝐵𝑡 |, the number of points in
+𝐵𝑡 . Recall that 𝐷 = 2𝑞 − 1, and note that for any 𝑡 ≤ 𝑞 − 1,
+𝑜
+𝐵𝑡 ∩ 𝐵𝑡+1
+= ∅,
+𝑜
+because (2𝑡 + 1)Δ ≤ (2𝑞 − 1)Δ = 𝑑(𝑢, 𝑣). (Here 𝐵𝑡+1
+denotes the corresponding open ball.)
+𝑗−1
+
+𝑗
+
+Claim 2.9. There exist some 𝑡 < 𝑞 and 𝑗 ≤ 𝑞 such that 𝑛𝑡 ≥ 𝑛 𝑞 and 𝑛𝑡+1 ≤ 𝑛 𝑞 .
+Proof. If there is some 𝑡 < 𝑞 such that 𝑛𝑡 ≥ 𝑛𝑡+1 , the claim holds for that 𝑡 and [︁the maximum
+]︁
+𝑗−1
+
+𝑗−1
+
+𝑗
+
+𝑗 such that 𝑛𝑡 ≥ 𝑛 𝑞 . Otherwise, 𝑛0 < 𝑛1 < · · · < 𝑛𝑡 . Consider the 𝑞 intervals 𝑛 𝑞 , 𝑛 𝑞 for
+𝑗 = 1, . . . , 𝑞. Since there are 𝑞 + 1 increasing values 𝑛0 , . . . , 𝑛𝑞 , by the pigeonhole
+principle,
+there
+]︁
+[︁
+𝑗−1
+
+𝑗
+
+must be some 𝑡 and 𝑗 such that 𝑛𝑡 and 𝑛𝑡+1 belong to the same interval 𝑛 𝑞 , 𝑛 𝑞 . The claim
+holds for those 𝑡 and 𝑗.
+
+We are now ready to show that for the values 𝑡 and 𝑗 that were found in Claim 2.9, with
+𝑜
+probability at least 𝑝/12, the set 𝐴𝑖𝑗 intersects 𝐵𝑡 but not 𝐵𝑡+1
+. As explained earlier, that would
+𝑜
+imply that 𝐴𝑖𝑗 is good for (𝑢, 𝑣) (note that the difference in radius between 𝐵𝑡 and 𝐵𝑡+1
+is Δ). Let
+𝑜
+𝐸1 be the event that 𝐴𝑖𝑗 ∩ 𝐵𝑡 ̸= ∅. Let 𝐸2 be the event that 𝐴𝑖𝑗 ∩ 𝐵𝑡+1 = ∅. Because each point in
+𝐴𝑖𝑗 is chosen independently at random with probability 𝑝𝑗 , we have
+Pr[𝐸1 ] = 1 − Pr[𝐴𝑖𝑗 ∩ 𝐵𝑡 = ∅] = 1 − (1 − 𝑝𝑗 )𝑛𝑡 ≥ 1 − 𝑒−𝑝𝑗 𝑛𝑡 .
+− 𝑞𝑗
+
+Plugging in 𝑝𝑗 = min{1/2, 𝑛
+
+Pr[𝐸1 ] ≥ 1 − 𝑒−𝑛𝑡 min{1/2,𝑛
+
+𝑗−1
+
+} and 𝑛𝑡 ≥ 𝑛 𝑞 , we have
+
+𝑗
+−𝑞
+
+}
+
+1
+
+≥ min{1 − 𝑒− 2 𝑛
+
+𝑗−1
+𝑞
+
+1
+
+, 1 − 𝑒−𝑝 } ≥ min{1 − 𝑒− 2 , 1 − 𝑒−𝑝 },
+
+𝑗−1
+
+1
+
+where the last inequality follows because 𝑛 𝑞 ≥ 1. If 𝑝 ≥ 1/2, then this minimum is 1 − 𝑒− 2 >
+1/3 ≥ 𝑝/3. If 𝑝 < 1/2, then using the first three terms of the Taylor expansion for 𝑒𝑥 , we get
+1 − 𝑒−𝑝 ≥ 𝑝 − 𝑝2 /2 > 𝑝/3. We conclude that in all cases,
+Pr[𝐸1 ] ≥ 𝑝/3.
+
+(1)
+
+Now,
+𝑗
+𝑞
+
+Pr[𝐸2 ] ≥ (1 − 𝑝𝑗 )𝑛𝑡+1 ≥ (1 − 𝑝𝑗 )𝑛 .
+4
+
+𝑗
+
+We again split this into two cases based on the value of 𝑝𝑗 . If 𝑝𝑗 > 1/2, then 𝑛 𝑞 = 1/𝑝𝑗 , and hence
+𝑗
+𝑞
+
+(1 − 𝑝𝑗 )𝑛 = (1 − 𝑝𝑗 )1/𝑝𝑗 ≥ 1/4,
+1
+
+where the last inequality holds by checking that (1−𝑝𝑗 ) 𝑝𝑗 is decreasing in 𝑝𝑗 and is hence minimized
+when 𝑝𝑗 = 1/2.
+𝑗
+
+If 𝑝𝑗 = 1/2, then we must have 𝑛 𝑞 ≤ 2, and
+𝑗
+𝑞
+
+(1 − 𝑝𝑗 )𝑛 ≥
+
+(︂ )︂2
+1
+= 1/4.
+2
+
+In all cases, we have
+Pr[𝐸2 ] ≥ 1/4.
+
+(2)
+
+It follows from Equation (1) and Equation (2) that
+Pr[𝐸1 ∩ 𝐸2 ] = Pr[𝐸1 ] · Pr[𝐸2 ] ≥ 𝑝/12,
+where we used the fact that 𝐵𝑡 and 𝐵𝑡+1 are disjoint, and as a result, the events 𝐸1 and 𝐸2 are
+independent. This completes the proof of Lemma 2.8.
+
+3
+
+Embeddings into ℓ2
+
+In the previous lecture, we mentioned Bourgain’s theorem.
+Theorem 3.1 (Bourgain [1]). Any 𝑛-point metric embeds into ℓ2 with distortion 𝑂(log 𝑛).
+We claim that the proof of Theorem 2.4 already provides an embedding of any 𝑛-point metric
+into ℓ2 with distortion 𝑂(log2 𝑛).
+Proposition 3.2. Any 𝑛-point metric embeds into ℓ2 with distortion 𝑂(log2 𝑛).
+Proof. Let 𝑞 = log 𝑛, and consider the mapping provided by Theorem 2.4. This mapping is an
+1
+embedding into ℓ∞ with dimension 𝑘 = 𝑂(log 𝑛 · 𝑛 log 𝑛 log 𝑛) = 𝑂(log2 𝑛) and distortion 𝑂(log 𝑛).
+We use this mapping (which we denote by 𝑓 ), and then embed these vectors into ℓ𝑘2 using the
+identity map, that is, we consider the same points but with ℓ2 distance instead of ℓ∞ .
+Consider two points 𝑢, 𝑣 in the original metric space. We have shown in the proof of Theorem 2.4
+that
+1
+𝑑(𝑢, 𝑣) ≤ ‖𝑓 (𝑢) − 𝑓 (𝑣)‖∞ ≤ 𝑑(𝑢, 𝑣).
+2𝑞 − 1
+√
+Now, for every 𝑥 ∈ R𝑘 , ‖𝑥‖∞ ≤ ‖𝑥‖2 ≤ 𝑘‖𝑥‖∞ (convince yourself why). Together, we get that
+the embedding into ℓ2 satisfies
+√
+1
+𝑑(𝑢, 𝑣) ≤ ‖𝑓 (𝑢) − 𝑓 (𝑣)‖2 ≤ 𝑘𝑑(𝑢, 𝑣),
+2𝑞 − 1
+and since 𝑘 = 𝑂(log2 𝑛) and 2𝑞 − 1 = 𝑂(log 𝑛), we conclude that 𝑓 is an embedding into ℓ2 with
+distortion 𝑂(log2 𝑛).
+5
+
+3.1
+
+Overview of the Proof of Bourgain’s Theorem
+
+We will prove Bourgain’s theorem in the next lecture, but we provide a brief sketch of the analysis
+here.
+As in Theorem 2.4, we will construct a Fréchet embedding with random sets of varying densities.
+To perform the analysis, for each pair (𝑢, 𝑣) we will grow balls around 𝑢 and 𝑣 with radii in
+[0, 𝑑(𝑢, 𝑣)/2]. Let 𝑞 = ⌊log2 𝑛⌋ + 1 and 𝑟1 , 𝑟2 , . . . 𝑟𝑞 be radii such that 𝑟𝑗 is the smallest choice
+of radius such that both |𝐵(𝑢, 𝑟𝑗 )|, |𝐵(𝑣, 𝑟𝑗 )| ≥ 2𝑗 (if this radius is greater than 𝑑(𝑢, 𝑣)/2, we set
+𝑞
+∑︁
+𝑟𝑗 = 𝑑(𝑢, 𝑣)/2). We define 𝑟0 = 0 and Δ𝑗 = 𝑟𝑗 − 𝑟𝑗−1 so that
+Δ𝑗 ≥ 𝑑(𝑢, 𝑣)/2.
+𝑗=1
+
+The following claim forms the core of the proof.
+Claim 3.3. If a random set 𝐴𝑗 is sampled from 𝑉 such that each point is included independently
+1
+with probability 𝑗 , then
+2
+Pr[|𝑑(𝑢, 𝐴𝑗 ) − 𝑑(𝑣, 𝐴𝑗 )| ≥ Δ𝑗 ] ≥ 1/12.
+Assuming this claim, we can show using the Cauchy-Schwarz inequality that if enough sets are
+sampled with each of the densities 2−𝑗 , then with constant probability, the embedding into ℓ2 does
+not contract the distance between any two points too much.
+
+References
+[1] Jean Bourgain. On Lipschitz embedding of finite metric spaces in Hilbert space. Israel Journal
+of Mathematics, 52(1):46–52, Mar 1985.
+[2] Jiri Matousek. Lectures on Discrete Geometry. Springer-Verlag New York, 2002.
+
+6
+
+

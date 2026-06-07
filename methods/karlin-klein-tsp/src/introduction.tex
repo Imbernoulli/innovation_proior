@@ -1,0 +1,149 @@
+% !TEX root =paper.tex
+
+\section{Introduction}
+One of the most fundamental problems in combinatorial optimization is the traveling salesperson problem (TSP), formalized as early as 1832 (c.f. \cite[Ch 1]{ABCC07}).
+In an instance of  TSP we are given a set of $n$ cities $V$ along with their pairwise symmetric distances, $c:V\times V \to\R_{\geq 0}$. The goal is to find a Hamiltonian cycle of minimum cost. It is well known that for a general distance function, it is NP-Hard to approximate TSP within any polynomial factor. Therefore it is natural to study metric TSP, in which the distances satisfy the triangle inequality, i.e. $$c(u,w) \le c(u,v) + c(v,w) \quad\quad \forall u,v,w \in V.$$ In this case, the problem is equivalent to finding a closed Eulerian connected walk of minimum cost.\footnote{Given such an Eulerian cycle, we can use the triangle inequality to shortcut vertices visited more than once to get a Hamiltonian cycle.}
+
+It is NP-hard to approximate metric TSP within a factor of $\frac{123}{122}$ \cite{KLS15}. An algorithm of Christofides-Serdyukov~\cite{Chr76,Ser78} from four decades ago gives a $\frac32$-approximation for TSP (see \cite{VS20} for a historical note about TSP). This remains the best known approximation algorithm for the general case of the problem despite significant work, e.g., ~\cite{Wol80,SW90,BP91,Goe95,CV00,GLS05,BM10,BC11,SWV12, HNR17,HN19, KKO20}. 
+
+In contrast, there have been major improvements to this algorithm for a number of special cases of TSP. For example, polynomial-time approximation schemes (PTAS) have been found for Euclidean \cite{Aro96,Mitchell99}, planar \cite{GKP95, AGKKW98, Kle05},  and low-genus metric \cite{DHM07} instances. 
+In addition, the case of graph metrics has received significant attention. In 2011, the third author, Saberi, and Singh~\cite{OSS11} found a $\frac{3}{2} - \epsilon_0$ approximation for this case. M\"omke and Svensson \cite{MS11} then
+obtained a combinatorial algorithm for graphic TSP with an approximation ratio of 1.461. This ratio was later improved by Mucha \cite{Muc12} to $\frac{13}{9} \approx 1.444$, and then by Seb\"o and Vygen \cite{SV12} to $1.4$.
+
+In this paper we prove the following theorem:
+\begin{theorem}\label{thm:main}
+	For some absolute constant $\eps > 10^{-36}$, there is a randomized algorithm that outputs a tour with expected cost at most $\frac{3}{2}-\eps$ times the cost of the optimum solution. 
+\end{theorem}
+We note that while the algorithm makes use of the \ref{eq:tsplp}, we do not prove that the integrality gap of this polytope is bounded away from 3/2. 
+We also remark that although our approximation factor is only slightly better than Christofides-Serdyukov, we are not aware of any example where the approximation ratio of the algorithm we analyze exceeds $4/3$ in expectation. 
+
+Following a new exciting result of Traub, Vygen, Zenklusen \cite{TVZ20} we also get the following theorem.
+\begin{theorem}
+	For some absolute constant $\eps>0$ there is a randomized algorithm that outputs a TSP path with expected cost at most $\frac{3}{2}-\eps$ times the cost of the optimum solution.
+\end{theorem}
+
+%\Shayan{DO we get better than 3/2 for 2-edge connected subgraph problem?}
+
+\subsection{Algorithm}
+First, we recall the classical Christofides-Serdyukov algorithm: Given an instance of TSP, choose a minimum spanning tree and then add the minimum cost matching on the odd degree vertices of the tree. The algorithm we study is very similar, except we choose a random spanning tree based on the standard linear programming relaxation of TSP. 
+
+Let $x^0$ be an optimum   solution of the following TSP   linear program relaxation \cite{DFJ59,HK70}:
+\begin{equation}\label{eq:tsplp}
+\begin{aligned}
+	\min \quad& \sum_{u,v} x_{(u,v)} c(u,v)& \\
+	\text{s.t.,} \quad &  \sum_{u} x_{(u,v)} = 2&\forall v\in V,\\
+	& \sum_{u\in S, v\notin S} x_{(u,v)}\geq 2,&\forall S\subsetneq V,\\
+	& x_{(u,v)}\geq 0 &\forall u,v\in V.
+\end{aligned}\tag{Held-Karp relaxation}	
+\end{equation}
+%Without loss of generality, we assume that there is 
+%It can be shown that $x^*$ always has an edge with fraction 1 \cite{BP90}).
+Given  $x^0$, we pick an arbitrary node, $u$, split it into two nodes $u_0,v_0$ and set $x_{(u_0,v_0)}=1, c(u_0,v_0)=0$ and we assign half of every edge incident to $u$ to $u_0$ and the other half to $v_0$.  This allows us to assume without loss of generality that $x^0$ has an edge $e_0=(u_0,v_0)$  such that  $x_{e_0}=1, c(e_0)=0$. 
+%if such an edge does not exist, we (also 
+
+Let $E_0=E\cup\{e_0\}$ be the support of $x^0$ and let $x$ be $x^0$ restricted to $E$ and $G=(V,E)$.
+% be the support of $x$ excluding the edge $e_0$, and let $E_0=E\cup \{e_0\}$.
+$x^0$ restricted to $E$ is in the spanning tree polytope \eqref{eq:spanningtreelp}.
+
+For a vector $\lambda:E\to\R_{\geq 0}$, a $\lambda$-uniform distribution $\mu_\lambda$ over spanning trees of $G=(V,E)$ is a distribution where for every spanning tree $T\subseteq E$, $\PP{\mu}{T}=\frac{\prod_{e\in T} \lambda_e}{\sum_{T'} \prod_{e\in T'} \lambda_e}$.
+Now, find a vector $\lambda$ such that for every edge $e\in E$, $\PP{\mu_\lambda}{e\in T}=x_e(1\pm\eps)$, for some $\eps<2^{-n}$. Such a vector $\lambda$ can be found using the multiplicative weight update algorithm \cite{AGMOS10} or by applying interior point methods \cite{SV19} or the ellipsoid method \cite{AGMOS10}. (We note that the multiplicative weight update method can only guarantee $\eps<1/\text{poly}(n)$ in polynomial time.) We will sometimes call such a distribution the \textit{maximum entropy} distribution because a $\lambda$-uniform distribution has maximal entropy over all distributions with marginals $x$.\footnote{Although, note that since we do not always find a distribution which preserves marginals exactly (as one does not necessarily exist), for precision we generally refer to the distribution used by the algorithm as $\lambda$-uniform instead.} 
+\begin{theorem}[{\cite[Theorem 5.2]{AGMOS10}}]
+\label{thm:maxentropycomp}
+Let $z$ be a point in the spanning tree polytope (see \eqref{eq:spanningtreelp}) of a graph $ G=(V, E)$.
+For any $\eps>0$, a vector $\lambda:E\to\R_{\geq 0}$ can be found such that the corresponding $\lambda$-uniform spanning tree distribution, $\mu_\lambda$, satisfies
+%we define the exponential family distribution
+%$$\tilde{p}(T):=\frac{1}{P}\exp(\sum_{e\in T} \tilde{\gamma}_e)$$ for
+%all $T\in {\cal T}$ where $$P:=\sum_{T\in {\cal T}}\exp(\sum_{e\in T}
+%\tilde{\gamma}_e)$$ then, for every edge $e\in E$,
+$$%\tilde{z}_e :=
+\sum_{T\in {\cal T}: T \ni e} \PP{\mu_\lambda}{T}  \leq (1+\varepsilon)z_e,\hspace{3ex}\forall e\in E,$$
+i.e., the marginals are approximately preserved.  In the above ${\cal T}$ is the set of all spanning trees of $(V,E)$. The running
+time is polynomial in $n=|V|$, $- \log \min_{e\in E} z_e$ and $\log(1/\eps)$.
+\end{theorem}
+
+Finally, we sample a tree $T\sim\mu_{\lambda}$ and then add the minimum cost matching on the odd degree vertices of $T$.
+\begin{algorithm}[htb]
+\begin{algorithmic}
+	\State Find an optimum solution $x^0$ of  \ref{eq:tsplp}, and let $e_0=(u_0,v_0)$ be an edge with $x^0_{e_0}=1,c(e_0)=0$.
+	\State Let $E_0=E\cup \{e_0\}$ be the support of $x^0$ and $x$ be $x^0$ restricted to $E$ and $G=(V,E)$.
+	\State Find a vector $\lambda:E\to\R_{\geq 0}$ such that for any $e\in E$, $\PP{\mu_\lambda}{e}=x_e(1\pm 2^{-n})$.
+	\State Sample a tree $T\sim\mu_\lambda$.
+	\State Let $M$ be the minimum cost matching on odd degree vertices of $T$.
+	\State Output $T \cup M$.
+\end{algorithmic}
+\label{alg:tsp}
+\caption{An Improved Approximation Algorithm for TSP}
+\end{algorithm}
+The above algorithm is a slight modification of the algorithm proposed in  \cite{OSS11}. 
+We refer the interested reader to exciting work of Genova and Williamson \cite{GW17} on the empirical performance of the max-entropy rounding algorithm. We also remark that although the algorithm implemented in \cite{GW17} is slightly different from the above algorithm, we expect the performance to be similar. 
+
+\subsection{New Techniques}
+Here we discuss new machinery and technical tools that we developed for this result which could be of independent interest.
+
+\subsubsection{Polygon Structure for Near Minimum Cuts Crossed on one Side.}
+Let \hyperlink{tar:G=(V,E,x)}{$G=(V,E,x)$} be an undirected graph equipped with a weight function $x:E\to\R_{\geq 0}$ such that for any cut $(S,\overline{S})$ such that $u_0,v_0\not\in S$, $x(\delta(S))\geq 2$.
+
+For some (small) $\eta\geq 0$, consider the family of \hyperlink{tar:nearmincut}{$\eta$-near min cuts} of $G$. Let ${\cal C}$ be a connected component of \hyperlink{tar:crossing}{crossing} $\eta$-near min cuts. Given ${\cal C}$ we can partition vertices of $G$ into sets $a_0,\dots,a_{m-1}$ (called atoms); this is the coarsest partition such that for each $a_i$, and each $(S,\overline{S})\in {\cal C}$, we have $a_i\subseteq S$ or $a_i\subseteq \overline{S}$. 
+Here $a_0$ is the atom that contains $u_0,v_0$.
+
+There have been  several works studying the structure of edges between these atoms and the structure of cuts in a connected component of cuts ${\cal C}$ w.r.t. the $a_i$'s. The {\em cactus structure} (see \cite{DKL76}) shows that if $\eta=0$, then we can arrange the $a_i$'s of a connected component around a cycle, say $a_1,\dots,a_m$ (after renaming), such that $x(E(a_i,a_{i+1}))=1$ for all $i$.
+
+Bencz\'ur and Goemans \cite{Ben95,BG08} studied the case when $\eta\leq 6/5$ and introduced the notion of {\em polygon representation}, in which case atoms can be placed on the sides of an equilateral polygon and some atoms  placed inside  the polygon, such that every cut in ${\cal C}$ can be represented by a diagonal of this polygon. Later, \cite{OSS11} studied the structure of edges of $G$ in this polygon when $\eta<1/100$.
+
+In this paper, we show it suffices to study the structure of edges in a special family of polygon representations: Suppose we have a polygon representation for a connected component $\cC$ of $\eta$-near min cuts of $G$ such that 
+\begin{itemize}
+\item No atom is mapped inside,
+\item If we identify each cut $(S,\overline{S})\in \cC$ with the interval along the polygon that does not contain $a_0$, then any interval is only crossed on one side (only on the left or only on the right).
+\end{itemize}
+Then, we have (i) For any atom $a_i$, $x(\delta(a_i))\leq 2+O(\eta)$ and (ii) For any pair of atoms $a_i,a_{i+1}$, $x(E(a_i,a_{i+1})\geq 1-\Omega(\eta)$ (see \cref{thm:poly-structure} for details).
+
+We expect to see further applications of our theorem in studying variants of TSP.
+
+
+\subsubsection{Generalized Gurvits' Lemma}
+Given a real stable polynomial $p\in\R_{\geq 0}[z_1,\dots,z_n]$ (with non-negative coefficients), Gurvits proved the following inequality \cite{Gur06,Gur08}
+\begin{equation}
+	e^{-n}\inf_{z>0} \frac{p(z_1,\dots,z_n)}{z_1\dots z_n}\leq \partial_{z_1}\dots\partial_{z_n} p|_{z=0} \leq \inf_{z>0} \frac{p(z_1,\dots,z_n)}{z_1\dots z_n}.
+\end{equation}
+
+
+As an immediate consequence, one can prove the following theorem about \hyperlink{tar:SR}{strongly Rayleigh} (SR) distributions.
+\begin{theorem}\label{thm:gurvits}
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be SR and $A_1,\dots,A_m$ be random variables corresponding to the number of elements sampled in $m$ disjoint subsets of $[n]$ such that $\E{A_i}=n_i$ for all $i$. If $n_i=1$ for all $1\leq i\leq n$, then $\P{\forall i, A_i=1}\geq e^{-m}$.
+\end{theorem}
+One can ask what happens if the vector $(n_1,\dots,n_m)$  in the above theorem is not equal but close to the all ones vector, $\bone$. 
+
+A related theorem was proved in \cite{OSS11}.
+\begin{theorem}
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be SR and $A,B$ be random variables corresponding to the number of elements sampled in two disjoint sets. If $\P{A+B=2}\geq \eps$, $\P{A\leq 1},\P{B\leq 1}\geq \alpha$ and $\P{A\geq 1},\P{B\geq 1}\geq \beta$ then $\P{A=B=1}\geq \eps\alpha\beta/3$.
+\end{theorem}
+
+We prove a generalization of both of the above statements; roughly speaking, we show that as long as $\sum_{i=1}^m |n_i-1| <1-\eps$ then $\P{\forall i, A_i=1}\geq f(\eps,m)$ where $f(\eps,m)$ has no dependence on $n$, the number of underlying elements in the support of $\mu$. 
+\begin{theorem}[Informal version of \cref{lem:427gen}]\label{thm:gurinf}
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be SR and let $A_1,\dots,A_m$ be random variables corresponding to the number of elements sampled in $m$ disjoint subsets of $[n]$. Suppose that there are integers $n_1,\dots,n_m$ such that for any set $S\subseteq [m]$, $\P{\sum_{i\in S} A_i=\sum_{i\in S} n_i}\geq \eps$. Then, 
+$$\P{\forall i, A_i=n_i}\geq f(\eps,m).$$
+\end{theorem}
+The above statement is even  stronger than \cref{thm:gurvits} as we only require $\P{\sum_{i\in S} A_i=\sum_{i\in S} n_i}$  to be bounded away from $0$ for any set $S\subseteq [m]$ and we don't need a bound on the expectation.
+Our proof of the above theorem has double exponential dependence on $\eps$. We leave it an open problem to find the optimum dependency on $\eps$. Furthermore, our proof of the above theorem is probabilistic in nature; we expect that an algebraic proof based on the theory of real stable polynomials will provide a significantly improved lower bound. Unlike the above theorem, such a proof may  possibly extend to the more general class of completely log-concave distributions \cite{AOV18}. In an independent work, Gurvits and Leake \cite{GL21} proved a variant of the above theorem with a much better dependence on $\epsilon$ and $m$ for a homogeneous strong Rayleigh distribution.
+
+\subsubsection{Conditioning while Preserving Marginals}
+\label{sec:marginals}
+Consider a \hyperlink{tar:SR}{SR} distribution $\mu:2^{[n]}\to\R_{\geq 0}$ and let $x:[n]\to\R_{\geq 0}$, where for all $i$, $x_i=\PP{T\sim\mu}{i\in T}$, be the marginals. 
+
+Let $A,B\subseteq [n]$ be two disjoint sets such that $\E{\hyperlink{tar:AT}{A_T}},\E{B_T}\approx 1$. It follows from \cref{thm:gurinf} that $\P{A_T=B_T=1}\geq \Omega(1)$. Here, however, we are interested in a stronger event; let $\nu = \mu | A_T=B_T=1$ and let $y_i=\PP{T\sim\mu}{i\in T}$. It turns out that the $y$ vector can be very different from the $x$ vector, in particular, for some $i$'s we can have $|y_i-x_i|$ bounded away from $0$. We show that there is an event of non-negligible probability that is a subset of $A_T=B_T=1$ under which the marginals of elements in $A,B$ are almost preserved. 
+\begin{theorem}[Informal version of \cref{lem:maxflow}]
+Let $\mu:2^{[n]}\to\R_{\geq 0}$ be a SR distribution and let $A,B\subseteq [n]$ be two disjoint subsets such that $\E{A_T},\E{B_T}\approx 1$. For any $\alpha\ll 1$ there is an event $\cE_{A,B}$ such that $\P{\cE_{A,B}}\geq \Omega(\alpha^2)$ and
+\begin{itemize}
+\item $\P{A_T=B_T=1 | \cE_{A,B}}=1$,
+\item $\sum_{i\in A} |\P{i} - \P{i | \cE_{A,B}}| \leq \alpha$,
+\item $\sum_{i\in B} |\P{i} - \P{i | \cE_{A,B}}| \leq \alpha$.
+\end{itemize}
+\end{theorem}
+We remark that the quadratic lower bound on $\alpha$ is necessary in the above theorem for a sufficiently small $\alpha>0$.
+The above theorem can be seen as a generalization of \cref{thm:gurvits} in the special case of two sets.
+
+We leave it an open problem to extend the above theorem to arbitrary $k$ disjoint sets. We suspect that in such a case the ideal event $\cE_{A_1,\dots,A_k}$ occurs with probability $\Omega(\alpha)^k$ and preserves all marginals of elements in each of the sets $A_1,\dots,A_k$ up to a total variation distance of $\alpha$.
+
+
+
+

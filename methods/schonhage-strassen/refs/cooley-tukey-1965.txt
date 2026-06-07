@@ -1,0 +1,218 @@
+      An Algorithm for the Machine Calculation                                           of
+                 Complex Fourier Series
+                        By James W. Cooley and John W. Tukey
+    An efficient method for the calculation of the interactions of a 2m factorial ex-
+periment was introduced by Yates and is widely known by his name. The generaliza-
+tion to 3m was given by Box et al. [1]. Good [2] generalized these methods and gave
+elegant algorithms for which one class of applications is the calculation of Fourier
+series. In their full generality, Good's methods are applicable to certain problems in
+which one must multiply an JV-vector by an JV X N matrix which can be factored
+into m sparse matrices, where m is proportional to log JV. This results in a procedure
+requiring a number of operations proportional to JV log JV rather than JV2. These
+methods are applied here to the calculation of complex Fourier series. They are
+useful in situations where the number of data points is, or can be chosen to be, a
+highly composite number. The algorithm is here derived and presented in a rather
+different form. Attention is given to the choice of JV. It is also shown how special
+advantage can be obtained in the use of a binary computer with JV = 2m and how
+the entire calculation can be performed within the array of JV data storage locations
+used for the given Fourier coefficients.
+    Consider the problem of calculating the complex Fourier series
+
+(1)               XiJ)=ZAik)-Wjk,                      ¿«0,1,   ...,iV-l,
+                             *-0
+
+where the given Fourier coefficients Aik)               are complex and W is the principal
+JVth root of unity,
+(2)                                        W = e2rilN.
+
+A straightforward calculation using ( 1 ) would require JV2operations where "opera-
+tion" means, as it will throughout this note, a complex multiplication followed by a
+complex addition.
+    The algorithm described here iterates on the array of given complex Fourier
+amplitudes and yields the result in less than 2JV Iog2 JV operations without requiring
+more data storage than is required for the given array A. To derive the algorithm,
+suppose JV is a composite, i.e., JV = rvr2. Then let the indices in (1) be expressed
+
+       / = ¿in + ¿o ,        ¿o - 0, 1, • • • , rx — 1,         ¿i = 0, 1, • • • , r2 - 1,
+(«*J
+       k = hr2 + fcc,        h = 0, 1, • ■- , r2 — 1,           h = 0, 1, ■■■, n — 1.
+Then, one can write
+(4)                     Xijijo)    = £ £ Aih , ko)-W*">Wik\
+                                      *0    *1
+
+
+
+     Received August 17, 1964. Research in part at Princeton University under the sponsorship
+of the Army Research Office (Durham).     The authors wish to thank Richard Garwin for his
+essential role in communication   and encouragement.    •
+                                                 297
+298                     JAMES W. COOLEY AND JOHN W. TUKEY
+
+
+Since
+
+
+the inner sum, over fci, depends only on ¿0 and k0 and can be defined as a new array,
+(6)                        Aiijo,     h)     = £     Aiki,    ko)-Wlok¡r>.
+                                                ki
+
+The result can then be written
+(7)                      Xiji,     jo) = £      Aiijo ,ko)- W(hri+Mk\
+
+There are JV elements in the array Ai, each requiring rx operations, giving a total
+of JVri operations to obtain Ai. Similarly, it takes Nr2 operations to calculate X
+from Ai. Therefore, this two-step algorithm, given by (6) and (7), requires a total
+of
+(8)                                         T = Nin + r2)
+operations.
+    It is easy to see how successive applications of the above procedure, starting with
+its application to (6), give an m-step algorithm requiring
+(9)                              T = Niri      + r2+         ■■■ + rm)
+operations, where
+(10)                                    N = rvr2---          rm.
+If r¡ = Sjtj with Sj ,tj > 1, then s, + t¡ < r3-unless «y = t¡ = 2, when s¡ + t,- = r¡.
+In general, then, using as many factors as possible provides a minimum to (9), but
+factors of 2 can be combined in pairs without loss. If we are able to choose JV to be
+highly composite, we may make very real gains. If all r¡ are equal to r, then, from
+( 10 ) we have
+(11)                                         m = logrJV
+and the total number of operations is
+(12)                                   Tir) = rJVlogrJV.
+      If JV = rmsnl" ■■■, then we find that
+                       T
+                                 m-r + n-s + p-t + ••• ,
+(13)
+                   log2 JV = m-log2 r + n-log2 s + p-log21 +
+so that
+
+                                              N log2 JV
+is a weighted mean of the quantities
+                                   r            s           t
+                                 log2 r '    log2 s '    log21 '
+                      MACHINE CALCULATION OF COMPLEX FOURIER SERIES                                                      299
+
+whose values run as follows
+
+                                                         r                   logü r
+                                                       2                     2.00
+                                                       3                     1.88
+                                                       4                     2.00
+                                                       5                     2.15
+                                                       6                     2.31
+                                                       7                     2.49
+                                                       8                     2.67
+                                                       9                     2.82
+                                                      10                     3.01.
+    The use of r¡ = 3 is formally most efficient, but the gain is only about 6% over
+the use of 2 or 4, which have other advantages. If necessary, the use of r, up to 10
+can increase the number of computations by no more than 50%. Accordingly, we
+can find "highly composite" values of JV within a few percent of any given large
+number.
+    Whenever possible, the use of JV = rm with r = 2 or 4 offers important advantages
+for computers with binary arithmetic, both in addressing and in multiplication
+economy.
+    The algorithm with r = 2 is derived by expressing the indices in the form
+
+,      N                            ¿-¿«-r2~*                  + ••• +¿i-2+¿o,
+(14)
+                                    k = fcm_1-2m~1
+                                                + ••■ + fci-2 + fco,
+
+where /„ and kv are equal to 0 or 1 and are the contents of the respective bit positions
+in the binary representation of / and k. All arrays will now be written as functions
+of the bits of their indices. With this convention (1 ) is written
+(15)       Xijm-i,      •••,/„)         -     £      £       • • ■ £Aikm-i,                 ■■■, ko)-wik-1-2m'l+-+ik",
+                                               kQ     kx            km_\
+
+where the sums are over kv = 0, 1. Since
+(Iß)                                        T^J*m-l-2m_1            _      Jp-J0*m-l-2m-1
+
+
+the innermost         sum of (15), over km^i, depends only on ¿0, fcm_2, • ■• , k0 and can
+be written
+(17)         Aiijo, km_2, ■■■, ko) =                           YiAikm-i,               ■■■, ko)-Whkm-'-2m'\
+                                                             *m-l
+
+
+Proceeding          to the next innermost sum, over fcm_2,and so on, and using
+ng\                              -pp'-*m-|-2'»-<         _   ■p^OJ_i-2'-l+...+jo)*m-i-2'»-'
+
+
+one obtains successive arrays,
+
+           Aiijo,     ■■■ , jl-l , fcm-!-l , ■■■ , ko)
+(19)                    = £¿«(¿0,                   *•• ,3,-*,h»-i,                ...,ko)-wl»->-2'-1+-+M-k-'-2m-1
+                          km-l
+
+
+for I = 1, 2, • • • , m.
+300                         JAMES W. COOLEY AND JOHN W. TUKEY
+
+       Writing out the sum this appears as
+          ■¿l(¿0 , • • ■ , ¿I-l , fcm-i-l , • ■* , h)
+
+                                  = Ai-iijo , ■•• , ji-2, 0, ¿„-i-i,        ■■■,ko)
+                                      + (-l)i,-'i"-,4w(i,,           • • • ,jt-t,   1, fcm_t_i, • • • , *o)
+                                       • Wrtt-.-»,-+»-+*>-«-,>            jw . o, 1.
+According to the indexing convention,                   this is stored in a location whose index is
+(21)           /0-2"-1 +       ••• + j,-i-2m~l          + km+i ■2m-'-1 +        ••• + ko.
+
+It can be seen in (20) that only the two storage locations with indices having 0 and
+1 in the 2m~l bit position are involved in the computation. Parallel computation is
+permitted since the operation described by (20 ) can be carried out with all values of
+¿o, • • • , ji-2, and ko, • • • , fcm-j-i simultaneously. In some applications* it is con-
+venient to use (20) to express A¡ in terms of A¡_2, giving what is equivalent to an
+algorithm with r = 4.
+    The last array calculated gives the desired Fourier sums,
+
+(22)                          -X"(¿m-i, • • • , ¿o) = Amijo, ■■■, /m_i)
+
+in such an order that the index of an X must have its binary bits put in reverse
+order to yield its index in the array Am .
+    In some applications, where Fourier sums are to be evaluated twice, the above
+procedure could be programmed so that no bit-inversion is necessary. For example,
+consider the solution of the difference equation,
+
+(23)                      aXiJ + 1) + bXiJ) + cXiJ - 1) = Fij).
+The present method could be first applied to calculate the Fourier amplitudes of
+F(j) from the formula
+
+(24)                                  Bik) = iCfÜNF"*.
+The Fourier amplitudes           of the solution are, then,
+
+(25)                                 Aik) = aWk + b + eW-k
+                                                           Bik)
+
+The Bik) and Aik) arrays are in bit-inverted order, but with an obvious modifi-
+cation of (20), Aik) can be used to yield the solution with correct indexing.
+    A computer program for the ibm 7094 has been written which calculates three-
+dimensional Fourier sums by the above method. The computing time taken for com-
+puting three-dimensional 2° X 2b X 2C arrays of data points was as follows:
+
+   * A multiple-processing circuit using this algorithm was designed by R. E. Miller and S.
+Winograd of the IBM Watson Research Center. In this case r = 4 was found to be most practi-
+cal.
+                   MACHINE CALCULATION OF COMPLEX FOURIER                     SERIES                  301
+
+         abc                                             No. Pts.                Time (minutes)
+          4                 4              3                  2U                          .02
+         11                 0              0                  211                         .02
+          4                 4              4                  212                         .04
+         12                 0              0                  212                         .07
+          5                 4              4                  213                         .10
+          5                 5              3                  213                         .12
+         13                 0              0                  213                         .13
+IBM Watson Research Center
+Yorktown Heights, New York
+Bell Telephone    Laboratories,
+Murray Hill, New Jersey
+Princeton     University
+Princeton,    New Jersey
+
+    1. G. E. P. Box, L. R. Connor, W. R. Cousins, O. L. Davies (Ed.), F. R. Hirnsworth                  &
+G. P. Silitto,   The Design and Analysis of Industrial   Experiments,   Oliver & Boyd, Edinburgh,
+1954.
+    2. I. J. Good, "The interaction    algorithm   and practical    Fourier   series,"   J. Roy. Statist.
+Soc. Ser. B., v. 20, 1958,p. 361-372;Addendum, v. 22, 1960,p. 372-375. MR 21 #1674; MR 23
+#A4231.
+

@@ -1,0 +1,4627 @@
+T HEORY OF C OMPUTING L IBRARY
+G RADUATE S URVEYS 5 (2013), pp. 1–60
+www.theoryofcomputing.org
+
+Fast Matrix Multiplication
+Markus Bläser∗
+Received March 7, 2013; Published December 24, 2013
+
+Abstract: We give an overview of the history of fast algorithms for matrix multiplication.
+Along the way, we look at some other fundamental problems in algebraic complexity like
+polynomial evaluation.
+This exposition is self-contained. To make it accessible to a broad audience, we only
+assume a minimal mathematical background: basic linear algebra, familiarity with polynomials in several variables over rings, and rudimentary knowledge in combinatorics should be
+sufficient to read (and understand) this article. This means that we have to treat tensors in
+a very concrete way (which might annoy people coming from mathematics), occasionally
+prove basic results from combinatorics, and solve recursive inequalities explicitly (because
+we want to annoy people with a background in theoretical computer science, too).
+ACM Classification: F.2.2
+AMS Classification: 68Q17, 68Q25
+Key words and phrases: fast matrix multiplication, bilinear complexity, tensor rank
+
+1
+
+Introduction
+
+Given two n × n-matrices x = (xik ) and y = (yk j ) whose entries are indeterminates over some field K, we
+want to compute their product xy = (zi j ). The entries zi j are given by the following well-known bilinear
+forms
+n
+
+zi j = ∑ xik yk j ,
+
+1 ≤ i, j ≤ n .
+
+(1.1)
+
+k=1
+
+Each zi j is the sum of n products. Thus every zi j can be computed with n multiplications and n − 1
+additions. This gives an algorithm that altogether uses n3 multiplications and n2 (n − 1) additions.
+∗ Supported by DFG grant BL 511/10-1.
+
+© 2013 Markus Bläser
+c b Licensed under a Creative Commons Attribution License (CC-BY)
+
+DOI: 10.4086/toc.gs.2013.005
+
+M ARKUS B L ÄSER
+
+This algorithm looks so natural and intuitive that it is very hard to imagine that there is better way to
+multiply matrices. However, in 1969, Strassen [31] found a way to multiply 2 × 2-matrices with only 7
+multiplications but 18 additions.
+Let zi j , 1 ≤ i, j ≤ 2, be given by
+
+
+z11 z12
+z21 z22
+
+
+
+
+=
+
+x11 x12
+x21 x22
+
+
+
+y11 y12
+y21 y22
+
+
+.
+
+We compute the seven products
+p1 = (x11 + x22 )(y11 + y22 ) ,
+p2 = (x21 + x22 )y11 ,
+p3 = x11 (y12 − y22 ) ,
+p4 = x22 (−y11 + y21 ) ,
+p5 = (x11 + x12 )y22 ,
+p6 = (−x11 + x21 )(y11 + y12 ) ,
+p7 = (x12 − x22 )(y21 + y22 ) .
+We can express each of the zi j as a linear combination of these seven products, namely,
+
+
+z11 z12
+z21 z22
+
+
+
+
+=
+
+p1 + p4 − p5 + p7
+p2 + p4
+
+p3 + p5
+p1 + p3 − p2 + p6
+
+
+.
+
+The number of multiplications in this algorithm is optimal (we will see this later), but already for 3 × 3matrices, the optimal number of multiplication is not known. We know that it lies between 19 and 23,
+cf. [5, 21].
+But is it really interesting to save one multiplication but have an additional 14 additions instead?1 The
+important point is that Strassen’s algorithm does not only work over fields but also over noncommutative
+rings. In particular, the entries of the 2 × 2-matrices could also be matrices and we can apply the algorithm
+recursively. And for matrices, multiplications—at least if we use the naive method—are much more
+expensive than additions, namely O(n3 ) compared to n2 .
+Proposition 1.1. One can multiply n × n-matrices with O(nlog2 7 ) arithmetic operations (and even without
+using divisions).2
+1 There is a variant of Strassen’s algorithm that uses only 15 additions [38]. However, de Groote [15] showed that, using an
+
+appropriate notion of equivalence, there is only one algorithm for multiplying 2 × 2-matrices using seven multiplications. And
+one can even show that 15 additions is optimal, i. e., every algorithms that uses only seven multiplications needs at least 15
+additions [7].
+2 What is an arithmetic operation? We will make this precise in the next section. For the moment, we compute over the field
+of rational functions K(xi j , yi j | 1 ≤ i, j ≤ n). We start with the constants from K and the indeterminates xi j and yi j . Then we
+can take any two of the elements that we computed so far and compute their product, their quotient (if the second element is not
+zero), their sum, or their difference. We are done if we have computed all the zi j in (1.1).
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+2
+
+FAST M ATRIX M ULTIPLICATION
+
+Proof. W. l. o. g. let n = 2` , ` ∈ N. If this is not the case, then we can embed our matrices into matrices
+whose size is the next largest power of two and fill the remaining positions with zeros.3 Since the
+algorithm does not use any divisions, substituting an indeterminate by a concrete value will not cause a
+division by zero.
+We will show by induction in ` that we can multiply with 7` multiplications and 6 · (7` − 4` ) additions/subtractions.
+Induction start (` = 1): See above.
+Induction step (` − 1 → `): We think of our matrices as 2 × 2-matrices whose entries are 2`−1 × 2`−1
+matrices, i. e., we have the following block structure:
+
+
+ 
+·
+
+
+
+
+
+
+=
+
+.
+
+We can multiply these matrices using Strassen’s algorithm with seven multiplications of 2`−1 × 2`−1 matrices and 18 additions of 2`−1 × 2`−1 -matrices.
+For the seven multiplications of the 2`−1 × 2`−1 -matrices, we need 7 · 7`−1 = 7` multiplications
+by the induction hypothesis. And we need 7 · 6 · (7`−1 − 4`−1 ) additions/subtractions for the seven
+multiplications. The 18 additions of 2`−1 × 2`−1 -matrices need 18 · (2`−1 )2 additions. Thus the total
+number of additions/subtractions is
+7 · 6 · (7`−1 − 4`−1 ) + 18 · (2`−1 )2 = 6 · (7` − 7 · 4`−1 + 3 · 4`−1 ) = 6 · (7` − 4` ) .
+This finishes the induction step. Since 7` = nlog2 7 , we are done.
+
+2
+
+Computations and costs
+
+2.1
+
+Karatsuba’s algorithm
+
+Let us start with a very simple computational problem, the multiplication of univariate polynomials of
+degree one. We are given two polynomials a0 + a1 X and b0 + b1 X and we want to compute the coefficients
+c0 , c1 , c2 of their product, which are given by
+(a0 + a1 · X) · (b0 + b1 · X) = a0 b0 + (a0 b1 + a1 b0 ) ·X + a1 b1 ·X 2 .
+|{z}
+|{z} |
+{z
+}
+=:c0
+
+=:c1
+
+=:c2
+
+We here consider the coefficients of the two polynomials to be indeterminates over some field K. The
+coefficients of the product are rational functions (in fact, bilinear forms) in a0 , a1 , b0 , b1 , so the following
+model of computation seems to fit well. We have a sequence (w1 , w2 , . . . , w` ) of rational functions such
+that each wi is either a0 , a1 , b0 , or b1 (inputs) or a constant from K or can be expressed as wi = w j op wk
+for indices j, k < i and op is one of the arithmetic operations ·, /, +, or −.
+3 Asymptotically, this is o.k. For practical purposes, it is better to directly recurse if n is even and add a row and column with
+
+zeros if n is odd.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+3
+
+M ARKUS B L ÄSER
+
+Here is one possible computation that computes the three coefficients c0 , c1 , and c2 .
+w1
+w2
+w3
+w4
+(c0 =) w5
+(c2 =) w6
+w7
+w8
+w9
+w10
+(c1 =) w11
+
+=
+a0 ,
+=
+a1 ,
+=
+b0 ,
+=
+b1 ,
+= w1 · w3 ,
+= w2 · w4 ,
+= w1 + w2 ,
+= w3 + w4 ,
+= w7 · w8 ,
+= w5 + w6 ,
+= w9 − w10 .
+
+The above computation only uses three multiplications instead of four, which the naive algorithm needs.
+This is also called Karatsuba’s algorithm [20].4 Like Strassen’s algorithm, it can be generalized to
+higher degree polynomials. If we have two polynomials A(X) = ∑ni=0 ai X i and B(X) = ∑nj=0 b j X j with
+n = 2` − 1, then we split the two polynomials into halves, that is, A(X) = A0 (X) + X (n+1)/2 A1 (X) with
+(n+1)/2−1
+(n+1)/2−1
+A0 (X) = ∑i=0
+ai X i and A1 (X) = ∑i=0
+a(n+1)/2+i X i and the same for B. Then we multiply
+these polynomials using the above scheme with A0 taking the role of a0 and A1 taking the role of a1 and
+the same for B. All multiplications of polynomials of degree (n + 1)/2 − 1 are performed recursively. Let
+N(n) denote the number of arithmetic operations that the above algorithm needs to multiply polynomial
+of degree ≤ n. The algorithm above gives the following recursive equation
+N(n) = 3 · N((n + 1)/2 − 1) + O(n)
+
+and
+
+N(2) = 7 .
+
+Similarly to the analysis of Strassen’s algorithm, one can show that N(n) = O(nlog2 3 ). Karatsuba’s
+algorithm again trades one multiplication for a bunch of additional additions which is bad for degree
+one polynomials but good in general, since polynomial addition only needs n operations but polynomial
+multiplication—at least when using the naive method—is much more expensive, namely, O(n2 ).
+
+2.2
+
+A general model
+
+We provide a framework to define computations and costs that is general enough to cover all the examples
+that we will look at. For a set S, let fin(S) denote the set of all finite subsets of S.
+Definition 2.1 (Computation structure). A computation structure is a set M together with a mapping
+γ : M × fin(M) → [0; ∞] such that
+1. im(γ) is well ordered, that is, every non-empty subset of im(γ) has a minimum,
+2. γ(w,U) = 0 if w ∈ U,
+3. U ⊆ V ⇒ γ(w,V ) ≤ γ(w,U) for all w ∈ M, U,V ⊆ fin(M).
+4 See [19] why Ofman is a coauthor and why this paper was not even written by Karatsuba.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+4
+
+FAST M ATRIX M ULTIPLICATION
+
+M is the set of objects that we are computing with. γ(w,U) is the cost of computing w from U “in
+one step.” In the example of polynomial multiplication of degree one in the previous subsection, M is the
+set of all rational functions in a0 , a1 , b0 , b1 . If we want to count the number of arithmetic operations of
+Karatsuba’s algorithm, then γ(w,U) = 0 if w ∈ U. (“There is no cost if we already computed w.”) We
+have γ(w,U) = 1 if there are u, v ∈ U such that w = u op v. (“w can be computed from u and v with one
+arithmetical operation.”) In all other cases γ(w,U) = ∞. (“w cannot be computed in one step from U.”)
+Often, we have a set M together with some operations φ : M s → M of some arity s. If we assign to
+each such operation a cost, then this induces a computation structure in a very natural way.
+Definition 2.2. A structure (M, φ1 , φ2 , . . .) with (partial) operations φ j : M s j → M and a cost function
+¢ : {φ1 , φ2 , . . .} → [0; ∞] such that im(¢) is well ordered induces a computation structure in the following
+way:
+γ(w,U) := min{¢(φ j ) | ∃u1 , . . . , us j ∈ U : w = φ j (u1 , . . . , us j )} .
+If the minimum is taken over the empty set, then we set γ(w,U) = ∞. If w ∈ U, then γ(w,U) = 0.
+Remark 2.3 (for hackers). We can always achieve γ(w,U) = 0 by adding the function φ0 = id to the
+structure with ¢(φ0 ) = 0.
+Definition 2.4 (Computation).
+
+1. A sequence β = (w1 , ..., wm ) of elements in M is a computation with input X ⊆ M if
+∀ j ≤ m : w j ∈ X ∨ γ(w j ,V j ) < ∞ where V j = {w1 , ..., w j−1 }
+2. β computes a set Y ∈ fin(M) if in addition Y ⊆ {w1 , ..., wm }.
+Def m
+
+3. The cost of β is Γ(β , X) = ∑ γ(w j ,V j ).
+j=1
+
+In a computation, every wi can be computed from elements previously computed, i. e., elements in V j
+or from elements in X (“inputs”). The cost of a computation is the sum of the costs of the individuals
+steps.
+Definition 2.5 (Complexity). The complexity of Y given X is defined by
+C(Y, X) := min{Γ(β , X) | β computes Y from X} .
+The complexity of a set Y is nothing but the cost of a cheapest computation that computes Y .
+Notation 2.6.
+1. If we compute only one element y, we will write C(y, X) instead of C({y}, X) and so on.
+2. If X = /0 or X is clear from the context, then we will just write C(Y ).
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+5
+
+M ARKUS B L ÄSER
+
+2.3
+
+Examples
+
+The following computation structure will appear quite often in these notes.
+Example 2.7 (Ostrowski measure). Our structure is M = K(X1 , . . . , Xn ), the field of rational functions
+in indeterminates X1 , . . . , Xn . We have four (or three) operations of arity 2, namely, multiplication,
+division, addition, and subtraction. Division is a partial operation which is only defined if the second
+input is nonzero (as a rational function). If we are only interested in computing polynomials, we might
+occasionally disallow divisions. For every λ ∈ K, there is an operation λ · of arity 1, the multiplication
+with the scalar λ . The cost is given by:
+Operation
+·, /
++, −
+λ·
+
+Arity
+2
+2
+1
+
+Cost
+1
+0
+0
+
+While in today’s computer chips, multiplication takes about the same number of cycles as addition,
+Strassen’s algorithm and also Karatsuba’s algorithm show that this is nevertheless a meaningful way of
+charging cost.
+The complexity induced by the Ostrowski measure will be denoted by C∗/ , or C∗ if we disallow
+divisions. In particular, Karatsuba’s algorithm yields C∗/ ({c0 , c1 , c2 }, {a0 , a1 , b0 , b1 }) = 3. (The lower
+bound follows from the fact, that c0 , c1 , c2 are linearly independent over K.)
+Example 2.8 (Addition chains). Our structure is M = N with the following operations:
+Operation
+1
++
+
+Arity
+0
+2
+
+Cost
+0
+1
+
+C(n) measures how many additions we need to generate n from 1.
+Additions chains are motivated by the problem of computing a power X n from X with as few
+multiplications as possible. We have log n ≤ C(n) ≤ 2 log n. The lower bound follows from the fact that
+we can at most double the largest number computed so far with one more addition. The upper bound is
+the well-known “square and multiply” algorithm. This is an old problem from the 1930s, which goes
+back to Scholz [26] and Brauer [6], but quite some challenging questions still remain open.
+Research problem 2.9. Prove the Scholz-Brauer conjecture:
+C(2n − 1) ≤ n +C(n) − 1
+
+for all n ∈ N.
+
+Research problem 2.10. Prove Stolarsky’s conjecture [29]:
+C(n) ≥ log n + log(q(n))
+
+for all n ∈ N,
+
+where q(n) is the sum of the bits of the binary expansion of n. Schönhage [27] proved that
+C(n) ≥ log n + log(q(n)) − 2.13 .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+6
+
+FAST M ATRIX M ULTIPLICATION
+
+3
+
+Evaluation of polynomials
+
+Let us start with a simple example, the evaluation of univariate polynomials. Our input are the coefficients
+a0 , . . . , an of the polynomial and the point x at which we want to evaluate the polynomial. We model them
+as indeterminates, so our set M = K0 (a0 , . . . , an , x). We are interested in determining C( f , {a0 , . . . , an , x})
+where
+f = a0 + a1 x + · · · + an xn ∈ K0 (a0 , . . . , an , x) .
+A well known algorithm to compute f is Horner’s scheme. We write f as
+f = ((an x + an−1 )x + an−2 )x + · · · + a0 .
+This representation immediately gives a way to compute f with n multiplications and n additions. We will
+show that this is best possible: Even if we can make as many additions/subtractions as we want, we still
+need n multiplications/divisions. And even if we are allowed to perform as many multiplications/divisions
+as we want, n additions/subtractions are required. In the former case, we will use the well-known
+Ostrowski measure. In the latter case, we will use the so-called additive complexity, denoted by C+ ,
+which is “the opposite” of the Ostrowski model. Here multiplications and divisions are for free but
+additions and subtractions count.
+Operation
+
+Costs
+C
+C+
+1
+0
+0
+1
+0
+0
+0
+0
+∗/
+
+·, /
++, −
+λ·
+p ∈ K0 (x)
+
+We will even allow that we can get elements from K := K0 (x) for free (operation with arity zero).
+So we, e. g., can compute arbitrary powers of x at no cost. (This is a special feature of this section. In
+general, this is neither the case under the Ostrowski measure nor under the additive measure.)
+Theorem 3.1. Let a0 , . . . , an , x be indeterminates over K0 and f = a0 + a1 x + · · · + an xn . Then C∗/ ( f ) ≥ n
+and C+ ( f ) ≥ n. This is even true if all elements from K0 (x) are free of cost.
+The question about the optimality of Horner’s scheme was raised by Ostrowski [23]. It is one of the
+founding problems of algebraic complexity theory. It took one decade until Pan [24] was able to prove
+that Horner’s scheme is optimal with respect to multiplications. Prior to this, Motzkin [22] proved that it
+is optimal with respect to additions. We will prove both results in the next two subsections.
+
+3.1
+
+Multiplications
+
+The first statement of Theorem 3.1 is implied by the following lower bound due to Winograd [37].
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+7
+
+M ARKUS B L ÄSER
+
+Theorem 3.2. Let K0 ⊆ K be fields, Z = {z1 , . . . , zn } be indeterminates and F = { f1 , . . . , fm } where
+n
+
+f µ = ∑ pµ,ν zν + qµ with pµν , qµ ∈ K, 1 ≤ µ ≤ m. Then C∗/ (F, Z) ≥ r − m where
+ν=1
+
+
+
+...
+
+p1n
+..
+.
+
+pm1 . . .
+
+pmn
+
+p11
+ ..
+r = col-rkK0  .
+
+1 ...
+.. . .
+.
+.
+0 ...
+
+
+0
+..  .
+.
+1
+
+We get the first part of Theorem 3.1 from Theorem 3.2 as follows: We set
+K = K0 (x) ,
+zν = aν ,
+m = 1,
+f1 = f ,
+p1ν = xν ,
+
+1 ≤ ν ≤ n,
+
+q1 = a0 .
+Then P = (x, x2 , . . . , xn , 1) and col-rkK0 P = n + 1.5 We get C∗/ ( f1 , {a0 , . . . , an }) ≥ n + 1 − 1 = n by
+Theorem 3.2.
+Proof of Theorem 3.2. The proof is by induction in n.
+Induction start (n = 0): We have
+
+1
+ ..
+P=
+.
+
+
+
+
+1
+
+and therefore, r = m. Thus C∗/ (F) ≥ 0 = r − m.
+Induction step (n − 1 → n): If r = m, then there is nothing to show. Thus we can assume that r > m. We
+claim that in this case, C∗/ (F, Z) ≥ 1. This is due to the fact that the set of all rational functions that can
+be computed with zero cost is
+W0 = {w ∈ K(z1 , . . . , zm ) | C(w, Z) = 0} = K + K0 z1 + K0 z2 + · · · + K0 zn .
+(Clearly, every element in W0 can be computed without any cost. But W0 is also closed under all operations
+that are free of cost.) If r > m, then there are µ and i such that pµ,i 6∈ K0 and therefore f µ 6∈ W0 .
+W. l. o. g. K0 is infinite, because if we replace K0 by K0 (t) for some indeterminate t, the complexity
+cannot go up, since every computation over K0 is certainly a computation over K0 (t). W. l. o. g. f µ 6= 0
+for all 1 ≤ µ ≤ m.
+Let β = (w1 , . . . , w` ) be an optimal computation for F and let each wλ = pλ /qλ with pλ , qλ ∈
+K0 [z1 , . . . , zn ]. Let j be minimal such that γ(w j ,V j ) = 1, where V j = {w1 , . . . , w j−1 }. Then there are
+u, v ∈ W0 such that
+(
+u · v or
+wj =
+u/v .
+5 Remember that we are talking about the rank over K . And over K , pairwise distinct powers of x are linearly independent!
+0
+0
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+8
+
+FAST M ATRIX M ULTIPLICATION
+
+By definition of W0 , there exist α1 , . . . , αn ∈ K0 , b ∈ K and γ1 , . . . , γn ∈ K0 , d ∈ K such that
+n
+
+u = ∑ αν zν + b ,
+ν=1
+n
+
+v = ∑ γν zν + d .
+ν=1
+
+Because b · d, b/d ∈ W0 , there is a ν1 such that αν1 6= 0 or there is a ν2 such that γν2 6= 0. W. l. o. g.
+ν1 = n or ν2 = n.
+Now the idea is the following. We define a homomorphism S : M 0 → M̄ where M 0 is an appropriate
+subset of M and M̄ = K[z1 , . . . , zn−1 ] in such a way that
+C(S( f1 ), . . . , S( fm )) ≤ C( f1 , . . . , fm ) − 1 .
+Such an S is also called a substitution and the proof technique that we are using is called the substitution
+method. Then we apply the induction hypothesis to S( f1 ), . . . , S( fm ).
+Case 1: w j = u · v. We can assume that γn 6= 0. Our substitution S is induced by
+zn →
+
+
+n−1
+1
+−
+λ
+γ
+z
+−
+d
+,
+ν
+ν
+∑
+γn |{z} ν=1
+∈K0
+
+zν → zν
+
+for 1 ≤ ν ≤ n − 1 .
+
+The parameter λ will be chosen later. We have S(zn ) ∈ W0 , so there is a computation (x1 , . . . , xt ) computing
+zn at no cost. In the following, for an element g ∈ K(z1 , . . . , zn ), we set ḡ := S(g). We claim that the
+sequence
+β̄ = ( x̄1 , . . . , x̄t , w¯1 , . . . , w̄` )
+| {z }
+compute z̄n for free
+
+is a computation for f¯1 , . . . , f¯m , since S is a homomorphism. There are two problems that have to be fixed:
+First zn (an input) is replaced by something, namely z̄n , that is not an input. But we compute z̄n in the
+beginning. Second, the substitution might cause a “division by zero,” i. e., there might be an i such that
+q̄i = 0 and then w̄i = p̄i /q̄i is not defined. But since qi considered as an element of K(z1 , . . . , zn−1 )[zn ]
+can only have finitely many zeros, we can choose the parameter λ in such a way that none of the q̄i is
+zero. (K0 is infinite!)
+By definition of S,
+w̄ j = ū · |{z}
+v̄ ,
+=λ
+
+thus
+γ(w̄ j , V¯j ) = 0 .
+This means that
+Γ(β , Z) − 1 ≥ Γ̄(β̄ , Z̄)
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+9
+
+M ARKUS B L ÄSER
+
+and
+C∗/ (F, Z) = Γ(β , Z) ≥ Γ̄(β̄ , Z̄) + 1
+
+≥ col-rkK0 P̄ − m + 1 .
+|{z}
+
+induction
+hypothesis
+
+It remains to estimate col-rkK0 P̄. We have
+n−1
+
+f¯µ = ∑ p̄µν zν + q̄µ ,
+ν=1
+
+γν
+pµn ,
+γn
+pµn
+q̄µ = qµ −
+(λ − d) .
+γn
+
+p̄µν = pµν −
+
+Thus P̄ is obtained from P by adding a K0 -multiple of the nth column to the other ones and then deleting
+the nth column. Therefore, col-rkK0 P̄ ≥ r − 1 and C∗/ (F, Z) ≥ r − m.
+Case 2: w j = u/v. If γn 6= 0, then v̄ = λ ∈ K0 and the same substitution as in the first case works. If
+γν = 0 for all ν, then v = d and αn 6= 0. Now we substitute
+zn 7→
+
+n−1
+1
+(λ d − ∑ αν zν − b) ,
+αn
+ν=1
+
+zν 7→ zν
+
+for 1 ≤ ν ≤ n − 1 .
+
+Then ū = λ d and w̄ j = ū/v̄ = λ ∈ K0 . We can now proceed as in the first case.
+3.1.1
+
+Further applications
+
+Here are two other applications of Theorem 3.2.
+Several polynomials
+We can also look at the evaluation of several polynomials at one point x, i. e., at the complexity of
+nµ
+
+f µ (x) = ∑ aµν xν ,
+
+1 ≤ µ ≤ m.
+
+ν=0
+
+Here the matrix P looks like
+
+x x2 . . . xn1
+ 0 0 ... 0
+
+P= . .
+..
+ .. ..
+.
+0
+
+0
+
+...
+
+0
+
+0 0 ... 0
+x x2 . . . xn2
+.. ..
+..
+. .
+.
+0 0 ... 0
+
+... 0 0 ...
+... 0 0 ...
+. . .. ..
+. . .
+. . . x x2 . . .
+
+0
+0
+..
+.
+xnm
+
+1 0 ...
+0 1 ...
+.. .. . .
+.
+. .
+0 0 ...
+
+
+0
+0 
+
+.. 
+. 
+1
+
+and we have col-rkK0 P = n1 + n2 + · · · + nm + m. Thus
+C∗/ ( f1 , . . . , fm ) ≥ n1 + n2 + · · · + nm ,
+that is, evaluating each polynomial using the Horner scheme is optimal. On the other hand, if we want to
+evaluate one polynomial at several points, this can be done much faster, see [8].
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+10
+
+FAST M ATRIX M ULTIPLICATION
+
+Matrix vector multiplication
+Here, we consider the polynomials f1 , . . . , fm given by
+
+   
+a11 . . . a1k
+x1
+f1
+ ..
+..   ..  =  ..  .
+ .
+.  .   . 
+am1 . . . amk
+
+xk
+
+fm
+
+The matrix P is given by
+
+x1 x2 . . . xk 0 0 . . . 0 . . . 0 0 . . .
+ 0 0 . . . 0 x1 x2 . . . xk . . . 0 0 . . .
+
+P= .
+..
+..
+..
+..
+.. . .
+.
+..
+ ..
+. ..
+.
+.
+.
+.
+.
+.
+0 0 . . . 0 0 0 . . . 0 . . . x1 x2 . . .
+Thus col-rkK0 (P) = km + m and
+
+0
+0
+..
+.
+xk
+
+1 0 ...
+0 1 ...
+.. .. . .
+.
+. .
+0 0 ...
+
+
+0
+0 
+
+..  .
+. 
+1
+
+C∗/ ( f1 , . . . , fm ) ≥ mk .
+
+This means that here—opposed to general matrix multiplication—the trivial algorithm is optimal.
+
+3.2
+
+Additions
+
+The second statement of Theorem 3.1 follows from the Theorem 3.3 below. We need the concept of
+transcendence degree. If we have two fields K ⊆ L, then the transcendence degree of L over K, tr-degK (L)
+is the maximum number t of elements a1 , . . . , at ∈ L such that a1 , . . . , at do not fulfill any algebraic relation
+over K, that is, there is no t-variate polynomial p with coefficients from K such that p(a1 , . . . , at ) = 0.6
+Theorem 3.3. Let K0 be a field and K = K0 (a0 , . . . , an ). Let f = a0 + · · · + an xn . Then
+C+ ( f ) ≥ tr-degK0 (a0 , a1 , . . . , an ) − 1 .
+Proof. Let β = (w1 , . . . , w` ) be a computation that computes f . W. l. o. g. wλ 6= 0 for all 1 ≤ λ ≤ `.
+We want to characterize the set Wm of all elements that can be computed with m additions. We claim
+that there are polynomials gi (x, z1 , . . . , zi ) and elements ζi ∈ K, 1 ≤ i ≤ m such that
+W0 = {bxt0 | t0 ∈ Z, b ∈ K}
+t0
+
+t1
+
+and
+
+tm
+
+Wm = {bx f1 (x) . . . fm (x) | ti ∈ Z, b ∈ K}
+where fi (x) = gi (x, z1 , . . . , zi ) |z1 →ζ1 ,...,zi →ζi , 1 ≤ i ≤ m. The proof of this claim is by induction in m.
+Induction start (m = 0): clear by construction.
+Induction step (m → m + 1): Let wi = u ± v be the last addition/subtraction in our computation with m + 1
+additions/subtractions. u, v can be computed with m additions/subtractions, therefore u, v ∈ Wm by the
+induction hypothesis. This means that
+wi = bxt0 f1 (x)t1 . . . fm (x)tm ± cxs0 f1 (x)s1 . . . fm (x)sm .
+6 Note the similarity to dimension of vector spaces. Here the dimension is the maximum number of elements that do not
+
+fulfill any linear relation.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+11
+
+M ARKUS B L ÄSER
+
+W. l. o. g. b 6= 0, otherwise we would add 0. Therefore,
+c
+wi = b(xt0 gt11 . . . gtmm ± · xs0 gs11 . . . gsmm ) |z1 →ζ1 ,...,zm →ζm .
+b
+We set
+gm+1 := (xt0 gt11 . . . gtmm ± zm+1 xs0 gs11 . . . gsmm ) .
+Then
+wi = bgm+1 |z1 →ζ1 ,...,zm+1 →ζm+1
+
+c
+with ζm+1 = .
+b
+
+This shows the claim.
+Since wi was the last addition/subtraction in β for every j > i, w j can be computed using only
+multiplications and is therefore in Wm+1 . Since the gi depend on m + 1 variables z1 , . . . , zm+1 , the
+polynomials fi have transcendence degree at most m + 1. Henceforth, the transcendence degree of the
+coefficients of f is at most m + 1, since they are polynomials in the fi .
+Exercise 3.4. Show that the additive complexity of matrix-vector multiplication is m(k − 1) (multiplication of an m × k-matrix with a vector of size k, see the specification in the previous section). Thus the
+trivial algorithm is optimal.
+
+4
+
+Bilinear problems
+
+Let K be a field and let M = K(x1 , . . . , xN ). We will use the Ostrowski measure in the following. We will
+ask questions of the form
+C∗/ (F) = ?
+where F = { f1 , . . . , fk } is a set of quadratic forms,
+N
+
+fκ =
+
+∑ tκ µν xµ xν ,
+
+1 ≤ κ ≤ k.
+
+µ,ν=1
+
+Most of the time, we will consider the special case of bilinear forms, that is, our variables are divided into
+two disjoint sets and only products of one variable from the first set with one variable of the second set
+appear in fκ .
+The “three dimensional array” t := (tκ µν )κ=1,...,k;µ,ν=1,...,N ∈ K k×N×N is called the tensor corresponding to F. Since xµ xν = xν xµ , there are several tensors that represent the same set F. A tensor s is
+symmetrically equivalent to t if
+sκ µν + sκν µ = tκ µν + tκν µ
+
+for all κ, µ, ν.
+
+Two tensors describe the same set of quadratic forms if they are symmetrically equivalent.
+The two typical problems that we will deal with in the following are:
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+12
+
+FAST M ATRIX M ULTIPLICATION
+
+a0
+1
+2
+3
+4
+
+b0
+b1
+b2
+b3
+
+a1
+2
+3
+4
+5
+
+a2
+3
+4
+5
+6
+
+a3
+4
+5
+6
+7
+
+Figure 1: The tensor of the multiplication of polynomials of degree three. The rows correspond to the
+coefficients of the first polynomial, the columns to the coefficients of the second. The tensors consist of 7
+layers. The entries of the tensor are from {0, 1}. The entry ` in position (i, j) means that ti, j,` = 1, i. e.,
+ai · b j occurs in c` .
+
+y1,1
+y2,1
+y1,2
+y2,2
+
+x1,1
+(1, 1)
+
+x1,2
+
+x2,1
+(2, 1)
+
+(1, 1)
+(1, 2)
+
+x2,2
+(2, 1)
+
+(2, 2)
+(1, 2)
+
+(2, 2)
+
+Figure 2: The tensor of 2 × 2-matrix multiplication. Again, it is {0, 1}-valued. An entry (κ, ν) in the row
+(κ, µ) and column (µ, ν) means that xκ,µ yµ,ν appears in fκ,ν .
+Matrix multiplication: We are given two n × n-matrices x = (xi j ) and y = (yi j ) with indeterminates as
+entries. The entries of xy are given by the well-known quadratic (in fact bilinear) forms
+n
+
+fi j = ∑ xik yk j ,
+
+1 ≤ i, j ≤ n .
+
+k=1
+i
+Polynomial multiplication: Here our input consists of two polynomials p(z) = ∑m
+i=0 ai z and q(z) =
+n
+j
+∑ j=0 b j z . The coefficients are again indeterminates over K. The coefficients c` , 0 ≤ ` ≤ m + n of
+their product pq are given by the bilinear forms
+
+c` = ∑ ai b j ,
+
+0 ≤ ` ≤ m+n.
+
+i+ j=`
+
+Figure 1 shows the tensor of multiplication of degree 3 polynomials. It is shown as an element of
+K 4×4×7 . Strictly speaking, it would be an element of K 8×8×7 . But since polynomial multiplication is a
+bilinear map, the rest of the entries are zero. We will look at tensors of bilinear maps in this way in the
+following. Figure 2 shows the tensor of 2 × 2-matrix multiplication. It lives in K 4×4×4 .
+
+4.1
+
+Vermeidung von Divisionen
+
+Strassen [32] showed that for computing sets of quadratic forms, divisions do not help (provided that the
+field of scalars is large enough). For a polynomial g ∈ K[x1 , . . . , xN ], H j (g) denotes the homogenous part
+of degree j of g, that is, the sum of all monomials of degree j of g.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+13
+
+M ARKUS B L ÄSER
+N
+
+Theorem 4.1. Let Fκ = ∑ tκ µν xµ xν , 1 ≤ κ ≤ k, and F = {F1 , . . . , Fk }. If #K = ∞ and C∗/ (F) ≤ `
+µ,ν=1
+
+then there are products
+N
+
+Pλ =
+
+∑ uλ i xi
+
+i=1
+
+N
+
+
+
+
+
+∑ vλ i xi ,
+
+1 ≤ λ ≤ `,
+
+i=1
+
+such that F ⊆ linK {P1 , . . . , P` }. In particular, C∗ (F) = C∗/ (F).
+Note that each factor of the products is a linear form in the variables that is free of cost. We can write
+each Fκ as a linear combination of the products, again at no cost.
+Proof. Let β = (w1 , . . . , wL ) be an optimal computation for F, w. l. o. g. 0 6∈ F and wi 6= 0 for all 1 ≤ i ≤ L.
+Let wi = gi /hi with gi , hi ∈ K[x1 , . . . , xN ], hi , gi 6= 0.
+As a first step, we want to achieve that
+H0 (gi ) 6= 0 6= H0 (hi ) ,
+
+1 ≤ i ≤ L.
+
+We substitute
+xi → x̄i − αi ,
+
+1≤i≤N,
+
+for some αi ∈ K. Let the resulting computation be β̄ = (w̄1 , . . . , w̄L ) where w̄i = ḡi /h̄i ,
+ḡi (x̄1 , . . . , x̄N ) = gi (x1 + α1 , . . . , xN + αN )
+
+and
+
+h̄i (x̄1 , . . . , x̄N ) = hi (x1 + α1 , . . . , xN + αN ) .
+
+Since fκ ∈ {w1 , . . . , wL },
+f¯κ (x̄1 , . . . , x̄N ) = fκ (x̄1 + α1 , . . . , x̄N + αN ) ∈ {w̄1 , . . . , w̄L } .
+Because
+
+N
+
+f¯κ (x̄1 , . . . , x̄N ) =
+
+N
+
+∑ tκ µν x̄µ x̄ν = ∑ tκ µν xµ xν + terms of degree ≤ 1 ,
+µ,ν=1
+
+µ,ν=1
+
+we can extend the computation β̄ without increasing the cost such that the new computation computes
+fκ (x1 , . . . , xN ), 1 ≤ κ ≤ k. All we have to do is to compute the terms of degree one, which is free of cost,
+and subtract them from the f¯κ (x̄1 , . . . , x̄N ), which is again free of cost. We call the resulting computation
+again β̄ .
+By the following well-known fact, we can choose the αi in such a way that all H0 (ḡi ) 6= 0 6= H0 (h̄i ),
+since H0 (ḡi ) = gi (α1 , . . . , αN ) and H0 (h̄i ) = hi (α1 , . . . , αN ).
+Fact 4.2. For any finite set of polynomials φ1 , . . . , φn , φi 6= 0 for all i, there are α1 , . . . , αN ∈ K such that
+φi (α1 , . . . , αN ) 6= 0 for all i provided that #K = ∞.7
+7 Hint:
+
+if type = mathematician then
+return “It’s an open set!”
+else if type = theoretical computer scientist then
+use the Schwartz-Zippel lemma
+else
+prove it by induction on n
+end if
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+14
+
+FAST M ATRIX M ULTIPLICATION
+
+Next, we substitute
+x̄i → xi z ,
+
+1≤i≤N.
+
+Let β̃ = (w̃1 , . . . , w̃L̃ ) be the resulting computation. We view the w̃i as elements of K(x1 , . . . , xN )[[z]], that
+is, as formal power series in z with rational functions in x1 , . . . , xN as coefficients. This is possible, since
+every w̄i = ḡi /h̄i . The substitution above transforms ḡi and h̄i into the power series
+g̃i = H0 (ḡi ) + H1 (ḡi )z + H2 (ḡi )z2 + · · ·
+
+and
+
+2
+
+h̃i = H0 (h̄i ) + H1 (h̄i )z + H2 (h̄i )z + · · · .
+By the fact below, h̃i has in inverse in K(x1 , . . . , xN )[[z]] because H0 (h̄i ) 6= 0. Thus w̃i = g̃i /h̃i is an element
+of K(x1 , . . . , xN )[[z]] and we can write it as
+0
+
+00
+
+w̃i = ci + ci z + ci z2 + · · · .
+i
+Fact 4.3. A formal power series ∑∞
+i=0 ai z ∈ L[[z]] is invertible iff a0 6= 0. Its inverse is given by
+
+1
+(1 + q + q2 + · · · )
+a0
+ai i 8
+where q = − ∑∞
+i=1 a0 z .
+
+Since in the end, we compute a set of quadratic forms, it is sufficient to compute only w̃i up to degree
+two in z. Because ci and c0i can be computed for free in the Ostrowski model, we only need to compute c00i
+in every step.
+First case: ith step is a multiplication. We have
+w̃i = ũ · ṽ = (u + u0 z + u00 z2 + . . . )(v + v0 z + v00 z2 + . . . ) .
+We can compute
+c00i = |{z}
+u v00 +u0 v0 + u00 |{z}
+v .
+∈K
+
+∈K
+
+| {z }
+
+| {z }
+
+free of cost
+
+free of costs
+
+with one bilinear multiplication.
+Second case: ith step is a division. Here,
+ũ
+ṽ
+0
+00
+u+u z+u z+...
+=
+0
+00
+1 + v z + v z2 + . . .
+0
+00
+0
+00
+0
+0
+= (u + u z + u z2 + . . . )(1 − (v z + v z2 + . . . ) + (v z + . . . )2 − (v z + . . . )3 + . . . ) .
+
+w̃i =
+
+Thus
+
+00
+
+0 0
+
+00
+
+0
+
+00
+
+0
+
+c00i = u − u v − u(−v + (v )2 ) = u − (u −
+
+0
+
+0
+
+uv )v +
+|{z}
+
+free of costs
+
+00
+
+uv
+|{z}
+
+free of costs
+
+can be computed with one costing operation.
+8 Hint:
+
+1
+∞
+i
+1−q = ∑i=0 q .
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+15
+
+M ARKUS B L ÄSER
+
+4.2
+
+Rank of bilinear problems
+
+Polynomial multiplication and matrix multiplication are bilinear problems. We can separate the variables
+into two sets {x1 , . . . , xM } and {y1 , . . . , yN } and write the quadratic forms as
+M
+
+N
+
+1 ≤ κ ≤ k.
+
+fκ = ∑ ∑ tκ µν xµ yν ,
+µ=1 ν=1
+
+The tensor (tκ µν ) ∈ K k×M×N is unique once we fix a ordering of the variables and quadratic forms and
+we do not need the notion of symmetric equivalence.
+Theorem 4.1 tell us that under the Ostrowski measure, we only have to consider products of linear
+forms. When computing bilinear forms, it is a natural to restrict ourselves to products of the form linear
+form in {x1 , . . . , xM } times a linear form in {y1 , . . . , yN }.
+Definition 4.4. The minimal number of products
+M
+
+Pλ =
+
+N
+
+∑ uλ µ x µ
+µ=1
+
+
+
+
+
+∑ vλ ν yν ,
+
+1≤λ ≤`
+
+ν=1
+
+such that F ⊆ lin{P1 , . . . , Pl } is called rank of F = {F1 , . . . , Fk } or bilinear complexity of F. We denote it
+by R(F).
+We can define the rank in terms of tensors, too. Let t = (tκ µν ) be the tensor of F as above. We have
+R(F) ≤ ` ⇔ there are linear forms u1 , . . . , u` in x1 , . . . , xM
+and v1 , . . . , v` in y1 , . . . , yN such that F ⊆ lin{u1 v1 , . . . , u` v` }
+⇔ there are wλ κ ∈ K, 1 ≤ λ ≤ `, 1 ≤ κ ≤ k,
+`
+
+l
+
+such that fκ = ∑ wλ κ uλ vλ = ∑ wλ κ
+λ =1
+
+λ =1
+
+M
+
+∑ uλ µ xµ
+µ=1
+
+N
+
+
+
+
+
+∑ vλ ν yν , 1 ≤ κ ≤ k .
+ν=1
+
+Comparing coefficients, we get
+l
+
+tκ µν = ∑ wλ κ uλ µ vλ ν ,
+
+1 ≤ κ ≤ k, 1 ≤ µ ≤ M, 1 ≤ ν ≤ N .
+
+λ =1
+
+Definition 4.5. Let w ∈ K k , u ∈ K M , v ∈ K N . The tensor w ⊗ u ⊗ v ∈ K k×M×N with entry wκ uµ vν in
+position (κ, µ, ν) is called a triad.
+From the calculation above, we get
+R(F) ≤ ` ⇔ there are w1 , . . . w` ∈ K k , u1 . . . u` ∈ K M , and v1 . . . v` ∈ K N such that
+`
+
+t = (tκ µν ) = ∑ wλ ⊗ uλ ⊗ vλ .
+|
+{z
+}
+λ =1
+triad
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+16
+
+FAST M ATRIX M ULTIPLICATION
+
+We define the rank R(t) of a tensor t to be the minimal number of triads such that t is the sum of these
+triads.9 To every set of bilinear forms F there is a corresponding tensor t and vice versa. As we have
+seen, their rank is the same.
+Example 4.6 (Complex multiplication). Consider the multiplication of complex number viewed as an
+R-algebra. Its multiplication is described by the two bilinear forms f0 and f1 defined by
+(x0 + x1 i)(y0 + y1 i) = x0 y0 − x1 y1 + (x0 y1 + x1 y0 ) i .
+| {z } |
+{z
+}
+f0
+
+f1
+
+It is clear that R( f0 , f1 ) ≤ 4. But also R( f0 , f1 ) ≤ 3 holds. Let
+P1 = x0 y0 ,
+P2 = x1 y1 ,
+P3 = (x0 + x1 )(y0 + y1 ) .
+Then
+f0 = P1 − P2 ,
+f1 = P3 − P1 − P2 .
+This is essentially Karatsuba’s algorithm. Note that C ∼
+= K[X]/(X 2 + 1). We first multiply the two
+polynomials x0 + x1 X and y0 + y1 X and then reduce modulo X 2 − 1, which is free of cost in the bilinear
+model.
+Multiplicative complexity and rank are linearly related.
+Theorem 4.7. Let F = { f1 , . . . , fk } be a set of bilinear forms in variables {x1 , . . . , xM } and {y1 , . . . , yN }.
+Then
+C∗/ (F) ≤ R(F) ≤ 2 C∗/ (F) .
+Proof. The first inequality is clear. For the second, assume that C∗/ (F) = ` and consider an optimal
+computation. We have
+`
+
+fκ = ∑ wλ κ
+
+M
+
+N
+
+M
+
+0
+
+
+
+λ =1
+
+µ=1
+
+ν=1
+
+µ=1
+
+`
+
+M
+
+N
+
+`
+
+= ∑ wλ κ
+λ =1
+
+N
+
+0
+
+∑ uλ µ xµ + ∑ uλ ν yν ∑ vλ µ xµ + ∑ vλ ν yν
+
+
+
+
+ν=1
+M
+
+
+
+0
+
+N
+
+
+
+0
+
+
+
+∑ uλ µ xµ ∑ vλ ν yν + ∑ wλ κ ∑ vλ µ xµ ∑ uλ ν yν .
+µ=1
+
+ν=1
+
+λ =1
+
+µ=1
+
+ν=1
+
+The terms of the form xi x j and yi y j have to cancel each other, since they do not appear in fκ .
+9 Note the similarity to the definition of rank of a matrix. The rank of a matrix M is the minimum number of rank-1 matrices
+
+(“diads”) such such that M is the sum of these rank-1 matrices.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+17
+
+M ARKUS B L ÄSER
+
+Example 4.8 (Winograd’s algorithm [36]). Do products that are not bilinear help in for the computation
+of bilinear forms? Here is an example. We consider the multiplication of M × 2 matrices with 2 × N
+matrices. Then entries of the product are given by
+f µν = xµ1 y1ν + xµ2 y2ν .
+Consider the following MN products
+(xµ1 + y2ν )(xµ2 + y1ν )
+
+1 ≤ µ ≤ M, 1 ≤ ν ≤ N .
+
+We can write
+f µν = (xµ1 + y2ν )(xµ2 + y1ν ) − xµ1 xµ2 − y1ν y2ν ,
+thus a total of MN + M + N products suffice. Setting M = 2, we can multiply 2 × 2 matrices with 2 × n
+matrices with 3N + 2 multiplications. For the rank, the best we know is d3 12 Ne multiplications, which we
+get by repeatedly applying Strassen’s algorithm and possibly one matrix-vector multiplication if N is odd.
+Waksman [34] showed that if char K 6= 2, then even MN + M + N − 1 products suffice. We get that
+the multiplicative complexity of 2 × 2 with 2 × 3 matrix multiplication is ≤ 10. On the other hand,
+Alekseyev [1] proved that the rank is 11.
+
+5
+
+The exponent of matrix multiplication
+
+In the following hk, m, ni : K k×m × K m×n → K k×n denotes the bilinear map that maps a k × m-matrix A
+and an m × n-matrix B to their product AB. Since there is no danger of confusion, we will also use the
+same symbol for the corresponding tensor and for the set of bilinear forms
+n m
+o
+X
+Y
+1
+≤
+κ
+≤
+k,
+1
+≤
+ν
+≤
+n
+.
+∑ κ µ µν
+µ=1
+
+Definition 5.1. ω = inf{β | R(hn, n, ni) ≤ O(nβ )} is called the exponent of matrix multiplication.
+In the definition of ω above, we only count bilinear products. For the asymptotic growth, it does not
+matter whether we count all operations or only bilinear products. Let ω̃ = inf{β | C(hn, n, ni) ≤ O(nβ )}
+with ¢(±) = ¢(∗/) = ¢(λ ·) = 1.
+Theorem 5.2. ω = ω̃, if K is infinite.
+
+Proof. ω ≤ ω̃ is obvious. For the other inequality, note that from the definition of ω, it follows that there
+is an α such that
+∀ε > 0 : ∃m0 > 1 : ∀m ≥ m0 : R(hm, m, mi) ≤ α · mw+ε .
+Let ε > 0 be given and choose such an m that is large enough. Let r = R(hm, m, mi).
+To multiply mi × mi -matrices we decompose them into blocks of mi−1 × mi−1 -matrices and apply
+recursion. Let A(i) be the number of arithmetic operations for the multiplication of mi × mi -matrices with
+this approach. We obtain
+A(i) ≤ rA(i − 1) + c m2(i−1)
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+18
+
+FAST M ATRIX M ULTIPLICATION
+
+where c is the number of additions and scalar multiplications that are performed by the chosen bilinear
+algorithm for hm, m, mi with r bilinear multiplications. Expanding this, we get
+!
+i−2 r j
+A(i) ≤ ri A(0) + cm2(i−1) ∑ 2 j
+j=0 m
+ r i−1
+−1
+2
+= ri A(0) + c m2(i−1) m
+r
+−1
+m2
+ri−1 − m2(i−1)
+= ri A(0) + c m2
+r − m2
+
+c m2  i
+c
+= A(0) +
+r −
+m2 .
+2
+r(r − m )
+r − m2
+{z
+}
+|
+constant
+
+(Obviously, r ≥ m2 . But it is also very easy to show that r > m2 , so we are not dividing by zero.) We
+have C(hn0 , n0 , n0 i) ≤ C(hn, n, ni) if n0 ≤ n. (Recall that we can eliminate divisions, so we can fill up with
+zeros.) Therefore,
+D
+E
+C(hn, n, ni) ≤ C( mdlogm ne , mdlogm ne , mdlogm ne )
+≤ A(dlogm ne)
+= O(rdlogm ne )
+= O(rlogm n )
+= O(nlogm r ) .
+Since r ≤ α · mω+ε , we have logm r ≤ ω + ε + logm α. With ε 0 = ε + logm α,
+0
+
+C(hn, n, ni) = O(nlogm r ) = O(nω+ε ) .
+Thus
+ω̃ ≤ ω + ε
+
+for all ε > 0 ,
+
+since logm α → 0 if m → ∞. This means ω̃ = ω, since ω̃ is an infimum.
+To prove good upper bounds for ω, we introduce some operation on tensors and analyze the behavior
+of the rank under these operations.
+
+5.1
+
+Permutations (of tensors)
+
+Let t ∈ K k×m×n and t = ∑rj=1 t j with triads t j = a j1 ⊗ a j2 ⊗ a j3 , 1 ≤ j ≤ r. Let π ∈ S3 , where S3 denotes
+the symmetric group on {1, 2, 3}. For a triad t j , let πt j = a jπ −1 (1) ⊗ a jπ −1 (2) ⊗ a jπ −1 (3) and πt = ∑rj=1 πt j .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+19
+
+M ARKUS B L ÄSER
+
+π
+-
+
+Figure 3: Permutation of the dimensions.
+πt is well-defined. To see this, let t = ∑si=1 bi1 ⊗ bi2 ⊗ bi3 be a second decomposition of t. We claim that
+r
+
+s
+
+∑ a jπ −1 (1) ⊗ a jπ −1 (2) ⊗ a jπ −1 (3) = ∑ biπ −1 (1) ⊗ biπ −1 (2) ⊗ biπ −1 (3) .
+
+j=1
+
+i=1
+
+Let a j1 = (a j11 , . . . , a j1k ) and bi1 = (bi11 , . . . , bi1k ) and let a j2 , a j3 , bi2 , and bi3 be given analogously.
+We have
+r
+
+s
+
+te1 e2 e3 = ∑ a j1e1 · a j2e2 · a j3e3 = ∑ bi1e1 · bi2e2 · bi3e3 .
+j=1
+
+i=1
+
+Thus
+r
+
+πte1 e2 e3 = ∑ a jπ −1 (1)e −1 · a jπ −1 (2)e −1 · a jπ −1 (3)e −1
+j=1
+s
+
+π
+
+(1)
+
+π
+
+(2)
+
+π
+
+(3)
+
+= ∑ biπ −1 (1)e −1 · biπ −1 (2)e −1 · biπ −1 (3)e −1 .
+i=1
+
+π
+
+(1)
+
+π
+
+(2)
+
+π
+
+(3)
+
+The proof of the following lemma is obvious.
+Lemma 5.3. R(t) = R(πt).
+Instead of permuting the dimensions, we can also permute the slices of a tensor. Let t = (ti j` ) ∈
+K k×m×n and σ ∈ Sk . Then, for t 0 = (tσ (i) j` ), R(t 0 ) = R(t).
+0
+0
+0
+More generally, let A : K k → K k , B : K m → K m , and C : K n → K n be homomorphisms. Let t = ∑rj=1 t j
+with triads t j = a j1 ⊗ a j2 ⊗ a j3 . We set
+(A ⊗ B ⊗C)t j = A(a j1 ) ⊗ B(a j2 ) ⊗C(a j3 )
+and
+
+r
+
+(A ⊗ B ⊗C)t = ∑ (A ⊗ B ⊗C)t j .
+j=1
+
+By looking at a particular entry of t, it is easy to see that this is well-defined.
+The proof of the following lemma is again obvious.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+20
+
+FAST M ATRIX M ULTIPLICATION
+
+
+
+-
+
+Figure 4: Permutation of the slices.
+Lemma 5.4. R((A ⊗ B ⊗C)t) ≤ R(t).
+Equality holds if A, B, and C are isomorphisms. How does the tensor of matrix multiplication look
+like? Recall that the bilinear forms are given by
+m
+
+Zκν = ∑ Xκ µ Yµν ,
+
+1 ≤ κ ≤ k, 1 ≤ ν ≤ n.
+
+µ=1
+
+The entries of the corresponding tensor
+(tκ µ̄,µ ν̄,ν κ̄ ) = t ∈ K (k×m)×(m×n)×(n×k)
+are given by
+tκ µ̄,µ ν̄,ν κ̄ = δκ̄κ δµ̄ µ δν̄ν
+where δi j is Kronecker’s delta. (Here, each dimension of the tensor is addressed with a two-dimensional
+index, which reflects the way we number the entries of matrices. If you prefer it, you can label the entries
+of the tensor with indices from 1, . . . km, 1, . . . mn, and 1, . . . , nk. We also “transposed” the indices in the
+third slice, to get a symmetric view of the tensor.)
+Let π = (123). Then for πt =: t 0 ∈ K (n×k)×(k×m)×(m×n) , we have
+tν0 κ̄,κ µ̄,µ ν̄ = δν̄ν δκ̄κ δµ̄ µ
+= δκ̄κ δµ̄ µ δν̄ν
+= tκ µ̄,µ ν̄,ν κ̄ .
+Therefore,
+R(hk, m, ni) = R(hn, k, mi) = R(hm, n, ki) .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+21
+
+M ARKUS B L ÄSER
+
+n
+k
+k′
+
+m
+
+n′
+
+m′
+Figure 5: Sum of two tensors.
+Now, let t 00 = (tµ κ̄,ν µ̄,κ̄ν ). We have R(t) = R(t 00 ), since permuting the “inner” indices corresponds to
+permuting the slices of the tensor.
+Next, let π = (12)(3). Let πt 00 =: t 000 ∈ K (n×m)×(m×k)×(k×n) . We have,
+tν000µ̄,µ κ̄,κ ν̄ = δµ,µ̄ δκ,κ̄ δν,ν̄
+= tκ̄ µ,µ̄ν,ν̄κ .
+Therefore,
+R(hk, m, ni) = R(hn, m, ki) .
+The second transformation corresponds to the well-known fact that AB = C implies BT AT = CT .
+To summarize:
+Lemma 5.5. R(hk, m, ni) = R(hn, k, mi) = R(hm, n, ki) = R(hm, k, ni) = R(hn, m, ki) = R(hk, n, mi).
+
+5.2
+
+Products and sums
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+Let t ∈ K k×m×n and t 0 ∈ K k ×m ×n . The direct sum of t and t 0 , s := t ⊕t 0 ∈ K (k+k )×(m+m )×(n+n ) , is defined
+as follows:
+
+if 1 ≤ κ ≤ k, 1 ≤ µ ≤ m, 1 ≤ ν ≤ n ,
+
+tκ µν
+0
+sκ µν = tκ−k,µ−m,ν−n
+if k + 1 ≤ κ ≤ k + k0 , m + 1 ≤ µ ≤ m + m0 , n + 1 ≤ ν ≤ n + n0 ,
+
+
+0
+otherwise.
+Lemma 5.6. R(t ⊕ t 0 ) ≤ R(t) + R(t 0 ) .
+r
+
+r
+
+i=1
+
+i=1
+
+Proof. Let t = ∑ ui ⊗ vi ⊗ wi and t 0 = ∑ u0i ⊗ v0i ⊗ w0i . Let
+ûi = (ui1 , · · · , uik , 0, · · · , 0) and
+| {z } | {z }
+k0
+
+ui
+
+û0i = (0, · · · , 0, u0i1 , · · · , u0ik )
+| {z } | {z }
+k
+
+u0i
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+22
+
+FAST M ATRIX M ULTIPLICATION
+
+⊗
+Figure 6: Product of two tensors.
+and define v̂i , ŵi and v̂0i , ŵ0i analogously. An easy calculation shows that
+r
+
+r0
+
+i=1
+
+j=1
+
+0
+
+t ⊕ t = ∑ ûi ⊗ v̂i ⊗ ŵi + ∑ û0i ⊗ v̂0i ⊗ ŵ0i ,
+which proves the lemma.
+Research problem 5.7 (Strassen’s additivity conjecture). Show that for all tensors t and t 0 , R(t ⊕ t 0 ) =
+R(t) + R(t 0 ), that is, equality always holds in the lemma above.
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+The tensor product t ⊗ t 0 ∈ K kk ×mm ×nn of two tensors t ∈ K k×m×n and t 0 ∈ K k ×m ×n is defined by
+
+t ⊗ t 0 = tκ µν tκ0 0 µ 0 ν 0 1≤κ≤k,1≤κ 0 ≤k0 .
+1≤µ≤m,1≤µ 0 ≤m0
+1≤ν≤n,1≤ν 0 ≤n0
+
+It is very convenient to use double indices κ, κ 0 to “address” the slices 1, . . . , kk0 of the tensor product.
+The same is true for the other two dimensions.
+Lemma 5.8. R(t ⊗ t 0 ) ≤ R(t)R(t 0 ).
+r
+
+r0
+
+i=1
+
+i=1
+
+Proof. Let t = ∑ ui ⊗ vi ⊗ wi and t 0 = ∑ u0i ⊗ v0i ⊗ w0i . Let
+0
+
+ui ⊗ u0j := (uiκ u0jκ 0 )1≤κ≤k,1≤κ 0 ≤k0 ∈ K kk .
+In the same way we define vi ⊗ v0j , wi ⊗ w0j . We have
+(ui ⊗ u0j ) ⊗ (vi ⊗ v0j ) ⊗ (wi ⊗ w0j ) = (uiκ u0jκ 0 · viµ v0jµ 0 · wiν w0jν 0 )1≤κ≤k,1≤κ 0 ≤k0
+0
+
+0
+
+0
+
+∈ K kk ×mm ×nn ∼
+=K
+
+1≤µ≤m,1≤µ 0 ≤m0
+1≤ν≤n,1≤ν 0 ≤n0
+0
+(k×k )×(m×m0 )×(n×n0 )
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+23
+
+M ARKUS B L ÄSER
+
+and
+r0
+
+r r0
+0
+0
+0
+(ui ⊗ u j ) ⊗ (vi ⊗ v j ) ⊗ (wi ⊗ w j ) = (
+uiκ u0jκ 0 viµ v0jµ 0 wiν w0iν 0 )1≤κ≤k,1≤κ 0 ≤k0
+1≤µ≤m,1≤µ 0 ≤m0
+i=1 j=1
+i=1 j=1
+1≤ν≤n,1≤ν 0 ≤n0
+r
+
+∑∑
+
+∑∑
+
+=
+
+
+
+r0
+
+r
+
+∑ uiκ viµ wiν · ∑ u0jκ v0jµ w0jν
+
+
+
+
+j=1
+
+i=1
+
+|
+
+0
+
+{z
+
+tκ µν
+
+} |
+
+{z
+
+tκ0 0 µ 0 ν 0
+
+}
+
+1≤κ≤k,1≤κ 0 ≤k0
+1≤µ≤m,1≤µ 0 ≤m0
+1≤ν≤n,1≤ν 0 ≤n0
+
+= t ⊗ t0 ,
+which proves the lemma.
+For the tensor product of matrix multiplications, we have
+hk, m, ni ⊗ k0 , m0 , n0 = (δκ κ̄ δµ µ̄ δν ν̄ δκ 0 κ̄ 0 δµ 0 µ̄ 0 δν 0 ν̄ 0 )
+= (δκ κ̄ δκ 0 κ̄ 0 δµ µ̄ δµ 0 µ̄ 0 δν ν̄ δν 0 ν̄ 0 )
+= δ(κ,κ 0 ),(κ̄,κ̄ 0 ) δ(µ,µ 0 ),(µ̄,µ̄ 0 ) δ(ν,ν 0 ),(ν̄,ν̄ 0 )
+
+
+
+= kk0 , mm0 , nn0 .
+Thus, the tensor product of two matrix tensors is a bigger matrix tensor. This corresponds to the
+well known identity (A ⊗ B)(A0 ⊗ B0 ) = (AA0 ⊗ BB0 ) for the Kronecker product of matrices. (Note that
+we use quadruple indices to address the entries of the Kronecker products and also of the slices of
+hk, m, ni ⊗ hk0 , m0 , n0 i.) It follows that the inequality in Lemma 5.8 can be strict. We have R(h2, 2, 2i) = 7,
+but there are faster ways to multiply matrices than Strassen’s algorithm.
+Using this machinery, we can show that whenever we can multiply matrices of a fixed format
+efficiently, then we get good bounds for ω.
+Theorem 5.9. If R(hk, m, ni) ≤ r, then ω ≤ 3 · logkmn r.
+Proof. If R(hk, m, ni) ≤ r, then R(hn, k, mi) ≤ r and R(hm, n, ki) ≤ r by Lemma 5.5. Thus, by Lemma 5.8,
+R(hk, m, ni ⊗ hn, k, mi ⊗ hm, n, ki) ≤ r3
+|
+{z
+}
+=hkmn,kmn,kmni
+
+and, with N = kmn,
+R( N i , N i , N i ≤ r3i = (N 3 logN r )i = (N i )3 logN r
+for all i ≥ 1. Therefore, ω ≤ 3 logN r.
+Example 5.10 (Matrix tensors of small format). What do we know about the rank of matrix tensors of
+small formats?
+• R(h2, 2, 2i) ≤ 7 =⇒ ω ≤ 3 · log23 7 = log2 7 ≈ 2.81.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+24
+
+FAST M ATRIX M ULTIPLICATION
+
+• R(h2, 2, 3i) ≤ 11. (This is achieved by doing Strassen once and one trivial matrix-vector product.)
+This gives a worse bound than 2.81. A lower bound of 11 is shown by [1].
+• 14 ≤ R(h2, 3, 3i) ≤ 15, see [8] for corresponding references.
+• 19 ≤ R(h3, 3, 3i) ≤ 23. The lower bound is shown in [5], the upper bound is due to Laderman [21].
+(We would need ≤ 21 to get an improvement.)
+• R(h70, 70, 70i) ≤ 143.640 [25]. This gives ω ≤ 2.80. (Don’t panic, there is a structured way to
+come up with this algorithm.)
+Research problem 5.11. What is the complexity of tensor rank? Håstad [17] has shown that this problem
+is NP-complete over Fq and NP-hard over Q. What upper bounds can we show over Q? Over R, the
+problem is decidable, even in PSPACE, since it reduces to the existential theory over the reals.
+
+6
+
+Border rank
+
+Over R or C, the rank of matrices is semi-continuous. Let
+Rn×n 3 A j → A = lim A j .
+j→∞
+
+If for all j, rk(A j ) ≤ r, then rk(A) ≤ r as rk(A j ) ≤ r means all (r + 1) × (r + 1) minors vanish. But since
+minors are continuous functions, all (r + 1) × (r + 1) minor of A vanish, too.
+The same is not true for 3-dimensional tensors. Consider the multiplication of univariate polynomials
+of degree one modulo X 2 :
+(a0 + a1 X)(b0 + b1 X) = a0 b0 + (a1 b0 + a0 b1 )X + a1 b1 X 2 .
+The tensor corresponding to the two bilinear forms a0 b0 and a1 b0 + a0 b1 has rank 3:
+1
+0
+
+0
+0
+
+0
+1
+
+1
+0
+
+To show the lower bound, we use the substitution method. We first set a0 = 0, b0 = 1. Then we still
+compute a1 . Thus there is a product that depends on a1 , say one factor is αa0 + β a1 with β 6= 0. When
+we replace a1 by − αβ a0 , we kill one product. We still compute
+a0 b0
+
+and
+
+−
+
+α
+a0 b0 + a0 b1 .
+β
+
+Next, set a0 = 1, b0 = 0. Then we still compute b1 . We can kill another product by substituting b1 as
+above. After this, we still compute a0 b0 , which needs one product.
+However, we can approximate the tensor above by tensors of rank two. Let
+t(ε) = (1, ε) ⊗ (1, ε) ⊗ (0, ε1 ) + (1, 0) ⊗ (1, 0) ⊗ (1, − ε1 ) .
+t(ε) obviously has rank two for every ε > 0. The slices of t(ε) are
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+25
+
+M ARKUS B L ÄSER
+
+1
+0
+
+0
+0
+
+0
+1
+
+1
+ε
+
+Thus t(ε) → t if ε → 0.
+Bini, Capovani, Lotti and Romani [4] used this effect to design better matrix multiplication algorithms.
+They started with the following partial matrix multiplication:
+!
+
+
+ 
+z12
+x11 x12
+y11
+y12
+z11
+=
+z///
+22
+x21 x22
+y21
+y22
+z21
+where we only want to compute three entries of the result. We have R({z11 , z12 , z21 }) = 6 but we can
+approximate {z11 , z12 , z21 } with only five products.
+That the rank is six can be shown using the substitution method. Consider z12 . It clearly depends on
+y12 , so there is (after appropriate scaling) a product with one factor being y12 + `(y11 , y21 , y22 ) where ` is
+a linear form. Substitute y12 → −`(y11 , y21 , y22 ). This substitution only affects z12 . After this substitution
+we still compute z̄12 = x11 (−`(y11 , y21 , y22 )) + x12 y22 . z̄12 still depends on y22 . Thus we can substitute
+again y22 → −`0 (y11 , y21 ). This kills two products and we still compute z11 , z21 . But this is nothing else
+than h2, 2, 1i, which has rank four.
+Consider the following five products:
+p1 = (x12 + εx22 )y21 ,
+p2 = x11 (y11 + εy12 ) ,
+p3 = x12 (y11 + y21 + εy22 ) ,
+p4 = (x11 + x12 + εx21 )y11 ,
+p5 = (x12 + εx21 )(y11 + εy22 ) .
+We have
+εz11 = ε p1 + ε p2 + O(ε 2 ) ,
+εz12 = p2 − p4 + p5 + O(ε 2 ) ,
+εz21 = p1 − p3 + p5 + O(ε 2 ) .
+Here, O(ε i ) collects terms of degree i or higher in ε. Now we take a second copy of the partial matrix
+multiplication above, with new variables. With these two copies, we can multiply 2 × 2-matrices with
+2 × 3-matrices (by identifying some of the variables in the copy). So we can approximate h2, 2, 3i with 10
+multiplications. If approximation would be as good as exact computation, then we would get ω ≤ 2.78
+out of this, an improvement over Strassen’s algorithm.
+We will formalize the concept of approximation. Let K be a field and K[[ε]] =: K̂. The role of the
+small quantity ε in the beginning of this section is now taken by the indeterminate ε.
+Definition 6.1. Let h ∈ N, t ∈ K k×m×n .
+r
+
+1. Rh (t) = min r ∃uρ ∈ K[ε]k , vρ ∈ K[ε]m , wρ ∈ K[ε]n : ∑ uρ ⊗ vρ ⊗ wρ = ε ht + O(ε h+1 ) .
+ρ=1
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+26
+
+FAST M ATRIX M ULTIPLICATION
+
+2. R(t) = min Rh (t). R(t) is called the border rank of t.
+h
+
+Remark 6.2.
+1. R0 (t) = R(t).
+2. R0 (t) ≥ R1 (t) ≥ · · · = R(t).
+3. For Rh (t) it is sufficient to consider powers up to ε h in uρ , vρ , wρ .
+0
+
+0
+
+0
+
+Theorem 6.3. Let t ∈ K k×m×n , t 0 ∈ K k ×m ×n . We have
+1. ∀π ∈ S3 : Rh (πt) = Rh (t).
+2. Rmax{h,h0 } (t ⊕ t 0 ) ≤ Rh (t) + Rh0 (t 0 ).
+3. Rh+h0 (t ⊗ t 0 ) ≤ Rh (t) · Rh0 (t 0 ).
+Proof.
+1. Clear.
+2. W. l. o. g. h ≥ h0 . There are approximate computations such that
+r
+
+∑ uρ ⊗ vρ ⊗ wρ = ε ht + O(ε h+1 )
+
+and
+
+(6.1)
+
+ρ=1
+r0
+
+h
+6h0
+
+0
+
+h
+6h0
+
+∑ ε h−h u0ρ ⊗ v0ρ ⊗ w0ρ = ε t 0 + O(ε +1 ) .
+
+(6.2)
+
+ρ=1
+
+Now we can combine these two computations as we did in the case of rank.
+0
+
+0
+
+0
+
+3. Let t = (ti jl ) and t 0 = (ti00 j0 l 0 ). We have t ⊗ t 0 = (ti jl · ti00 j0 l 0 ) ∈ K kk ×mm ×nn . Take two approximate
+computations for t and t 0 as above. Viewed as exact computations over K[[ε]], their tensor product
+computes over the following:
+T = ε ht + ε h+1 s,
+0
+
+0
+
+0
+
+0
+
+T 0 = ε h t 0 + ε h +1 s0
+
+0
+
+with s ∈ K[ε]k×m×n and s0 ∈ K[ε]k ×m ×n . The tensor product of these two computations computes:
+0
+
+0
+
+T ⊗ T 0 = (ε hti jl + ε h+1 si jl )(ε h ti00 j0 l 0 + ε h +1 s0i0 j0 l 0 )
+0
+
+0
+
+= (ε h+h ti jl ti00 j0 l 0 + O(ε h+h +1 ))
+0
+
+0
+
+= ε h+h t ⊗ t 0 + O(ε h+h +1 ) .
+But this is an approximate computation for t ⊗ t 0 .
+The next lemma shows that we can turn approximate computations into exact ones.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+27
+
+M ARKUS B L ÄSER
+
+Lemma 6.4. There
+ isa constant ch such that for all t : R(t) ≤ ch Rh (t). ch depends polynomially on h, in
+particular ch ≤ h+2
+.
+2
+Remark 6.5. Over infinite fields, even ch = 1 + 2h works.
+Proof. Let t be a tensor with border rank r and let
+!
+!
+r
+
+h
+
+h
+
+α
+
+⊗
+
+∑ ∑ ε uρα
+ρ=1
+
+∑ ε vρβ
+
+{z
+
+!
+
+h
+
+⊗
+
+β =0
+
+α=0
+
+|
+
+β
+
+γ
+
+∑ ε wργ
+
+= ε ht + O(ε h+1 ) .
+
+γ=0
+
+}
+
+∈K[ε]k
+
+The left-hand side of the equation can be rewritten as follows:
+r
+
+h
+
+h
+
+h
+
+∑ ∑ ∑ ∑ ε α+β +γ uρα ⊗ vρβ ⊗ wργ .
+ρ=1 α=0 β =0 γ=0
+
+By comparing the coefficients of ε powers, we see that t is the sum
+ ofall uρα ⊗vρβ ⊗wργ with α +β +γ =
+h. Thus to compute t exactly, it is sufficient to compute
+approximate computation.
+
+h+2
+2
+
+products for each product in the
+
+A first attempt to apply the results above is to proceed as follows: We have R1 (h2, 2, 3i) ≤ 10.
+R1 (h3, 2, 2i) ≤ 10 and R1 (h2, 3, 2i) ≤ 10 follows by Theorem 6.3(1). By Theorem 6.3(3), we may
+conclude R3 (h12, 12, 12i) ≤ 1000. By Lemma 6.4
+
+R(h12, 12, 12i) ≤
+
+
+3+2
+· 1000 = 10 · 1000 = 10000 .
+2
+
+But trivially, R(h12, 12, 12i) ≤ 123 = 1728. It turns out that it is better to first “tensor up” and then turn
+the approximate computation into the exact one.
+Theorem 6.6. If R(hk, m, ni) ≤ r then ω ≤ 3 logkmn r.
+Proof. Let N = kmn and let Rh (hk, m, ni) ≤ r. By Theorem 6.3, we get R3h (hN, N, Ni) ≤ r3 and
+R3hs (hN s , N s , N s i) ≤ r3s for all s. By Lemma 6.4, this yields R(hN s , N s , N s i) ≤ c3hs r3s . Therefore,
+1
+ω ≤ logN s (c3hs r3s ) = 3s logN s (r) + logN s (c3hs ) = 3 logN (r) + logN (poly(s)) .
+|s
+{z
+}
+→0
+
+Since ω is an infimum, we get ω ≤ 3 logN (r).
+Corollary 6.7. ω ≤ 2.78.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+28
+
+FAST M ATRIX M ULTIPLICATION
+
+7
+
+Schönhage’s τ-Theorem
+
+Strassen “just” gave a clever algorithm for multiplying 2 × 2-matrices to obtain a fast algorithm for
+multiplying matrices. Bini et al. showed that is sufficient to approximate a fixed size matrix tensor
+instead of computing it exactly. In this section, we will show how to make use of a fast algorithm that
+approximates a tensor that is not a matrix tensor at all! In in the subsequent two sections, we will see the
+same with tensors that are even “less” matrix tensors than the one in this section.
+Note that Bini et al. start with a tensor corresponding to a partial matrix multiplication. They glue two
+of them together to get a matrix tensor. Schönhage [28] observed that it is better to take the partial matrix
+multiplication, tensor up first, and then try to get a large total matrix multiplication out of the resulting
+tensor. The interested reader is referred to Schönhage’s original paper. We will not deal with this method
+here, since the same paper contains a second, related method that gives even better results, the so-called
+τ-Theorem.10
+We will consider an extreme case of a partial matrix multiplication, namely direct sums of matrix
+tensors. Direct sums of matrix tensors correspond to independent matrix multiplications and we can
+view them as partial matrix multiplications by embedding the factors in large block diagonal matrices. In
+particular, we will look at sums of the form R(hk, 1, ni ⊕ h1, m, 1i). The first summand is the product of a
+vector of length k with a vector of length n, forming a rank-one matrix. The second summand is a scalar
+product of two vectors of length m.
+
+Lemma 7.1.
+
+1. R(hk, 1, ni ⊕ h1, m, 1i) = k · n + m.
+
+2. R(hk, 1, ni) = k · n and R(h1, m, 1i) = m.
+
+3. R(hk, 1, ni ⊕ h1, m, 1i) ≤ k · n + 1 with m = (n − 1)(k − 1).
+
+The first statement is shown by using the substitution method. We first substitute m variables belonging
+to one vector of h1, m, 1i. Then we set the variables of the other vector to zero. We still compute hk, 1, ni.
+For the second statement, it is sufficient to note that both tensors consist of kn and m linearly
+independent slices, respectively, even over K(ε).
+For the third statement, we just prove the case k = n = 3. From this, the general construction becomes
+
+10 According to Schönhage, the term τ-Theorem was coined by Hans F. de Groote in his lecture notes [16].
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+29
+
+M ARKUS B L ÄSER
+
+obvious. So we want to approximate ai b j for 1 ≤ i, j ≤ 3 and ∑4µ=1 uµ vµ . Consider the following products
+p1 = (a1 + εu1 )(b1 + εv1 ) ,
+p2 = (a1 + εu2 )(b2 + εv2 ) ,
+p3 = (a2 + εu3 )(b1 + εv3 ) ,
+p4 = (a2 + εu4 )(b2 + εv4 ) ,
+p5 = (a3 − εu1 − εu3 )b1 ,
+p6 = (a3 − εu2 − εu4 )b2 ,
+p7 = a1 (b3 − εv1 − εv2 ) ,
+p8 = a2 (b3 − εv3 − εv4 ) ,
+p9 = a3 b3 .
+These nine product obviously compute ai b j up to terms of order ε, 1 ≤ i, j ≤ 3. Furthermore,
+4
+
+ε 2 ∑ uµ vµ = p1 + · · · + p9 − (a1 + a2 + a3 )(b1 + b2 + b3 ) .
+µ=1
+
+Thus ten products are sufficient to approximate h3, 1, 3i ⊕ h1, 4, 1i.11
+The second and the third statement together show, that the additivity conjecture is not true for the
+border rank.
+0
+
+0
+
+0
+
+Definition 7.2. Let t ∈ K k×m×n and t 0 ∈ K k ×m ×n .
+0
+
+0
+
+1. t is called a restriction of t 0 if there are homomorphisms α : K k → K k , β : K m → K m , and
+0
+γ : K n → K n such that t = (α ⊗ β ⊗ γ)t 0 . We write t ≤ t 0 .
+2. t and t 0 are isomorphic if α, β , γ are isomorphisms (t ∼
+= t 0 ).
+In the following, hri denotes the tensor in K r×r×r that has a 1 in the positions (ρ, ρ, ρ), 1 ≤ ρ ≤ r,
+and 0s elsewhere (a “diagonal,” the three-dimensional analogue of the identity matrix). This tensor
+corresponds to the r bilinear forms xρ yρ , 1 ≤ ρ ≤ r (r independent products).
+Lemma 7.3. R(t) ≤ r ⇔ t ≤ hri.
+Proof. "⇐": follows immediately from Lemma 5.4.
+11 Note how amazing this is: Asume that in the good old times, when computers were rare and expensive, you were working
+at the computer center of your university. A chemistry professor approaches you and tells you that he has some data and needs
+to compute a large rank one matrix from it. He needs the results the next day. Since computers were not only rare and expensive,
+but also slow, the computing capacity of the center barely suffices to compute the product in one day. But then a physics
+professor calls you: She needs to compute a scalar product of a similar size and again, she wants the result the next day. When
+you compute exactly, you have to upset one of them, no matter what. But if you are willing to approximate the results, and, hey,
+they will not recognize this anyway because of measurement errors, then you can satisfy both of them!
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+30
+
+FAST M ATRIX M ULTIPLICATION
+r
+
+"⇒": hri = ∑ eρ ⊗ eρ ⊗ eρ , where eρ is the ρth unit vector. If the rank of t is ≤ r, then we can write t
+ρ=1
+
+as the sum of r triads,
+
+r
+
+t = ∑ uρ ⊗ vρ ⊗ wρ .
+ρ=1
+
+We define three homomorphisms
+α :eρ 7→ uρ , 1 ≤ ρ ≤ r ,
+β :eρ 7→ vρ , 1 ≤ ρ ≤ r ,
+γ :eρ 7→ wρ , 1 ≤ ρ ≤ r .
+By construction,
+r
+
+(α ⊗ β ⊗ γ)hri = ∑ α(eρ ) ⊗ β (eρ ) ⊗ γ(eρ ) = t .
+ρ=1 | {z } | {z } | {z }
+=uρ
+
+=vρ
+
+=wρ
+
+Observation 7.4.
+1. t ⊗ t 0 ∼
+= t0 ⊗ t ,
+2. t ⊗ (t 0 ⊗ t 00 ) ∼
+= (t ⊗ t 0 ) ⊗ t 00 ,
+3. t ⊕ t 0 ∼
+= t0 ⊕ t ,
+4. t ⊕ (t 0 ⊕ t 00 ) ∼
+= (t ⊕ t 0 ) ⊕ t 00 ,
+5. t ⊗ h1i ∼
+=t,
+6. t ⊕ h0i ∼
+=t,
+7. t ⊗ (t 0 ⊕ t 00 ) ∼
+= t ⊗ t 0 ⊕ t ⊗ t 00 .
+Above, h0i is the empty tensor in K 0×0×0 . So the (isomorphism classes of) tensors form a semi-ring.12
+The main result of this section is the following theorem due to Schönhage [28]. It is often called the
+τ-theorem in the literature, because the letter τ has a leading role in the original proof. But in our proof,
+it only has a minor one.
+Theorem 7.5 (Schönhage’s τ-theorem). If R(
+
+p
+L
+
+hki , mi , ni i) ≤ r with r > p then ω ≤ 3τ where τ is
+
+i=1
+
+defined by
+p
+
+∑ (ki · mi · ni )τ = r .
+
+i=1
+
+12 If two tensors are isomorphic, then the live in they same space K k×m×n . If t is any tensor and n is a tensor that is completely
+filled with zeros, then t is not isomorphic to t ⊕ n. But from a computational viewpoint, these tensors are the same. So it is also
+useful to use this wider notion of equivalence: Two tensors t and t 0 are ^
+isomorphic, if there are tensors n and n0 completely filled
+0
+0
+with zeros such that t ⊕ n and t ⊕ n are isomorphic.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+31
+
+M ARKUS B L ÄSER
+
+Notation 7.6. Let f ∈ N and t be a tensor. f
+
+t := t|⊕ ·{z
+· · ⊕}t .
+f times
+
+log
+
+Lemma 7.7. If R( f
+
+hk, m, ni) ≤ g, then ω ≤ 3 ·
+
+l gm
+
+f
+.
+log(kmn)
+
+Proof. We first show that for all s,
+R( f
+
+hks , ms , ns i) ≤
+
+l g ms
+f
+
+·f.
+
+The proof is by induction on s. If s = 1, this is just the assumption of the lemma. For the induction step
+s 7→ s + 1, note that
+f
+
+ks+1 , ms+1 , ns+1 = ( f
+|
+
+hk, m, ni) ⊗hks , ms , ns i
+{z
+}
+≤hgi
+
+≤ hgi ⊗ hks , ms , ns i
+=g
+
+hks , ms , ns i.
+
+Therefore,
+R( f
+
+ks+1 , ms+1 , ns+1 ) ≤ R (g
+
+hks , ms , ns i)
+
+
+l g m
+≤R
+· f hks , ms , ns i
+f
+l g m l g ms
+=
+·
+·f
+f
+f
+l g ms+1
+f.
+=
+f
+hks , ms , ns i) ≤
+
+This shows the claim. Now use the claim to prove our lemma: R( f
+
+l g ms
+f
+
+· f implies
+
+→0 for s→∞
+
+{
+3
+3s log f + log( f ) · 3 3 log f + log( f ) · s
+ω≤
+=
+.
+s · log(kmn)
+log(kmn)
+ 
+3 log gf
+Since ω is an infimum, we get ω ≤
+.
+log(kmn)
+z
+
+}|
+
+g
+
+g
+
+Proof of Theorem 7.5. There is an h such that
+p
+M
+
+Rh (
+
+hki , mi , ni i) ≤ r .
+
+i=1
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+32
+
+FAST M ATRIX M ULTIPLICATION
+
+By taking tensor powers and using the fact that the tensors form a ring, we get
+
+
+*
++
+ M
+
+p
+p
+p
+s!
+
+σi
+σi
+σi 
+Rhs 
+k
+,
+m
+,
+n
+≤ rs .
+∏i ∏ i ∏ i 
+σ1 +...+σ p =s σ1 ! · . . . · σ p !
+
+i=1
+i=1
+i=1
+| {z } | {z } | {z }
+=k0
+
+=m0
+
+=n0
+
+k0 , m0 , n0 depend on σ1 , . . . , σ p . Next, we convert the approximate computation into an exact one and get
+!
+M
+s!
+R
+k0 , m0 , n0
+≤ rs · chs .
+σ
+!
+·
+.
+.
+.
+·
+σ
+!
+1
+p
+σ1 +...+σ p =s
+Recall that chs is a polynomial in h and s. By raising the defining equation for τ in the statement of the
+theorem to the sth power, we see that
+s!
+(k0 · m0 · n0 )τ = rs .
+s=σ1 +...+σ p σ1 ! · . . . · σ p !
+{z
+}
+|
+
+∑
+
+=(∗)
+
+Fix σ1 , . . . , σ p such that (*) is maximized. Then k0 , m0 , and n0 are constant. To apply Lemma 7.7, we
+set
+f=
+
+s!
+< ps ,
+σ1 ! · . . . · σ p !
+
+g = rs · chs ,
+m = m0 ,
+k = k0 ,
+n = n0 .
+The number of all ~σ with σ1 + . . . + σ p = s is
+
+
+s+ p−1
+p−1
+
+
+=
+
+s+ p−1 s+ p−2
+·
+· · · ≤ (s + 1) p−1 .
+p−1
+p−2
+
+Thus
+f · (kmn)τ ≥
+
+rs
+.
+(s + 1) p−1
+
+We get that
+l gm
+f
+
+≤
+
+rs · chs
++ 1 ≤ (kmn)τ · (s + 1) p−1 · chs .
+f
+
+Furthermore,
+(kmn)τ ≥
+
+rs
+rs
+≥
+.
+(s + 1) p−1 f (s + 1) p−1 ps
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+(7.1)
+33
+
+M ARKUS B L ÄSER
+
+By Lemma 7.7,
+τ · log(kmn) + (p − 1) · log(s + 1) + log(chs )
+log(kmn)
+(p − 1) log(s + 1) + log(chs )
+= 3τ +
+→ 3τ .
+s→∞
+log(kmn)
+
+ω ≤ 3·
+
+because
+log(kmn) ≥
+
+s
+· (log r − log p) −O(log(s))
+{z
+}
+τ |
+>0 by assumption
+
+by (7.1).
+By using the example at the beginning of this section with k = 4 and n = 3, we get the following
+bound out of the τ-theorem.
+Corollary 7.8. ω ≤ 2.55.
+What is the algorithmic intuition behind the τ-theorem? If we take the sth tensor power of a sum of
+N independent matrix products, we get a sum of N s independent matrix products. From these matrix
+products, we choose a subset with isomorphic tensors. In the proof of the theorem, this is done when
+maximizing the quantity (*). Assume we get ` matrix products of the form hk, m, ni. What can we do with
+this? Well, we can compute a large matrix product htk,tm,tni with t 3 ≤ ` by using the trivial algorithm
+for multiplying ht,t,ti together with the ` independent products for hk, m, ni, each of them replacing one
+of the multiplications in the trivial algorithm. We get a new improved algorithm for multiplying matrices.
+If we use this new algorithm for computing ht,t,ti, we get an even better algorithm, and so on. The bound
+on the exponent that we get in the limit is the one given by the τ-theorem. Along with this, we also get an
+algorithm to compute the value of τ, see the original paper by Schönhage.
+Coppersmith and Winograd [12] optimize this approach by introducing the concept of null-like
+tensors. They were able to get an upper bound < 2.5 with their approach. Before this result, according
+to Schönhage, quite a few researchers conjectured that ω might be 2.5, since there were some further
+improvements, for instance by V. Pan, by using better starting algorithms, moving the upper bounds close
+to 2.5 (see the original paper by Schönhage).
+
+8
+
+Strassen’s Laser method
+
+Consider the following tensor (see Figure 7 for a pictorial description)
+q
+
+Str = ∑ (ei ⊗ e0 ⊗ ei + e0 ⊗ ei ⊗ ei ) .
+| {z } | {z }
+i=1
+hq,1,1i
+
+h1,1,qi
+
+This tensor is similar to h1, 2, qi, only the “directions” of the two scalar products are not the same. But
+Strassen’s tensor can be approximated very efficiently. We have
+q
+
+q
+
+q
+
+∑ (e0 + εei ) ⊗ (e0 + εei ) ⊗ ei = ∑ e0 ⊗ e0 ⊗ ei + ε ∑ (ei ⊗ e0 ⊗ ei + e0 ⊗ ei ⊗ ei ) + O(ε 2 ) .
+
+i=1
+
+i=1
+
+i=1
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+34
+
+FAST M ATRIX M ULTIPLICATION
+
+1
+1
+1
+
+1
+1
+
+1 1
+1
+Figure 7: Strassen’s tensor.
+If we subtract the triad e0 ⊗ e0 ⊗ ∑qi=1 ei , we get an approximation of Str. Thus R(Str) ≤ q + 1. On the
+other hand, R(h1, 2, qi) = 2q. Can we make use of this very cheap tensor?
+Definition 8.1. Let t ∈ K k×m×n be a tensor. Let I1 , . . . , Ip , J1 , . . . , Jq , and L1 , . . . , Ls be sets such that
+Ii ⊆ {1, . . . , k} ,
+J j ⊆ {1, . . . , m} ,
+L` ⊆ {1, . . . , n} ,
+
+1 ≤ i ≤ p,
+1 ≤ j ≤ q,
+1 ≤ ` ≤ s.
+
+1. The sets are called a decomposition D of format k × m × n if
+˙ I2 ∪
+˙ ··· ∪
+˙ Ip
+I1 ∪
+= {1, . . . , k} ,
+J1 ˙∪ J2 ˙∪ · · · ˙∪ Jq = {1, . . . , m} ,
+L1 ˙∪ L2 ˙∪ · · · ˙∪ Ls = {1, . . . , n} .
+2. tIi ,J j ,L` ∈ K |Ii |×|J j |×|L` | is the tensor that one gets when restricting t to the slices in Ii , J j , L` , i. e.,
+tIi ,J j ,L` (a, b, c) = t(â, b̂, ĉ)
+where â = the ath smallest element in Ii and b̂ and ĉ are defined analogously.13
+3. tD ∈ K p×q×s is defined by
+
+(
+1 if tIi ,J j ,L` 6= 0 ,
+tD (i, j, l) =
+0 otherwise.
+
+4. Finally, suppD t = {(i, j, `) | tIi ,J j ,L` 6= 0}.
+We can think of giving the tensors an “inner” and an “outer” structure. A decomposition cuts the
+tensor into (combinatorial) cuboids tIi ,J j ,L` , these cuboids need not be connected. The cuboids form the
+inner structure. For the outer structure tD , we interpret each set Ii or J j or L` as a single index. If the
+corresponding inner tensor tIi ,J j ,L` is nonzero, we put a 1 into position (i, j, `). The support is just the set
+of all places where we put a 1 in tD .
+13 To avoid multiple indices, we here use the notation t(a, b, c) to access the element in position (a, b, c) instead of t
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+a,b,c .
+
+35
+
+M ARKUS B L ÄSER
+
+Definition 8.2. Let D and D0 be two decompositions for format k × m × n and k0 × m0 × n0 consisting of
+sets I1 , . . . , Ip , J1 , . . . , Iq , and L1 , . . . , Ls and I10 , . . . , Ip0 0 , J10 , . . . , Jq0 0 , and L10 , . . . , Ls0 0 . Their product D ⊗ D0 is
+a decomposition of format kk0 × mm0 × nn0 and is given by the sets
+Ii × Ii00 ,
+1 ≤ i ≤ p , 1 ≤ i0 ≤ p0 ,
+J j × J 0j0 , 1 ≤ j ≤ q , 1 ≤ j0 ≤ q0 ,
+L` × L`0 0 , 1 ≤ l ≤ s , 1 ≤ l 0 ≤ s0 .
+0
+
+0
+
+0
+
+Lemma 8.3. Let ρ and ρ 0 be two sets of tensors. Let t ∈ K k×m×n and t 0 ∈ K k ×m ×n with decompositions
+D and D0 be given. Assume that tIi ,J j ,L` ∈ ρ for all (i, j, `) ∈ suppDt and the same for t 0 . Then D ⊗ D0 is
+a decomposition of t ⊗ t 0 such that
+0 14
+(t ⊗ t 0 )D⊗D0 ∼
+= tD ⊗ tD
+0.
+
+Furthermore, (t ⊗ t 0 )Ii ×I 00 ,J j ×J 0 0 ,L` ×L0 0 ∈ ρ ⊗ ρ 0 for all (i, j, `) ∈ suppDt and (i0 , j0 , `0 ) ∈ suppD0 t 0 , where
+i
+j
+`
+ρ ⊗ ρ 0 is defined elementwisely.
+The proof of the lemma is a somewhat tedious but easy exercise which we leave to the reader.
+Next, we decompose Strassen’s tensor and analyse its outer structure. We define a decomposition D
+as follows:
+{0} ˙∪ {1, . . . , q} = {0, . . . , q} ,
+I0
+I1
+{0} ˙∪ {1, . . . , q} = {0, . . . , q} ,
+J0
+J1
+{1, . . . , q} = {1, . . . , q} .
+L1
+With respect to D, we have
+
+StrD =
+
+1 0
+0 1
+
+
+= h1, 2, 1i ,
+
+StrIi ,J j ,Ll ∈ {h1, 1, qi, hq, 1, 1i} ⊆ {hk, m, ni | k · m · n = q}.
+The format of Str is (q + 1) × (q + 1) × q. Next, we make Str symmetric. Take the permutation
+π = (1 2 3). We have
+π StrπD = h1, 1, 2i
+
+and
+
+π 2 Strπ 2 D = h2, 1, 1i ,
+
+where πD and π 2 D are the defined by permuting the sets accordingly. Let
+Sym-Str = Str ⊗π Str ⊗π 2 Str .
+By Lemma 8.3, D̂ = D ⊗ πD ⊗ π 2 D is a decomposition of Sym-Str such that
+Sym-StrD = h2, 2, 2i
+and every inner tensor is in
+{hk, m, ni | k · m · n = q3 } .
+14 The order of the indices, when building t ⊗ t 0 and D ⊗ D0 should be the same.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+36
+
+FAST M ATRIX M ULTIPLICATION
+0
+
+0
+
+0
+
+Definition 8.4. Let t ∈ K k×m×n , t 0 ∈ K k ×m ×n .
+r
+
+0
+
+0
+
+0
+
+1. Let t 0 = ∑ uρ ⊗ vρ ⊗ wρ as well as A(ε) ∈ K[ε]k×k , B(ε) ∈ K[ε]m×m , and C(ε) ∈ K[ε]n×n . Define
+ρ=1
+r
+
+(A(ε) ⊗ B(ε) ⊗C(ε))t 0 = ∑ A(ε)uρ ⊗ B(ε)vρ ⊗C(ε)wρ .
+ρ=1
+
+(This is well-defined.)
+0
+
+0
+
+0
+
+2. t is a degeneration of t 0 if there are A(ε) ∈ K[ε]k×k , B(ε) ∈ K[ε]m×m , C(ε) ∈ K[ε]n×n , and q ∈ N
+such that
+ε qt = (A(ε) ⊗ B(ε) ⊗C(ε))t 0 + O(ε q+1 ) .
+We will write t Eq t 0 or t E t 0 .
+Remark 8.5. R(t) ≤ r ⇔ t E hri.
+The remark above can be interpreted as follows: If you want to “buy” a tensor, then it costs r
+multiplications. Then next lemma is a kind of a converse. It tells you, that when you bought a matrix
+tensor hn, n, ni, then you can “resell” it and get Ω(n2 ) single multiplications back.
+Lemma 8.6.
+
+*&
+
+3 2
+n
+4
+
+'+
+E hn, n, ni .
+
+Proof. First assume that n is odd, n = 2ν + 1. We label rows and columns from −ν, . . . , ν. We define the
+linear mappings A, B,C : K n×n → K[ε]n×n by
+2
+
+A : ei j 7→ ei j · ε i +2i j ,
+2
+B : e jk 7→ e jk · ε j +2 jk ,
+2
+C : eki 7→ eki · ε k +2ki ,
+2
+
+2
+
+where ei, j denotes the standard basis. A, B, and C define matrices in K[ε]n ×n . Recall that
+ν
+
+hn, n, ni =
+
+ei j ⊗ e jk ⊗ eki .
+
+∑
+i, j,k=−ν
+
+We have
+
+ν
+
+(A ⊗ B ⊗C)hn, n, ni =
+
+2
+
+∑
+i, j,k=−nu
+
+2
+
+2
+
+i +2i j+ j +2 jk+k +2ki
+|ε
+{z
+} ei j ⊗ e jk ⊗ eki .
+2
+
+=ε (i+ j+k)
+
+If i + j + k = 0 then
+i, k
+i, j
+j, k
+
+determine
+
+j
+k .
+i
+
+So all terms with exponent 0 form a set of independent products. It is easy to see that there are ≥ (3/4)n2
+triples (i, j, k) with i + j + k = 0. The case when n is even is treated in a similar way.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+37
+
+M ARKUS B L ÄSER
+0
+
+0
+
+0
+
+Definition 8.7. Let t ∈ K k×m×n , t 0 ∈ K k ×m ×n . t is a monomial degeneration of t 0 if the entries of the
+matrices A, B, and C in Definition 8.4 are monomials.
+The matrices constructed in Lemma 8.6 are monomial matrices. Therefore,
+*&
+'+
+3 2
+n
+4
+is a monomial degeneration of hn, n, ni.
+Now we want to apply Lemma 8.6 to Sym-StrD̂ . First, we raise Sym-Str to the sth tensorial power.
+We get
++
+*
+3 2s
+2
+E (Sym-Str)⊗s
+E (q + 1)3s .
+D̂⊗s 6s
+|{z}
+4
+Lemma 8.6
+
+⊗s
+
+The inner tensors or Sym-Str are ∈ {hk, m, ni | k · m · n = q3s }. How does this inner structure behave
+with respect to the degeneration
+
+
+3 2s
+2
+E (Sym-Str)⊗s
+?
+D̂⊗s
+4
+Since this degeneration is a monomial degeneration, every 1 in the tensor 34 22s will correspond to
+one tensor in {hk, m, ni | k · m · n = q3s }.15 So we get a direct sum of 34 22s tensors each of them being in
+{hk, m, ni | k · m · n = q3s }. The border rank of this sum is bound by (q + 1)3s . But in this situation, we
+can apply the τ-theorem! We get
+3
+(q3s )τ 22s ≤ (q + 1)3s ,
+r4
+s 3 2
+2 ≤ (q + 1)3 ,
+q3τ
+4
+|{z}
+→1
+
+(q + 1)3
+.
+4
+The right-hand side is minimal for q = 5 and gives us the result ω ≤ 2.48.
+ω ≤ logq
+
+Corollary 8.8 (Strassen [33]). ω ≤ 2.48.
+Research problem 8.9. What is R(Sym-Str)? It is quite easy to see that R(Str) = q + 1, since it consists
+of q + 1 linearly independent slices. But the format of Sym-Str is q(q + 1)2 × q(q + 1)2 × q(q + 1)2 , so it
+is not clear whether the upper bound (q + 1)3 is tight.
+Why is the laser method called laser method? Here is an explanation I heard from Amin Shokrollahi
+who claimed to have heard it from Volker Strassen: In a laser, one generates coherent light. You can think
+of the two inner tensors in Strassen’s tensor as light waves having different polarization. In the end we
+obtain a diagonal with “light waves” having the same polarization.
+15 If the degeneration were not monomial, then every 1 in 3 22s would be linear combination of several entries of the tensor
+4
+(Sym-Str)⊗s⊗s . Per se, this is fine. But when looking at the inner structures, then every 1 will correspond to a linear combination
+D̂
+of matrix tensor of formats that do not match.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+38
+
+FAST M ATRIX M ULTIPLICATION
+
+1
+1
+1
+
+1
+
+1
+
+1 1
+1 1
+
+1
+
+1
+
+1
+
+Figure 8: Coppersmith and Winograd’s tensor.
+
+9
+
+Coppersmith and Winograd’s method
+
+Strassen’s tensor is asymmetric, its format is (q + 1) × (q + 1) × q. For only one additional multiplication,
+we can compute the following symmetric variant (see Figure 8 for a pictorial description)
+q
+
+CW = ∑ (ei ⊗ e0 ⊗ ei + e0 ⊗ ei ⊗ ei + ei ⊗ ei ⊗ e0 ) .
+| {z } | {z } | {z }
+i=1
+hq,1,1i
+
+h1,1,qi
+
+h1,q,1i
+
+This tensor can be approximated efficiently. We have
+q
+
+ε 5 · CW = ∑ ε · (e0 + ε 2 ei ) ⊗ (e0 + ε 2 ei ) ⊗ (e0 + ε 2 ei )
+i=1
+
+q
+
+q
+
+q
+
+− (e0 + ε 3 ∑ ei ) ⊗ (e0 + ε 3 ∑ ei ) ⊗ (e0 + ε 3 ∑ ei )
+i=1
+
+i=1
+
+i=1
+
++ (1 − qε) · e0 ⊗ e0 ⊗ e0
++ O(ε 6 ) .
+Thus, R(CW) ≤ q + 2. We define a decomposition D as follows:
+{0}
+I0
+{0}
+J0
+{0}
+L0
+
+˙∪
+˙∪
+˙∪
+
+{1, . . . , q} = {0, . . . , q} ,
+I1
+{1, . . . , q} = {0, . . . , q} ,
+J1
+{1, . . . , q} = {0, . . . , q} .
+L1
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+39
+
+M ARKUS B L ÄSER
+
+With respect to D, we have
+
+CWD =
+
+2 1
+1
+
+
+,
+
+CWIi ,J j ,L` ∈ {h1, 1, qi, hq, 1, 1i, h1, q, 1i} .
+
+The right-hand side of the first equation represents a tensor of format 2 × 2 × 2. An entry k in position
+(i, j) means that the (i, j, k)th entry of the tensor is 1. All other entries are 0.
+The inner structures with respect to D are the same as in the previous section. However, CWD
+is not a matrix product anymore. Therefore, we cannot apply the machinery of the previous section.
+Coppersmith and Winograd [13] found a way to get fast matrix multiplication algorithms from the bound
+R(CW) ≤ q + 2. The proof of their bound that we present here is due to Strassen, see also [8, Sect. 15.7,
+15.8]. We follow the proof in the book [8] quite closely. In particular, we use the same notation.
+
+9.1
+
+Tight sets
+
+The question that we have to deal with is the following: Given a tensor t, what is the largest N for
+which we can show that hNi E t ⊗s by a monomial degeneration? Strassen gave an answer for tensors
+t = hn, n, ni. Next, we want to develop a general method.
+Definition 9.1. Let I, J, and L be finite sets. Let A, B ⊆ I × J × L. A is called a combinatorial degeneration
+of B if there are functions a : I → Z, b : J → Z, and c : L → Z such that
+1. ∀(i, j, `) ∈ A : a(i) + b( j) + c(`) = 0,
+2. ∀(i, j, `) ∈ B\A : a(i) + b( j) + c(`) > 0.
+Combinatorial degenerations can be turned into monomial degenerations, this is essentially done in
+Lemma 8.6. Let tA ∈ K |I|×|J|×|L| be the tensor that has a 1 in every positions corresponding to tuples in A
+and 0 elsewhere. Define tB in the same way. Define mappings X, Y , and Z by
+X : ei 7→ ε a(i) ei ,
+Y : e j 7→ ε b( j) e j ,
+Z : e` 7→ ε c(k) e` .
+Then tA = (X ⊗Y ⊗ Z)tB + O(ε), i. e., tA is a monomial degeneration of tB .
+Definition 9.2.
+1. A ⊆ I × J × L is called tight if there are an r ≥ 1 and injective maps a : I → Zr , b : J → Zr , and
+c : L → Zr such that for all (i, j, `) ∈ A, a(i) + b( j) + c(`) = 0.
+2. A set ∆ ⊆ I × J × L is called diagonal if the three canonical projections pI : ∆ → I, pJ : ∆ → J, and
+pL : ∆ → L are injective. This means that ∆ = {(1, 1, 1), (2, 2, 2), . . .} up to permutations.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+40
+
+FAST M ATRIX M ULTIPLICATION
+
+If a (combinatorial) diagonal is a combinatorial degeneration of some set A, then we can get a diagonal
+from tA via a monomial degeneration.
+Let ZM = Z/MZ. The set ψM below will play an important role in the following.
+Lemma 9.3. Let M ∈ N. Let ψM = {(i, j, `) ∈ Z3M | i + j + ` = 0 in ZM }. ψM contains a diagonal ∆ with
+|∆| ≥ M/2, which is a combinatorial degeneration of ψM .
+Proof. By shifting one of the indices, we can assume that ψM = {(i, j, `) ∈ Z3M | i+ j +`+1 = 0 mod M}.
+We write ψM = A ∪ B with
+A = {(i, j, `) | i + j + ` = M − 1 in Z} ,
+B = {(i, j, `) | i + j + ` = 2M − 1 in Z} .
+∆ = {(i, i, M − 1 − 2i) | 0 ≤ i ≤ (M − 1)/2} is a diagonal with |∆| ≥ M/2.
+We define functions a, b, c : ZM → Z by
+a(i) = 4i2 ,
+b( j) = 4 j2 ,
+c(`) = −2(M − 1 − `)2 .
+For (i, j, `) ∈ A,
+a(i) + b( j) + c(`) = 4i2 + 4 j2 − 2 (M − 1 − `)2 = 2i2 + 2 j2 − 4i j = 2(i − j)2 ≥ 0 .
+{z
+}
+|
+i+ j
+
+Equality holds iff (i, j, `) ∈ ∆, because if i = j, then ` = M − 1 − 2i since (i, j, `) ∈ A.
+For (i, j, `) ∈ B,
+a(i) + b( j) + c(`) = 4i2 + 4 j2 − 2 (M − 1 − `)2
+|
+{z
+}
+i+ j−M
+
+2
+
+2
+
+= 4i + 4 j − 2(i + j)2 + 4M (i + j) −2M 2
+| {z }
+≥M
+
+2
+
+2
+
+≥ 2(i − j) + 2M > 0 .
+This proves the lemma.
+The next lemma gives a simple lower bound on the size of a diagonal by just removing “collisions.”
+Lemma 9.4. Let Φ ⊆ I × J × L and
+ 
+n
+o
+Φ
+Π = {(i, j, `), (i0 , j0 , `0 )} ∈
+i = i0 ∨ j = j0 ∨ ` = `0 .
+2
+Then there are I 0 ⊆ I, J 0 ⊆ J, and L0 ⊆ L such that
+∆ := (I 0 × J 0 × L0 ) ∩ Φ
+is a diagonal of size ≥ |Φ| − |Π| and ∆ E Φ.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+41
+
+M ARKUS B L ÄSER
+F
+
+F
+
+w
+→
+
+D
+
+=
+
+Φw
+
+E
+
+w
+→
+ΨM
+
+E
+
+Φ
+
+S
+
+E
+
+d∈D Φw (d)
+
+S
+
+d∈D ∆d
+
+Figure 9: The construction in the proof of Theorem 9.6.
+Proof. We interpret G = (Φ, Π) as a graph. G has ≥ |Φ| − |Π| connected components, since every edge
+in Π can connect at most two components when adding the edges of Π to the empty graph one after
+another. Choose one node of every connected component. These nodes form the set ∆. We set I 0 = pI (∆),
+and J 0 = pJ (∆), and L0 = pL (∆), where pI , pJ , and pL are the canonical projections.
+It remains to show that ∆ is a combinatorial degeneration of Φ. Define the mappings a, b and c by
+(
+0 i ∈ I0 ,
+a(i) =
+1 i ∈ I\I 0 ,
+(
+0 j ∈ J0 ,
+b( j) =
+1 j ∈ J\J 0 ,
+(
+0 l ∈ L0 ,
+c(`) =
+1 ` ∈ L\L0 .
+By the definition of Φ and the choice of ∆,
+• ∀(i, j, `) ∈ ∆ : a(i) + b( j) + c(`) = 0 ,
+• ∀(i, j, `) ∈ Φ\∆ : a(i) + b( j) + c(`) > 0 .
+This shows that ∆ is a combinatorial degeneration of Φ.
+Definition 9.5. Let β ∈ Z. A ⊆ I × J × L is called β -tight if it is tight and if there are function a, b, and c
+like in Definition 9.2 such that in addition, a(I), b(J), c(L) ⊆ {−β , . . . , β }r .
+The following theorem is the main result of this subsection. It provides a way to find a large diagonal
+in a tight set.
+Theorem 9.6. Let Φ ⊆ I × J × L be β -tight, |I| ≤ |J| ≤ |L| and assume that the projections pI : Φ → I,
+pJ : Φ → J, and pL : Φ → L are surjective. Let c > 1 such that
+−1
+−1
+max|p−1
+I (i)|, max|pJ ( j)|, max|pL (`)| ≤ c ·
+i∈I
+
+j∈J
+
+`∈L
+
+|Φ|
+.
+|L|
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+42
+
+FAST M ATRIX M ULTIPLICATION
+
+Then there is a diagonal ∆ E Φ with
+|∆| ≥
+
+2
+· |I| .
+27cβ
+
+Proof. Let a : I → {−β , 0, β }r , b : J → {−β , 0, β }r , and c : L → {−β , 0, β }r be injective such that
+a(i) + b( j) + c(`) = 0 for all (i, j, `) ∈ Φ. Let M ≥ 2β + 1 be a prime to be chosen later and let
+w1 , . . . , wr+3 ∈ ZM . Let w = (w1 , . . . , wr+3 ). We define the following functions Aw : I → ZM , Bw : J → ZM ,
+and Cw : L → ZM by
+Aw (i) = ∑rρ=1 aρ (i)wρ
+Bw ( j) = ∑rρ=1 bρ ( j)wρ
+Cw (`) = ∑rρ=1 cρ (`)wρ
+
++ wr+1
+
+− wr+2
++ wr+2
+
+− wr+1
+
+− wr+3
++ wr+3
+
+mod M ,
+mod M ,
+mod M .
+
+It is straightforward to check that for all (i, j, `) ∈ Φ, Aw (i)+Bw ( j)+Cw (`) = 0, even when not computing
+modulo M.
+Let Fw : I × J × L → Z3M be defined by (i, j, `) 7→ (Aw (i), Bw ( j),Cw (`)). By construction,
+Fw (Φ) ⊆ ΨM = {(x, y, z) ∈ Z3M | x + y + z = 0} .
+By Lemma 9.3, there exists a diagonal D E ΨM with |D| ≥ M/2. Let Φw = Fw−1 (D) ∩ Φ.
+We claim that Φw is a degeneration of Φ. Since D is a degeneration of ΨM there are functions aD , bD ,
+and cD such that
+• ∀(i, j, `) ∈ D : aD (i) + bD ( j) + cD (`) = 0 and
+• ∀(i, j, `) ∈ ΨM \ D : aD (i) + bD ( j) + cD (`) > 0 .
+The functions aD ◦ Âw , bD ◦ B̂w , and cD ◦ Ĉw prove the claim above, where Âw is defined like Aw but not
+reduced modulo M. B̂w and Ĉw are defined in the same way.
+For d ∈ D, set Φw (d) = Fw−1 (d) ∩ Φ. Then:
+Φw =
+
+[
+
+Φw (d) .
+
+d∈D
+
+Since D is a diagonal, the sets pI (Φw (d)) with d ∈ D are pairwise disjoint. (Note that Fw operates on the
+three coordinates separately.) The same holds for pJ and pL . From this it follows that if ∆d E Φw (d) are
+diagonals, then
+[
+∆=
+∆d
+d∈D
+
+is a diagonal and ∆ E Φw . (We can glue the functions pI (Φw (d)) → Zr for d ∈ D in the definition of
+combinatorial degeneration together, since the sets pI (Φw (d)) are pairwise disjoint. The same is true for
+the other two coordinates.) Figure 9 shows the construction we built so far.
+Let
+
+
+n
+o
+Φw (d)
+0 0 0
+Πw (d) = {(i, j, `), (i , j , ` )} ∈
+i = i0 ∨ j = j0 ∨ ` = `0 .
+2
+By Lemma 9.4 there exists ∆d E Φw (d) with |∆d | ≥ |Φw (d)| − |Πw (d)|.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+43
+
+M ARKUS B L ÄSER
+
+It remains to show the following claim:
+Claim: We can choose M and w1 , . . . , wr+3 in such a way that
+Sw := ∑ (|Φw (d)| − |Πw (d)|) ≥
+d∈D
+
+2
+· |I| .
+27cβ
+
+The proof of the claim is by the probabilistic method. We choose w1 , . . . , wr+3 uniformly at random
+(and M depending on w1 , . . . , wr+3 ) and show that
+E[Sw ] ≥
+
+2
+· |I| .
+27cβ
+
+In particular, for at least one choice of w1 , . . . , wr+3 , Sw is large enough.
+Fix (i, j, `) ∈ I × J × L. The random variables w → Aw (i), w → Bw ( j), and w → Cw (`) are uniformly
+distributed and pairwise independent since w → (Aw (i), Bw ( j)) is surjective (as a mapping from Zr+3
+M →
+Z2M ). This is due to the fact that wr+1 only appears in Aw and wr+3 only appears in Bw . The same is true
+for the other two pairs.
+Furthermore Aw (i), Aw (i0 ) and Cw (`) are pairwise independent for i 6= i0 , since
+w → (Aw (i), Aw (i0 ),Cw (`))
+is surjective because
+
+
+a1 (i) . . .
+ a1 (i0 ) . . .
+c1 (`) . . .
+
+
+ar (i) 1 −1 0
+ar (i0 ) 1 −1 0 
+cr (`) −1 0 1
+
+has rank three over ZM . If one writes the zero vector as a linear combination of these three rows, then the
+coefficient of the last row will be zero because of the 1 in the last column of the matrix. a is injective as a
+mapping to Zr . But since M ≥ 2β + 1, it is also injective as a mapping to ZrM . Therefore, the first two
+rows are not identical, since i 6= i0 . Thus the coefficients of the first two rows must be zero, too.
+The expected value of |Φw (d)| for d = (x, y, z) is the probability that we hit (x, y, z), i. e.,
+E[|Φw (d)|] =
+
+∑
+(i, j,`)∈Φ
+
+=
+
+∑
+(i, j,`)∈Φ
+
+Pr[Aw (i) = x, Bw ( j) = y,Cw (`) = z]
+w
+
+Pr[Aw (i) = x, Bw ( j) = y]
+w
+
+1
+.
+M2
+We can drop the event Cw (`) = z, since it is implied by the other two events for (i, j, `) ∈ Φ and
+(x, y, z) ∈ ΨM .
+To estimate the expected value of |Πw (d)|, we decompose it into three sets. Let
+
+
+n
+o
+Φw (d)
+0 0 0
+Uw (d) := {(i, j, `), (i , j , ` )} ∈
+` = `0
+2
+ −1 
+o
+[n
+pL (`)
+=
+{(i, j, `), (i0 , j0 , `0 )} ∈
+Aw (i) = x = Aw (i0 ),Cw (`) = z .
+2
+`∈L
+= |Φ| ·
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+44
+
+FAST M ATRIX M ULTIPLICATION
+
+Note that as above, Aw (i) = x = Aw (i0 ) and Cw (`) = z imply Bw ( j) = y = Bw ( j0 ). As we have seen, Aw (i),
+Aw (i0 ), and Cw (`) are independent. Therefore,
+−1
+|p−1
+L (`)|(|pL (`)| − 1) −3
+M
+2
+`∈L
+
+E(|Uw (d)|) = ∑
+≤
+
+1
+2
+∑ |p−1
+L (`)|
+2M 3 `∈L
+
+≤
+
+c|Φ|2
+.
+2M 3 |L|
+
+−1
+For the last inequality, we used that ∑`∈L |p−1
+L (`)| = |Φ| and the assumption that |pL (`)| ≤ c|Φ|/|L|. We
+do the same for the other two coordinates and get
+
+E[|Πw (d)|] ≤
+
+3c|Φ|2
+.
+2M 3 |I|
+
+Recall that |I| ≤ |J|, |L|.
+Now we can finish the proof of the claim:
+E(Sw ) = ∑ (|Φw (d)| − |Πw (d)|)
+d∈D
+
+
+|Φ| 3c|Φ|2
+−
+≥ |D| ·
+M 2 2M 3 |I|
+
+ !
+|I| c|Φ| 3
+c|Φ| 2
+≥
+− ·
+.
+2c M|I| 2
+M|I|
+
+
+Now we choose the prime M such that
+9 β c|Φ|
+9 β c|Φ|
+·
+≤M≤ ·
+.
+4
+|I|
+2
+|I|
+Such an M exists by Bertrand’s postulate. Since |I| ≤ |Φ|, M ≥ 2β + 1, as required. It is easy to check
+that with this choice of M,
+|I| 4
+2|I|
+E(Sw ) ≥
+·
+=
+,
+2c 27β
+27cβ
+and we are done.
+
+9.2
+
+First construction
+
+The support Φ of CW with respect to D is
+{(1, 1, 0), (1, 0, 1), (0, 1, 1)} ⊆ {0, 1}3 .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+45
+
+M ARKUS B L ÄSER
+
+It is obviously tight, since it fulfills i + j + ` = 2. Take the Nth tensor power CW⊗N . All inner tensors
+of CW⊗N with respect to D⊗N are tensors hx, y, zi with xyz = qN . By Theorem 9.6, the support ΦN of
+CW⊗N contains a diagonal of size 2|I|N /(27c) where c is chosen such that
+|p−1
+(i)| ≤ c
+IN
+
+|Φ|N
+.
+|I|N
+
+−1
+N
+N
+Since p−1
+I (1) = {(1, 1, 0), (1, 0, 1)}, |pI N (1, . . . , 1)| = 2 . (We only need to check this for I since the
+situation is completely symmetric.) Therefore,
+
+c≥
+
+4N
+|I|N 2N
+=
+.
+|Φ|N
+3N
+
+Thus, we get a diagonal of size (2/27) · (3/2)N . We now can apply the τ-Theorem (recall that combinatorial degenerations give rise to monomial degenerations) and get
+ N
+3
+2
+·
+qω/3·N ≤ (q + 2)N .
+27
+2
+Taking Nth roots and letting N go to infinity, we get
+
+
+2(q + 2)
+ω ≤ 3 logq
+.
+3
+For q = 18, this gives ω ≤ 2.69. 2.69? Really, 2.69!
+So what went wrong? It turns out, that it is better to restrict ΦN . Let I 0 be the set of all vectors
+in I N with 2N/3 1’s. We assume that N is divisible by 3. We define J 0 and L0 in the same way. Let
+Φ0 = ΦN ∩ I 0 × J 0 × L0 . Φ0 is nonempty, since the product containing N/3 factors of each of the 3 elements
+in Φ is in I 0 ∩ J 0 ∩ L0 .
+Now, |p−1
+I 0 (i)| have the same size for all i by construction. Then trivially,
+|p−1
+I 0 (i)| ≤
+
+|Φ0 |
+,
+|I 0 |
+
+
+N
+2
+so we can choose c = 1 in Theorem 9.6. We get a diagonal of size 27
+2N/3 . We apply the τ-theorem
+once again and get this time
+
+
+2
+N
+·
+qω/3·N ≤ (q + 2)N .
+27 2N/3
+By Stirling’s formula,
+
+
+1
+N
+2 2 1 1
+2
+ln
+→ − ln − ln = − ln(2) + ln 3
+N
+2N/3
+3 3 3 3
+3
+for N → ∞. Therefore, we get
+ω ≤ 3 · logq
+
+22/3 (q + 2)
+3
+
+!
+
+
+= logq
+
+4(q + 2)3
+27
+
+
+.
+
+For q = 8, we obtain the following result.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+46
+
+FAST M ATRIX M ULTIPLICATION
+
+Corollary 9.7 (Coppersmith & Winograd). ω ≤ 2.41.
+It can be shown that R(CW) = q + 2. So is this the end of this approach? Note that in the above
+calculation, we always compute a huge power CW⊗N . The format of this tensor is (q + 1)N × (q + 1)N ×
+(q + 1)N . So it could be the case that R(CW⊗N ) = (q + 1)N . The asymptotic rank R(t) of a tensor t is
+e
+defined as
+R(t) := lim R(t ⊗N )1/N .
+N→∞
+e
+This is well-defined. All the bounds that we have shown so far are still valid if we replace border rank by
+asymptotic rank. If R(CW) = q + 1, then ω = 2 would follow (from the construction above for q = 2).
+e
+Problem 9.8. What is R(CW)? Even simpler: Is R(CW⊗2 ) < (q + 2)2 ?
+e
+
+9.3
+
+Main theorem
+
+Next we prove a general theorem, that formalizes the method used to prove Corollary 9.7. We will work
+with arbitrary probability distributions on the support, since in this case, we can even handle the case
+when the inner tensors are matrix tensors of different sizes.
+Let P : I → [0; 1] be a probability distribution. The entropy H(P) of P is defined as
+H(P) := −
+
+∑
+
+P(i) · ln P(i) .
+
+i∈I:P(i)>0
+
+Fact 9.9. For all µ : I → N with ∑i∈I µ(i) = N,
+!
+1
+N
+· ln
+−H
+N
+µ
+
+µ
+N
+
+!
+→ 0.
+
+The fact can be easily shown using Stirling’s formula.
+Let P : I × J × L → [0; 1] be a probability distribution. Then
+P1 (i) :=
+
+∑
+
+P(i, j, `)
+
+( j,`)∈J×L
+
+is a probability distribution, the first marginal distribution. In the same way, we define P2 ( j) and P3 (`).
+Theorem 9.10 (Coppersmith & Winograd). Let D be a decomposition of a tensor t ∈ K k×m×n with sets
+I1 , . . . , Ip , J1 , . . . , Jq , and L1 , . . . , Ls such that
+1. suppD t is tight,
+2. tIi ,J j ,L` is a matrix tensor for all (i, j, `) ∈ suppD t.
+Then
+min H(Pm ) + ω ·
+
+1≤m≤3
+
+∑
+
+P(i, j, `) · ln(ζ (tIi ,J j ,L` )) ≤ ln R(t)
+
+(i, j,`)∈suppD t
+
+for all probability distributions P on suppD t, where ζ (hx, y, zi) = (xyz)1/3 .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+47
+
+M ARKUS B L ÄSER
+
+Proof. Assume that suppD t is β -tight. We choose a function Q : suppD t → N and let
+N=
+
+Q(i, j, `) .
+
+∑
+(i, j,`)∈suppD t
+
+(Think of Q being a discretization of our probability distribution P.) Let
+µ(i) = ∑ Q(i, j, `) .
+j,`
+
+We define ν( j), π(`) analogously. Obviously ∑ µ(i) = N. We say that x = (x1 , . . . , xN ) ∈ I N has distribution µ if for all i ∈ I, i appears in exactly µ(i) positions.
+It is easy to check that the support of t ⊗N with respect to the decomposition D⊗N is again β -tight. Let
+Iµ := {x ∈ I N | x has distribution µ} ,
+Jν := {y ∈ J N | y has distribution ν} ,
+Lπ := {z ∈ LN | z has distribution π} ,
+Φ := Iν × Jν × Lπ ∩ (suppD t)N .
+
+
+
+We have |Iµ | = Nµ , |Jν | = Nν , and |Lπ | = Nπ . Furthermore, Φ is not empty. The projection p1 : Φ → Iµ
+−1
+is surjective with |p−1
+1 (i)| = |Φ|/|Iµ |. All fibers p1 (i) have the same size, namely |Φ|/|Iµ |. The same
+holds for Jν and Lπ .
+What do the inner tensors of t ⊗N with respect to the decomposition t ⊗N look like? They are tensor
+products of the inner tensors of t, i. e., matrix tensors itself. Take (x, y, z) ∈ Φ. The inner tensor
+corresponding to (x, y, z) is
+tI⊗N
+=
+x ×···×Ix ,Jy ×···×Jy ,Lz ×···×Jz
+N
+
+1
+
+N
+
+1
+
+N
+
+1
+
+N
+O
+
+tIxs ,Jys ,Lzs .
+
+s=1
+
+Assume that tIi ,J j ,L` ∈ Ui ⊗ V j ⊗ W` with dimUi = ki , dimV j = m j , and dimW` = n` . Then ζ (tIi ,J j ,L` ) =
+(ki m j n` )1/6 . Thus,
+N
+
+ζ (tI⊗N
+) = ∏(kxs mys nzs )1/6
+x ×···×Ix ,Jy ×···×yx ,Lz ×···×Lz
+1
+
+N
+
+1
+
+N
+
+1
+
+N
+
+s=1
+
+µ(i)/6
+
+= ∏ ki
+i∈I
+
+=
+
+ν( j)/6
+
+∏]m j
+j∈J
+
+∏
+
+π(`)/6
+
+∏ n`
+`L
+
+Q(i, j,`)/6
+
+(ki m j n` )
+
+(i, j,`)∈suppD t
+
+=
+
+∏
+
+ζ (tIi ,J j ,L` )Q(i, j,`) .
+
+(i, j,`)∈suppD t
+
+This means that all inner tensors of t ⊗N restricted to Φ have the same ζ -value. This is another reason for
+restricting the situation to the invariant sets Iµ , Jν , and Lπ .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+48
+
+FAST M ATRIX M ULTIPLICATION
+
+Next, we apply Theorem 9.6 to the β -tight set Φ ⊆ Iµ × Jν × Lπ . We get a diagonal ∆ of size
+|∆| ≥
+
+2
+min{|Iµ |, |Jν |, |Lπ |} .
+27β
+
+Note that we can choose the constant c = 1. ∆ is a degeneration of Φ E (suppD t)N . Therefore,
+tI⊗N
+E t ⊗N .
+x ×···×Ix ,Jy ×···×Jy ,Lz ×···×Lz
+
+M
+
+N
+
+1
+
+(x,y,z)∈∆
+
+N
+
+1
+
+N
+
+1
+
+We apply the τ-theorem and obtain
+|∆|
+
+Q(i, j,`)
+
+ζ (tIi ,J j ,L` )ω ≤ R(t ⊗N ) ≤ R(t)N .
+
+∏
+(i, j,`)∈suppD t
+
+Taking logarithms, we get
+1
+1
+ln |∆| + ω
+Q(i, j, `) ln ζ (tLi ,J j ,L` ) ≤ R(t) .
+∑
+N
+N
+(i, j,`)∈supp t
+D
+
+Now we approximate the given probability distribution P by the function Q such that
+|P(i, j, `) −
+
+1
+Q(i, j, `)| ≤ ε .
+N
+
+ε solely depends on N and goes to 0 as N goes to ∞.
+By Fact 9.9 we can approximate N1 ln |∆| by min1≤m≤3 H(Pm ). Therefore, we get
+min H(Pm ) + ω
+
+1≤m≤3
+
+P(i, j, `) log ζ (tIi ,J j ,L` ) ≤ ln R(t) +C · ε
+
+∑
+(i, j,`)∈suppD t
+
+for some constant C. The result follows by letting ε tend to zero.
+Remark 9.11. The theorem above generalizes Strassen’s laser method, since matrix tensors are tight.
+Consider the following enhanced Coppersmith and Winograd tensor
+q
+
+CW+ = ∑ (ei ⊗ e0 ⊗ ei + e0 ⊗ ei ⊗ ei + ei ⊗ ei ⊗ e0 ) + eq+1 ⊗ e0 ⊗ e0 + e0 ⊗ eq+1 ⊗ e0 + e0 ⊗ e0 ⊗ eq+1 .
+| {z } | {z } | {z }
+i=1
+hq,1,1i
+
+h1,1,qi
+
+h1,q,1i
+
+Astonishingly, this larger tensor has border rank q + 2, too:
+q
+
+ε 5 CW+ = ∑ ε · (e0 + ε 2 ei ) ⊗ (e0 + ε 2 ei ) ⊗ (e0 + ε 2 ei )
+i=1
+
+q
+
+q
+
+q
+
+− (e0 + ε 3 ∑ ei ) ⊗ (e0 + ε 3 ∑ ei ) ⊗ (e0 + ε 3 ∑ ei )
+i=1
+
+i=1
+
+5
+
+i=1
+
+5
+
++ (1 − qε) · (e0 + ε eq+1 ) ⊗ (e0 + ε eq+1 ) ⊗ (e0 + ε 5 eq+1 )
++ O(ε 6 ) .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+49
+
+M ARKUS B L ÄSER
+
+Thus, R(CW+ ) ≤ q + 2. We define a decomposition D as follows:
+{0}
+I0
+{0}
+J0
+{0}
+L0
+
+˙∪
+˙∪
+˙∪
+
+{1, . . . , q}
+I1
+{1, . . . , q}
+J1
+{1, . . . , q}
+L1
+
+˙∪
+˙∪
+˙∪
+
+With respect to D, we have
+
+
+3 2 1
+,
+CWD =  2 1
+1
+(
+{h1, 1, qi, hq, 1, 1i, h1, q, 1i}
+CWIi ,J j ,L` ∈
+{h1, 1, 1i}
+
+{q + 1} = {0, . . . , q + 1} ,
+I2
+{q + 1} = {0, . . . , q + 1} ,
+J2
+{q + 1} = {0, . . . , q + 1} .
+L2
+
+if (i, j, `) ∈ {(1, 1, 0), (1, 0, 1), (0, 1, 1)} ,
+if (i, j, `) ∈ {(0, 0, 2), (0, 2, 0), (2, 0, 0)} .
+
+The support of t with respect to D is tight, since it is given by i + j + ` = 2.
+To apply Theorem 9.10, we distribute the probability β /3 over the “small” products and (1 − β /3)
+over the “large” products uniformly. Then we get:
+
+β
+β 1−β β  ω
+H 1− +2 ,2
+,
++ · (β log 1 + (1 − β ) · log q) ≤ log(q + 2) .
+3
+3
+3
+3
+3
+Setting q = 6 and β = 0.048 yields ω ≤ 2.39.
+Corollary 9.12 (Coppersmith & Winograd). ω ≤ 2.39.
+
+9.4
+
+Further improvements
+
+Instead of starting with CW+ we can also start with CW⊗2
++ as our starting tensor. While this does not
+give anything new when we take D⊗2 as the decomposition, we can gain something by choosing a new
+2
+2
+2
+decomposition. The elements of suppD⊗ (CW⊗2
++ ) are contained in {0, 1, 2} × {0, 1, 2} × {0, 1, 2} .
+Coppersmith and Winograd build a new decomposition with support ⊆ {0, . . . , 4}3 by identifying
+((i, i0 ), ( j, j0 ), (`, `0 )) with (i + i0 , j + j0 , ` + `0 ). This gives a coarser outer structure. Tensors of the
+old inner structure are now grouped together. Funnily, the new inner tensors are still matrix tensors with
+one exception. To analyse this exception, Coppersmith an Winograd introduced the value of a tensor t:
+L
+Suppose that ω = 3τ is the exponent of matrix multiplication. If ni=1 hki , mi , ni i E t ⊗N , then the value
+of t is at least (∑ni=1 (ki mi ni )τ )1/N . Intuitively, the value is the contribution of t to the τ-theorem, when
+we construct the diagonal in the proof of Theorem 9.10. Theorem 9.10 can be generalized to this more
+general situation.
+Coppersmith and Winograd do the analysis for CW⊗2
++ . Andrew Stothers [30] (see also [14]) does it
+⊗3
+for CW⊗4
+(CW
+does
+not
+seem
+to
+give
+any
+improvement)
+and Virginia Vassilevska-Williams [35] for
++
++
+⊗8
+CW+ with the help of a computer program. We get the upper bounds 2.376, 2.3737, and 2.3727 for ω,
+respectively.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+50
+
+FAST M ATRIX M ULTIPLICATION
+
+10
+
+Group-theoretic approach
+
+While the bounds on ω mentioned in the previous section are the best currently known, we present an
+interesting approach due to Cohn and Umans [10]. We follow their exposition quite closely.
+Let G be a finite group and C[G] denote the group algebra over C. The elements of C[G] are formal
+sums of the form
+
+∑ ag g
+
+with ag ∈ C for all g ∈ G .
+
+g∈G
+
+Addition and scalar multiplication is defined component-wisely. Multiplication is defined such that it
+distributes over addition:
+!
+!
+
+∑ ag g
+
+g∈G
+
+∑ bg g
+
+= ∑
+
+h∈H
+
+∑ ag bh f .
+
+f ∈G g,h∈G:
+g+h= f
+
+i
+Let Cn be the cyclic group of order n and g be a generator. The product of two elements ∑n−1
+i=1 ai g and
+n−1
+i
+∑i=1 bi g in C[Cn ] is the cyclic convolution
+n−1
+
+∑
+
+∑
+
+a j bk gi .
+
+i=0 j,k: j+k=i mod n
+
+Wedderburn’s theorem for group algebras of finite groups states that every group algebra C[G] of a
+finite group G is isomorphic to the direct product of square matrices over C:
+C[G] ∼
+= Cd1 ×d1 × · · · × Cdk ×dk .
+The numbers d1 , . . . , dk are called the character degrees. k is the number of conjugacy classes. By
+comparing dimensions, it follows that |G| = d12 + · · · + dk2 . See [18] for an introduction to representation
+theory. For the cyclic group of order n, C[Cn ] ∼
+= Cn because C[Cn ] is commutative. Since on the other
+hand, C[Cn ] ∼
+= C[X]/(X n − 1)—in both algebras, multiplication is cyclic convolution—multiplication of
+polynomials of degree ≤ (n − 1)/2 can be performed by a cyclic convolution which in turn can performed
+by n pointwise multiplications. Since an isomorphism C[Cn ] → Cn is a linear transformation and hence,
+can be performed with scalar multiplications, this shows that the rank of multiplication of polynomials of
+degree ≤ (n − 1)/2 is bounded by n.
+An isomorphism C[G] → Cd1 ×d1 × · · · × Cdk ×dk is called a discrete Fourier transform. For the cyclic
+group Cn of order n, there are discrete Fourier transforms what can be implemented fast, even under the
+total cost measure. Using one of the fast Fourier transform algorithms, polynomial multiplication of
+polynomials of degree d can be done with O(d log d) total operations. Also other group algebras allow
+fast Fourier transformations, see [3].16
+16 But note that in our setting, discrete Fourier transforms are free of cost, since they are linear transformations. So there is no
+need for fast Fourier transforms for fast matrix multiplication But there is no cheating involved here, since it does not matter for
+the exponent whether we only count all operations or only bilinear multiplications.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+51
+
+M ARKUS B L ÄSER
+
+10.1
+
+Matrix multiplication via groups
+
+In the light of this success for polynomial multiplication, it is now natural to try the same approach for
+matrix multiplication. For a subset S of a finite group, let
+Q(S) = {st −1 | s,t ∈ S}
+denote the right quotient of S. Note that if S is a subgroup, then Q(S) = S.
+Definition 10.1. A group G realizes hn1 , n2 , n3 i if there are subsets S1 , S2 , S3 ⊆ G such that |Si | = ni for
+1 ≤ i ≤ 3 and for all qi ∈ Q(Si ), 1 ≤ i ≤ 3,
+q1 q2 q3 = 1
+
+implies
+
+q1 = q2 = q3 = 1 .
+
+We call this condition on S1 , S2 , S3 the triple product property.
+As a first example, consider the product of cyclic groups Ck ×Cm ×Cn . This group realizes hk, m, ni
+through the subgroups Ck × {1} × {1}, {1} ×Cm × {1}, and {1} × {1} ×Cn .
+It is rather easy to verify that when G realizes hn1 , n2 , n3 i, then it realizes nπ(1) , nπ(2) , nπ(3) for every
+π ∈ S3 , too (see [10, Lem. 2.1] for a proof).
+Lemma 10.2. Let G and G0 be groups. If G realizes hk, m, ni and G0 realizes hk0 , m0 , n0 i, then G × G0
+realizes hkk0 , mm0 , nn0 i.
+Proof. Assume that G realizes hk, m, ni through S1 , S2 , and S3 and G0 realizes hk0 , m0 , n0 i through T1 , T2 ,
+and T3 .
+G × G0 realizes hkk0 , mm0 , nn0 i through S1 × T1 , S2 × T2 , and S3 × T3 . To prove this, we need to verify
+that for si , s0i ∈ Si and ti ,ti0 ∈ Ti ,
+(s01 ,t10 )(s1 ,t1 )−1 (s02 ,t20 )(s2 ,t2 )−1 (s03 ,t30 )(s3 ,t3 )−1 = 1
+
+(10.1)
+
+implies (s0i ,ti0 )(si ,ti )−1 = 1 for all i. (10.1) is equivalent to
+0 −1 0 −1
+s01 s−1
+1 s2 s2 s3 s3 = 1 ,
+
+t10 t1−1t20 t2−1t30 t3−1 = 1 .
+0 −1
+By the triple product property, s0i s−1
+i = 1 and ti ti = 1 for all i. Thus
+−1
+(s0i ,ti0 )(si ,ti )−1 = (s0i ,ti0 )(s−1
+i ,ti ) = (1, 1) ,
+
+as desired.
+Multiplication in a group algebra C[G] is a bilinear mapping. By abuse of notation, we call the tensor
+of this mapping C[G] again. We say that a tensor s is a restriction of a tensor t if (A ⊗ B ⊗C)s = t. We
+write s ≤ t in this case. If s is a restriction of t, then it is a degeneration of t, too.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+52
+
+FAST M ATRIX M ULTIPLICATION
+
+Theorem 10.3. Let G be a finite group. If G realizes hk, m, ni, then hk, m, ni ≤ C[G]. In particular,
+R(hk, m, ni) ≤ R(C[G]).
+Proof. Assume that G realizes hk, m, ni through S, T , and U. Let A ∈ Ck×m and B ∈ Cm×n . We index the
+rows and columns of A with elements from S and T , respectively. In the same way, we index the rows
+and columns of B with T and U and the rows and columns of the result AB by S and U, respectively.
+We have
+!
+!
+!
+
+∑ As,t s−1t 0
+0
+
+s∈S,t 0 ∈T
+
+∑
+
+Bt,u0 t −1 u0
+
+=
+
+t∈T,u0 ∈U
+
+∑
+
+s∈S,u0 ∈U
+
+=
+
+∑ As,t Bt,u
+0
+
+0
+
+s−1t 0t −1 u0
+
+t,t 0 ∈T
+
+∑ (AB)s,u s0−1 u ,
+0
+
+s0 ∈S,u∈U
+
+since (s−1t 0 )(t −1 u0 ) = s0−1 u is equivalent to s0 s−1t 0t −1 u0 u−1 = 1. The triple product property now yields
+s = s0 , t = t 0 , and u = u0 .
+The group algebra C[G] is isomorphic to a product of matrix algebras. Therefore, when G realizes
+hk, m, ni, Theorem 10.3 reduces the multiplication of k × m-matrices with m × n-matrices to many small
+matrix multiplications.
+
+10.2
+
+The pseudo-exponent
+
+The pseudo-exponent of a group measures the quality of the embedding provided by Theorem 10.3.
+Definition 10.4. The pseudo-exponent α(G) of a nontrivial finite group G is
+n 3 log |G|
+o
+α(G) = min
+G realizes hk, m, ni, max{k, m, n} > 1 .
+log kmn
+The pseudo-exponent of the trivial group is 3.
+Lemma 10.5. Let G be a finite group.
+1. 2 < α(G) ≤ 3.
+2. If G is abelian, then α(G) = 3.
+Proof. The upper bound of 3 follows directly from the observation above that every group realizes
+h|G|, 1, 1i. Note that any group G realizes h|G|, 1, 1i by choosing subgroups H1 = G, H2 = {1}, and
+H3 = {1}. For the lower bound, suppose that G realizes hk, m, ni through sets S, T , and U. The map
+Q(S) × Q(T ) → G defined by (x, y) 7→ xy is injective. Its image intersects Q(U) only in {1}. This follows
+from the definition of “realizes”: Assume that st = u with s ∈ Q(S), t ∈ Q(T ), and u ∈ Q(U). Then
+s = t = u = 1. Therefore,
+|G| ≥ |Q(S) × Q(T )| ≥ km
+where the last inequality is strict if |U| = n > 1. The same is true for the pairs T,U and S,U. Thus,
+|G|3 > (kmn)2 , which implies α(G) > 2.
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+53
+
+M ARKUS B L ÄSER
+
+If G is abelian, then the map Q(S) × Q(T ) × Q(U) → G given by (x, y, z) 7→ xyz is injective, because
+x0 y0 z0 = xyz implies x−1 x0 y−1 y0 z−1 z0 = 1. Now, injectivity follows from the definition of “realizes.”
+Therefore, |G| ≥ kmn, if G is abelian.
+Example 10.6. The symmetric group S(n) has pseudo-exponent 2 + O(1/log n). To see this, we think of
+2
+S(n) acting on triples (a, b, c) with a + b + c = n − 1 and a, b, c ≥ 0. Let Hi be the subgroup of S(n) that
+2
+2
+fixes the ith coordinate. We claim that S(n) realizes hN, N, Ni via H1 , H2 , H3 where N = |Hi | = 1!2! · · · n!.
+2
+If this were true, then
+
+
+
+log n2 !
+1
+α(S(n) ) =
+= 2+O
+.
+2
+log N
+log n
+So it remains to show that H1 , H2 , H3 satisfy the triple product property: Let h1 h2 h3 = 1. Order the triples
+(a, b, c) lexicographically. Let (a, b, c) be the smallest triple such that hi (a, b, c) 6= (a, b, c) for some i.
+Since (a, b, c) is the smallest such triple, h3 (a, b, c) = (a + j, b − j, c) for some j ≥ 0. (Note that hi fixes
+(a, b, c) iff h−1
+i fixes (a, b, c).) Next, h2 (a + j, b − j, c) = (a + j + k, b − j, c − k) for some k. Since h1 fixes
+the first coordinate, we have j + k = 0. Since (a, b, c) was the smallest triple, h1 fixes (a, b − j, c + j),
+thus j = 0. Therefore, hi (a, b, c) = (a, b, c), a contradiction. Hence, hi = 1 for all i.
+
+10.3
+
+Bounds on ω
+
+Unfortunately, if a group has pseudo exponent close to 2 it does not mean that we get a good bound on ω
+from it. The group needs to have small character degrees in addition.
+Theorem 10.7. Suppose G has pseudo exponent α and its character degrees are d1 , . . . , dt . Then
+t
+
+|G|ω/α ≤ ∑ diω .
+i=1
+
+Proof. By the definition of pseudo exponent, there are k, m, and n such that G realizes hk, m, ni with
+kmn = |G|3/α . By Theorem 10.3,
+hk, m, ni ≤ C[G] ∼
+=
+
+t
+M
+
+hdi , di , di i .
+
+i=1
+
+If we take the `th tensor power of this, we get
+D
+E
+k ` , m ` , n` ≤
+
+t
+M
+i=1
+
+!⊗`
+hdi , di , di i
+
+=
+
+t
+M
+
+hdi1 · · · dit , di1 · · · dit , di1 · · · dit i .
+
+i1 ,...,i` =1
+
+Taking ranks on both sides, we get
+D
+E
+R( k` , m` , n` ) ≤ c ·
+
+t
+
+∑ diω+ε
+
+!`
+,
+
+i=1
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+54
+
+FAST M ATRIX M ULTIPLICATION
+
+where ε > 0 and c is a constant such that R(hs, s, si) ≤ c · sω+ε for all s. Since (xyz)ω/3 ≤ R(hx, y, zi) for
+all x, y, z, we get by taking `th roots
+t
+
+|G|ω/α = (kmn)ω/3 ≤ ∑ diω+ε .
+i=1
+
+Since ε > 0 was arbitrary, the claim of the theorem follows.
+Corollary 10.8. Suppose G has pseudo exponent α and its largest character degree is dmax . Then
+ω−2 .
+|G|ω/α ≤ |G|dmax
+Proof. Use ∑ti=1 di2 = |G|.
+
+10.4
+
+Applications
+
+So is there a group that gives a nontrivial bound on the exponent? While in the first paper, no such
+example was given, Cohn et al. [9] in a second paper gave several such examples. It is also possible to
+match the upper bound by Coppersmith and Winograd within this group theoretic framework. To this
+aim, they generalize the triple product property to a simultaneous triple product property. It is quite easy
+to prove analogues of Lemma 10.2, Theorem 10.3, and of Theorem 10.7 with matrix tensors replaced by
+sums of matrix tensors. The interested reader is referred to [9].
+Furthermore, Cohn et al. [9] make two conjectures, both of which would imply ω = 2. One of them,
+however, contradicts a variant of the sunflower conjecture [2].
+Definition 10.9. Let G and H be two groups, with a left action of G on H. The semidirect product H o G
+is the set H × G with the multiplication law
+(h1 , g1 )(h2 , g2 ) = (h1 (g1 · h2 ), g1 g2 )
+where g1 · h2 denotes the action of g1 on h2 .
+Example 10.10. Let Cn be the cyclic group of order n and set H = Cn3 . Let G = H 2 oC2 where C2 acts
+on H 2 by switching the two factors. Let z be the generator of C2 . We write elements of G as (a, b)zi with
+a, b ∈ H and i ∈ {0, 1}. Let H1 , H2 , H3 be the three factors of H viewed as subgroups. We define subsets
+Si = {(a, b)z j | a ∈ Hi \ {1}, b ∈ Hi+1 , j ∈ {0, 1}} ,
+where the index of Hi+1 is taken cyclically.
+The character degrees of G are at most 2, because H 2 is an Abelian subgroup of index 2. The sum of
+the squares of the character degrees is |G|, therefore, the sum of their cubes is ≤ 2|G|, which is 4n6 .
+We will show below, that G realizes h|S1 |, |S2 |, |S3 |i. Each Si has size 2n(n − 1). Thus the pseudo
+exponent is
+3 log |G|
+log 2n6
+=
+.
+log(|S1 |3 ) log 2n(n − 1)
+By Corollary 10.8,
+|G|ω/α = (2n(n − 1))6 ≤ |G| · 2ω−2 = 2ω−2 2n6 .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+55
+
+M ARKUS B L ÄSER
+
+If we set n = 17, we get the bound ω ≤ 2.91.
+It remains to show that S1 , S2 and S3 satisfy the triple product property. Let qi ∈ Q(Si ). We
+−1
+−1 −1
+have qi = (ai , bi )(c−1
+i , di ) or qi = (ai , bi )z(ci , di ). In a product q1 q2 q3 = 1, there are either two
+appearances of z or none; since otherwise, q1 q2 q3 = (x, y)z 6= 1.
+First assume that there are none. Then
+−1
+−1
+−1
+−1
+−1
+q1 q2 q3 = (a1 c−1
+1 a2 c2 a3 c3 , b1 d1 b2 d2 b3 d3 ) .
+
+Thus q1 q2 q3 = 1 iff q1 = q2 = q3 = 1, since the triple product property holds for each factor H separately.
+Now assume that there are two appearances of z. Assume that it appears in q1 and q2 . The other cases
+are treated similarly. We have
+−1
+−1
+−1
+−1
+q1 q2 q3 = (a1 d1−1 b2 c−1
+2 a3 c3 , b1 c1 a2 d2 b3 d3 )
+
+a1 is the only element from Cn × {1} × {1} in the first product on the right-hand side. Since a1 6= 1, the
+product q1 q2 q3 6= 1.
+
+11
+
+Support rank
+
+Finally, we consider another relaxation of rank, introduced in [11].
+Definition 11.1.
+
+1. Two tensors t,t 0 ∈ K k×m×n are support equivalent if for all h, i, j,
+0
+th,i, j 6= 0 ⇐⇒ th,i,
+j 6= 0 .
+
+We write t ∼s t 0 .
+2. The support rank (or s-rank for short) of a tensor t is defined by
+Rs (t) = min{R(t 0 ) | t 0 ∼s t} .
+By definition, the s-rank is a lower bound for the rank. But the s-rank can be much lower.
+Example 11.2. Let I be the identity matrix and J be the all-ones matrix of size n × n. Then R(J − I) = n.
+Let M = (ζ i− j ) for some primitive nth root of unity ζ . M is a rank-one matrix. M − I and J − I are
+support equivalent. But Rs (M − I) ≤ 2, since s-rank is subadditive.
+Like border rank, s-rank is a relaxation of rank. These two relaxations are however incomparable.
+In the example above, J − I has border rank n, too. On the other hand, then tensor at the beginning of
+Section 6 has s-rank 3 by the same proof given there. (Most lower bound proofs for the rank based on
+substitution method also work for s-rank.)
+Definition 11.3. The s-rank exponent of matrix multiplication is defined as
+ωs = inf{τ | Rs (hn, n, ni) = O(nτ )} .
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+56
+
+FAST M ATRIX M ULTIPLICATION
+
+Note that s-rank behaves like rank: It is subadditive and submultiplicative. We have (kmn)ωs ≤
+Rs (hk, m, ni). We can define border s-rank and get a similar relation to s-rank. The asymptotic sum
+inequality holds for the s-rank, too, and the laser methods works as well, provided that we replace ω by
+ωs . How are ω and ωs related?
+Theorem 11.4. ω ≤ (3ωs − 2)/2.
+Proof. Given ε > 0, choose C such that Rs (hn, n, ni) ≤ C · nωs +ε . Let t be a tensor with t ∼s hn, n, ni and
+R(t) ≤ Cnωs +ε . Decompose hn, n, ni = hn, n, 1i ⊗ h1, 1, ni. This induces a decomposition of t = t1 ⊗ t2
+with t1 ∼s hn, n, 1i and t2 ∼s h1, 1, ni. Now think of t having inner structure t1 and outer structure t2 . By
+Lemma 11.6 below, t1 is isomorphic to hn, n, 1i and t2 is isomorphic to h1, 1, ni. But this is exactly the
+situation we were in when applying the laser method to Str. In the same way, we get
+n2 n2ω ≤ n3(ωs +ε) .
+Since this is true for any ε, we get the desired bound.
+In other words, if ωs ≤ 2 + ε, then ω ≤ 2 + 32 ε. In particular, if ωs = 2, then ω = 2.
+Problem 11.5. Can the factor 32 above be improved?
+Lemma 11.6. Let t be a tensor with slices t1 , . . . ,tn . such that each ti has only one nonzero entry. If
+t 0 ∼s t, then t 0 is isomorphic to t.
+Proof. Assume that w. l. o. g. t1 , . . . ,tn are the 1-slices of t. We can assume that they are all nonzero. Let
+t 0 be a tensor with t 0 ∼s t. Let t10 , . . . ,tn0 be the slices of t 0 . Then ti = αiti0 for some αi ∈ K, 1 ≤ i ≤ n.
+Let A : K n → K n be the isomorphism defined by multiplying the ith coordinate by αi , 1 ≤ i ≤ n. Then
+(A ⊗ I ⊗ I)t = t 0 .
+How to make use out of s-rank? Cohn and Umans [11] generalize their group theoretic approach by
+replacing groups by coherent configurations and group algebras by adjacency algebras. The s-rank comes
+into play because of the structural constants. In group algebras, these are either 0 or 1, in adjacency
+algebras, they can be arbitrary. Because of the structural constants, adjacency algebras yield bounds
+on ωs instead of ω. The interested reader is referred to the original paper [11]. Furthermore, Cohn and
+Umans currently do not get any bound on ωs that is better then the current best upper bounds on ω. So a
+lot of challenging open problems are waiting out there!
+Acknowledgement 11.7. This article is based on the course material of the course “Bilinear Complexity”
+which I held at Saarland University in summer term 2009 and 2013. I would like to thank Fabian Bendun
+who typed my lecture notes. I would also like to thank all other participants of the course. I learnt most
+of the results presented in this article from Arnold Schönhage when I was a student at the University of
+Bonn in the nineties of the last century. The way I present the results and many of the proofs are inspired
+by what I learnt from him. Amir Shpilka forced me to write and publish this article. He was very patient.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+57
+
+M ARKUS B L ÄSER
+
+References
+[1] VALERY B. A LEKSEYEV: On the complexity of some algorithms of matrix multiplication. J.
+Algorithms, 6(1):71–85, 1985. [doi:10.1016/0196-6774(85)90019-7] 18, 25
+[2] N OGA A LON , A MIR S HPILKA , AND C HRISTOPHER U MANS: On sunflowers and matrix multiplication. Comput. Complexity, 22(2):219–243, 2013. Preliminary version in CCC’12. See also at
+ECCC. [doi:10.1007/s00037-013-0060-1] 55
+[3] U LRICH BAUM AND M ICHAEL C LAUSEN: Fast Fourier Transforms. Spektrum Akademischer
+Verlag, 1993. 51
+[4] DARIO B INI , M ILVIO C APOVANI , F RANCESCO ROMANI , AND G RAZIA L OTTI: O(n2.7799 )
+complexity for n × n approximate matrix multiplication. Inform. Process. Lett., 8(5):234–235, 1979.
+[doi:10.1016/0020-0190(79)90113-3] 26
+[5] M ARKUS B LÄSER: On the complexity of the multiplication of matrices of small formats. J.
+Complexity, 19(1):43–60, 2003. [doi:10.1016/S0885-064X(02)00007-9] 2, 25
+[6] A LFRED T. B RAUER: On addition chains.
+[doi:10.1090/S0002-9904-1939-07068-7] 6
+
+Bull. Amer. Math. Soc., 45(2):736–739, 1939.
+
+[7] NADER H. B SHOUTY: On the additive complexity of 2 × 2-matrix multiplication. Inform. Process.
+Lett., 56(6):329–335, 1995. Preliminary version in SAC’91. [doi:10.1016/0020-0190(95)00176-X]
+2
+[8] P ETER B ÜRGISSER , M ICHAEL C LAUSEN , AND M OHAMMAD A MIN S HOKROLLAHI: Algebraic
+Complexity Theory. Springer, 1997. [doi:10.1007/978-3-662-03338-8] 10, 25, 40
+[9] H ENRY C OHN , ROBERT D. K LEINBERG , BALÁZS S ZEGEDY, AND C HRISTOPHER U MANS:
+Group-theoretic algorithms for matrix multiplication. In Proc. 46th FOCS, pp. 379–388. IEEE
+Comp. Soc. Press, 2005. [doi:10.1109/SFCS.2005.39] 55
+[10] H ENRY C OHN AND C HRISTOPHER U MANS: A group-theoretic approach to fast matrix multiplication. In Proc. 44th FOCS, pp. 438–449. IEEE Comp. Soc. Press, 2003.
+[doi:10.1109/SFCS.2003.1238217] 51, 52
+[11] H ENRY C OHN AND C HRISTOPHER U MANS: Fast matrix multiplication using coherent configurations. In Proc. 24th Ann. ACM-SIAM Symp. on Discrete Algorithms (SODA’13), pp. 1074–1087.
+ACM Press, 2013. SIAM. See also at arXiv. 56, 57
+[12] D ON C OPPERSMITH AND S HMUEL W INOGRAD: On the asymptotic complexity of matrix
+multiplication. SIAM J. Comput., 11(3):472–492, 1982. Preliminary version in FOCS’81.
+[doi:10.1137/0211038] 34
+[13] D ON C OPPERSMITH AND S HMUEL W INOGRAD: Matrix multiplication via arithmetic progressions.
+J. Symbolic Comput., 9(3):251–280, 1990. Preliminary version in STOC’87. [doi:10.1016/S07477171(08)80013-2] 40
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+58
+
+FAST M ATRIX M ULTIPLICATION
+
+[14] A LEXANDER M. DAVIE AND A NDREW JAMES S TOTHERS: Improved bound for complexity
+of matrix multiplication. Proc. Royal Soc. Edinburgh: Sect. A Math., 143(2):351–369, 2013.
+[doi:10.1017/S0308210511001648] 50
+[15] H ANS F. DE G ROOTE: On the varieties of optimal algorithms for the computation of bilinear
+mappings II: Optimal algorithms for 2 × 2–matrix multiplication. Theoret. Comput. Sci., 7(2):127–
+148, 1978. [doi:10.1016/0304-3975(78)90045-2] 2
+[16] H ANS F. DE G ROOTE: Lectures on the Complexity of Bilinear Problems. Volume 245 of Lecture
+Notes in Computer Science. Springer, 1987. [doi:10.1007/BFb0020719] 29
+[17] J OHAN H ÅSTAD: Tensor rank is NP-complete. J. Algorithms, 11(4):644–654, 1990. Preliminary
+version in ICALP’89. [doi:10.1016/0196-6774(90)90014-6] 25
+[18] G ORDON JAMES AND M ARTIN L IEBECK: Representations and Characters of Groups. Cambridge
+Univ. Press, 2001. [doi:10.1017/CBO9780511814532] 51
+[19] A NATOLII A LEXEEVICH K ARATSUBA: The complexity of computations. Proc. Steklov Institute
+of Mathematics, 211(169–183), 1995. Translation from Trudy Mat. Inst. Steklova, 207, 180–196
+(1994). Available at http://www.cs.ru/personal/karatsuba/divcen.pdf. 4
+[20] A NATOLII A LEXEEVITCH K ARATSUBA AND Y URI P ETROVICH O FMAN: Multiplication of manydigit numbers by automatic computers. Proc. USSR Academy of Sciences, 145(293–294), 1962.
+4
+[21] J ULIAN D. L ADERMAN: A noncommutative algorithm for multiplying 3 × 3–matrices using 23
+multiplications. Bull. Amer. Math. Soc., 82(1):126–128, 1976. [doi:10.1090/S0002-9904-197613988-2] 2, 25
+[22] T HEODORE S. M OTZKIN: Evaluation of polynomials. Bull. Amer. Math. Soc., 61(2):113–184,
+1955. [doi:10.1090/S0002-9904-1955-09897-5] 7
+[23] A LEXANDER M. O STROWKSI: On two problems in abstract algebra connected with Horner’s rule.
+In Studies in Mathematics and Mechanics presented to Richard von Mises, pp. 40–48. Academic
+Press, 1954. 7
+[24] V ICTOR YA . PAN: Methods of computing values of polynomials. Russ. Math. Surv., 21(1):105–136,
+1966. [doi:10.1070/RM1966v021n01ABEH004147] 7
+[25] V ICTOR YA . PAN: New fast algorithms for matrix operations. SIAM J. Comput., 9(2):321–342,
+1980. [doi:10.1137/0209027] 25
+[26] A RNOLD S CHOLZ: Aufgabe 253. Jahresberichte der deutschen Mathematiker-Vereinigung,
+47(4):41–42, 1937. 6
+[27] A RNOLD S CHÖNHAGE: A lower bound for the length of addition chains. Theoret. Comput. Sci.,
+1(1):1–12, 1975. [doi:10.1016/0304-3975(75)90008-0] 6
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+59
+
+M ARKUS B L ÄSER
+
+[28] A RNOLD S CHÖNHAGE: Partial and total matrix multiplication. SIAM J. Comput., 10(3):434–455,
+1981. [doi:10.1137/0210032] 29, 31
+[29] K ENNETH B. S TOLARSKY: A lower bound for the Scholz–Brauer problem. Canad. J. Math.,
+21:675–683, 1969. [doi:10.4153/CJM-1969-077-x] 6
+[30] A NDREW JAMES S TOTHERS: On the complexity of matrix multiplication. Ph. D. thesis, The
+University of Edinburgh, 2010. Edinburgh Research Archive. 50
+[31] VOLKER S TRASSEN: Gaussian elimination is not optimal. Numer. Math., 13(4):354–356, 1969.
+[doi:10.1007/BF02165411] 2
+[32] VOLKER S TRASSEN: Vermeidung von Divisionen. J. Reine Angew. Math., 264:184–202, 1973.
+EUMDL. 13
+[33] VOLKER S TRASSEN: Relative bilinear complexity and matrix multiplication. J. Reine Angew.
+Math., 375/376:406–443, 1987. EUDML. 38
+[34] A BRAHAM WAKSMAN: On Winograd’s algorithm for inner products. IEEE Trans. Comput.,
+C–19(4):360–361, 1970. [doi:10.1109/T-C.1970.222926] 18
+[35] V IRGINIA VASSILEVSKA W ILLIAMS: Multiplying matrices faster than Coppersmith-Winograd. In
+Proc. 44th STOC, pp. 887–898. ACM Press, 2012. [doi:10.1145/2213977.2214056] 50
+[36] S HMUEL W INOGRAD: A new algorithm for inner product. IEEE Trans. Comput., C–17(7):693–694,
+1968. [doi:10.1109/TC.1968.227420] 18
+[37] S HMUEL W INOGRAD: On the number of multiplications necessary to compute certain functions. Comm. Pure and Appl. Math, 23(2):165–179, 1970. Preliminary version in PNAS 1967.
+[doi:10.1002/cpa.3160230204] 7
+[38] S HMUEL W INOGRAD: On multiplication of 2 × 2–matrices. Lin. Alg. Appl., 4(4):381–388, 1971.
+[doi:10.1016/0024-3795(71)90009-7] 2
+AUTHOR
+Markus Bläser
+full professor
+Saarland University, Saarbrücken, Germany
+mblaeser cs uni-saarland de
+ABOUT THE AUTHOR
+M ARKUS B LÄSER is notorious for not putting his CV anywhere. The explanations in the
+ToC-Style file what to put here made him almost switch to software engineering.
+
+T HEORY OF C OMPUTING L IBRARY, G RADUATE S URVEYS 5 (2013), pp. 1–60
+
+60
+
+

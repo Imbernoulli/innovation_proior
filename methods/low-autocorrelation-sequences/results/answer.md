@@ -30,9 +30,9 @@ is a *construction* plus a *character-sum analysis*, not a search record.
 
 3. **Character-sum analysis.** `C_{X_r}(u)` is a windowed sum of the quadratic character of
    a quadratic in `i`. In the Fourier domain, `X_p(ζ_k) - 1` is a quadratic Gauss sum of
-   modulus exactly `p^{1/2}` (flat spectrum = difference-set property). Packaging the
-   merit factor through the fourth-moment quantity
-   `L_A(a,b,c) = n^{-3} sum_k A(ζ_k)A(ζ_{k+a})A(ζ_{k+b})A(ζ_{k+c})`, multiplicativity
+   modulus exactly `p^{1/2}` for `k ≠ 0`; the extra `1` from `x_0 := +1` is carried in the
+   error term. Packaging the merit factor through the fourth-moment quantity
+   `L_A(a,b,c) = n^{-3} sum_k A(ζ_k)A(ζ_{k+a})\overline{A(ζ_{k+b})}\overline{A(ζ_{k+c})}`, multiplicativity
    collapses it to `L_{X_p}(a,b,c) = p^{-1} sum_{x∈F_p} ( x(x+a)(x+b)(x+c) | p ) + O(p^{-1/2})`.
    The **Weil bound** gives `≤ 3 p^{1/2}` for the inner sum unless the quartic is a perfect
    square — which happens exactly at the "ideal" pattern `I(a,b,c)` (one of `a,b,c` is `0`,
@@ -60,8 +60,8 @@ reaches `6`). The same parabola holds for Jacobi and modified-Jacobi/twin-prime 
 **Beyond 6.** Periodically extending to a total length fraction `T` lowers the spread-out
 off-peak energy when `T` is slightly above `1`, while the exact shift `u = n` aligns the
 appended `(T - 1)n` terms with their originals and contributes about `(T - 1)^2 n^2`.
-The related `(+,+,-,-)` and `(+,+,-,+)` product constructions are governed by the same
-two-parameter limit:
+The appended Legendre/Jacobi construction and the related `(+,+,-,-)` and `(+,+,-,+)`
+product constructions are governed by the same two-parameter limit:
 
 ```
 1/g(R,T) = 1 - 4T/3 + 4 sum_{m∈N} max(0, 1 - m/T)^2 + sum_{m∈Z} max(0, 1 - |1 + (2R-m)/T|)^2
@@ -73,8 +73,10 @@ two-parameter limit:
 F_a = 6.342061…,  the largest root of  29 x^3 - 249 x^2 + 417 x - 27,
 ```
 
-at `T = 1.057827…` (middle root of `4 x^3 - 30 x + 27`) and `R = 3/4 - T/2`, which makes the
-sequence skew-symmetric. The additive (Galois/m-sequence) analogue gives
+at `T = 1.057827…` (middle root of `4 x^3 - 30 x + 27`) and `R = 3/4 - T/2`, using the
+representative `0 ≤ R < 1/2`. In the skew-symmetric Jacobi/product versions the same
+optimum is written as `R = 1/4 - T/2`, equivalent by the half-period symmetry of `g`, and
+gives the same limit. The additive (Galois/m-sequence) analogue gives
 `F_b = 3.342065…`, the largest root of `7 x^3 - 33 x^2 + 33 x - 3`.
 
 ## Code
@@ -83,18 +85,31 @@ sequence skew-symmetric. The additive (Galois/m-sequence) analogue gives
 import math
 import numpy as np
 
-def quadratic_residue_sign(i, p):
-    if i % p == 0:
-        return None
-    return 1 if pow(i % p, (p - 1) // 2, p) == 1 else -1
+def is_prime(n):
+    if n < 2:
+        return False
+    if n % 2 == 0:
+        return n == 2
+    d = 3
+    while d * d <= n:
+        if n % d == 0:
+            return False
+        d += 2
+    return True
+
+def valid_length(n):
+    return n % 4 == 3 and is_prime(n)
+
+def algebraic_sign(i, n):
+    j = i % n
+    if j == 0:
+        return 1
+    return 1 if pow(j, (n - 1) // 2, n) == 1 else -1
 
 def build_sequence(n):
-    if n < 3 or n % 4 != 3:
-        raise ValueError("n must be an odd prime with n % 4 == 3")
-    return np.array(
-        [1 if i == 0 else quadratic_residue_sign(i, n) for i in range(n)],
-        dtype=np.int64,
-    )
+    if not valid_length(n):
+        raise ValueError("n must be a prime with n % 4 == 3")
+    return np.array([algebraic_sign(i, n) for i in range(n)], dtype=np.int64)
 
 def rotate(A, r):
     n = len(A)

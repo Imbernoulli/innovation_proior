@@ -1,0 +1,599 @@
+           !!"
+MATHEMATICS AND EDUCATION IN MATHEMATICS, 2001
+Proceedings of Thirtieth Spring Conference of
+the Union of Bulgarian Mathematicians
+Borovets, April 8–11, 2001
+
+LINEAR PROGRAMMING BOUNDS FOR SPHERICAL
+CODES AND DESIGNS*
+Peter Boyvalenkov, Danyo Danev
+We describe linear programming (LP) techniques used for obtaining upper/lower
+bounds on the size of spherical codes/spherical designs. A survey of universal bounds
+is presented together with description of necessary and sufficient conditions for their
+optimality. If improvements are possible, we describe methods for finding new bounds.
+In both cases we are able to find new bounds in great ranges of parameters. Investigations on the possibilities for attaining the universal bounds are described. Some
+investigations which lead beyond the pure LP are also presented.
+
+1. Introduction. A spherical (n, M, s)-code is a finite subset C of the n-dimensional
+Euclidean sphere Sn−1 with cardinality |C| = M and a maximal inner product s =
+max{hx, yi : x, y ∈ C, x 6= y}. The concept of spherical designs was introduced in 1977
+by Delsarte, Goethals and Seidel [18].
+Definition 1. A code C ⊂ Sn−1 is called a spherical τ −design if and only if the
+equality
+Z
+1 X
+(1)
+f (x) dµ(x) =
+f (x)
+|C|
+Sn−1
+x∈C
+
+((µ(·) is the usual Lebesgue measure on Sn−1 , normalized for µ(Sn−1 ) = 1) holds for all
+polynomials f (x) = f (x1 , x2 , . . . , xn ) of degree at most τ .
+LP techniques for estimating the size of codes and designs on Sn−1 were introduced
+after 1975. The result was immediate and new bounds appeared to be, in a sense, universal, and relatively easy for calculation. Apart from the theoretical point of view, spherical
+codes and designs were proved to be important at least in two practical areas: codes are
+used in communications (modems, mobile devices, etc.) and designs in approximations.
+The background for the LP approach was developed by Delsarte, Goethals and Seidel
+[18] and Kabatiansky and Levenshtein [23]. They proved that real polynomials having
+certain properties can be used for obtaining upper bounds on the size of codes (for fixed
+dimension and maximal inner product) and lower bounds on designs (for fixed dimension
+and strength). Moreover, suitable polynomials were proposed and universal bounds have
+been obtained.
+* This research was partially suppoqerted by UNESCO under contract UVO-ROSTE 875.695.0 and
+by Bulgarian NSF under contract MM-901/99.
+
+11
+
+The aim of this survey is to describe the present situation along with the universal
+bounds and their possible LP improvements and to propose some directions for future
+investigations. The paper is organized as follows.
+In section 2 we discuss the logic of the LP bounds and the logic of the universal
+bounds, i.e. the Levenshtein bound for codes [24, 26] and the Delsarte-Goethals-Seidel
+bound for designs [18]. The distance distributions of codes and designs attaining the
+universal bounds can be computed. This can be used for proving nonexistence results
+[5, 6, 8, 16, 13]. In section 3 we describe necessary and sufficient conditions for existence
+of better than the universal bounds. Despite extremal in some sense and best possible
+in (infinitely) many cases, these bounds appear not to give the full strength of the LP
+[30, 7, 12, 17]. Properties of test functions introduced in [12] need to be studied. Section
+4 describes the search of new LP bounds for codes and designs. When improvements
+are possible, we apply certain methods for calculating new bounds. In section 5 we go
+beyond the pure LP. Indeed, LP techniques can be combined with other (geometric, for
+example) ideas for investigations on the structure of putative good codes and designs.
+The problem for designs is easier and we describe improvements (either asymptotic and
+in concrete cases, such as the first open ones) of the Delsarte-Goethals-Seidel bound [14].
+In other application, LP techniques are used to estimate other parameters of codes such
+as their distance distribution. This results [3] in obtaining a new bound on the exponent
+of error probability of decoding for the best possible codes in the Gaussian channel.
+2. Universal LP bounds.
+2.1. Gegenbauer polynomials. The theory of spherical codes and designs is
+(n)
+naturally connected with the family of Gegenbauer polynomials {Pi (t)}∞
+i=0 [1, Chapter
+22] (n is nothing but the relevant dimension). They can be defined by
+(n)
+
+(n)
+
+(i + n − 2)Pi+1 (t) = (2i + n − 2)tPi
+(n)
+
+(n)
+
+(t) − iPi−1 (t), i ≥ 1,
+
+(n)
+
+where P0 (t) = 1 and P1 (t) = t. It is well known that any real polynomial f (t),
+deg(f ) = m, can be uniquely expanded in terms of Gegenbauer polynomials as
+f (t) =
+
+m
+X
+
+(n)
+
+f i Pi
+
+(t).
+
+i=0
+
+The following definition joins two properties of very different nature. It is convenient
+for explanation of the LP approach for bounding sizes of codes and designs.
+Definition 2. Denote
+An,s
+Bn,τ
+
+= {f (t) : f (t) ≤ 0 for t ∈ [−1, s], fi ≥ 0 for i = 1, ..., m = deg f (t), f0 > 0},
+= {f (t) : f (t) ≥ 0 for t ∈ [−1, 1], fi ≤ 0 for i = τ + 1, ..., m = deg f (t)}.
+
+In applications, one needs polynomials in the good sets An,s or Bn,τ for specified
+values of n and s, or n and τ , respectively.
+2.2. The LP approach. The LP approach works well for a class of metric spaces
+called polynomial metric space [24, 26]. The Euclidean spheres appear to be among the
+12
+
+most interesting examples. We describe in brief the idea behind these bounds as it is
+exposed in [24, 26]. Another description can be found in [18].
+The spaces Sn−1 are under consideration with the usual Euclidean metric. It is well
+known that the Hilbert space L2 (Sn−1 , µ) of complex-valued functions defined on Sn−1
+with inner product
+Z
+hu, vi =
+
+u(x)v(x) dµ(x)
+
+Sn−1
+
+can be decomposed into a countable direct sum of mutually orthogonal subspaces Vi ,
+i = 0, 1, . . ., where dim(Vi ) = ri . The subspace Vi is in fact the space of all functions,
+which are represented on Sn−1 by harmonic homogeneous polynomials on n variables of
+total degree i. If {vij (x) : j = 1, 2, . . . , ri } is an orthonormal basis of Vi , one considers
+the so-called zonal spherical functions
+r
+
+(n)
+
+(2)
+
+Pi
+
+(hx, yi) =
+
+i
+1 X
+vij (x)vij (y).
+ri j=1
+
+In this way one obtains nothing but the Gegenbauer polynomials exactly as defined in
+2.1.
+The next statement [18, 25, 26] gives an equivalent definition of spherical designs.
+P
+Lemma 1. A spherical code C is a τ -design iff
+x∈C v(x) = 0 for every function
+v(x) ∈ ∪τi=1 Vi .
+
+It is easy to see that, for any finite set C ⊂ Sn−1 and any polynomial f (t) of degree
+m, the following identity holds [24, 26] (see also [18, Corollary 3.8])
+
+(3)
+
+|C|f (1) +
+
+X
+
+x,y∈C,x6=y
+
+2
+
+f (hx, yi) = |C| f0 +
+
+ri X
+m
+X
+fi X
+i=1
+
+ri j=1
+
+2
+
+vij (x) .
+
+x∈C
+
+Using (3) and Lemma 1 one obtains the LP bounds for codes and designs [18, 23, 24,
+25, 26].
+Theorem 1. (i) For any polynomial f (t) ∈ An,s and any (n, M, s) code we have
+M ≤ f (1)/f0 .
+(ii) For any polynomial f (t) ∈ Bn,τ and any τ -design C ⊂ Sn−1 we have |C| ≥ f (1)/f0 .
+2.3. Levenshtein bound for codes and Delsarte-Goethals-Seidel bound for
+designs. A general choice for good polynomials was proposed by Levenshtein [24, 25,
+26] for Theorem 1(i) and by Delsarte, Goethals and Seidel [18] for Theorem 2(ii). Both
+bounds are extremal in some sense: they can not be improved by using polynomials of
+the same or lower degree. The bounds themselves can be described in terms of adjacent
+orthogonal polynomials and their zeroes as follows.
+a+ n−3 ,b+ n−3
+
+2
+2
+The adjacent polynomials are simply Jacobi polynomials Pi
+(t) [1, Chapa,b
+ter 22], where a, b ∈ {0, 1}. We shall write them shortly as Pi (t). Set Tk1,ε (t, s) =
+
+2−ε 
+
+k
+P 1,ε 1,ε
+n + 2i − 1 + ε
+n+i−2+ε
+1,ε
+1,ε
+ri Pi (t)Pi (s), where ri =
+and ε ∈ {0, 1}
+n+ε−1
+i
+i=0
+(i.e. a = 1 and b = ε). Let t1,ε
+be the greatest zero of the polynomial Pk1,ε (t).
+k
+13
+
+(s)
+
+1,ε
+Then the polynomials fm (t) = (t + 1)ε (t − s)[Tk−1
+(t, s)]2 , where m = 2k − 1 + ε and
+1,1−ε
+1,ε
+tk−1+ε ≤ s < tk , were used by Levenshtein [24, 25, 26].
+Theorem 2 ([24, 25, 26]). If C is an (n, M, s) code, then
+#
+
+
+"
+(n)
+(n)
+
+k+n−3
+2k + n − 3 Pk−1 (s) − Pk (s)
+
+
+L2k−1 (n, s) =
+−
+
+(n)
+
+k−1
+n−1
+
+(1 − s)Pk (s)
+
+
+
+
+
+
+
+1,0
+
+for t1,1
+
+k−1 ≤ s < tk ,
+(4) M ≤
+#
+
+
+"
+(n)
+(n)
+
+
+k+n−2
+2k + n − 1 (1 + s)(Pk (s) − Pk+1 (s))
+
+
+L2k (n, s) =
+−
+
+
+(n)
+(n)
+
+k
+n−1
+
+(1 − s)(Pk (s) + Pk+1 (s))
+
+
+
+
+
+
+1,1
+for t1,0
+k ≤ s < tk .
+
+Moreover, if M = Lm (n, s), then C is a spherical m-design and all inner products hx, yi,
+x, y ∈ C, x 6= y, are zeros of fm (t).
+The Delsarte-Goethals-Seidel bound was obtained in [18, Theorems 5.11, 5.12]. It
+can be obtained by using the polynomial f (τ ) (t) = (t + 1)ε (Pe1,ε (t))2 , where ε ∈ {0, 1},
+τ = 2e + ε.
+Theorem 3 [18]. If C ⊂ Sn−1 is a τ -design, τ = 2e + ε, ε ∈ {0, 1}, then
+
+ 
+
+n+e−1
+n+e−2+ε
+(5)
+|C| ≥ R(n, τ ) =
++
+.
+n−1
+n−1
+Moreover, if |C| = R(n, τ ), then C is an (n, Lτ (n, s), s) code and all inner products hx, yi,
+x, y ∈ C, x 6= y, are zeros of f (τ ) (t).
+2.4. On maximal codes and minimal designs. A spherical design is called tight
+if it attains the bound (5). There exist tight τ -designs for τ = 1, 2, 3 in all dimensions.
+Bannai and Damerell [5, 6] proved that for n ≥ 3 tight spherical τ -designs on Sn−1 do
+not exist if τ = 2e and e ≥ 3 or τ = 2e + 1 and e ≥ 4 except for τ = 11, n = 24. Exactly
+eight tight τ -designs with τ ≥ 4 are known (see [5, 6, 8]).
+All spherical codes which meet even Levenshtein bounds L2k (n, s) were characterized
+in [13].
+Theorem 4. Let C be an (n, L2k (n, s), s) code (k ≥ 2, n ≥ 3). Then one of the
+following holds:
+a) k = 2, n = m2 − 3, m ≥ 3 is odd, s = 1/(m + 1), and W is a tight spherical
+4-design;
+√
+b) k = 2, n = 3, s = 1/ 5, and W is the icosahedron (which is a tight spherical
+5-design);
+c) k = 2, n = m2 − 2, m ≥ 3 is odd, s = 1/m, and W is a tight spherical 5-design;
+d) k = 3, n = 3m2 − 4, m ≥ 2 is integer, s = 1/m, and W is a tight spherical
+7-design;
+e) k = 5, n = 24, s = 1/2, and W is the unique tight spherical 11-design formed by
+the vectors of minimal norm in the Leech lattice.
+14
+
+This classification and other results (on the odd Levenshtein bounds) from [13, 16] are
+based on the simple idea to find the distance distribution of maximal codes and to check
+whether it is integral. This approach was used for designs in [8] to establish nonexistence
+results for tight 4- and 5-designs which are used in Theorem 4 a)–c).
+3. Necessary and sufficient conditions for improving universal bounds by
+LP. In [12], test functions Qj (n, s) have been defined to check the global optimality of the
+Levenshtein bound. Let the numbers α0 < α1 < · · · < αk−1+ε = s (−1 ≤ α0 , ε ∈ {0, 1})
+(s)
+be all different zeros of the Levenshtein polynomial f2k−1+ε (t). In [26, Theorems 4.1 and
+4.3], positive weights ρi , i = 0, 1, . . . , k + ε, have been defined with the property that, for
+any real polynomial f (t) of degree at most 2k − 1 + ε the equality
+(6)
+
+f0 = ρk+ε f (1) +
+
+k−1+ε
+X
+
+ρi f (αi )
+
+i=0
+
+holds. Obviously, we have L2k−1+ε (n, s) = 1/ρk+ε . The test functions are defined by
+Qj (n, s) = ρk+ε +
+
+k−1+ε
+X
+
+(n)
+
+ρi Pj (αi )
+
+i=0
+
+1,ε
+for t1,1−ε
+k−1+ε ≤ s < tk .
+The main result in [12] (obtained by an attempt to adopt (6) for higher degrees; see
+also [26, Theorem 5.47]) is the following.
+Theorem 5 [12, Theorem 3.1]. The bound Lm (n, s) can be improved by a polynomial
+from An,s of degree at least m + 1 if and only if Qj (n, s) < 0 for some j ≥ m + 1.
+Moreover, if Qj (n, s) < 0 for some j ≥ m + 1, then Lm (n, s) can be improved by a
+polynomial from An,s of degree j.
+The test functions can be effectively calculated both by computer and by analytical
+methods [12]. The sign of Q2k+3 (n, s) was investigated in [12] implying many results.
+We formulate only the most general statement.
+Theorem 6 [12]. For any fixed n ≥ 3 there exists m0 ≥ 4 such that every Levenshtein
+bound Lm (n, s), m ≥ m0 , can be improved by LP for all s in its range.
+This theorem shows that the Levenshtein bounds can be improved by LP in wide
+ranges of parameters. However, in another sense, the Levenshtein bounds are strong.
+The following conjectures were suggested by great amount of numerical data.
+Conjecture 1. For any fixed s ∈ (0, 1) there exists n0 ≥ 3 such that no Levenshtein
+bound Lm (n, s), n ≥ n0 , can be improved by LP.
+
+Conjecture 2. If Qm+3 (n, s) ≥ 0 and Qm+4 (n, s) ≥ 0, then Qj (n, s) ≥ 0 for every
+j ≥ m + 1.
+4. Obtaining new bounds.
+Investigations in [12] show that one always has
+Qm+1 (n, s) ≥ 0 and Qm+2 (n, s) ≥ 0. Hence, the first degree which could work is m + 3.
+It turns out that results by degrees m + 3 and m + 4 are already strong enough (see
+Conjecture 2 above). This fits very well with a computer method which was proposed
+earlier [7]. We have developed program SCOD which can be used in a wide range (for
+15
+
+degrees between 6 and 19). In particular, SCOD was used for calculation of a column
+(of upper bounds on the minimum distance of codes of prescribed size) in all tables of
+best known spherical codes in a forthcoming book on spherical codes by Ericson and
+Zinoviev [19].
+Test functions for designs were defined in [27] (see also [28]). They appear to be just
+special values of the test functions for codes. Earlier, LP improvements of the bound
+(5) for some τ ≥ 6 were obtained in [17, 34]. Analytic forms of the new bounds were
+proposed in [27, 28, 29].
+5. Beyond the pure LP.
+5.1. Investigating the structure of small designs. In [14], it was shown that
+the LP approach can be modified for obtaining new nonexistence and characterization
+results as follows. Another characterization of spherical τ -designs (see, for example, [20,
+Equation 1.10]) says that for any τ -design C ⊂ Sn−1 and for any point y ∈ C the equality
+X
+(7)
+f (hx, yi) = |C|f0 − f (1)
+x∈C\{y}
+
+holds for every real polynomial f (t) of degree at most τ .
+This definition suggests the following idea [14, 9]. Using suitable polynomials in (7)
+we derive restrictions on the distributions of the inner products of a τ -design C ⊂ Sn−1 .
+This implies conditions of the existence of designs in terms of τ , n, and the cardinality
+|C| = R(n, τ ) + k. These conditions imply nonexistence results for designs with odd
+strengths and odd cardinalities (i.e. for odd k) in many cases. Set
+Bodd (n, τ ) = min{|C| : C ⊂ Sn−1 is a τ -design, |C| is odd.}
+For τ = 3, we prove the nonexistence of spherical 3-designs on Sn−1 with R(n, 3)+k =
+2n + k points for all odd k < (21/3 − 1)n + p, where p = 2(14 − 5.21/3 − 4.22/3 )/9 ≈
+0.30018. For τ = 5, we prove the nonexistence of spherical 5-designs on S n−1 with
+R(n, 5) + k = n2 + n + k points for all odd k < n2 (21/5 − 1)/2 + p1 n + p2 , where
+p1 = (7.21/5 − 2.23/5 − 5)/10 ≈ 0.00095 and p2 ≈ 0.0428.
+In general, [14, Theorem 2.8] shows that for τ = 2e + 1 and for every positive p <
+(21/τ − 1)/e! there exists a constant n0 = n0 (p) such that for n ≥ n0 there do not exist
+τ -designs on Sn−1 with cardinality R(n, τ ) + k for all odd positive k ≤ pne . Therefore,
+Bodd (n, 2e + 1) ≥
+
+1 + 21/τ e
+n as n → ∞,
+e!
+
+while (5) gives Bodd (n, 2e + 1) ≥ 2ne /e! as n → ∞.
+In three dimensions, the above rules out the first open cases by showing the nonexistence of 3-designs with 7 points and 5-designs with 13 points. On the other hand, Bajnok
+[4] has constructed 3-designs on S2 with m points for m = 8 and all m ≥ 10. HardinSloane [22] and [31] have constructed 5-designs on S2 with m points for m = 12, 16, 18,
+20, and all m ≥ 22 and conjectured that the remaining cardinalities are impossible.
+When the nonexistence argument does not work, we obtain bounds on the maximal
+inner product s(C) = max{hx, yi : x, y ∈ C, x 6= y} of (2e + 1)-designs on Sn−1 of
+odd sizes in terms of e, n, and |C|. Fazekas-Levenshtein [20, Theorem 4] note that a
+16
+
+combination of (4) and (5) implies a lower bound on s(C). The asymptotic form of this
+bound is
+r
+2
+(8)
+s(C) ≥
+he + O(n−3/2 ) as n → ∞,
+n
+where τ = 2e + 1 and he is the greatest zero of the Hermite polynomial He (t). For odd
+k = γne , we show that
+1 − 2γe! − γ 2 (e!)2
+as n → ∞,
+(1 + γe!)2
+√
+which is positive for (21/τ − 1)/e! < γ < ( 2 − 1)/e!, and therefore is better for large
+enough n than (8). Interestingly, our bounds are better in many small cases as well.
+By the argument from the last paragraph, further improvements of the bounds for
+Bodd (n, 2e + 1) both in small cases and asymptotically were obtained recently [10].
+5.2. Some other applications. It was known from the early years of the information theory [32, 33] that spherical codes play important role in the theory of transmission
+of information over noisy channels. Computing the so-called reliability function (the best
+attainable error exponent) of the so-called the Gaussian channel (which is one of the most
+important ones in the practice) was dominating through the end of 1960s [21].
+Let C be an (n, M, s) code. For s1 , s2 ∈ [−1, s], denote a(s1 , s2 ) = |{(x, y) ∈ C × C :
+s1 ≤ hx, yi ≤ s2 }|/|C|. For suitable s1 and s2 , the numbers a(s1 , s2 ) are important for
+estimations on error probabilities in the Gaussian channel. Ashikhmin, Barg and Litsyn
+[3] observed that LP method can be used in the following form.
+Theorem 7 [3]. Let C be an (n, M, s) code and m be an integer. Let −1 ≤ u0 < s
+and suppose that u0 < u1 < · · · < um−1 < um = s define a partition of the interval
+[u0 , s] into m equal segments Ui = [ui , ui+1 ]. Suppose that f (t) ∈ An,u0 and f (t) ≥ 0 for
+t ∈ [u0 , 1]. Then there exists a number i, 0 ≤ i ≤ m − 1, and a point s ∈ Ui such that
+a(ui , ui+1 ) ≥ [f0 |C| − f (1)]/mf (s).
+Using suitable polynomials in Theorem 7, Ashikhmin, Barg and Litsyn [3] obtain
+new bounds on the reliability function of the Gaussian channel thus advancing in a
+longstanding problem.
+6. Some new results and open problems. Apart from nonexistence results,
+investigations of concrete objects can rely on LP. LP methods for finding indexes (degrees
+i, for which Lemma 1 holds, i.e. for all v(x) ∈ Vi ) were explored in [15]. For example, it
+is proved in [15] that the 600-cell, which is only minimal 11-design [2], has (non-trivial)
+indexes 14, 16, 18, 22, 26, 28, 34, 38, 46 and 58. This fact inspired us to prove that there
+exist a unique 120-point 11-design in four dimensions and a unique (4, 120, cos(π/5))
+code and both these are nothing but the 600-cell [11].
+It is still an open problem to find closed analytic form of the improvements of the
+Levenshtein bounds (4) (i.e. for bounds which can be obtained by higher degree polynomials). In particular, it would be interesting to know formulae for the bounds which can
+be obtained by degrees m + 3 and m + 4 improving Lm (n, s). The analogous problem
+for designs was solved by Nikov and Nikova [28, 29].
+Another situation in which the authors would like to see advances is the application
+of LP methods for investigation of the structure of putative optimal spherical codes and,
+17
+s(C) ≥
+
+in particular, for the so-called kissing numbers problem. Section 5.1 shows the power of
+this approach for designs.
+REFERENCES
+[1] M. Abramowitz, I. A. Stegun. Handbook of Mathematical Functions, with Formulas,
+Graphs and Mathematical Tables. New York, Dover, 1965.
+[2] N. N. Andreev. A minimal 11-design on the 3-dimensional sphere. Mat. Zametki 67, No
+4 (2000), 489–497 (in Russian); English translation in Math. Notes 67, No 4 (2000), 417–424.
+[3] A. Ashikhmin, A. Barg, S. Litsyn. A new upper bound on the reliability function of the
+Gaussian channel. IEEE Trans. Inform. Theory 46 (2000), 1945–1961.
+[4] B. Bajnok. Constructions of spherical 3-designs. Graphs Combin. 14 (1998), 97–107.
+[5] E. Bannai, R. M. Damerell. Tight spherical designs I. J. Math. Soc. Japan 31 (1979),
+199–207.
+[6] E. Bannai, R. M. Damerell. Tight spherical designs II. J. London Math. Soc. 21 (1980),
+13–30.
+[7] P. G. Boyvalenkov. Extremal polynomials for obtaining bounds for spherical codes and
+designs. Discr. Comp. Geom. 14 (1995), 167–183.
+[8] P. G. Boyvalenkov. Computing distance distribution of spherical designs. Lin. Alg. Appl.
+226/228 (1995), 277–286.
+[9] P. G. Boyvalenkov, S. P. Bumova, D. P. Danev. Necessary conditions for existence of
+some designs in polynomial mertic spaces. Europ. J. Combin. 20 (1999), 213–225.
+[10] P. G. Boyvalenkov, S. P. Bumova, D. P. Danev. New nonexistence results for spherical
+designs, in preparation.
+[11] P. G. Boyvalenkov, D. P. Danev. Uniqueness of the 120-point spherical 11-design in
+four dimensions. Arch. Math., to appear.
+[12] P. G. Boyvalenkov, D. P. Danev, S. P. Bumova. Upper bounds on the minimum
+distance of spherical codes, IEEE Trans. Inform. Theory 42 (1996), 1576–1581.
+[13] P. G. Boyvalenkov, D. Danev, I. N. Landgev. On maximal spherical codes II. J.
+Comb. Des. 7 (1999), 316–326.
+[14] P. G. Boyvalenkov, D. Danev, S. Nikova. Nonexistence of certain spherical designs of
+odd strengths and cardinalities. Discr. Comp. Geom. 21 (1999), 143–156.
+[15] P. G. Boyvalenkov, D. Danev, P. Kazakov. Indexes of spherical codes. DIMACS Ser.
+Discr. Math. & Theor. Comp. Sci., to appear.
+[16] P. G. Boyvalenkov, I. N. Landgev. On maximal spherical codes I. Proc. XI Intern.
+Symp. AAECC, Paris 1995, Springer–Verlag, Lect. Notes Comp. Sci. vol. 948, 158–168.
+[17] P. Boyvalenkov, S. Nikova. Improvements of the lower bounds on the size of some
+spherical designs. Math. Balkanica 12 (1998), 151–160.
+[18] P. Delsarte, J.-M. Goethals, J. J. Seidel. Spherical codes and designs. Geom.
+Dedicata 6 (1977), 363–388.
+[19] T. Ericson, V. Zinoviev. Codes on Euclidean spheres. Amsterdam, Elsevier, 2000.
+[20] G. Fazekas, V. I. Levenshtein. On upper bounds for code distance and covering radius
+of designs in polynomial metric spaces. J. Comb. Theory A70 (1995), 267–288.
+[21] R. G. Gallager. Information theory and reliable communications. New York, John Wiley
+& Sons, 1968.
+[22] R. H. Hardin, N. J. A. Sloane. McLaren’s improved snub cube and other new spherical
+designs in three dimensions. Discr. Comp. Geom. 15 (1996), 429–441.
+[23] G. A. Kabatiansky, V. I. Levenshtein. Bounds for packings on a sphere and in space.
+Probl. Inform. Transm. 14 (1978), 1–17.
+
+18
+
+[24] V. I. Levenshtein. On choosing polynomials to obtain bounds in packing problems.
+Proc. VII All-Union Conf. Cod. Th. Inform. Transm. II, Moscow-Vilnius, 1978, 103–108 (in
+Russian).
+[25] V. I. Levenshtein. Designs as maximum codes in polynomial metric spaces. Acta Appl.
+Math. 25 (1992), 1–82.
+[26] V. I. Levenshtein. Universal bounds for codes and designs. In: Handbook of Coding
+Theory (Eds. V. Pless and W. C. Huffman), Elsevier Science B.V., 1998, Chapter 6, 499–648.
+[27] S. Nikova. Bounds for designs in infinite polynomial metric spaces. PhD Dissertation, TU
+Eindhoven, 1998.
+[28] V. Nikov, S. Nikova. Extremal polynomials of degree τ + 2 and τ + 3 which improve the
+Delsarte bound for τ -designs. Proc. Intern. Workshop Cod. Crypt., Paris, 1999, 361–365.
+[29] V. Nikov, S. Nikova. Improvement of the Delsarte bound for τ -designs when it is not the
+best bound possible. Des. Cod. Crypt., to appear.
+[30] A. M. Odlyzko, N. J. A. Sloane. New bounds on the number of unit spheres that can
+touch a unit sphere in n dimensions. J. Comb. Theory A26 (1979), 210–214.
+[31] B. Reznick. Some constructions of spherical 5-designs. Lin. Alg. Appl. 226/228 (1995),
+163–196.
+[32] C. E. Shannon. A mathematical theory of communication. Bell. Syst. Techn. J. 27
+(1948), 379–423, 623–656.
+[33] C. E. Shannon. Probability of error for optimal codes in a Gaussian channel. Bell. Syst.
+Techn. J. 38 (1959), 611–659.
+[34] V. Yudin. Spherical designs. Discr. Matem. 61 (1997), 213–223 (in Russian).
+
+Institute of Mathematics and Informatics
+Bulgarian Academy of Sciences
+Acad. G. Bonchev Str., Bl. 8
+1113 Sofia, Bulgaria
+e-mail: peter@moi.math.bas.bg
+
+Department of Electrical Engineering
+Linköping University
+S-581 83 Linköping, Sweden
+e-mail: danyo@isy.liu.se
+
+#%$ &'()(*'&,+-('.0/'1 23154$01#%$ &67($ &'.98&*:<;=.0$ ( >='(
+?1A@=1BA.C(D@(8&/'(
+4EGF HJIKALGMONQPSR EST UQLVNXW @PVTOYQL@PVT EGN
+ZX[]\_^]`ba_cV[]dfegh[iba_jfdfeGkledG[=`feGdfanmGdfopibo qSrSo]^]rG[]steGrG[]dfavutkpoheVibo=gwaeG\xqfov`S\_yl[vi\n[=qfo]z
+`f{f|G[}yl[]dfa~dG[ ^wo}rSdfehcbov`Sdfe<^]rG[]dfeGfe\n[ ovpawsX[dG[gwXawrfeG|Sdfe=kpowcbohypa}hcSeG\n[}mGdfeQGrSa_cSz
+ghiS[}ypawda ovv\xo}rdG[{fdfeSypawrSgh[]`SdfeViba^]rG[]dfeGfe\n[]a_cGdfo-g o}qfeGgh[]dfeGa dG[dfawov}jlowcSeGstee
+cbovghiS[vifV|Sdfe{fgw`bohyveGA\n[Aif]jfdG[viS[o}qGibeGsX[]`Sdfovghi%o]^v[vibo<gh[ypV\xsto]dfe-qfowcbov]rSawdfeGfu
+gh[o}qfeGgh[]dfestahibowcSe\n[dG[]steGrG[]dfadG[%dfohyve^]rG[]dfeGfeQpycSyl[viS[%gw`f{f|G[hgwao}kf[]\_yl[%ypV\_z
+sto]dfo<qfov`f{f|G[}yl[]dfahiboAdG[Adfohyve^]rG[]dfeGfe\n[^wov`Svs]rSohmqG[]rG[]stahifrfeQQZX[]\_^]`ba_cV[]dfe-gh[
+e-ypV\xsto]dfovghibeViba \n[AcbovghibeS^v[]dfa dG[{fdfeSypawrSgh[]`SdfeViba0^]rG[]dfeGfeQ!qfeGgh[]dfegh[edSvkpohe
+eG\xgw`ba_cSyl[]dfeGfuS|feSeVibojS[]rG[]kfibawrAaypaw|Sa\n[]c |feGghibopibo0`feGdfanmGdfo0qSrSo]^]rG[]steGrG[]dfav
+
+v
+
+

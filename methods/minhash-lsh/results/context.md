@@ -25,9 +25,9 @@ Why it matters: a web search engine must purge near-duplicate pages from its ind
 
 **Hashing manufactures the randomness and the set-invariance.** The recurring device: push every element through a hash function and treat its output as a uniform random value. Because identical elements hash identically, any statistic computed from the *collection* of hashed values is automatically a statistic of the *set* — duplicates land on top of each other and change nothing, and order is irrelevant. Hashing simultaneously supplies the uniform randomness the probability analysis needs and the multiplicity-/order-insensitivity the sketch requires.
 
-**Min-wise independence.** A permutation π of the universe is *min-wise independent* (for the analysis we need) if, for every set X and every x ∈ X, the probability that x attains the minimum of π over X is exactly 1/|X| — every element of X is equally likely to be the one π ranks first. True uniform permutations have this property exactly; in practice it is approximated by hashing, and the approximation is what makes the sketches statistically reliable (Broder, Charikar, Frieze, Mitzenmacher, 1998).
+**Min-wise independence.** A permutation π of the universe is *min-wise independent* (for the analysis we need) if, for every set X and every x ∈ X, the probability that x attains the minimum of π over X is exactly 1/|X| — every element of X is equally likely to be the one π ranks first. True uniform permutations have this property exactly; in practice it is approximated by hashing, and the approximation is what makes the sketches statistically reliable.
 
-**The curse of dimensionality for exact near-neighbor search.** In low dimension, k-d trees and similar space partitions answer nearest-neighbor queries in O(log N). But all such exact structures degrade to a linear scan as dimension grows — known exact data structures that beat the O(dN) scan need space exponential in d. High-dimensional exact NN is, for practical purposes, no better than brute force. The escape is to *approximate*: accept a c-factor slack in the returned distance and ask only for a point within c× the true nearest distance, which opens the door to sublinear-query randomized structures (Indyk, Motwani, 1998).
+**The curse of dimensionality for exact near-neighbor search.** In low dimension, k-d trees and similar space partitions answer nearest-neighbor queries in O(log N). But all such exact structures degrade to a linear scan as dimension grows — known exact data structures that beat the O(dN) scan need space exponential in d. High-dimensional exact NN is, for practical purposes, no better than brute force. The escape is to *approximate*: accept a c-factor slack in the returned distance and ask only for a point within c× the true nearest distance, which makes randomized sublinear-query structures plausible.
 
 ## Baselines
 
@@ -41,75 +41,110 @@ Why it matters: a web search engine must purge near-duplicate pages from its ind
 
 ## Evaluation settings
 
-The natural yardstick is, first, the **estimation accuracy** of the similarity sketch: the standard error of the Jaccard estimate as a function of the sketch length, measured over pairs of sets with known true J — reported as error versus number of hash functions (memory), with the estimator's bias. Second, the **retrieval quality and cost** of the near-neighbor scheme: for a chosen similarity threshold, the false-negative rate (truly similar pairs missed) and false-positive rate (dissimilar pairs surfaced as candidates), as functions of the banding parameters; the **candidate-set size** and per-query work as a function of N (the quantity that must be sublinear); and the total time to find all near-duplicate pairs in a corpus versus the brute-force all-pairs baseline. Standard data: large document crawls turned into shingle sets, and synthetic set collections with controlled overlap so the true J is known. Memory is counted as hash functions × bytes per value plus the hash tables; time is dominated by hashing each element once.
+The natural yardstick is, first, the **estimation accuracy** of the similarity sketch: the standard error of the Jaccard estimate as a function of the sketch length, measured over pairs of sets with known true J — reported as error versus number of hash functions (memory), with a check that the mean estimate is centered on the truth. Second, the **retrieval quality and cost** of the near-neighbor scheme: for a chosen similarity threshold, the false-negative rate (truly similar pairs missed) and false-positive rate (dissimilar pairs surfaced as candidates), as functions of the banding parameters; the **candidate-set size** and per-query work as a function of N (the quantity that must be sublinear); and the total time to find all near-duplicate pairs in a corpus versus the brute-force all-pairs baseline. Standard data: large document crawls turned into shingle sets, and synthetic set collections with controlled overlap so the true J is known. Memory is counted as hash functions × bytes per value plus the hash tables; time is dominated by hashing each element once.
 
 ## Code framework
 
 The primitives that already exist: a fixed pseudo-uniform hash from elements to a 32-bit range; a family of cheap pairwise-independent maps a·x+b mod p to stand in for "random permutations" of the universe; a one-pass reduction over a set's elements; and a dictionary keyed by a tuple of values, for bucketing. The open slots are the per-element statistic the sketch records, how the sketch estimates similarity, and how sketches are turned into a sublinear candidate-generation index.
 
 ```python
+import hashlib
+import struct
 import numpy as np
+from scipy.integrate import quad as integrate
 
-MERSENNE_PRIME = (1 << 61) - 1          # p, for the a*x+b mod p maps
-MAX_HASH = (1 << 32) - 1                # reduce into a 32-bit range
+MERSENNE_PRIME = np.uint64((1 << 61) - 1)   # p, for the a*x+b mod p maps
+MAX_HASH = np.uint64((1 << 32) - 1)         # reduce into a 32-bit range
 HASH_RANGE = 1 << 32
 
-def hash32(value):
-    # fixed pseudo-uniform hash: element -> {0,...,2^32-1}
+def sha1_hash32(data):
+    # fixed pseudo-uniform hash: bytes -> {0,...,2^32-1}
+    return struct.unpack("<I", hashlib.sha1(data).digest()[:4])[0]
+
+
+def _false_positive_probability(threshold, b, r):
+    # TODO: integrate the candidate probability below the target similarity
+    pass
+
+
+def _false_negative_probability(threshold, b, r):
+    # TODO: integrate the miss probability above the target similarity
+    pass
+
+
+def _optimal_param(threshold, num_perm, false_positive_weight, false_negative_weight):
+    # TODO: search over equal-size slices and choose the best amplification parameters
     pass
 
 class SetSketch:
-    def __init__(self, num_perm=128, seed=1):
+    def __init__(self, num_perm=128, seed=1, hashfunc=sha1_hash32):
+        self.seed = seed
         self.num_perm = num_perm
-        # k cheap pairwise-independent maps standing in for random permutations
-        gen = np.random.RandomState(seed)
-        self.a = gen.randint(1, MERSENNE_PRIME, size=num_perm, dtype=np.uint64)
-        self.b = gen.randint(0, MERSENNE_PRIME, size=num_perm, dtype=np.uint64)
-        self.sketch = self._init_sketch(num_perm)
+        self.hashfunc = hashfunc
+        self.hashvalues = self._init_hashvalues(num_perm)
+        self.permutations = self._init_permutations(num_perm)
 
-    def _init_sketch(self, num_perm):
+    def _init_hashvalues(self, num_perm):
         # TODO: the initial per-slot value the one-pass reduction starts from
         pass
 
-    def update(self, value):
-        hv = np.uint64(hash32(value))
-        permuted = (self.a * hv + self.b) % MERSENNE_PRIME & np.uint64(MAX_HASH)
-        # TODO: the per-element statistic each slot records across the set
-        self.sketch = self._combine(self.sketch, permuted)
+    def _init_permutations(self, num_perm):
+        # k cheap pairwise-independent maps standing in for random permutations
+        gen = np.random.RandomState(self.seed)
+        return np.array(
+            [
+                (
+                    gen.randint(1, MERSENNE_PRIME, dtype=np.uint64),
+                    gen.randint(0, MERSENNE_PRIME, dtype=np.uint64),
+                )
+                for _ in range(num_perm)
+            ],
+            dtype=np.uint64,
+        ).T
 
-    def _combine(self, current, permuted):
-        # TODO: how a slot accumulates its statistic over the set's elements
+    def update(self, value):
+        hv = self.hashfunc(value)
+        a, b = self.permutations
+        permuted = np.bitwise_and((a * hv + b) % MERSENNE_PRIME, MAX_HASH)
+        # TODO: update each slot with the per-element statistic recorded across the set
         pass
 
     def merge(self, other):
         # TODO: combine two sketches into the sketch of the union
         pass
 
-    def similarity(self, other):
+    def jaccard(self, other):
         # TODO: estimate J(A,B) from the two sketches
         pass
 
 
 class SimilarityIndex:
     """Generate a short candidate list of near-neighbors in sublinear work."""
-    def __init__(self, threshold, num_perm=128):
-        self.num_perm = num_perm
+    def __init__(self, threshold, num_perm=128, weights=(0.5, 0.5), params=None, hashfunc=None):
+        self.h = num_perm
         # TODO: choose how to slice / amplify the sketch so that the
         #       collision probability is a sharp threshold function of J
-        self.b, self.r = self._choose_amplification(threshold, num_perm)
-        self.tables = [dict() for _ in range(self.b)]
+        if params is None:
+            self.b, self.r = _optimal_param(threshold, num_perm, weights[0], weights[1])
+        else:
+            self.b, self.r = params
+        self.hashranges = [(i * self.r, (i + 1) * self.r) for i in range(self.b)]
+        self.hashtables = [dict() for _ in range(self.b)]
+        self.keys = {}
+        self.hashfunc = hashfunc
+        self._H = self._hashed_byteswap if hashfunc else self._byteswap
 
-    def _choose_amplification(self, threshold, num_perm):
-        # TODO: pick the amplification parameters placing the threshold at `threshold`
-        pass
+    def _byteswap(self, values):
+        return bytes(values.byteswap().data)
 
-    def _keys(self, sketch):
-        # TODO: derive the per-slice bucket keys from a sketch
-        pass
+    def _hashed_byteswap(self, values):
+        return self.hashfunc(bytes(values.byteswap().data))
 
     def insert(self, key, sketch):
-        for t, h in zip(self.tables, self._keys(sketch)):
-            t.setdefault(h, []).append(key)
+        hs = [self._H(sketch.hashvalues[start:end]) for start, end in self.hashranges]
+        self.keys[key] = hs
+        for h, table in zip(hs, self.hashtables):
+            table.setdefault(h, set()).add(key)
 
     def query(self, sketch):
         # TODO: collect candidates colliding in any slice; caller verifies exactly

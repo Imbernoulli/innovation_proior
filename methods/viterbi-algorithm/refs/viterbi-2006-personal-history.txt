@@ -1,0 +1,278 @@
+[dsp HISTORY]
+                                                                                                                                 Andrew J. Viterbi
+
+
+
+
+A Personal History of the Viterbi Algorithm
+
+
+
+
+I
+     have never considered myself a              the essence of communication and,                        HOW IT ALL BEGAN
+     digital signal processing (DSP)             thanks to the evolution of Moore’s                       My first job at the Jet Propulsion
+     practitioner, but over nearly half          law, digital processing of communi-                      Laboratories (JPL) in 1957 was in analog
+     a century of a career in wireless           cation signals has progressed from a                     signal processing, specifically dealing with
+     communication involving both                curiosity in the 1950s to the only                       a coherent tracking circuit known as the
+spatial and terrestrial systems, I have          sensible implementation of the com-                      phase locked loop. (This circuit has since
+often employed DSP as a principal                m u n i c a t i o n r e c e i v e r ’s b a s e b a n d   been often digitized with its key compo-
+tool of my trade. After all, signals are         functions today.                                         nent, the voltage controlled oscillator
+                                                                                                          (VCO), implemented as a digital frequency
+                                                                                                          synthesizer; however, this occurred long
+  EDITORS’ INTRODUCTION                                                                                   after my involvement.) The same device
+                                                                                                          could also be used as a demodulator for an
+  Our guest in this issue is Andrew J. Viterbi. Born in Bergamo, Italy, on 9 March 1935,
+  he obtained the S.B. and S.M. degrees (jointly in 1957) from the Massachusetts
+                                                                                                          analog modulated signal. Digital modula-
+  Institute of Technology and the Ph.D. degree (1962) from University of Southern                         tion was not prevalent at the time.
+  California, all in electrical engineering. He spent equal portions of his career in indus-              However, by 1960 I had been exposed to
+  try and academia. In industry, he cofounded Linkabit Corporation (1968) and                             the elegance of the statistical communica-
+  Qualcomm Inc., of which he became vice chair and chief technical officer (1985–2000).                   tion and information theories as a student
+  In academia, Dr. Viterbi was a professor at University of California in Los Angeles                     at the Massachusetts Institute of
+  (1963–1973) and then a professor at University of California in San Diego (1975–1994),                  Technology. This motivated my struggle
+  at which he is now a Professor Emeritus. Since 2000 he has been the president of the                    to understand how digital modulation
+  Viterbi Group, LLC, a technical and investment company. His research has focused on                     could improve the performance of space
+  aspects of digital communication. Most recently, he concentrated his efforts on estab-
+                                                                                                          communication, JPL’s primary role for
+  lishing CDMA as the multiple access technology of choice for cellular telephony and
+                                                                                                          NASA. The resulting paper [1] was just a
+  wireless data communication. Dr. Viterbi authored the books Principles of Coherent
+  Communication (1966) and CDMA: Principles of Spread Spectrum Communication
+                                                                                                          limiting case of Shannon’s coding theo-
+  (1995), and coauthored the book Principles of Digital Communication and Coding                          rem for the white Gaussian channel. The
+  (1979). He received numerous awards, including the IEEE Alexander Graham Bell                           demodulator consisted of multiple corre-
+  award (1984), the IEEE Claude Shannon award (1991), the Franklin Medal (2005), and                      lators for orthogonal and biorthogonal
+  six honorary doctorates. He received an honorary title from the president of Italy                      signals and could be implemented by ana-
+  (2001) and served on the U.S. president’s information technology advisory committee                     log circuitry. Already then, a digital imple-
+  (1997–2001).                                                                                            mentation seemed more practical,
+     Andrew Viterbi considers that proving the error bound of the convolutional code                      especially after my colleague Rick Green
+  has been his happiest professional moment. He appreciates originality and consistency                   developed an efficient implementation,
+  in his collaborators, with some of whom (e.g., Jack Wolf and Chuck Wheatley) he goes
+                                                                                                          which was dubbed the “Green machine”
+  back 40 years. In turn, they call him (affectionately) Andy. When he is not busy at work
+                                                                                                          but turned out to be the Fast Hadamard
+  or planning philanthropic actions, the most recent of which endowed the Viterbi
+  School of Engineering at the University of Southern California in Los Angeles, Andrew
+                                                                                                          Transform. While decoding had previously
+  Viterbi enjoys reading, particularly history books. He believes that our paths go “per                  been considered to be data processing,
+  aspera ad astra” (translated from Latin as “through hardships to the stars”). In this                   because it dealt only with binary symbols,
+  issue, our guest tells the story of his principal research contribution, the Viterbi algo-              this system was an early implementation
+  rithm, which is used in most digital cellular phones and digital satellite receivers, as                of digital signal processing because the
+  well as in such diverse fields as magnetic recording, voice recognition, and DNA                        demodulator returned real number val-
+  sequence analysis.                                                                                      ues, which after quantization were
+                                                     —Adriana Dumitras, George Moschytz                   processed by the decoder. Most subse-
+                                                              “DSP History” column editors                quent digital communication receivers
+                                                adrianad@ieee.org, moschytz@isi.ee.ethz.ch
+                                                                                                          likewise realized combinations of demod-
+                                                                                                          ulators-decoders using DSP.
+
+
+                                               IEEE SIGNAL PROCESSING MAGAZINE [120] JULY 2006                                 1053-5888/05/$20.00©2005IEEE
+THE VITERBI ALGORITHM                             ple, from state S1 the only nonzero transi-       integral part of the majority of wireless
+Moving to an academic position at                 tion probabilities are those to states S2 and     telecommunication systems, incorporated
+University of California in Los Angeles in        S3 , while from state S3 they are those to        in both satellite digital television receivers
+1963, I struggled to teach information the-       itself, S3 , and to S2 .                          and cellular mobile handsets.
+ory, in particular convolutional codes and            It is convenient for the description of           The combination of a convolutional
+sequential decoding, that were then con-          the algorithm to view the multistep evolu-        encoder and channel is shown in Figure 3.
+sidered to achieve the closest possible per-      tion of the path through the graph by             In the simplest case, one bit at a time
+formance to the Shannon limit. Mixing             means of a multistage replication of the          enters the L-stage shift register and the n
+teaching and research, I found a way to           Markov graph known as a trellis diagram.          linear combiners. Each combiner is a mod-
+prove the superiority of convolutional            An example is shown in Figure 2, which            ulo-2 adder of the contents of some subset
+codes over block codes for a given degree of      illustrates the trellis diagram correspon-        of the L shift register stages and generates
+decoding complexity. A key step in the            ding to the four-state Markov graph in            n binary symbols. These symbols are trans-
+proof was the development of a new nonse-         Figure 1.                                         mitted serially. For example, they are trans-
+quential decoding algorithm [2], which                In Figure 2, if we label each branch          mitted as binary amplitude (x = +1 or
+later was labeled with my name. Though            (allowable transition between states) of the      −1) modulation of a carrier signal. At the
+the algorithm actually sprang from my             trellis diagram by its branch metric m[],         receiver, the demodulator generates an
+desire to simplify and clarify the material       and each state at each node level by its          output y, which is either a real number or
+taught in an information theory course,           state metric M[], where m[] and M[] are           the result of quantizing the real number to
+the underlying stimulus for my interest in        defined in “The Viterbi Algorithm” sidebar,       one of a finite set of values. The conditional
+the research was the improvement of deep          the state metrics at node level K are             densities p(y | x) of the channel outputs
+space communication efficiency. This was          obtained from the state metrics at the level      are assumed to be mutually independent,
+an area in which I had worked for nearly a        K − 1 by a) adding to each state metric at        meaning that the channel is considered a
+decade and appeared to be an ideal applica-       level K − 1 the branch metrics that con-          “memoryless channel.” A common exam-
+tion, since the deep space communication          nect it to states at the Kth level and b) pre-    ple is the additive white Gaussian noise
+channel was the closest to the theoretical        serving for each state at level K only the        (AWGN) channel for which each y is the
+model of the additive Gaussian channel. It        largest sum that arrives to it. In addition, if
+took the broader and longer-term view of          at each level we delete all branches other
+academic research (in those times ade-            than the branch that produces this maxi-
+quately supported by governmental R&D             mum, only one path will remain through
+agencies) to look beyond the immediate            the trellis. This path leads from the origin                            S3
+project requirements and attempt a fresh          to each state at the Kth level and is the
+approach.                                         most probable path reaching it from the
+    As it was recognized by the early 1970s,      origin. In typical (though not all) applica-
+the algorithm was a maximum likelihood            tions, both the initial state (origin) and the
+decision device for any symbol sequence           final state (end) are selected to be S0 .               S1                             S2
+that could be modeled as a Markov chain           Therefore, the algorithm produces the
+[3]. Many phenomena in the physical               most probable path through the trellis
+world, as well as in computational abstrac-       both starting and ending at S0 . The Viterbi
+tions, can be modeled as Markov sequences         algorithm is summarized in “The Viterbi
+and described by Markov graphs. The               Algorithm” sidebar.                                                     S0
+Viterbi algorithm is a computationally effi-
+cient technique for determining the most          AN EARLY APPLICATION
+probable path taken through a Markov              Numerous applications of this algorithm
+graph. The graph (and underlying Markov           have appeared over the past several               [FIG1] A 4-state Markov graph example.
+sequence) is characterized by a finite set of     decades. The earliest application, for which
+states {S0 , S, . . . , Sn}, state transition     the algorithm was originally proposed [2],            S3
+probabilities Pr(Sj → S i ) and the output        was the maximum likelihood decoding of
+(observable parameter) probabilities              convolutionally coded digital sequences               S2
+p(y|Sj → Si ) for all 0 ≤ i, j ≤ n, where n       transmitted over a noisy channel. However,
+is the cardinality of the state space and the     note that the algorithm was proposed not
+                                                                                                        S1
+observables y are either discrete or contin-      so much to develop an efficient maximum
+uous random variables. An example of a            likelihood decoder for a convolutional code
+four-state Markov graph is illustrated in         but primarily to establish bounds on its              S0
+Figure 1, where only the nonzero probabil-        error correcting performance. Currently,          [FIG2] Trellis diagram for the Markov
+ity transitions are shown. Thus, for exam-        this application of the algorithm forms an        graph of Figure 1.
+
+
+
+                                                IEEE SIGNAL PROCESSING MAGAZINE [121] JULY 2006
+[dsp HISTORY]      continued
+
+
+
+                                                                                                        sum of the encoded symbol x and a
+  THE VITERBI ALGORITHM                                                                                 Gaussian random noise variable, with all
+  The Viterbi algorithm is a computationally efficient technique for determining the                    noise variables mutually independent. This
+  most probable path taken through a Markov graph. The algorithm is most easily                         channel model is closely approximated by
+  described using the trellis diagram representation corresponding to the graph (for                    satellite and space communication applica-
+  instance, the trellis diagram in Figure 2).                                                           tions and, with appropriate caution, it can
+      Let us denote by y(1), y(2), . . . , y(k), . . . the successive observables (not illustrated)     also be applied to terrestrial communica-
+  in the diagram, each of which may be a vector corresponding to multiple observations                  tion design.
+  per branch. Let us denote by y(k) the observable(s) for the kth successive branch. Let
+                                                                                                            The communication system model just
+  S(k) be any state at the kth successive node level. We shall remove the subscripts until
+                                                                                                        described gives rise naturally to the Markov
+  necessary.
+                                                                                                        graph representation. The 2L states corre-
+     The goal is to find the most probable path through the trellis diagram. A fun-
+  damental assumption is that successive Markov state probabilities                                     spond to the states of the contents of the L
+  Pr[S(k − 1) → S(k)] are mutually independent for all k, as are the conditional                        stage register. Thus S0 corresponds to the
+  output probabilities p[y(k)|S(k − 1) → S(k)].                                                         contents being all zeros, S1 to the first stage
+     For any given path from the origin (k = 0) to an arbitrary node (k = K) and the                    containing a one and all the rest zeros, etc.
+  states S(0), S(1), . . . , S(K), using the index 0 ≤ k ≤ K the relative path probability              Since only one input bit changes each time,
+  (likelihood function) is given by                                                                     each state has only two branches both exit-
+                         
+                         K                                                                              ing and entering it, each from two other
+                    L=         Pr[S(k − 1) → S(k)] p[y(k)|S(k − 1) → S(k)].                    (1)      states. One exiting branch corresponds to a
+                         k=1
+                                                                                                        zero value entering the register, while the
+   For computational purposes it is more convenient to consider the logarithm of L:                     other exiting branch corresponds to a one
+                                          
+                                          k                                                             value. Figure 1 could be used to represent a
+                                ln(L) =         m[y(k); S(k − 1), S(k)],                       (2)      two-stage encoder, with the state indices
+                                          k=1
+                                                                                                        being the decimal equivalents of the binary
+  where we define the branch metric between any two states at the (k − 1)th and kth                     register contents. It is generally assumed
+  node levels as                                                                                        that all input bits are equally likely to be
+                                                                                                        zero or one, so the state transition probabil-
+  m[y(k); S(k − 1), S(k)] = ln{Pr[S(k − 1) → S(k)]} + ln{p[y(k)|S(k − 1) → S(k)]}. (3)                  ities, P(Sj → Si ) = 1/2 for each branch.
+                                                                                                        Hence, the first term of the branch metric
+    Let us define the state metric, MK (Si ) of the state Si (K) as the maximum over all
+                                                                                                        m in (3) can be omitted since it is the same
+  paths leading from the origin to the ith state (i.e., state Si ) at the Kth node level (while
+                                                                                                        for each branch. As for the second term of
+  inserting again subscripts where necessary):
+                                                                                                      m, the conditional probability density
+                           
+                           k−1
+                                                                                                        p(y|Sj → S i ) is equal to p(y|x), where x is
+           MK (Si ) =Max       m[y(k); S(k − 1), S(k)] + m[y(K); S(K − 1), Si (K)] . (4)
+                               k=1                                                                      an n-dimensional binary vector generated
+                     All paths S(0), S(1), . . . , S(K − 1).                                            by the n modulo-two adders for each new
+    To maximize the above sum over K terms, it is sufficient to maximize the sum over                   input bit. This vector x corresponds to the
+  the first K − 1 terms for each state Sj (K − 1) at the ( K − 1) th node and then maxi-                encoder output from a state transition; y is
+  mize the sum of this and the Kth term over all states S (K − 1). This gives the recursion             the random vector corresponding to the n
+  that is the core of the Viterbi algorithm:                                                            noise-corrupted outputs for the n channel
+                                                                                                        inputs represented by the vector x. For the
+                   MK (Si ) =Max {MK−1 (Si ) + m[y(K); Sj (K − 1), Si (K)]}                    (5)
+                                                                                                        AWGN, ln p(y|x) is proportional to the inner
+                             Sj (K − 1).
+                                                                                                        product of the two vectors x and y.
+                                                                                                            The convolutional encoder and its
+                                                                                                        Markov graph just described represent a
+                     L Stages                                                                           rate 1/n code, since each input bit gener-
+                                                                                                        ates n output symbols. To generalize to any
+                                                                                                        rational rate (m/n) < 1, m input bits
+                                                                                                        enter each time and the register shifts in
+                                                                                                        blocks of m. The Markov graph changes
+                                                            1                                           only in having each state connected to 2 m
+                  n (Modulo-2)                              2              x      Channel      y        other states. Another generalization is to
+               Linear Combiners                                                    p(y|x)               map each binary vector x, not into a vec-
+                                                            n                                           tor of n binary values, +1 or –1, but into a
+
+[FIG3] Convolutional encoder and channel.                                                                                  (continued on page 142)
+
+
+                                                      IEEE SIGNAL PROCESSING MAGAZINE [122] JULY 2006
+[dsp HISTORY]      continued from page 122
+
+
+
+constellation of points in two or more           channel equalizers and magnetically               decoding, reaching over a billion users.
+dimensions. A common case is that of             recorded data. Later it was applied (by           All this has been a pleasant surprise to
+quadrature amplitude modulation                  others) to a much broader set of applica-         me. Like my contemporaries of the
+(QAM). For example, for n = 4, 16                tions, which could be represented by so-          1960s, I had not foreseen the impact
+points may be mapped into a two-                 called hidden Markov models (HMMs).               that integrated circuits would have on
+dimensional grid and the value in each           These ranged from speech recognition to           future systems.
+dimension modulates the amplitude of             DNA sequence analysis.                               In 1990 at an IEEE Communication
+one of the two quadrature components of             Considered hopelessly complex in               Workshop I gave a talk titled “From Proof
+the sinusoidal carrier. Here x is the two-       1967 when it was published [2], the               to Product,” which recounted the strange
+dimensional vector representing one of           Viterbi algorithm rode the curve of               origin of a DSP technique which, thanks to
+the 16 modulating values, and y is the           Moore’s law, from a rack of equipment in          semiconductor integration exponentially
+corresponding demodulated channel out-           1975 to a fraction of a tiny chip today.          progressing, went from a theoretical
+put. Multiple generalizations of this            Convolutional codes with Viterbi decod-           curiosity to a well-accepted system compo-
+approach abound in the literature and in         ing first used in NASA spacecraft and             nent in a quarter century and then to a
+real applications. In most cases, this           military satellites in the 1970s ultimate-        component of a ubiquitous product in
+multidimensional approach is used to             ly became the workhorse of commercial             another decade.
+conserve bandwidth at the cost of a high-        voice and data communication satellites
+er channel signal-to-noise requirement.          and direct broadcast satellites, residing
+                                                 in tens of millions of receivers today.           REFERENCES
+                                                                                                   [1] A.J. Viterbi, “On coded phase coherent communi-
+BECOMING UBIQUITOUS                              The application returned to earth in the          cation,” IRE Trans. Space Electron. Telemetry, vol.
+As was recognized by the early 1970s, the        1990s as second generation digital                SET-7 pp. 3–14, 1961.
+                                                                                                   [2] A.J. Viterbi, “Error bounds for convolutional
+algorithm was a maximum likelihood               mobile phones became adopted. All                 codes and an asymptotically optimum decoding algo-
+decision device for any symbol sequence          international standards for second- and           rithm,” IEEE Trans. Inform. Theory, vol. IT-13, pp.
+                                                                                                   260–269, 1967.
+that could be modeled as a Markov chain          third-generation cellular voice phones
+                                                                                                   [3] G.D. Forney, Jr., “The Viterbi algorithm,” Proc.
+[3]. Early on this made it a candidate for       employ convolutional codes and Viterbi            IEEE, vol. 61, pp. 268–278, 1973.              [SP]
+
+
+
+
+[book REVIEW]      continued from page 138
+
+
+
+propagation, are not neglected.                   cient references for readers seeking more         path loss, shadowing, and narrowband fad-
+Additionally, as previously noted, the limi-      details. Throughout the book, pertinent           ing. (Interestingly, in a course the author
+tations and practical aspects of wireless         references are provided and these are par-        teaches at Stanford, five of the 19 lectures
+communications are frequently highlight-          ticularly useful in sections that are dis-        are devoted to channel models and various
+ed throughout the text.                           cussed at high level, such as the overview        fading phenomena.)
+    The depth of the discussion varies            on synchronization and carrier phase                  In perspective, on a scale of engineering
+throughout the book. The text begins with         recovery in Chapter 5. One area where the         detail and theory, the book would be posi-
+a good introduction to radio propagation,         book could be improved is that of equaliza-       tioned between Tse and Viswanath’s book
+slow (shadowing) and fast fading, and ray         tion, the discussion of which would have          and the book Wireless Communications—
+tracing and includes a number of empirical        required more depth. In particular, the           Principles and Practice by T.S. Rappaport.
+path-loss models, including the dielectric        development of the z-transform approach           The former book has a more narrow focus,
+canyon model with ten rays. Following the         to linear equalizers does not make it suffi-      and goes into considerable detail on multi-
+discussion on propagation, and before dis-        ciently clear that the analysis applies to        input, multi-output systems. The latter
+cussing classical digital modulation tech-        infinite length equalizers. In the general        book contains a more detailed discussion
+niques and their performance, the author          landscape of the book, this could be a pos-       on various current wireless systems and
+discusses the capacity of wireless channels.      sible improvement in an otherwise gener-          standards and less on equalization, diversi-
+The high-level information theory sections        ally lucid presentation of the important          ty and coding. Rappaport includes a discus-
+are followed by detailed discussions of           topics in wireless communications.                sion on speech coding, which is not
+capacity with diversity, capacity of frequen-         In terms of aesthetics and functionality,     included in Goldsmith’s book. Overall,
+cy-selective fading and time varying chan-        the formatting, font, and figures are all well    Wireless Communications by Andrea
+nels, and capacity with varying degrees of        laid out and organized, making the book           Goldsmith is an excellent, reader-friendly
+side information. (The author could have          easy to read. The figures are generally           book, which maintains the high standards
+devoted an appendix to the elements of            informative. As an example, Figure 3.8            of the Cambridge University Press series
+information theory.) There are also suffi-        nicely summarizes the combined effects of         initiated in 1998.                       [SP]
+
+
+                                                IEEE SIGNAL PROCESSING MAGAZINE [142] JULY 2006
+

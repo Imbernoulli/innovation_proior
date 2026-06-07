@@ -31,15 +31,19 @@ recurrence T(N) = 2T(N/2) + Θ(N). The FFT needs a primitive N-th root of unity 
 **Roots of unity in finite rings.** A root of unity need not be the complex number e^{2πi/N}. In a
 finite ring Z/mZ, an element g is a primitive N-th root of unity if g^N ≡ 1 (mod m) and no smaller
 power is 1. A transform built on such a g is a *Number-Theoretic Transform* (NTT). Of special
-interest are Fermat-type moduli m = 2^n + 1: in Z/(2^n+1)Z one has 2^n ≡ −1, hence 2^{2n} ≡ 1, so
-2 is an element of order 2n. Powers of 2 are the cheapest possible ring elements to multiply by —
+interest are Fermat-type moduli m = 2^n + 1: in Z/(2^n+1)Z one has 2^n ≡ −1, hence 2^{2n} ≡ 1, and
+2 has order exactly 2n. If a transform length N divides 2n, then ω = 2^{2n/N} has order N. If
+N divides n, then θ = 2^{n/N} satisfies θ^N = −1 and supplies the 2N-th root needed for a
+negacyclic transform. Powers of 2 are the cheapest possible ring elements to multiply by —
 multiplication by 2^s is a left shift, and the wraparound past 2^n folds back as a sign flip because
 2^n ≡ −1.
 
 **Cyclic vs. negacyclic convolution.** A length-N cyclic convolution computes c mod (x^N − 1); at
 x = 2^M that is a product mod 2^{MN} − 1 (a Mersenne modulus). A *negacyclic* (negative-wrapped)
 convolution computes c mod (x^N + 1); at x = 2^M that is a product mod 2^{MN} + 1 (a Fermat
-modulus). The negacyclic version requires an element ω with ω^N = −1, i.e. a 2N-th root of unity.
+modulus). The negacyclic version uses the odd powers of a 2N-th root θ: θ, θ^3, ..., θ^{2N−1},
+the roots of x^N + 1. Those are exactly the evaluations needed for the negative-wrapped product;
+the even powers belong to x^N − 1.
 
 **The divide-and-conquer ancestry, as motivating empirical fact.** Splitting an integer into d+1
 parts and treating it as a degree-d polynomial is a known, measured way to cut core-multiplication
@@ -91,31 +95,29 @@ into which a fast method will be filled.
 ```python
 # Arbitrary-precision integers, bit-shifts, add, and modular reduction already exist.
 
-def schoolbook_multiply(a, b):
-    # Θ(n^2) reference product; exact, used as ground truth.
-    ...
-
-def fft(a, inverse=False):
-    # Cooley-Tukey length-N transform over SOME ring R.
-    # Needs a primitive N-th root of unity in R and N invertible in R.
-    # TODO: which ring R makes this exact AND cheap?  (root of unity, modulus)
+def reduce_mod(x, n):
+    # TODO: choose a modulus where exact transform arithmetic is possible.
     pass
 
-def convolve(a, b):
-    # c = IDFT( DFT(a) * DFT(b) ).
-    # multiplication of two digit-sequences == their convolution.
-    A, B = fft(a), fft(b)
-    C = [pointwise_mul(ai, bi) for ai, bi in zip(A, B)]  # the only "real" products
-    return fft(C, inverse=True)
-
-def pointwise_mul(x, y):
-    # multiply two transform coefficients.
-    # TODO: how big are these, and can this step itself be sped up / reused?
+def shift_mod(x, exponent, n):
+    # TODO: decide when multiplying by a transform root can be implemented as a shift.
     pass
 
-def fast_multiply(a, b):
-    # TODO: split a, b into pieces; convolve the pieces; propagate carries.
-    # TODO: choose piece size, transform length, and the ring so the whole
-    #       thing is exact and the per-coefficient products are cheap (or recursive).
+def ntt(values, n, inverse=False):
+    # Cooley-Tukey length-N transform over a ring.
+    # TODO: supply the root of unity, the inverse root, and the inverse scale.
+    pass
+
+def pointwise_mul(x, y, n):
+    # TODO: decide whether these coefficient products are base-case products
+    #       or smaller products of the same modular shape.
+    pass
+
+def multiply_mod(a, b, K, M, n):
+    # TODO: split into pieces, transform, multiply pointwise, invert, and reassemble.
+    pass
+
+def multiply(a, b):
+    # TODO: choose the split parameters and call multiply_mod so the final product is exact.
     pass
 ```

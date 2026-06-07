@@ -1,0 +1,44 @@
+# LDPC + belief-propagation — synthesis notes (Phase 1.5)
+
+## Sources retrieved & read this run (all in refs/, code/)
+- **PRIMARY**: Gallager, "Low-Density Parity-Check Codes," IRE Trans. IT-8, Jan 1962, pp.21-28 (refs/gallager-1962-ire.txt) — FULL text extracted cleanly. Contains: (n,j,k) defn, ensemble (stacked permuted submatrices), minimum-distance ensemble claim, bit-flipping decoder, **Lemma 1** (prob even # of ones = (1+∏(1-2P_l))/2), **Theorem 1** (single-tier APP via the product rule), the iterative many-tier extension, the LLR form f(β)=ln coth(β/2)≈ via tanh, the parallel decoder Fig 7, weak BSC bound, experiments (504,3,6)/(500,3,4)/(500,3,5) on BSC & Gaussian, IBM 704/709/7090 runtime.
+- **PRIMARY (thesis)**: Gallager 1963 MIT thesis (refs/gallager-thesis-1963.pdf, 90pp). PDF text extracts as GARBLED junk (old font encoding) — relied on the 1962 IRE paper for the technical content, which is the compact published version of the same thesis work.
+- **BP / rediscovery**: MacKay & Neal, "Near Shannon Limit Performance of LDPC Codes," Electronics Letters 1996/97 (refs/mackay-neal-1997-elettlett.txt) — FULL. Gives the modern qmn/rmn sum-product update: horizontal δr_mn = ∏_{n'∈N(m)\n} δq_mn', vertical q^x_mn = α f_n^x ∏_{m'∈M(n)\m} r^x_m'n. Confirms "exact on trees, approximate with cycles", "reinvented Gallager's algorithm", "R.G. Gallager personal communication" re dormancy, Battail "we can think of good codes... thirty-five years ago".
+- MacKay 1999 IT "Good error-correcting codes based on very sparse matrices" (refs/mackay-1999-sparse-matrices-it.txt) — full theoretical treatment.
+- **Lineage / dormancy retrospective**: Costello & Forney, "Channel Coding: The Road to Channel Capacity," 2007 (refs/costello-forney-2007-road-to-capacity.txt) — Forney was a primary actor (Codex Corp, concatenated codes). Quotes Gallager on Elias; states LDPC thesis "supervised by Elias, motivated by finding a class of random-like codes decodable near capacity with feasible complexity"; "first appearance of the now-ubiquitous sum-product algorithm"; dormancy "a bit of 21st-century coding that fell in the 20th century", forgotten >30 yrs, too complex for 1960s-70s tech; Tanner 1981 bipartite graph; Wiberg unification of turbo+LDPC as sum-product.
+- **Antecedent**: Tanner 1981, "A Recursive Approach to Low Complexity Codes," IEEE IT-27 (refs/tanner-1981-recursive-low-complexity.txt) — bipartite graph + generic sum-product / min-sum.
+- Montanari Stanford notes (refs/montanari-stanford-ldpc-notes.txt) — modern analysis.
+- **CODE**: pyldpc decoder.py + code.py (code/pyldpc_*.py): parity_check_matrix = Gallager stacked-permuted-block construction; decode = log-domain sum-product (Lc=2y/σ², horizontal tanh rule Lr=log((1+∏tanh(Lq/2))/(1-∏tanh(Lq/2))), vertical Lq=Lc+ΣLr, posterior L=Lc+ΣLr). Re-implemented self-contained in code/ldpc_bp_standalone.py and VERIFIED: at SNR 3-4dB raw bit errors ~200-280 → ~2 after decode, 0 failures. Real error correction.
+
+## Self-account status
+No standalone "how I invented LDPC" memoir by Gallager was found freely online. The closest first-person material: Gallager's IRE paper itself states his reasoning compactly; MacKay-Neal cite "R.G. Gallager, personal communication" on why it was abandoned (assumption that concatenated codes were superior); Costello-Forney (Forney = contemporary/colleague) supply the omitted motivating reasoning and the dormancy explanation. Added Costello-Forney + MacKay-Neal to SELF_ACCOUNT_SOURCES.md as the lineage/dormancy self-account proxies.
+
+## The discovery logic (what reasoning.md must re-derive, in-frame, no headers)
+1. Pain: Shannon (1948) + Elias (1955) — capacity-achieving codes exist, almost all random long linear codes are good, but the proof is non-constructive AND ML/optimal decoding of a random long code is intractable (cost ~ exponential / 2^k codewords). The whole field is stuck between "good but undecodable" (random) and "decodable but weak / far from capacity" (algebraic, short).
+2. Reframe decoding via parity checks: codeword ⇔ Hc^T=0. A check ties together a set of bits. If H is DENSE each check touches ~n/2 bits — knowing a check tells you almost nothing local, constraints are globally entangled.
+3. The leap — make H SPARSE: each column j ones, each row k ones, j,k=O(1). Then total ones = jn = O(n). Each bit in few checks, each check ties few bits. Cost of touching every constraint once is O(n), not O(n²).
+4. Does sparsity cost code quality? Ensemble argument (Lemma/Thm in 1962): typical minimum distance of (n,j,k) ensemble grows LINEARLY with n for fixed j≥3 (unlike randomly-filled or algebraic constructions where d/n→0). So sparse ≠ weak. Rate R ≈ 1 - j/k. j≥3 is essential (j=2 gives poor distance).
+5. Construction: stack j submatrices each (n/k)×n; first has consecutive runs of k ones; others are random column permutations of the first. Random-like but structured & sparse.
+6. Decoding bit-flip (warm-up): compute all checks, flip bits in too many unsatisfied checks, repeat. Works because most parity sets have ≤1 error, so many unsatisfied checks on a bit ⇒ strong evidence it's wrong.
+7. The real decoder — local probability propagation. For one bit d, lay out the parity-set tree: d at root, its j checks, the other k-1 bits per check on tier 1, their checks on tier 2, etc. If the tree has no repeats, the bits are independent and we can compute the exact APP that d=1 given received symbols out to tier m.
+8. Lemma 1: for independent bits with P(bit_l=1)=P_l, P(even # of ones) = (1+∏(1-2P_l))/2. This is the engine: a parity check is satisfied iff an even number of its bits are 1.
+9. Theorem 1: combine Lemma-1 over the j checks → the single-tier APP ratio. In LLR form with magnitudes β: the check (horizontal) update is a tanh/coth product; the bit (vertical) update just sums the channel LLR + incoming check LLRs (excluding the one you're sending back). Each message EXCLUDES the recipient ("extrinsic") — this keeps the tree-independence exact.
+10. Iterate: feed tier-(m) results as priors for tier-(m-1); by induction get APP given m tiers. Cost per bit per iteration = O(1), independent of block length → O(n) per iteration total; #independent tiers ~ log n.
+11. The wall: the tree closes on itself (cycles) after ~log n tiers because each tier grows by (j-1)(k-1); for any reasonable n the independence assumption breaks long before convergence. Gallager's patch: ignore the dependence — "the dependencies have a relatively minor effect and tend to cancel"; the first m-1 iterations have already reduced equivocation, so treat the partly-decoded state as an easier received sequence and keep iterating. Sparsity = long girth = cycles are long = the approximation is good. This is the leap: a globally-intractable inference replaced by local message passing that's exact on the tree the sparse graph locally looks like.
+12. Land on real code: H (stacked permuted blocks) → systematic G → BPSK over AWGN → channel LLR Lc=2y/σ² → log-domain sum-product (horizontal tanh rule, vertical sum, extrinsic) → hard decision → stop when Hx=0. Verified it corrects errors.
+
+## Design-decision → why
+- sparse H: O(n) work + (crucially) makes local message-passing nearly exact (long cycles). WHY not dense: dense ⇒ short cycles everywhere, ML intractable, no local structure.
+- j≥3: needed for linearly-growing minimum distance (j=2 ⇒ d grows only logarithmically / code is weak). WHY: ensemble distance result.
+- rate R=1-j/k: from m=jn/k rows. choose k>j.
+- extrinsic messages (exclude recipient): preserve the tree-independence that Lemma1/Thm1 require; sending a bit its own previous message back would double-count.
+- LLR / tanh domain: turns the product-of-probabilities check rule into a numerically clean tanh product; multiplications → the f(β)=ln coth(β/2) self-inverse trick; also lets the decoder use soft channel info (a posteriori probabilities) rather than hard bits — Gallager notes the Gaussian-channel gain from NOT thresholding first.
+- stop at Hx=0: a satisfied syndrome means a codeword; no need to fix #iterations.
+- bit-flip vs sum-product: bit-flip is the BSC-only warm-up that motivates "unsatisfied checks ⇒ evidence"; sum-product generalizes it to soft APP on any binary-input channel.
+
+## In-frame reminders for reasoning.md
+- ZERO markdown headers (C_rsn_header must be 0). One continuous monologue.
+- No "Part/Step", no "Reasoning Trace" title, no meta-narration about reconstructing.
+- First person present tense, "I". Discovery order: pain → tool → wall → fix → method drops out.
+- Name prior art (Shannon 1948, Elias 1955, Hamming, BCH/RS, sequential decoding) — that's the lineage, allowed. Do NOT cite the 1962 paper / MacKay / Tanner / Forney as the target or as posterior framing; re-derive the sum-product and the bipartite-graph picture as my own.
+- End on the verified runnable code.

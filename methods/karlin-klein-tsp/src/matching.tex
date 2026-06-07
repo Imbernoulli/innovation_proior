@@ -1,0 +1,360 @@
+% !TEX root =paper.tex
+
+
+\section{Matching}
+\label{sec:matching}
+
+%\Anna{Constants: $\eps_{F}<1/20, \eps_B\geq 3\eps_{1/2}, \alpha\geq 3\eps_\eta$}
+%\Shayan{MOVE the FACT}
+%\begin{fact}
+%\label{fact:ErightarrowS}
+%Let $S$ be a $2 + \eps_\eta$ near min-cut. Then $x(E^\rightarrow (S)) \ge |S|- 1 - \eps_\eta/2$.
+%\end{fact}
+%\begin{proof}
+%$$
+%x(E^\rightarrow (S))  = \frac12 \sum_{a \in S} (x(\delta (a)) - x(\delta ^\uparrow (a))) 
+%\ge \frac{2 |S| - (2 + \eps_\eta)}{2}
+%= |S|- 1 - \eps_\eta/2.$$
+%\end{proof}
+
+%\Nathan{Can this be stated more generally?}
+
+The main result of this section is to construct a matching that we use in order to decide which edges will have positive slack to compensate for the negative slack of edges going higher. 
+Refer to \cref{ex:simple} for a high-level motivation to construct a matching. . 
+
+\begin{definition} [$\eps_F$ fractional edge]
+\hypertarget{tar:epsF}{For $z\geq 0$ we say that $z$ is $\eps_{F}$-fractional if $\eps_F \le z\leq 1-\eps_{F}$.}
+\end{definition}
+\noindent The following lemma is the main result of this section
+\begin{lemma}[Matching Lemma]
+\label{lem:matching}
+For any $S \in \cH$, $\eps_{F}\leq 1/10, \eps_B\geq 21\eps_{1/2}, \alpha\geq 2\eps_\eta$, $\eps_{1/2}\leq 0.0002$, there is a matching from good edges (see \cref{def:goodedges}) in $E^\rightarrow(S)$ to edges in $\delta(S)$ where every good edge bundle $\bbe={\bf(u,v)}$ (where $u,v\in\cA(S)$) is matched to a fraction $m_{\bbe,u}$ of edges in $\delta^\uparrow(u)$ and a fraction $m_{\bbe,v}$ of $\delta^\uparrow(v)$, and:
+\begin{eqnarray}
+\label{eq:uvbadematch}m_{\bbe,u} F_u  + m_{\bbe,v} F_v &\le & x_\bbe (1 + \alpha)\\
+\label{eq:matchedamount}\sum_{e \in \delta^\rightarrow (u)} m_{\bbe,u} &=& x(\delta^\uparrow(u)) Z_u,
+\end{eqnarray}
+where for every atom $u\in \cA(S)$, define
+$$\hypertarget{tar:Fu}{F_u=1-\eps_B\I {x(\delta^\uparrow(u))\text{ is $\eps_F$ fractional}},} \quad
+\hypertarget{tar:Zu}{Z_u:=\left(1 + \I{|\cA(S)|\geq 4, x(\delta^\uparrow(u))\leq \eps_F}\right).}$$
+%which is active when $\delta^\uparrow(u))$ is very close to {\em zero}.
+\end{lemma}
+
+
+
+
+
+
+
+
+Roughly speaking, the intention of the above lemma is to match good edges in $E^\rightarrow(S)$ to a similar fraction of edges that go higher (such that an edge bundle $e$ adjacent to atoms $u,v$ is only matched to edges in $\delta^\uparrow(u),\delta^\uparrow(v)$). Since we never ``reduce'' bad edges in the proof of payment theorem (\cref{thm:payment-main}), we don't use them in the matching. That inherently can cause a problem, as there could not be ``enough'' good edges in $E^\rightarrow(S)$ to saturate the edges going higher in the matching. The parameter $F_u$ help us in this regard; in particular, it allows us to match some of the (good) edges in $E^\rightarrow(S)$ to more than their fraction in $\delta(S)$.
+ 
+Next, we motivate the parameter $Z_u$. If  $x(\delta^\uparrow(u))\approx 0$, when those edges are reduced the conditional probability that $\delta(u)_T$ is even could be very close to 0. 
+The parameter $Z_u$ lets us match twice as many edges to $\delta^\uparrow(u)$; so there will be only half a burden to fix the parity of $\delta(u)_T$.
+See the discussion in \hyperlink{xu-close-to-zero}{overview section} for more details. 
+
+%As we will see in \cref{sec:payment}, the downside that we need a stronger conditional 
+
+% \cref{eq:uvbadematch} says that if $x(\delta^\uparrow(u))$ is fractional then edges incident to $u$ can be matched to a larger faction of edges in $\delta^\uparrow(u)$. 
+
+Throughout this section we adopt the following notation: For a cut $S\in \cH$ and a set $W\subseteq \cA(S)$, we write 
+\begin{align*}
+E(W,S\smallsetminus W)&:=\cup_{u\in W, v\in \cA(S)\smallsetminus W} E(u,v),\\
+\delta^\uparrow(W)&:=\cup_{u\in W} \delta^\uparrow(u)=\delta(W)\cap \delta(S), \\
+\delta^\rightarrow(W) &:= \cup_{u\in W} \delta^\rightarrow(u).
+\end{align*}
+Note that in $\delta^\rightarrow(W)\not\subseteq \delta(W)$ since it includes edge bundles between atoms in $W$. 
+
+Before proving the main lemma we record the following facts.
+\begin{lemma}
+\label{fact:anothercutineq}
+For any $S\in \cH$ %with children $u_1,\dots,u_k$ 
+and $W \subsetneq \cA(S)$ (recall $\cA(S)$ is the set of $u \in \cH$ with $\p(u) = S$), we have 
+$$ x(\delta^\rightarrow(W))  %+ x(E(W, S \smallsetminus W) 
+	\geq \frac12 \sum_{u\in W} x(\delta(a)) - \eps/2 \ge |W| - \eps/2.$$
+	%(Recall also that $E^\rightarrow (W)$ between atoms in $W$.)
+\end{lemma}
+\begin{proof}
+We have
+$$ x(\delta^\rightarrow (W))  % + x(E(W, S \smallsetminus W)  
+= \frac12 \left(\sum_{u \in W} (x(\delta (u)) +   x(	E(W, S\smallsetminus W)) -  x(\delta ^\uparrow (W))\right).$$
+Since $x(\delta (S\smallsetminus W)) \ge 2$ and $x(\delta (S)) \le 2 + \eps$, we have:
+$$\text{(a) }  x(	E(W, S\smallsetminus W)) + x(\delta^\uparrow(S\smallsetminus W)))\ge 2 \quad\text{ and }\quad\text{(b) }  x(\delta^\uparrow(W)) +  x(	\delta^\uparrow( S\smallsetminus W)) \le 2 + \eps.$$
+Subtracting (b) from (a), we get
+$$x(	E(W, S\smallsetminus W)) - x(\delta ^\uparrow (W)) \ge -\eps,$$
+which after substituting into the above equation,
+completes the proof of the first inequality in the lemma statement. The second inequality follows from the fact that $\delta (u) \ge 2$ for each atom $u$.
+\end{proof}
+
+
+\begin{lemma}\label{lem:three-nodes-good}
+For $S \in\cH$, if $|\cA(S)|=3$ then there are no bad edges in \hyperlink{tar:ErightarrowS}{$E^\rightarrow(S)$}.
+\end{lemma}
+\begin{proof}
+Suppose  $\cA(S)=\{u,v,w\}$ and
+$\bbe=(u,v)$  is a bad edge bundle. Then $|x_\bbe - \frac{1}{2}| \le \epsilon_{1/2}$. In addition, by \cref{thm:badedges}, $x(\delta^\uparrow(u)),x(\delta^\uparrow(v)) \le 1/2+9\epsilon_{1/2}$. Therefore, 
+$$x_{\bf(u,w)} = x(\delta(u)) - x_{\bbe} -  x(\delta^\uparrow(u))\geq 1-10\epsilon_{1/2}.$$
+Similarly, $x_{\bf(v,w)}\geq 1-10\eps_{1/2}$.
+Finally, since $x(\delta (S)) \ge 2$, and $x(\delta^\uparrow(u)),x(\delta^\uparrow(v))\leq 1/2+9\eps_{1/2}$, we must have $x(\delta^\uparrow(w)) \ge 1-18\epsilon_{1/2}$.
+But, this contradicts the assumption that $w\in \cH$ must satisfy $x(\delta(w))\leq 2+\epsilon_\eta$.
+\end{proof}
+
+%\begin{fact}
+%In any tree and for any vertices $u,v,w$, it cannot be that both $u$ is on the $v-w$ path and $w$ is on the $u-v$ path.	
+%\end{fact}
+%\begin{proof}
+%The path $v-w$ includes $u$. But then the $u-v$ path is a subpath of the $v-w$ path, so it cannot include $w$: contradiction. 
+%\end{proof}
+
+%Let $\epsilon_\eta$ be the constant matching the largest near minimum cut in our laminar family 
+%We expect $\epsilon_\eta = 4\eta$. Let $\epsilon_{1/2}$ be the edge bounding edges away from 1/2. 
+
+%\begin{lemma}
+%For a degree cut $S$, there is a matching from good edges in $E(S)$ to edges in $\delta(S)$ such that every edge of fraction $x_e$ is matched to at most fraction $x_e(1+6\epsilon_{1/2})$ when $\epsilon_{1/2} \le 1/10$ and $\epsilon_{1/2} \ge \epsilon_{\eta}$. 
+%\end{lemma}
+%\begin{proof}
+%	We will prove this by setting up a max-flow min-cut problem. Construct a graph with vertex set $\{s,X,Y,t\}$, where $s,t$ are the source and sink. Let $X$ be the set of good edges in $E^\rightarrow(S)$ and $Y$ be the set of edges in $\delta(S)$. For every edge $e \in X$, add an arc from $s$ to $e$ of capacity $c(s,e):= (1+\alpha)x_e$ (for some $\alpha>0$ that we choose later).  Connect every $f \in Y$ to $t$ with an arc of capacity $c(f,t):=x_f$. 
+%Finally, connect $e\in X$ to $f\in Y$ with a directed edge of infinite capacity, i.e., $c(e,f):=\infty$, if $f\in\delta^\uparrow(e)$.
+%Now, our goal is to show that there is a flow saturating $t$, i.e. there is a flow of value $\sum_{e \in Y} x_e\leq2+\eps_\eta$.  
+%
+%Fix a $s$-$t$ cut $A,\overline{A}$ where $s\in A, t\in \overline{A}$. 
+% We need to show $\text{cap}(A,\overline{A})\geq 2+\epsilon_\eta$.
+%
+%First we prove this for $A=\{s\}$. By \cref{lem:one-of-two-good} there is at most one bad 1/2 edge adjacent to every vertex. Therefore there is at most  $|S|/2$ of bad edges (the bound is met if they form a perfect matching) which contributes to at most a total of $(1/2+\eps_{1/2})|S|/2=:x_B$ fraction. If $|S|=3$ then by \cref{lem:three-nodes-good} all edges are good. Then there is at least a fraction $2-\epsilon_\eta/2$ to match to fraction $x(\delta(S))\leq 2+\eps_\eta$, and  for $\alpha\geq \eps_\eta$ we have
+%$$(2-\epsilon_\eta/2)(1+\alpha) \ge 2+\epsilon_\eta$$
+%as desired. 
+%Otherwise there is a fraction of at least $x_G:=|S|-1-\epsilon_\eta/2-x_B$ of good edges and $|S|\ge 4$. But then we will choose $\alpha$ such that 
+%$$(1+\alpha)x_G  = (1+\alpha)\left(|S| (\frac34 - \frac{\eps_{1/2}}{2}) -1 -\frac{\eps_{\eta}}{2}\right)\ge 2+\epsilon_\eta.$$
+%Note that $\alpha \geq \frac{\eps_{1/2}}{2} + 2\eps_{\eta}$ clearly suffices.
+%
+%From now on, we assume that $A\neq \{s\}$. In the following we will prove that for any set of \textit{atoms} $T \subsetneq S$, we have:
+%\begin{equation}\label{eq:goalTdeltarigthup}
+%c(s,E^\rightarrow(T)) + c(s,\delta^\rightarrow(T))  = (1+\alpha)(x_G(E^\rightarrow(T)) + x_G(\delta^\rightarrow(T))) \geq x(\delta^\uparrow(T)) 
+%\end{equation}
+%where for a set $F$ of edges we write $x_G(F)$ to denote the sum of fraction of good edges in $F$.
+%
+%%We previously proved it for $T=S$.
+%Let $A_X=A\cap X, A_Y=A\cap Y$ and so on. Assuming the above inequality, let us prove the lemma: First, for the set of edges $A_X$ chosen from $X$, we must choose all adjacent edges in $Y$ due to the infinite capacity edges, i.e., $A_Y$ contains the set of neighbors of $A_X$ in $Y$. Say edges in $A_Y$ will correspond to a set of vertices $Q$, i.e., $A_Y=\delta^\uparrow(Q)$. 
+%%Without loss of generality we also include every $u\in S$ where $\delta^\uparrow(u)=\emptyset$ in $Q$. This, would imply that, in the worst case, $A_X=E(Q)$. 
+%It follows that $A_X\subseteq E^\rightarrow(Q)$.
+%Let $T =  S \smallsetminus Q$. Note that $T\neq S$. Then:
+%\begin{eqnarray*}
+% \text{cap}(A,\overline{A}) &= & c(A_Y,t) + c(s,\overline{A}_X)\\
+% &\geq & x(\delta^\uparrow(Q)) + c(s,E^\rightarrow(T)) + c(s,E(Q,T)) \\
+% &=& x(\delta^\uparrow(S))-x(\delta^\uparrow(T)) + c(s,E^\rightarrow(T)) + c(s,\delta^\rightarrow(T)) \geq x(\delta^\uparrow(S)),
+%\end{eqnarray*}
+%where the last inequality follows by \eqref{eq:goalTdeltarigthup}.
+%%We obtain the equality due to the fact that the set of edges corresponding to the vertex set $T$ may not have any edges from the cut, as these would each contribute infinity to the capacity. Therefore we know that the set $T$ must include all possible edges which is the union of $\delta(T)$ and $E(T)$. 
+%
+%In the rest of the proof we show \eqref{eq:goalTdeltarigthup}.
+%First, we prove the following claim.
+%\begin{claim} For any $T\subsetneq S$ we can write,
+%\begin{equation}\label{eq:cut-ineq}
+%	x(\delta^\uparrow(T)) + x(E^\rightarrow(T))  
+%	\leq \frac12 \sum_{a\in T} x(\delta(a)) + \eps_\eta/2.
+%	%\le |T|(1+\epsilon_\eta/2) + \epsilon_\eta/2.
+%\end{equation}
+%where the sum is over all atoms of $T$.
+%\end{claim}
+%\begin{proof}
+%%For any set we have fraction $\sum_{a \in T} x(\delta(v)) - x(E^\rightarrow(T)) - x(\delta^\uparrow(T))$ staying below.  
+%First, observe
+%\begin{eqnarray*}
+%	x(\delta(S \smallsetminus T)) &=& x(\delta(S))  - x(\delta^\uparrow(T))+ x(\delta^\rightarrow(T)) \\
+%	&\le& 2+\epsilon_\eta - x(\delta^\uparrow(T)) + \sum_{a \in T} x(\delta(a)) - 2x(E^\rightarrow(T)) - x(\delta^\uparrow(T))\\
+%	&=& 2+\eps_\eta - 2x(\delta^\uparrow(T)) - 2x(E^\rightarrow(T)) + \sum_{a\in T} x(\delta(a))
+%\end{eqnarray*}
+%However since $T\neq S$, $x(\delta(S \smallsetminus T)) \ge 2$.
+%Dividing both sides by 2 %and using $x(\delta(a))\leq 2+\eps_\eta$ for all atoms in $S$ 
+%proves the claim. 
+%%$$\sum_{a \in T} x(\delta(a)) + \epsilon_\eta - 2x(\delta^\uparrow(T)) - 2x(E^\rightarrow(T)) \ge 0$$
+%%And rearranging 
+%%$$\sum_{a \in T} x(\delta(a)) - x(E^\rightarrow(T)) - x(\delta^\uparrow(T)) \ge x(\delta^\uparrow(T)) + x(E^\rightarrow(T)) - \epsilon_\eta$$
+%%So we are done provided there are no bad edges since the capacity of the LHS is multiplied by $(1+\epsilon_\eta)$. In the remaining proof we can therefore assume that $E^\rightarrow(T),\delta^\rightarrow(T)$ contain bad edges.  
+%\end{proof}
+%Next, we use the above claim to prove \eqref{eq:goalTdeltarigthup}.
+%Suppose atoms in $T$ are adjacent to $k$ bad edges. Each of these bad edges have fraction at most $1/2+\eps_{1/2}$. 
+%\begin{align}
+%x_G(E^\rightarrow(T)) + x_G(\delta^\rightarrow(T))	 &= x(E^\rightarrow(T)) + x(\delta^\rightarrow(T)) - x_B(E^\rightarrow(T)) - x_B(\delta^\rightarrow(T))\notag\\
+%& =  \sum_{a\in T} x(\delta(a)) - x(\delta^\uparrow(T)) - x(E^\rightarrow(T)) -x_B(E^\rightarrow(T)) - x_B(\delta^\rightarrow(T))\notag\\
+%&\geq  \frac12 \sum_{a\in T} x(\delta(a)) - \eps_\eta/2 - k (1/2+\eps_{1/2})\notag\\
+%&\geq  |T| - \eps_\eta/2 - k(1/2+\eps_{1/2}) \label{eq:xGEdeltalower}
+%\end{align}
+%In the first inequality we used \eqref{eq:cut-ineq}, and in the second inequality we used $x(\delta(a))\geq 2$ for all atoms of $S$.
+% 
+% On the other hand, recall that if $e=(a,b)$ is a bad edge, then $x(\delta^\uparrow(a)),x(\delta^\uparrow(b))\leq 1/2+\eps_{1/2}$ up. Therefore, we can write,
+% $$ x(\delta^\uparrow(T)) \leq k(1/2+\eps_{1/2}) + (|T|-k)(1+\eps_{\eta})$$
+% Now, to prove \eqref{eq:goalTdeltarigthup}, using \eqref{eq:xGEdeltalower}, it is enough to choose $\alpha$ such that,
+% $$
+% (1+\alpha) (|T| - \eps_{\eta}/2 - k(1/2+\eps_{1/2}) \geq k(1/2+\eps_{1/2}) + (|T|-k)(1+\eps_{\eta}),
+% $$
+% or equivalently,
+% $$ |T|(\alpha-\eps_{\eta}) \geq k (\alpha/2 + 2\eps_{1/2} + \alpha \eps_{1/2}+\eps_{\eta}) + \eps_{\eta}/2$$
+% Note that since every atom is adjacent to at most one bad edge, $k\leq |T|$. So, the above inequality simply follows because $|T|\geq 1$ and using $\alpha\geq 6\eps_{1/2}$ and $\eps_\eta < \frac1{10}\eps_{1/2}$.
+%\end{proof}
+%
+%
+%
+
+
+
+
+
+
+
+
+\begin{proof}[Proof of \cref{lem:matching}]
+	We will prove this by setting up a max-flow min-cut problem. 
+	%To simplify notation, let 
+	%$$ D:= 1+ \alpha; \quad F_u := (1-\eps_B \I {u\in F(S)})\text{ and } Z_u := 1 + \I{|S|\geq 4, x(\delta^\uparrow(u))\leq \eps_F}.$$
+	Construct a graph with vertex set $\{s,X,Y,t\}$, where $s,t$ are the source and sink. We identify $X$ with  the set of good edge bundles in $E^\rightarrow(S)$ and $Y$ with the set of atoms in $\cA(S)$. For every edge bundle $\bbe \in X$, add an arc from $s$ to $\bbe$ of capacity $c(s,\bbe):= (1+\alpha) x_\bbe$.  For every $u\in \cA(S)$, %there is a vertex 
+		%$u$ in $Y$ (think of $u$ as representing the edge bundle of all edges going higher from $u$) and an 
+		there is an arc $(u,t)$ with capacity
+		$$ c(u,t) = x(\delta^\uparrow(u))F_u Z_u.$$
+		% If $u$ is incident to a bad edge in $S$, then we set the capacity $c(f_u,t):=x(\delta^\uparrow(u))(1-\eps_B)$ and we set it to $c(f_u,t):=x(\delta^\uparrow(u))$ otherwise 
+		%We will drop the sub-script $u$ from $u$ when it is not necessary.
+		
+Finally, connect $\bbe=(u,v)\in X$ to nodes $u$ and $v\in Y$ with a directed edge of infinite capacity, i.e., $c(\bbe,u)=c(\bbe,v)=\infty$.
+We will show below that there is a flow saturating $t$, i.e. there is a flow of value 
+$$c(t):=\sum_{u \in \cA(S)} c(u,t) = \sum_{u\in \cA(S)} x(\delta^\uparrow(u))F_uZ_u.   $$
+%x_e\leq2+\eps_\eta$.  
+
+Suppose that in the corresponding max-flow, there is a flow of value $f_{\bbe,u}$ on the edge $(\bbe,u)$.
+Define $$m_{\bbe,u} := \frac{f_{\bbe,u}}{F_u}.$$
+Then \eqref{eq:uvbadematch} follows from the fact that the flow leaving $\bbe$ is at most the capacity of the edge from $s$ to $\bbe$, and \eqref{eq:matchedamount} follows by conservation of flow on the node $u$ (after cancelling out $F_u$ from both sides).
+
+
+
+We have left to show that for any $s$-$t$ cut $A,\overline{A}$ where $s\in A, t\in \overline{A}$ that the capacity of this cut is at least $c(t)$.
+
+\begin{claim} If $A=\{s\}$, then capacity of $(A,\overline{A})$ is at least $c(t)$.	
+\end{claim}
+\begin{proof}
+First, note that 
+\begin{align}
+	c(t) &= \sum_{u \in \cA(S)} x(\delta^\uparrow(u))F_uZ_u \le \sum_{u \in \cA(S)} x(\delta^\uparrow(u))Z_u\nonumber \\ &\le \I{|\cA(S)| \ge 4} \cdot |\{u \in \cA(S): x(\delta^\uparrow(u)) \le \eps_F\}| \cdot \eps_F + x(\delta(S))\nonumber \\
+	&\le 2+\eps_\eta + \eps_F\I{|\cA(S)| \ge 4}|\cA(S)| \label{eq:bound-ct}
+\end{align}
+because $F_u \le 1$ and $Z_u = 1 + \I{|\cA(S)| \ge 4,x(\delta^\uparrow(u)) \le \eps_F}$. 
+
+Second, note that
+\begin{align*}x(E^\rightarrow (S))  = \frac12 \sum_{u \in \cA(S)} (x(\delta (u)) - x(\delta ^\uparrow (u))) 
+\ge \frac{2 |\cA(S)| - (2 + \eps_\eta)}{2}
+= |\cA(S)| - 1 - \eps_\eta/2.
+\end{align*}
+Therefore, if there are $k$ bad edges in $E^\rightarrow(S)$, then
+\begin{align}
+	x_G \ge |\cA(S)| - 1 - \eps_\eta/2 - k(\frac{1}{2}+\eps_{1/2}) \label{eq:sum-inside}
+\end{align}
+
+
+\textbf{Case 1: $|\cA(S)|=3$.} Then $Z_u=1$ for all $u\in\cA(S)$ and by \cref{lem:three-nodes-good} all edges are good. 
+%Also,
+%\begin{align*}x(E^\rightarrow (S))  = \frac12 \sum_{u \in \cA(S)} (x(\delta (u)) - x(\delta ^\uparrow (u))) 
+%\ge \frac{2 |\cA(S)| - (2 + \eps_\eta)}{2}
+%= 2 - \eps_\eta/2.
+%\end{align*}
+%%by \cref{fact:ErightarrowS},
+So, by \cref{eq:sum-inside},
+$x(E ^\rightarrow (S))\ge 2- \eps_\eta/2$. %, and $x(\delta(S))\leq 2+\eps_\eta$. 
+Thus, for $\alpha\geq 2\eps_\eta$ we have
+$$c(s) = (1+ \alpha) x_G \ge (2-\epsilon_\eta/2)(1+\alpha) \ge 2+\epsilon_\eta \underset{\cref{eq:bound-ct}}{\ge} c(t)$$
+as desired. 
+
+\textbf{Case 2: $|\cA(S)|\geq 5$.} By \cref{thm:badedges} there is at most one bad half edge adjacent to every vertex. Therefore there are at most  $|\cA(S)|/2$ bad edges, so by \cref{eq:sum-inside}, 
+$$(1+\alpha)x_G \ge (1+\alpha)\left(|\cA(S)| - 1 - \eps_\eta/2 - \frac{1}{2}|\cA(S)|(\frac{1}{2}+\eps_{1/2})\right) \ge 2+\epsilon_\eta + \eps_F |\cA(S)| \underset{\cref{eq:bound-ct}}{\ge} c(t)$$
+%  in total (the bound is met if they form a perfect matching) which contributes to at most a total of $(1/2+\eps_{1/2})|\cA(S)|/2=:x_B$ fraction.
+%So, there is a fraction of at least $x_G:=x(E ^\rightarrow (S)) - x_B \ge |\cA(S)|-1-\epsilon_\eta/2-x_B$ of good edges. %But then we will choose $\alpha$ such that 
+%If $|\cA(S)|\ge 5$  then 
+%So,
+%\begin{align*}
+%	(1+\alpha)x_G  &\geq (1+\alpha)\left(|\cA(S)| (\frac34 - \frac{\eps_{1/2}}{2}) -1 -\frac{\eps_{\eta}}{2}\right)\\
+%	& \ge (1+ \alpha)\left(|\cA(S)|(\frac{3}{4} - \frac{\eps_{1/2}}{2} - \eps_F) -1- \frac{\eps_{\eta}}{2}   + \eps_F |\cA(S)|.\right)\\
+%	&\ge 2+\epsilon_\eta + \eps_F |\cA(S)| \underset{\cref{eq:bound-ct}}{\ge} c(t).
+%\end{align*}
+where the second to last inequality holds, using $\alpha \ge  2 \eps_\eta$, $|\cA(S)|\ge 5$, $\eps_{1/2} \le 0.01$, and $\eps_F \le 0.1$.
+
+\textbf{Case 3: $|\cA(S)|=4$, and we have 0 or 1 bad edges.} Then by \cref{eq:sum-inside}, $x_G\geq 2.5-\eps_\eta /2 - \eps_{1/2}$, so by \cref{eq:bound-ct}, $(1+\alpha)x_G \geq 2+\eps_\eta + 4\eps_F \ge c(t)$ for $\eps_F \le 0.1$, $\alpha \ge 2\eps_\eta, \eps_{1/2} \le 0.01$. %(and noting that with $|\cA(S)|=4$ at most 2 nodes can have $\delta^\uparrow(u) \le \eps_F$).
+%Finally, if $|\cA(S)|=4$ and we have two bad edges, the capacity of all edges going higher is multiplied by $(1-\eps_B)$. In this case we claim that for any $u\in S$, $x(\delta^\uparrow(u))\geq 1/10\geq \eps_F$. This is because if $x(\delta^\uparrow(u))<1/10$, then there is a node $u'\in S$ such that $x(\delta^\uparrow(u'))\geq 3/5>1/2+\eps_{1/2}$. So $u'\notin B(S)$ which is a contradiction. Therefore, in this case $\I{|\cA(S)|\geq 4, x(\delta^\uparrow(u))\leq \eps_F}=0$ for all $u\in S$. So, by Lemma ?? % if more than 1/2 + alpha goes up, then no bad edges 
+%$$(1+\alpha)x_G \geq (1+ \alpha)(2-2\eps_{1/2} - \frac{\eps_\eta}{2}) \geq (2+\eps_{\eta})(1-\eps_B)$$
+%for $\eps_B\ge\eps_{1/2}$.
+
+
+\textbf{Case 4: $|\cA(S)|=4$, and there are 2 bad edges.}
+Then they form a perfect matching inside $S$ and  for each
+$u\in\cA(S)$, $x(\delta^\uparrow(u))\le 1/2 + 9\eps_{1/2}$ (see \cref{thm:badedges}).
+
+Therefore it must also be the case that $x(\delta^\uparrow(u))\ge  \eps_F$ for each $u\in\cA(S)$. If not,  there would have to be a node $u' \in \cA(S)$ such that
+$x(\delta^\uparrow(u')) \ge (2- \eps_F)/3 > 1/2 + 9\eps_{1/2}$,
+which is a contradiction to $u'$ having an incident bad edge.
+Thus, for each $u \in \cA(S)$, $x(\delta^\uparrow(u))$ is $\eps_F$-fractional, i.e., $F_u=1-\eps_B$ and $Z_u=1$ implying that 
+ $c(t) \le (2 + \eps_\eta)(1- \eps_B)$.
+ Therefore, by \cref{eq:sum-inside},
+ $$c(s) = (1+ \alpha) x_G \ge (1+ \alpha) (2-2\eps_{1/2} - \eps_\eta/2,)$$ 
+ and the rightmost quantity is at least $c(t)$ for $\eps_B \ge 2 \eps_{1/2}$ and $\alpha \ge 2 \eps_\eta$.
+\end{proof}
+
+
+
+
+From now on, we assume that the min s-t cut $A\neq \{s\}$. In the following we will prove that for any set of \textit{atoms} $W \subsetneq S$, we have:
+\begin{equation}\label{eq:goalTdeltarigthup}
+ c(s,\delta^\rightarrow(W))  = (1+\alpha) x_G(\delta^\rightarrow(W)) \geq c(\delta^\uparrow(W),t) 
+\end{equation}
+where for a set $F$ of edges we write $x_G(F)$ to denote the total fractional value of good edges in $F$.
+
+%We previously proved it for $T=S$.
+Let $A_X=A\cap X, A_Y=A\cap Y$ and so on. Assuming the above inequality, let us prove the lemma: First, for the set of edges $A_X$ chosen from $X$, let $Q$ be the set of endpoints of all edge bundles in $A_X$ (in $\cA(S)$). %So, $A_X\subseteq E^\rightarrow(Q)$.
+%Without loss of generality we also include every $u\in S$ where $\delta^\uparrow(u)=\emptyset$ in $Q$.
+
+Observe that we must choose all atoms in $Q$ inside $A_Y$ due to the infinite capacity arcs, i.e., $Q\subseteq A_Y$. %Say edges in $A_Y$ will correspond to a set of vertices $Q$, i.e., $A_Y=\delta^\uparrow(Q)$. 
+% This, would imply that, in the worst case, $A_X=E^\rightarrow(Q)$. 
+Let $W =  S \smallsetminus Q$. Note that $W\neq S$. Then:
+\begin{eqnarray*}
+ c(A,\overline{A}) &= & c(A_Y,t) + c(s,\overline{A}_X)\\
+ &\geq  & c(\delta^\uparrow(Q),t) + c(s,\delta^\rightarrow(W))  \\
+ &=& c(\delta^\uparrow(S),t)-c(\delta^\uparrow(W)) + c(s,\delta^\rightarrow(W)) \geq c(\delta^\uparrow(S),t),
+\end{eqnarray*}
+where the last inequality follows by \eqref{eq:goalTdeltarigthup}.
+%We obtain the equality due to the fact that the set of edges corresponding to the vertex set $T$ may not have any edges from the cut, as these would each contribute infinity to the capacity. Therefore we know that the set $T$ must include all possible edges which is the union of $\delta(T)$ and $E(T)$. 
+
+Finally, we prove \eqref{eq:goalTdeltarigthup}. Suppose atoms in $W$ are adjacent to $k$ bad edges. Then
+\begin{align}
+ x_G(\delta^\rightarrow(W))	 &=  x(\delta^\rightarrow(W))  - x_B(\delta^\rightarrow(W))\notag\\
+\intertext{which by \cref{fact:anothercutineq} and the fact that each bad edge has fraction at most $1/2+\eps_{1/2}$, is}
+&\geq  |W| - \eps_\eta/2 - k(1/2+\eps_{1/2}). \label{eq:xGEdeltalower}
+\end{align}
+%since $x(\delta (a)) \ge 2$ for each atom $a$ in $T$.
+%In the first inequality we used \eqref{eq:cut-ineq}, and in the second inequality we used $x(\delta(a))\geq 2$ for all atoms of $S$.
+ 
+ To upper bound $ c(\delta^\uparrow(W),t)$, we observe that for any $u\in\cA(S)$, 
+ $$c(u,t)\leq \begin{cases} x(\delta^\uparrow(u))Z_u\leq 1/5  & \text{if $x(\delta^\uparrow(u))< \eps_F$}\\
+  (1/2+9\eps_{1/2})(1-\eps_B) & \text{if 
+ $x(\delta^\uparrow(u))>\eps_F$ and $u$ incident to bad edge}	\\
+ 1 + \eps_\eta & \text{otherwise, using \cref{lem:shared-edges}.}
+ \end{cases}
+ $$
+ %(since $\eps_F \le 1/10$). Otherwise, if , then $x(\delta^\uparrow(u))\leq 1/2+9\eps_{1/2}$ (and $F_u=1-\eps_B$), so $c(u,t) \le (1/2+9\eps_{1/2})F_u$. If neither of these two cases hold, then, $c(u,t) \le 1 + \eps_\eta$ by \cref{lem:shared-edges}. Therefore,
+Therefore, we can write,
+ $$ c(\delta^\uparrow(W),t) \leq k(1/2+9\eps_{1/2})(1-\eps_B) + (|W|-k)(1+\eps_{\eta}).$$
+ Now, to prove \eqref{eq:goalTdeltarigthup}, using \eqref{eq:xGEdeltalower}, it is enough to choose $\alpha$ and $\eps_B$ such that,
+ $$
+ (1+\alpha) \left(|W| - \eps_{\eta}/2 - k(1/2+\eps_{1/2})\right) \geq k(1/2+9\eps_{1/2})(1-\eps_B) + (|W|-k)(1+\eps_{\eta}),
+ $$
+ or equivalently,
+ $$ |W|(\alpha-\eps_{\eta}) \geq k (\alpha/2 + 10\eps_{1/2} + \alpha \eps_{1/2} -\eps_B/2 - 9\eps_B \eps_{1/2} -\eps_{\eta}) + \frac{\eps_{\eta}}{2}(1+\alpha)$$
+Since  every atom is adjacent to at most one bad edge, $k\leq |W|$
+and $|W|\ge 1$, the inequality follows using
+$\eps_B \ge  21 \eps_{1/2}$ and $\alpha > 2 \eps_\eta$ and $\eps_{1/2}\leq 0.0002$ and $\eps_\eta \leq \eps_{1/2}^2$.
+\end{proof}
+
+%\subsection{Bottom edges}
+%
+%\begin{lemma}
+%For a polygon cut $S$, there is a matching from edges in $E^\rightarrow(S)$ to $\delta(S)$ such that in every near mincut $C$ in the polygon $S$ the edges in $C \cap \delta(S)$ are matched to at least capacity $x(C \cap \delta(S))$ in $E^\rightarrow(S)$. Furthermore, edges $e$ in $\delta^\rightarrow(S)$ are matched to at most fraction $(2+3\epsilon_{\eta})x_e$ for $\epsilon_\eta \le 1/10$. 
+%\end{lemma}\label{lem:bottom-matching}
+%\begin{proof}
+%	Match every edge in $\delta^\rightarrow(S)$ to every edge in $\delta^\uparrow(S)$, and then multiply its capacity by $(2+3\epsilon_{\eta})$. By \cref{lem:shared-edges} every cut $C$ has 
+%	$$x(C \cap \delta^\uparrow(S)) \le 1+\epsilon_\eta$$ 
+%	Therefore since $\delta(C) \ge 2$, $C \cap \delta^\uparrow(S)$ is matched to at least fraction $1-\epsilon_\eta$ before multiplying its capacity. After multiplication
+%	$$(1-\epsilon_\eta)(1+3\epsilon_\eta) \ge 1+\epsilon_\eta \ge x(C \cap \delta^\uparrow(S))$$
+%\end{proof}

@@ -1,0 +1,817 @@
+Fast Integer Multiplication with
+Schönhage-Strassen’s Algorithm
+Alexander Kruppa
+CACAO team at LORIA, Nancy
+
+séminaire Algorithms INRIA Rocquencourt
+
+Contents
+
+Contents
+Contents of this talk:
+1. Basics of Integer Multiplication
+(a) by polynomial multiplication
+(b) Evaluation/Interpolation
+(c) Karatsuba’s method
+(d) Toom-Cook method
+(e) FFT and weighted transforms
+(f) Schönhage-Strassen’s Algorithm
+Alexander Kruppa
+
+2
+
+INRIA Rocquencourt
+
+Contents
+
+2. Motivation for Improving SSA
+3. Schönhage-Strassen’s Algorithm
+4. High-Level Improvements
+(a) Mersenne Transform
+(b) CRT Reconstruction
+(c)
+
+√
+
+2 Trick
+
+5. Low-Level Improvements
+(a) Arithmetic modulo 2n + 1
+(b) Cache Locality
+(c) Fine-Grained Tuning
+6. Timings, Comparisons and Untested Ideas
+Alexander Kruppa
+
+3
+
+INRIA Rocquencourt
+
+Integer Multiplication
+
+Integer Multiplication
+• Problem: given two n-word (word base β ) integers
+a=
+
+n−1
+!
+
+aiβ i,
+
+i=0
+
+0 ≤ ai < β and likewise for b, compute
+c = ab =
+=
+
+2n−1
+!
+
+ci β i
+
+i=0
+n−1 !
+n−1
+!
+
+aibj β i+j ,
+
+i=0 j=0
+
+with 0 ≤ ci < β .
+
+Alexander Kruppa
+
+4
+
+INRIA Rocquencourt
+
+by Polynomial Multiplication
+
+by Polynomial Multiplication
+• We can rewrite the problem as polynomial arithmetic:
+A(x) =
+
+n−1
+!
+
+aixi
+
+i=0
+
+so that a = A(β), likewise for B(x), then
+
+C(x) = A(x)B(x)
+n−1 !
+n−1
+!
+=
+aibj xi+j
+i=0 j=0
+
+so that c = ab = C(β).
+
+• Double sum has complexity O(n2) (Grammar School Algorithm),
+we can do much better
+
+Alexander Kruppa
+
+5
+
+INRIA Rocquencourt
+
+Evaluation/Interpolation
+
+Evaluation/Interpolation
+• Unisolvence Theorem: Polynomial of degree d − 1 is determined
+uniquely by values at d distinct points
+• Since C(k) = A(k)B(k) for all k ∈ R for ring R, reduce the
+polynomial multiplication to:
+
+1. Evaluate A(x), B(x) at 2n − 1 points k0, . . . , k2n−2
+2. Pairwise multiply to get C(ki) = A(ki)B(ki)
+3. Interpolate C(x) from its values C(ki)
+
+Alexander Kruppa
+
+6
+
+INRIA Rocquencourt
+
+Karatsuba’s Method
+
+Karatsuba’s Method
+• First algorithm to use this principle (Karatsuba and Ofman, 1962)
+• Multiplies polynomials of degree 1: A(x) = a0 + a1x
+• Suggested points of evaluation: 0, 1, ∞
+• A(0) = a0, A(1) = a0 + a1, A(∞) = a1 (same for B(x))
+• C(0) = a0b0, C(1) = (a0 + a1)(b0 + b1), C(∞) = a1b1
+• c0 = C(0), c2 = C(∞), c1 = C(1) − c0 − c2
+• Product of 2n words computed with 3 pointwise multiplications of
+n words each, applied recursively: O(nlog2(3)) = O(n1.585)
+Alexander Kruppa
+
+7
+
+INRIA Rocquencourt
+
+Toom-Cook Method
+
+Toom-Cook Method
+• Generalized to polynomials of larger degree (Toom, 1963, Cook,
+1966)
+
+• Product of two n word integers with A(x), B(x) of degree d:
+2d + 1 products of n/(d + 1) word integers
+• For fixed d: complexity O(nlogd+1(2d+1)), e.g. d = 2: O(n1.465)
+• Interpolation/Evaluation costly (O(dn log(d))), cannot increase d
+arbitrarily for given n
+• Choosing d as function of n allows algorithm in O(n1+"), for any
+" > 0. Small exponents need very large n
+
+Alexander Kruppa
+
+8
+
+INRIA Rocquencourt
+
+Evaluation/Interpolation with FFT
+
+Evaluation/Interpolation with FFT
+• FFT solves problem of costly evaluation/interpolation
+• Length-# DFT of a0, ..., a#−1 in R computes ãj = A(ω#j ), 0 ≤ j <
+#, with ω# an #-th principal root of unity in R: #-point polynomial
+evaluation
+
+• Length-# IDFT computes ai from given ãj : #-point polynomial
+interpolation
+
+• With FFT algorithm, algebraic complexity only O(# log(#))
+• Problem: R needs to support length-# FFT (preferably # a power
+of 2): needs #-th principal root of unity, # a unit
+
+Alexander Kruppa
+
+9
+
+INRIA Rocquencourt
+
+Weighted Transform
+
+Weighted Transform
+• Since (ω#j )# = 1 for all j ∈ N, C1(x)x# + C0(x) has same DFT
+coefficients as C1(x) + C0(x): implicit modulus x# − 1 in DFT
+• FFT convolution gives C(x) = (A(x)B(x)) mod (x# − 1): cyclic
+convolution
+
+• Can change that modulus with weighed transform: compute
+C(wx) = (A(wx)B(wx)) mod (x# − 1). Then
+A(wx)B(wx) = C1(wx)x#w# + C0(wx)
+C(wx) = C1(wx)x#w# + C0(wx) mod (x# − 1)
+= C1(wx)w# + C0(wx)
+
+so that C(x) = (A(x)B(x)) mod (x# − w #)
+
+• With w# = −1, we get modulus x# + 1: negacyclic convolution, but
+need 2#-th root of unity in R
+Alexander Kruppa
+
+10
+
+INRIA Rocquencourt
+
+Schönhage-Strassen’s Algorithm: Basic Idea
+
+Schönhage-Strassen’s
+Basic Idea
+
+Algorithm:
+
+• First algorithms to use FFT (Schönhage and Strassen 1971)
+• Uses ring Rn = Z/(2n + 1)Z for transform, with # = 2k | n
+• Then 2n/# ≡ −1 (mod 2n + 1): so 2n/# ∈ Rn is 2#-th root of unity,
+multiplication by powers of 2 is fast! (O(n))
+• Allows length # weighted transform for negacyclic convolution
+• Write input a = A(2M ), b = B(2M ), compute C(x) = A(x)B(x)
+(mod x# + 1). Then c = C(2M ) = ab (mod 2M # + 1)
+• Point-wise products modulo 2n + 1 use SSA recursively: choose
+next level’s #', M ' so that M '#' = n
+Alexander Kruppa
+
+11
+
+INRIA Rocquencourt
+
+Improvements to SchönhageStrassen’s Algorithm
+
+Alexander Kruppa
+
+12
+
+INRIA Rocquencourt
+
+Motivation for Improving SSA
+
+Motivation for Improving SSA
+• Integer multiplication is fundamental to arithmetic, used in PRP
+testing, ECPP, polynomial multiplication
+
+• Schönhage-Strassen’s algorithm [SSA]:
+good asymptotic
+complexity O(n log n log log n), fast in practice for large operands,
+exact (only integer arithmetic)
+
+• Used in GMP, widely deployed
+• We improved algorithmic aspects of Schönhage-Strassen
+• Validated by implementation based on GMP 4.2.1 [GMP]
+
+Alexander Kruppa
+
+13
+
+INRIA Rocquencourt
+
+Schönhage-Strassen’s Algorithm
+
+Schönhage-Strassen’s Algorithm
+• SSA reduces multiplication of two S -bit integers to # multiplications
+of approx. 4S/#-bit integers
+• Example: multiply two numbers a, b of 220 bits each ⇒ product
+has at most 221 bits
+1. Choose N = 221 and a good #, for this example # = 512. We
+compute ab mod (2N + 1)
+2. Write a as polynomial of degree #, coefficients ai < 2M with
+M = N/#, a = a(2M ). Same for b
+3. ab = a(2M )b(2M ) mod (2N + 1), compute
+
+c(x) = a(x)b(x) mod (x# + 1)
+4. Convolution theorem:
+multiplication
+Alexander Kruppa
+
+Fourier transform and pointwise
+14
+
+INRIA Rocquencourt
+
+Schönhage-Strassen’s Algorithm
+
+5. FFT needs #-th root of unity: map to Z/(2n + 1)Z[x] with # | n.
+Then 22n/# has order #
+6. We need 2n + 1 > ci: choose n ≥ 2M + log2(#) + 1
+
+7. Compute c(x) = a(x)b(x) mod (x# + 1), evaluate ab = c(2M )
+- and we’re done!
+8. Benefits:
+- Root of unity is power of 2
+- Reduction mod(2n + 1) is fast
+- Point-wise products can use SSA recursively without
+padding
+Z =⇒ Z2N +1 =⇒ Z[x] mod (x# + 1) =⇒ Z2n+1[x] mod (x# + 1) =⇒ Z2n+1
+"
+
+No, recurse
+
+##
+
+!
+#$
+#
+$
+
+n
+
+$$
+#
+$
+$$ small? ##
+$
+#
+$
+#
+$#
+!
+
+Yes, multiply
+
+Alexander Kruppa
+
+15
+
+INRIA Rocquencourt
+
+High-Level Optimizations
+
+High-Level Optimizations
+
+Alexander Kruppa
+
+16
+
+INRIA Rocquencourt
+
+Mersenne Transform
+
+Mersenne Transform
+• Convolution theorem implies reduction mod(x# − 1)
+• Convolution mod(x# + 1) needs weights θi with ord(θ) = 2#,
+needs # | n to get 2#-th root of unity in Rn
+• Computing ab mod (2N + 1) to allows recursive use of SSA, but is
+not required at top level
+
+• Map a and b to Z/(2N − 1)Z instead:
+compute c(x) = a(x)b(x) mod (x# − 1)
+• Condition relaxes to # | 2n. Twice the transform length, smaller n
+• No need to apply/unapply weights
+Alexander Kruppa
+
+17
+
+INRIA Rocquencourt
+
+CRT Reconstruction
+
+CRT Reconstruction
+a, b
+
+a, b
+Z/(2N + 1)Z
+
+Z/(2rN + 1)Z
+
+Z/(2sN − 1)Z
+
+Convolution
+
+Convolution
+
+Convolution
+
+ab
+with 2N + 1 > ab
+
+Alexander Kruppa
+
+CRT
+
+ab
+with (2rN + 1)(2sN − 1) > ab
+
+18
+
+INRIA Rocquencourt
+
+CRT Reconstruction
+
+• At least one of (2rN − 1, 2sN + 1) and (2rN + 1, 2sN − 1) is coprime
+• Our implementation uses (2rN +1, 2N −1) : always coprime, good
+speed
+
+• Smaller convolution, finer-grained parameter selection
+
+Alexander Kruppa
+
+19
+
+INRIA Rocquencourt
+
+The
+
+The
+
+√
+
+√
+
+2 Trick
+
+2 Trick
+
+• If 4 | n, 2 is a quadratic residue in Z/(2n + 1)Z
+√
+
+3n/4
+
+n/4
+
+• In that case, 2 ≡ 2
+− 2 : simple form, multiplication by
+takes only 2 shift, 1 subtraction modulo 2n + 1
+
+√
+
+2
+
+• Offers root of unity of order 4n, allows # | 2n for Fermat transform,
+# | 4n for Mersenne transform
+• Sadly, higher roots of 2 usually not available in Z/(2n + 1)Z, or
+have no simple form
+
+Alexander Kruppa
+
+20
+
+INRIA Rocquencourt
+
+Low-Level Optimizations
+
+Low-Level Optimizations
+
+Alexander Kruppa
+
+21
+
+INRIA Rocquencourt
+
+Arithmetic modulo 2n + 1
+
+Arithmetic modulo 2n + 1
+• Residues stored semi-normalized (< 2n+1), each with m = n/w
+full words plus one extra word ≤ 1
+• Adding two semi-normalized values:
+
+c = a[m] + b[m] + mpn_add_n (r, a, b, m);
+r[m] = (r[0] < c);
+MPN_DECR_U (r, m + 1, c - r[m]);
+
+Assures r[m] = 0 or 1, c − r[m] > r[0] ⇒ r[m] = 1 so carry
+propagation must terminate.
+
+• Conditional branch only in mpn_add_n loop and (almost always
+non-taken) in carry propagation of MPN_DECR_U
+
+• Similar for subtraction, multiplication by 2k
+Alexander Kruppa
+
+22
+
+INRIA Rocquencourt
+
+Improving Cache Locality
+
+Improving Cache Locality
+• SSA behaves differently than, say, complex floating point FFT:
+elements have hundreds or thousands of bytes instead of 16
+
+• Recursive implementation preferable, reduces working data set
+size quickly, overhead small compared to arithmetic
+
+• Radix 4 transform fuses two levels of butterflies on four inputs. Half
+as many recursion levels, 4 operands usually fit into level 1 cache
+)
+
+ai
+
+ai+k
+
+ai + ai+k
+
+'
+'
+(
+
+%
+&
+%
+
+%
+&
+%
+
+'
+'
+(
+
+wk (ai − ai+k )
+
+'
+'
+(
+
+%
+&
+%
+
+%
+&
+)%
+)
+'
+'
+(
+
+'
+%
+&
+'
+(
+%
+$#
+#
+$
+#$
+'
+%
+&
+'
+(
+%
+
+'
+'
+(
+
+%
+&
+)%
+
+'
+'
+(
+
+'
+'
+(
+
+%
+&
+%
+
+%
+&
+%
+
+%
+&
+%
+
+)
+
+)
+)
+
+)
+
+Radix-4 butterfly
+
+Radix-2 butterfly
+Alexander Kruppa
+
+'
+'
+(
+
+23
+
+INRIA Rocquencourt
+
+Improving Cache Locality
+
+• Bailey’s 4-step algorithm (radix
+
+√
+
+# transform)
+
+- groups half of recursive levels into first pass, other half into
+second pass
+- Each pass is again a set of FFTs, each of length
+
+√
+
+√
+
+#
+
+- If length
+# transform fits in level 2 cache: only two passes
+over memory per transfrom
+- Extremely effective for complex floating-point FFTs, we found it
+useful for SSA with large # as well
+
+• Fusing different stages of SSA
+
+- Do as much work as possible on data while it is in cache
+-"
+When cutting input a into M -bit size coefficients a =
+iM
+a
+2
+, also apply weights for negacyclic transform and
+i
+0≤i<#
+perform first FFT level (likewise for b)
+- Similar ideas for other stages
+
+Alexander Kruppa
+
+24
+
+INRIA Rocquencourt
+
+Fine-Grained Tuning
+
+Fine-Grained Tuning
+• Up to version 4.2.1, GMP uses simple tuning scheme: transform
+length grows monotonously with input size
+
+• Not
+
+optimal:
+time
+over
+different
+transform
+lengths
+0.0002
+0.00019
+
+input
+size
+graphs
+for
+intersect
+multiple
+times:
+
+K=32
+K=64
+
+Seconds
+
+0.00018
+0.00017
+0.00016
+0.00015
+0.00014
+0.00013
+700
+
+Alexander Kruppa
+
+750
+800
+850
+Size in 64-bit words
+25
+
+900
+
+INRIA Rocquencourt
+
+Fine-Grained Tuning
+
+• New tuning scheme determines intervals of input size and optimal
+transform length
+
+• Also determines pairs of Mersenne/Fermat transform lenghts for
+CRT
+
+• Time-consuming (ca. 1h up to 1M words) but yields significant
+speedup
+
+Alexander Kruppa
+
+26
+
+INRIA Rocquencourt
+
+Timings and Comparisons
+
+Timings and Comparisons
+• Our code is about 40% faster than GMP 4.2.1 and
+Magma 2.13-6,
+80
+70
+
+Seconds
+
+60
+
+more than twice as fast as GMP 4.1.4
+
+GMP 4.1.4
+Magma V2.13-6
+GMP 4.2.1
+new GMP code
+
+50
+40
+30
+20
+10
+0
+
+Alexander Kruppa
+
+2.5e6
+
+5e6
+
+7.5e6
+1e7 1.25e7
+Size in 64-bit words
+27
+
+1.5e7
+
+INRIA Rocquencourt
+
+Timings and Comparisons
+
+• New code by William Hart for FLINT is competitive with ours, up to
+30% faster for some input sizes
+
+• Prime95 and Glucas implement complex floating point FFT for
+integer multiplication, mostly for arithmetic mod 2n − 1 (LucasLehmer test for Mersenne numbers)
+
+- Considerably faster: Prime95 10x on Pentium 4, 2.5x on
+Opteron; Glucas 5x on Pentium 4, 2x on Opteron
+- Danger of round-off error due to floating point arithmetic
+- Provably correct rounding possible with about 2x the transform
+length
+- Prime95 written in assembly, non-portable
+
+Alexander Kruppa
+
+28
+
+INRIA Rocquencourt
+
+Untested Ideas
+
+Untested Ideas
+• Special code for point-wise multiplication:
+- Length 3 · 2k transform
+
+- Karatsuba and Toom-Cook with reduction mod 2n + 1 in
+interpolation step
+- Short-length, proven correct complex floating-point FFT
+
+• Truncated Fourier transform
+• Fürer’s new algorithm has lower theoretical complexity
+∗
+O(n log(n)2log (n)). How fast is it in practice?
+
+Alexander Kruppa
+
+29
+
+INRIA Rocquencourt
+
+REFERENCES
+
+References
+[GMP] T. Granlund, The GNU Multiple Precision Arithmetic library,
+http://gmplib.org/
+[SSA] A. Schönhage and V. Strassen, Schnelle Multiplikation großer
+Zahlen, Computing 7 (1971)
+Source tarball with new code available at
+<http://www.loria.fr/˜kruppaal>
+
+Alexander Kruppa
+
+30
+
+INRIA Rocquencourt
+
+

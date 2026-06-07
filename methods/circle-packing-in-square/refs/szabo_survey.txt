@@ -1,0 +1,2940 @@
+Chapter 1
+GLOBAL OPTIMIZATION IN GEOMETRY
+— CIRCLE PACKING INTO THE SQUARE
+Péter Gábor Szabó
+Institute of Informatics, University of Szeged
+pszabo@inf.u-szeged.hu
+
+Mihály Csaba Markót
+Institute of Informatics, University of Szeged
+markot@inf.u-szeged.hu
+
+Tibor Csendes
+Institute of Informatics, University of Szeged,
+Corresponding author
+csendes@inf.u-szeged.hu
+
+Abstract
+
+1.
+
+The present review paper summarizes the research work done mostly by
+the authors on packing equal circles in the unit square in the last years.
+
+Introduction
+
+The problem of finding the densest packing of n equal objects in a
+bounded space is a classical one which arises in many scientific and engineering fields. For the two-dimensional case, it is a well-known problem of discrete geometry. The Hungarian mathematician Farkas Bolyai
+(1775–1856) published in his principal work (‘Tentamen’, 1832–33 Bolyai
+(1904)) a dense regular packing of equal circles in an equilateral triangle
+(see Figure 1.1). He defined an infinite packing series and investigated
+the limit of vacuitas (the gap in the triangle outside the circles). It is
+interesting that these packings are not always optimal in spite of the fact
+
+2
+
+Figure 1.1.
+triangle.
+
+The example of Bolyai for packing 19 equal circles in an equilateral
+
+that they are based on hexagonal grid packings (Szabó (2000)). Bolyai
+was probably the first author in the mathematical literature who studied
+the density of a series of packing circles in a bounded shape.
+Of course, the work of Bolyai was not the very first in packing circles.
+There were other interesting early packings in fine arts, relics of religions
+and in nature (Tarnai (1997)), too. The old Japanese sangaku problems
+(Fukagawa and Pedoe (1989); Szabó (2001)) contain many nice results
+related to the packing of circles. Figure 1.2 shows an example of packing
+6 equal circles in a rectangle.
+The problem of finding the densest packing of n equal and nonoverlapping circles has been studied for several shapes of the bounding
+region, e.g. in a rectangle (Ruda (1969)), in a triangle (Graham and
+Lubachevsky (1995)) and circle (Graham, Lubachevsky, Nurmela, and
+Östergård (1998)). Our work focuses only on the ’Packing of Equal
+Circles in a Square’-problem.
+The Hungarian mathematicians Dezső Lázár and László Fejes Tóth
+have already investigated the problem before 1940 (Staar (1990); Szabó
+and Csendes (2001)). The problem first appeared in literature in 1960,
+when Leo Moser (1960) guessed the optimal arrangement of 8 circles.
+
+Circle Packing into the Square
+
+Figure 1.2.
+
+3
+
+Packing of 6 equal circles in a rectangle on a rock from Japan.
+
+Schaer and Meir (1965) proved this conjecture and Schaer (1965) solved
+the n = 9 case, too. Schaer has given also a proof for n = 7 in a letter
+to Leo Moser in 1964, but he never published it. There is a similar
+unpublished result from R. Graham in a private letter for n = 6. Later
+Schwartz (1970) and Melissen (1994) have given proof for this case (up
+to n = 5 circles the problem is trivial).
+The next challenge was the n = 10 case. de Groot, Peikert, and Würtz
+(1990) solved this after many authors published new and improved packings: Goldberg (1970); Milano (1987); Mollard and Payan (1990); Schaer
+(1971); Schlüter (1979) and Valette (1989). Some unpublished results are
+known also in this case: Grünbaum (1990); Grannell (1990); Petris and
+Hungerbüler (1990). The proof based on a computer aided method, and
+nobody published a proof using only pure mathematical tools. There
+is an interesting mathematical approach of this case in Hujter (1999).
+Peikert, Würtz, Monagan, and de Groot (1992) found and proved optimal packings up to n = 20 using a computer aided method. Based on
+theoretical tools only, G. Wengerodt solved the problem for n = 14, 16
+and 25 (Wengerodt (1983); Wengerodt (1987); Wengerodt (1987b)), and
+with K. Kirchner for n = 36 (Kirchner and Wengerodt (1987)).
+In the last decades, several deterministic (Locatelli and Raber (2002);
+Markót (2003); Markót and Csendes (2004); Nurmela and Östergård
+(1999); Peikert, Würtz, Monagan, and de Groot (1992)) and stochas-
+
+4
+tic (Boll, Donovan, Graham, and Lubachevsky (2000); Casado, Garcı́a,
+Szabó, and Csendes (2001); Graham and Lubachevsky (1996)) methods
+were published. Proven optimal packings are known up to n = 30 (Nurmela and Östergård (1999); Peikert, Würtz, Monagan, and de Groot
+(1992); Markót (2003); Markót and Csendes (2004)) and for n = 36 (
+Kirchner and Wengerodt (1987)).
+Approximate packings (packings determined by computer aided numerical computations without a rigorous proof) and candidate packings
+(best known arrangements with a proof of existence but without proof
+of optimality) were reported in the literature for up to n = 200: Boll,
+Donovan, Graham, and Lubachevsky (2000); Casado, Garcı́a, Szabó,
+and Csendes (2001); Graham and Lubachevsky (1996); Nurmela and
+Östergård (1997); Szabó and E. Specht (2005). At the same time,
+some other results (e.g. repeated patterns, properties of the optimal
+solutions and bounds, minimal polynomials of packings) were published
+as well (Graham and Lubachevsky (1996); Locatelli and Raber (2002);
+Nurmela, Östergård, and aus dem Spring (1999); Tarnai and Gáspár
+(1995-96); Szabó (2000b); Szabó, Csendes, Casado, and Garcı́a (2001);
+Szabó (2004)).
+
+2.
+
+The packing circles in a square problem
+
+The packing circles in a square problem can be described by the following equivalent problem settings:
+
+Problem 1 Find the value of the maximum circle radius, rn , such that
+n equal non-overlapping circles can be placed in a unit square.
+Problem 2 Locate n points in a unit square, such that the minimum
+distance mn between any two points is maximal.
+Problem 3 Give the smallest square of side ρn , which contains n equal
+and non-overlapping circles where the radius of circles is 1.
+Problem 4 Determine the smallest square of side σn that contains n
+points with mutual distance of at least 1.
+
+2.1
+
+Optimization models
+
+The problem is at one hand a geometrical problem and on the other
+hand a continuous global optimization problem. Problem 2 can be written shortly as a 2n + 1 dimensional continuous nonlinear constrained (or
+max-min) global optimization problem in the following form:
+max
+
+min ksi − sj k .
+
+sk ∈[0,1]2 , 1≤k≤n 1≤i<j≤n
+
+5
+
+Circle Packing into the Square
+
+This problem can be considered in the following ways:
+a) as a DC programming problem Horst and Thoai (1999):
+A DC (difference of convex functions) programming problem is a mathematical programming problem, where the objective function can be
+described by a difference of two convex functions. The objective function of the problem can be stated as the difference of the following two
+convex functions g and h:
+
+g(z) = 2
+
+2n
+X
+
+zj2 ,
+
+j=1
+
+
+
+
+
+ X
+zj2 + (zi + zk )2 + (zn+i + zn+k )2 : 1 ≤ i < k ≤ n ,
+h(z) = max 2
+
+
+j∈J\Jik
+
+where
+J = {1, . . . , 2n},
+z = (x1 , . . . , xn , y1 , . . . , yn ),
+Jik = {i, k, n + i, n + k}.
+b) or as an all-quadratic optimization problem.
+The general form of an all-quadratic optimization problem (Raber
+(1999)) is
+min
+
+£ T 0
+¤
+x Q x + (d 0 )T x
+
+subject to
+xT Q l x + (d l )T x + c l ≤ 0
+
+l = 1, . . . , p
+
+x ∈ P,
+where Q l (l = 0, . . . , p) are real (n+1)×(n+1) matrices, d l (l = 0, . . . , p)
+are real (n + 1)-dimensional vectors, c l (l = 1, . . . , p) are real numbers, p
+is the number of constraints and P is a polyhedron. Solving the general
+case of an all-quadratic optimization problem is NP-hard.
+The problem with the following values is a special all-quadratic optimization problem with a linear objective function (Szabó and E. Specht
+(2005)):
+
+6
+Q0 = 0,
+
+xT = (x0 , x1 , . . . , x2n ), (d 0 )T = (−1, 0, . . . , 0),
+
+(d l )T = 0, c l = 0, p =
+
+
+
+
+
+
+
+−1,
+
+
+
+
+
+
+
+
+
+0
+00
+1,
+l
+ll
+[Q ]ij = Qij =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+0,
+
+√
+n(n − 1)
+, P = [0, 2] × [0, 1]2n ,
+2
+
+
+
+
+
+2l0 ,
+2l00 ,
+if i = j =
+2l0 + 1,
+
+
+ 00
+2l + 1,
+if i = j = 1,
+i = 2l00 + 1 and j = 2l0 + 1,
+i = 2l00
+and j = 2l0 ,
+0
+i = 2l + 1 and j = 2l00 + 1,
+i = 2l0
+and j = 2l00 ,
+otherwise,
+1 ≤ i, j ≤ 2n + 1,
+1 ≤ l0 < l00 ≤ n.
+
+In this model, x0 is the minimal distance between the points. The
+coordinates of the ith point (1 ≤ i ≤ n) are (x2i−1 , x2i ).
+These models can be of interest, to be used for mathematical programming solvers as hard optimization problems. The investigations
+show that those approaches are effective that utilize the geometrical
+properties of the problem.
+
+3.
+
+Properties of optimal packings and bounds
+
+Recently, Locatelli and Raber (2002) proved two engaging properties
+that must be satisfied by at least one optimal solution of Problem 2.
+These theorems state the intuitive fact that as many points as possible
+should be located along the boundary of the square.
+
+Theorem 1.1 (Locatelli and Raber (2002)) There exists always an optimal solution of Problem 2 such that at each vertex of the square one
+and only one of the following conditions hold:
+at least one point of the optimal solution coincides with that vertex
+of the square,
+two points of the optimal solution belong to the edge determined
+by the vertices and have a distance of mn , where mn denotes the
+minimal distance between the points in the optimal solution.
+
+Circle Packing into the Square
+
+7
+
+Theorem 1.2 (Locatelli and Raber (2002)) There exists always an optimal solution of Problem 2 such that along each edge of the square there is
+no portion of the edge of width greater than or equal to twice the optimal
+distance mn which does not contain any point of the optimal solution.
+Using two another generalized theorems we can give lower and upper
+bounds for mn .
+
+Theorem 1.3 (Hadwiger (1944)) Let us denote by X a subset on the
+plane by bordering a Jordan curve. If Mn denotes the maximum of
+minimal distance between n points in X, then
+s
+2A(X)
+√
+≤ Mn ,
+3n
+where A(X) is the area of X.
+
+Theorem 1.4 (Folkman and Graham (1969)) Let us denote by X a
+compact convex subset on the plane. The number of points with mutual
+distance of at least 1 can be at most
+2
+1
+√ A(X) + P (X) + 1,
+2
+3
+where A(X) is the area and P (X) is the perimeter of X.
+After a short calculation it can easily be shown that these inequalities
+are equivalent with the following lower and upper bounds for mn , where
+X is a unit square:
+s
+s
+2
+1
+1
+2
+√ ≤ mn ≤
++
++√
+.
+(1.1)
+2
+n−1
+(n − 1)
+3n
+3(n − 1)
+Using these inequalities one may find that, if n tends to infinity,
+s
+√
+2
+lim n mn = √ , thus
+n→∞
+3
+s
+2
+mn ≈ √ .
+3n
+Szabó, Csendes, Casado, and Garcı́a (2001) have provided another
+lower bound using regular patterns and in Szabó, Csendes, Casado, and
+Garcı́a (2001); Tarnai and Gáspár (1995-96) heuristic upper bounds were
+studied based on the computation of the areas of circles and minimum
+gaps among the circles.
+
+8
+
+3.1
+
+Computer aided approaches
+
+In this subsection we give an overview of the most important earlier
+methods to find approximate packings. Several strategies were used, e.g.
+nonlinear programming solver (MINOS, Maranas, Floudas, and Pardalos
+(1995)) and Cabri-Geométry software (Mollard and Payan (1990)).
+Unfortunately, these approaches were good only for small numbers
+of circles. Here we summarize some useful earlier approaches to find
+approximate packings for higher n.
+
+3.1.1
+
+Energy function minimization.
+
+By virtue of
+
+
+min ksi − sj k =
+
+1≤i<j≤n
+
+1
+X
+
+lim 
+
+m→−∞
+
+m
+
+m
+
+ksi − sj k
+
+1≤i<j≤n
+
+the problem is relaxed as
+min
+
+si ∈[0,1]2 ,
+
+1≤i≤n
+
+X
+1≤i<j≤n
+
+1
+.
+ksi − sj km
+
+This objective function can be interpreted as a potential or energy function. A physical analogon of this approach is to regard the points as
+electrical charges (all positive or all negative) which are repulsing each
+other. If the minimal distance between the charged particles increases,
+the corresponding value of the potential function decreases. Nurmela
+and Östergård (1997) used a similar energy function with large positive integer m values, where λ is scaling factor to prevent numerical
+overflows:
+¶m
+X µ
+λ
+.
+||si − sj ||2
+1≤i<j≤n
+0
+
+0
+
+Introducing xi = sin(xi ) and yi = sin(yi ), it transforms into an un0
+0
+constrained optimization problem in variables xi , yi , where the coordinates of the centers of the circles fulfill the constraints −1 ≤ xi ≤ 1,
+−1 ≤ yi ≤ 1.
+They published candidate packings up to 50 circles using a combination of Goldstein-Armijo backtracking linear search and the Newton
+method for the optimization.
+
+3.1.2
+Billiard simulation.
+The billiard simulation method is
+physically motivated too. Let us consider a random arrangement of the
+points. Draw equal circles around the points without overlapping. Each
+
+Circle Packing into the Square
+
+9
+
+circle can be considered as a ball with an initial radius, moving direction
+and speed. Start the balls and increase slowly the common radius of
+them. The swing of each ball during the process will be less and less.
+The algorithm stops when the packing or a substructure of the packing becomes rigid. Using billiard simulation Graham and Lubachevsky
+(1996) reported several candidate packings for up to 50 circles and for
+some values beyond.
+
+3.1.3
+A perturbation method.
+Boll, Donovan, Graham, and
+Lubachevsky (2000) used a stochastic algorithm which gave improved
+packings for n = 32, 37, 48, and 50. A brief outline of their method is
+1. Step: Consider n random points in the unit square,
+2. Step: define s = 0.25 as an initial value,
+3. Step: for each point
+a) perturb the place of the center by s in the directions of North,
+South, East, or West,
+b) if during the movement the distance between the point and
+its nearest neighbour becomes greater, update the new location of the point,
+4. Step repeat Step 3 while movable points exist,
+5. Step s := s/1.5, and if s > 10−10 then continue with Step 3.
+Using the previous simple algorithm good candidate packings can be
+found after some millions of iterations. They have found unpublished
+approximate packings up to n = 200. Douglas Hanson, an 8th grade
+student from Texas, has recently improved some of them using Donovan’s
+program (see http://www.packomania.com).
+
+3.1.4
+TAMSASS-PECS.
+The TAMSASS-PECS (Threshold
+Accepting Modified Single Agent Stochastic Search for Packing Equal
+Circles in a Square) method is based on the Threshold Accepting global
+optimization technique and a modified SASS local optimization algorithm Solis and Wets (1981). The algorithm starts with a pseudorandom initial packing, a standard deviation and with a threshold level.
+The algorithm improve the current solution by an iterative procedure.
+At every step it tries to find a better position of the actual point using a
+local search. The stopping criterion is based on the value of the standard
+deviation, which is decreased at every iteration. The framework of the
+method is the Threshold Accepting approach. It is a close alternative of
+the Simulated Annealing algorithms. It accepts every move that leads
+to a new approximate solution not much worse than the current one and
+
+10
+rejects other moves. Using TAMSASS-PECS Casado, Garcı́a, Szabó,
+and Csendes (2001) reported approximate packings up to n = 100 and
+improved some earlier packings.
+
+3.1.5
+A deterministic approach based on LP-relaxation.
+The circle packing problem can be regarded as an all-quadratic optimization problem, i.e. an optimization problem with not necessarily
+convex quadratic constraints. The hardness is due to the large number of constraints. This approach provides a rectangular subdivision
+branch-and-bound algorithm. To give an upper bound at each node of
+the branch-and-bound tree, M. Locatelli and U. Raber used the special structure of the constraints and gave an LP-relaxation Locatelli and
+Raber (2002). They have found candidate packings for up to 39 circles
+proving the optimality theoretically within a given accuracy.
+3.1.6
+The MBS algorithm.
+The basic idea of the approach
+MBS (Modified Billiard Simulation) is as follows (Szabó and E. Specht
+(2005)): Distribute randomly n points inside the unit square and blow
+them up in a uniform manner. This can be
+qdone by incrementing the
+
+10
+radii gradually from an initial value of r0 = 23nπ
+(which is a safe lower
+bound). In early stages of the process, when the distance between the
+small circles is much greater than their size and no collisions occur, there
+is no need to change their positions. As the circles grow, we have to deal
+with collisions (also among the circles and the boundaries). During the
+process when the decrease is too small or the number of iterations is
+larger than a given number, the calculation stops.
+The efficiency of the MBS algorithm comes from a significant reduction of computational costs. The basic idea is as follows: It is not necessary to calculate and store the mutual distance between two circles if
+they are too far from each other and will never meet. For the numerical
+calculation the program uses two matrices CCD and CED. Matrix CCD
+stores the adjacency between the objects themselves, and matrix CED
+holds these between the objects and the sides of the square. At start,
+all matrix elements are set to NEAR which means that only such pairs
+of circles will be checked during the calculation. When (after thousands
+of collisions) a mutual distance of a pair is great enough, then the value
+is set to FAR which means that this contact will never occur in later iterations. As long as the program runs, the cost of the subroutine which
+determines the contacts will become less and less.
+
+11
+
+Circle Packing into the Square
+n
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+
+exact r√
+n
+1
+(2 − 2)
+2
+√
+√
+√
+1
+(8 − 5 2 + 4 3 − 3 6)
+2
+1
+4
+√
+1
+(−1 + 2)
+2
+√
+1
+(−13 + 6 13)
+46
+√
+1
+(4 − 3)
+13
+√
+√
+1
+(1
++ 2 − 3)
+4
+1
+6
+
+exact
+mn
+√
+2
+√
+√
+6− 2
+1
+1
+m
+2 √2
+1
+13
+6
+√
+4−2 3
+1
+m3
+2
+1
+2
+
+–
+(see separately)
+√
+1
+(−34 + 15 34)
+382
+–
+√
+1
+(6 − 3)
+33
+1
+r
+2 3
+
+–
+(see separately)
+√
+1
+34
+15
+–
+√
+2
+(4 − 3)
+13
+2 r8
+
+–
+
+–
+
+1
+8
+
+1
+(−13 + 12
+262
+
+–
+
+√
+
+1
+(65 − 8
+482
+
+–
+–
+
+1
+3
+
+√
+13)
+
+1
+m6
+2
+
+–
+1
+(6 −
+16
+
+2)
+
+√
+
+√
+
+√
+
+1
+(−7 − 5 2 + 4 3 + 3 6)
+2
+√
+√
+√
+1
+(21 − 5 2 + 3 3 − 4 6)
+92
+1
+10
+
+–
+1
+(−89 + 40
+3022
+
+–
+–
+
+√
+
+1
+(126 − 5
+1202
+
+Table 1.1.
+
+√
+
+89)
+
+10)
+
+√
+
+2)
+
+–
+–
+1
+m3
+4
+
+r3
+1
+4
+
+– √
+1
+89
+40
+–
+–
+√
+1
+(20 − 10)
+75
+
+approximate mn
+1, 4142135624
+1, 0352761804
+1, 0000000000
+0, 7071067812
+0, 6009252126
+0, 5358983849
+0, 5176380902
+0, 5000000000
+0, 4212795440
+0, 3982073102
+0, 3887301263
+0, 3660960077
+0, 3489152604
+0, 3410813774
+0, 3333333333
+0, 3061539853
+0, 3004626063
+0, 2895419920
+0, 2866116524
+0, 2718122554
+0, 2679584016
+0, 2588190451
+0, 2543330950
+0, 2500000000
+0, 2387347572
+0, 2358495283
+0, 2305354936
+0, 2268829007
+0, 2245029645
+
+dn
+0, 5390120845
+0, 6096448087
+0, 7853981634
+0, 6737651056
+0, 6639569095
+0, 6693108268
+0, 7309638253
+0, 7853981634
+0, 6900357853
+0, 7007415778
+0, 7384682239
+0, 7332646949
+0, 7356792555
+0, 7620560109
+0, 7853981634
+0, 7335502633
+0, 7546533579
+0, 7523078967
+0, 7794936869
+0, 7533577029
+0, 7716801121
+0, 7636310321
+0, 7749632598
+0, 7853981634
+0, 7584690905
+0, 7723114565
+0, 7718541114
+0, 7789062418
+0, 7920190265
+
+The numerical results for n=2 – 30.
+
+It is useful to consider not only random arrangements for the initial
+packing but hexagonal or regular lattice packings too. Sometimes the relationship between the number of the circles and the structure of packing
+can provide a good initial configuration. The code and the found packings (up to n = 300) can be downloaded from the Packomania web-site:
+http://www.packomania.com/.
+In Table 1.1 we have summarized the numerical results of the known
+optimal packings.
+p
+√
+√
+√
+√
+√ 
+√
+1
+176 − 9 2 − 14 3 − 13 6 − 2 −16523 + 12545 2 − 9919 3 + 6587 6 , and
+r11 = 568
+
+
+√
+√
+√
+√
+√
+√ p
+√ 
+m11 = 41 −4 − 3 2 + 2 3 + 3 6 + 4 + 2 − 2 3 − 6
+1+2 2 .
+
+12
+
+4.
+
+Repeated patterns in packings
+
+Sometimes, there is a connection between the structures of the packings and the number of circles. When the structure of a packing follows
+a kind of regularity (e.g. a lattice arrangement), then the coordinates of
+the centers of the circles can easily be calculated and these structures
+are called patterns.
+It is easy to see the pattern when the number of the circles is a square
+number (n = k 2 , 1 ≤ k ≤ 6). In this case, the circles are in a k×k lattice
+1
+arrangement (PAT1) and mn = k−1
+. This pattern gives the optimal
+solutions considering the mentioned cases, however, if n = 49, then
+there exist denser packings (cf. Nurmela and Östergård (1997)). The
+patterns proposed by Nurmela and Östergård (1997) and Graham and
+Lubachevsky (1996) are summarized in Table 1.2. The fourth column
+of Table 1.2 gives those cases which can ensure optimal packings for
+the patterns, while in the fifth column, we can find the ones with the
+best known packings. We will show examples of them in Figure 1.3.
+Here d = nr2 π denotes the density of the packing, c is the number of
+connections and f stands for the number of free circles.
+Pattern
+PAT1
+PAT2
+
+n
+k2
+k2 − 1
+2
+
+PAT3a
+
+k −2
+
+PAT3b
+
+k2 − 2
+
+PAT4
+
+k(k + 1)
+
+PAT5
+
+k2 + bk/2c
+
+Table 1.2.
+
+mn
+1
+k−1
+1
+√
+
+√
+2+ 3
+1 √
+k−2+ 1
+3
+2
+1
+√
+√
+k−5+2 √
+2+ 3
+k2 −k− 2k
+q k3 −2k2
+1
+1
++ (2k−2)
+2
+k2
+k−3+
+
+Optimal (k)
+2,3,4,5,6
+3,4,5(3)
+
+The best (k)
+—
+6
+
+3,4
+
+—
+
+5
+
+6(4)
+
+4
+
+5,6,7
+
+2, 4, 5
+
+6, 7
+
+Patterns for the optimal and for the currently best known arrangements.
+
+If n = k 2 −1 then (PAT2) pattern can be recognized, or for n = k 2 −2
+(PAT3a, PAT3b). These patterns are similar to PAT1, but in this
+case we remove 1 or 2 circles and press the remaining ones into their
+columns and rows. There exist 3 different optimal solutions for n = 24
+(PAT2) and 4 different good packings for n = 34 (PAT3b), in both
+cases with the same radius values. PAT4 and PAT5 are patterns, which
+represent the points (or centers of the circles) in a lattice arrangement.
+A generalized pattern of PAT5 is discussed by Szabó, Csendes, Casado,
+and Garcı́a (2001).
+After studying these patterns, we can recognize that always exists
+a threshold number k0 such that the patterns give the optimal or the
+
+13
+
+Circle Packing into the Square
+
+m=0.20000000000000
+r=0.08333333333333
+d=0.78539816339744
+
+n=36
+c=84
+f=0
+
+m=0.20276360086322
+r=0.08429071212235
+d=0.78122721299871
+
+PAT1
+
+n=35
+c=80
+f=0
+
+PAT2
+
+m=0.20560464675956
+r=0.08527034435052
+d=0.77664906433227
+
+n=34
+c=80
+f=0
+
+m=0.22450296453108
+r=0.09167105798598
+d=0.79201902646073
+
+PAT3b
+
+PAT3a
+
+n=30
+c=65
+f=0
+
+m=0.16538621483322
+r=0.07095768455476
+d=0.82253064459417
+
+PAT4
+Figure 1.3.
+
+n=14
+c=32
+f=1
+
+m=0.34891526037401
+r=0.12933179371003
+d=0.73567925554265
+
+n=52
+c=103
+f=0
+
+PAT5
+
+Examples for the repeated patterns.
+
+currently best known packings up to this dimension, but later on these
+packings will provide only lower bounds for the optimal values.
+It is an interesting question whether there is a universal pattern with
+an infinite packing series in which all packings are optimal. This is a
+natural question, originating from an analogous problem: find the densest packing for n equal circles in an equilateral triangle and n = k(k+1)
+,
+2
+k ≥ 1. In this case there exists an infinite series of optimal packings,
+see Lubachevsky, Graham, and Stillinger(1997). Here the circles are in
+the hexagonal arrangement (the centers of the circles are in a hexagonal
+grid) which is the densest packing of equal circles in the plane.
+A similar conjecture exists for equal circles packing in a square problem (Nurmela, Östergård, and aus dem Spring (1999); Szabó (2000b)).
+Consider the following recursive sequences (k ≥ 3):
+a1 = 1, a2 = 3,
+ak = 4ak−1 − ak−2 ,
+
+b1 = 1, b2 = 5,
+bk = 4bk−1 − bk−2 .
+
+(1.2)
+
+14
+Dividing the side of the square into ak and bk equal parts, we obtain
+ak × bk rectangulars. Put the first point into a corner of the square, then
+place the points in each second corners of the rectangulars as on Figure
+1.4. It is open for which values of ak and bk these packings are optimal.
+
+n=12
+c=25
+f=0
+
+m=0.38873012632301
+r=0.13995884403842
+d=0.73846822388404
+
+Figure 1.4.
+
+An example for a generalized pattern of PAT5 with 12 points.
+
+An interesting number theoretical statement is that when ak and bk
+are defined by the previous recursive series, then
+√
+
+a) lim abkk = 33 , and
+k→∞
+n o∞
+b) abkk
+is a subseries of the approximate fractions of the
+k=1
+
+√
+3
+= [0; 1, 1, 2] = 0 +
+3
+
+1
+1
+
+1+
+
+1
+
+1+
+
+1
+
+2+
+
+1
+
+1+
+
+1
+
+2+
+1+
+
+1
+2 + ...
+
+continued fraction. Looking at the previous packing sequence, the number of the circles is equal to
+n=
+
+(ak + 1)(bk + 1)
+.
+2
+
+An explicit formula for n is the following:
+√
+3
+1
+1
+(Ak − Bk )(Ak + Bk + 1) − (A2k + Bk2 ) + ,
+n=
+6
+4
+2
+
+15
+
+Circle Packing into the Square
+
+√
+√
+where Ak = (2 + 3)k andqBk = (2 − 3)k . The maximum mn of the
+minimal distance is mn = a12 + b12 .
+k
+
+k
+
+Here, the circles also approximate the hexagonal structure, but this
+alone, of course, does not prove the optimality. An interesting packing
+sequence can be found for the densest packing of equal circles in a circle
+problem in which n = 3k(k + 1) + 1. On the one hand, the hexagonal
+structure might be solved in this pattern as well and it presents the
+most spread packings when n = 7, 19, 37 and 61. On the other hand
+when n = 91, 127, 169 better ways of packing can be used (Lubachevsky
+and Graham (1997)).
+
+5.
+
+Minimal polynomials of packings
+
+Sometimes it is useful to have an algebraic description of a packing.
+The minimal polynomial is a polynomial with minimal degree and the
+first positive root of the polynomial is mn . Sometimes it is easy to determine the minimal polynomial of a packing (e.g. the packing symmetric
+or contains optimal substructures Szabó (2004)). But if the structure of
+an optimal packing is not symmetric and it does not contain an optimal
+substructure then it is not trivial to calculate the minimal polynomial.
+In this case a possible way to determine the minimal polynomial is the
+following: Let us define a quadratic system of equations to the packing
+where an equation reflects the fact that the distance of two points is
+mn . To determine the minimal polynomial we have to eliminate all variables with the exception of mn . Using Buchberger’s algorithm (based on
+Gröbner basis) or another technique utilizing the resultant and a symbolic algebra system (e.g. Maple, Mathematica, CoCoA, Macaulay2,
+Singular, etc.) this can be done, but sometimes this is also hard.
+As an example, let us determine the minimal polynomial p10 (m) for
+n = 10 (de Groot, Peikert, and Würtz (1990)). The corresponding
+quadratic system of equations is the following:
+(x1 − x2 )2 + (y1 − y2 )2 = m2
+(x2 − x3 )2 + (y2 − y3 )2 = m2
+(x5 − x6 )2 + (y5 − y6 )2 = m2
+(x4 − x7 )2 + (y4 − y7 )2 = m2
+(x7 − x9 )2 + (y7 − y9 )2 = m2
+(x8 − x10 )2 + (y8 − y10 )2 = m2
+
+(x1 − x4 )2 + (y1 − y4 )2 = m2
+(x2 − x5 )2 + (y2 − y5 )2 = m2
+(x3 − x6 )2 + (y3 − y6 )2 = m2
+(x5 − x7 )2 + (y5 − y7 )2 = m2
+(x7 − x10 )2 + (y7 − y10 )2 = m2
+(x6 − x8 )2 + (y6 − y8 )2 = m2
+
+The points P1 , P2 , P3 , P4 , P6 , P8 , P9 , and P10 are on the side of the square
+thus x1 = x4 = x9 = y2 = y3 = 0 and x6 = x8 = y9 = y10 = 1. It is
+easy to see that y4 = y1 + m, x3 = x2 + m and y8 = y6 + m. P2 P3 P5 P6
+is a rhombus thus x5 = 1 − m and y5 = y6 . In the P4 P7 P9 and P9 P7 P10
+
+16
+P_9(x_9,y_9)
+
+P_10(x_10,y_10)
+m
+
+m
+
+m
+P_8(x_8,y_8)
+
+P_7(x_7,y_7)
+m
+
+m
+
+m
+m
+
+P_4(x_4,y_4)
+
+P_5(x_5,y_5) P_6(x_6,y_6)
+
+m
+m=0.42127954398390
+r=0.14820432256522
+d=0.69003578526417
+
+Figure 1.5.
+
+n=10
+c=21
+f=0
+
+m
+m
+
+m
+m
+
+P_1(x_1,y_1) P_2(x_2,y_2) P_3(x_3,y_3)
+
+The optimal packing of 10 circles/points in the unit square.
+
+isosceles triangulars these equalities holds: y7 = (1 + y1 + m)/2 and
+x7 = x10 /2.
+Using the previous observations, all variables are eliminated with the
+exception of x2 , x10 , y1 , y5 and m. The system of equations is then reduced to the form (y1 6= 0):
+x22 + y12
+x210 + (1 − y1 − m)2
+(1 − x10 )2 + (1 − y5 − m)2
+(1 − x2 − m)2 + y52
+(2 − 2m − x10 )2 + (2y5 − 1 − y1 − m)2
+
+=
+=
+=
+=
+=
+
+m2 ,
+(2m)2 ,
+m2 ,
+m2 ,
+(2m)2 .
+
+Let us now determine the minimal polynomial with Maple 8 based on
+the Groebner package:
+>with(Groebner):univpoly(m,[polynomials],{x2 , y1 , x10 , y5 , m});.
+The obtained minimal polynomial p10 (m) is given in the following list.
+A list of the known minimal polynomials pn (m) (2 ≤ n ≤ 100):
+n=2
+n=3
+n=4
+n=5
+
+m2 − 2
+m4 − 16m2 + 16
+m−1
+2m2 − 1
+
+Circle Packing into the Square
+
+n=6
+n=7
+n=8
+n=9
+n = 10
+
+17
+
+36m2 − 13
+m2 − 8m + 4
+m4 − 4m2 + 1
+2m − 1
+
+1180129m18 − 11436428m17 + 98015844m16 − 462103584m15
++1145811528m14 − 1398966480m13 + 227573920m12 + 1526909568m11
+−1038261808m10 − 2960321792m9 + 7803109440m8 − 9722063488m7
++7918461504m6 − 4564076288m5 + 1899131648m4 − 563649536m3
++114038784m2 − 14172160m + 819200
+
+n = 11
+n = 12
+n = 13
+
+m8 + 8m7 − 22m6 + 20m5 + 18m4 − 24m3 − 24m2 + 32m − 8
+225m2 − 34
+
+n = 15
+n = 16
+n = 17
+n = 18
+n = 19
+
+2m4 − 4m3 − 2m2 + 4m − 1
+3m − 1
+m8 − 4m7 + 6m6 − 14m5 + 22m4 − 20m3 + 36m2 − 26m + 5
+144m2 − 13
+242m10 − 1430m9 − 8109m8 + 58704m7 − 78452m6
+−2918m5 + 43315m4 + 39812m3 − 53516m2 + 20592m
+−2704
+128m2 − 96m + 17
+16m4 − 16m2 + 1
+m4 − 16m3 + 20m2 − 8m + 1
+4m − 1
+1600m2 − 89
+1202m2 − 252m + 13
+m4 + 28m3 − 10m2 − 4m + 1
+46m4 − 84m3 + 50m2 − 12m + 1
+
+5322808420171924937409m40 + 586773959338049886173232m39
++13024448845332271203266928m38 − 12988409567056909990170432m37
+−66972175395892949739372512m36 − 271451157211281654252175360m35
++1438322342979585076139742976m34 − 335429895467663916497996800m33
+−6543699259726848821592216832m32 + 9441371361011345362166468608m31
++10182180602633501397232254976m30 − 42246019864541071922661621760m29
++37620100408876038921186476032m28 + 28699095956807539331396009984m27
+−102587608293645346411004952576m26 + 103509313296807875445571190784m25
+−23909360523055293307841740800m24 − 62735581440162634955836358656m23
++88454871551963142041952583680m22 − 53012494559549527012040245248m21
++2135173605242212884072628224m20 + 26378985900767549703436894208m19
+−26497225761631816480192462848m18 + 12731474183761933022491836416m17
+−398432339928038268662185984m16 − 4422001291286852186186711040m15
++3658751900977247115934695424m14 − 1429726216634427968279543808m13
++57770773621828718826618880m12 + 275582370688699861317976064m11
+−171632310725283375512289280m10 + 46974915155899860050247680m9
++1760067432596599241441280m8 − 7491112055212411797372928m7
++3652998504696614282592256m6 − 1072642406499215430647808m5
++217086289997205686190080m4 − 30811405631471617048576m3
++2960075719794736758784m2 − 174103532094609162240m
++4756927106410086400
+n = 14
+13m2 − 16m + 4
+
+n = 20
+n = 23
+n = 24
+n = 25
+n = 27
+n = 30
+n = 34
+n = 35
+
+18
+n = 36
+n = 39
+n = 42
+n = 52
+n = 56
+n = 99
+
+6.
+
+5m − 1
+1732m2 − 68m − 17
+864m2 − 360m + 37
+7056m2 − 193
+1715m2 − 588m + 50
+28900m2 − 389
+
+A reliable computer-assisted optimization
+method for circle packing
+
+The papers Markót (2000), Markót (2003) and Markót and Csendes
+(2004) introduced a computer-aided technique for proving optimality of
+certain problem instances. In contrast to the earlier computer methods (see Section 1), the presented algorithm is based fully on interval
+arithmetic. Thus, our method is capable to overcome the rounding and
+conversion problems occurring in finite precision floating point computations and in I/O routines.
+
+6.1
+
+Problem definition
+
+We study the point packing problem, Problem 2, but with the square
+of distances. Denote the set of points to be located by ((x1 , y1 ), . . . ,
+(xn , yn )), all in [0, 1]2 . In the sequel we denote this point set briefly by
+(x, y). Moreover, denote the square of the distance between the points
+(xi , yi ) and (xj , yj ) by dij . Then the objective function to be maximized
+is:
+fn (x, y) =
+
+min (xi − xj )2 + (yi − yj )2 =
+
+1≤i<j≤n
+
+min dij .
+
+1≤i<j≤n
+
+(1.3)
+
+Prior to our investigation the optimal solutions of the cases n =
+2, . . . , 27 and 36 were known. Although a part of the optimality proofs
+were based on computer-assisted methods, still those methods used floating point arithmetic (with the exception of an interval based local result
+verification method of Nurmela and Östergård (1999)).
+
+6.2
+
+Interval analysis
+
+The description of the algorithm requires a brief survey on the basic
+interval definitions and properties (for more details see e.g. Alefeld and
+Herzberger (1983); Hansen (1992); Moore (1966)):
+The set of compact intervals is denoted by I, where for all A ∈ I
+intervals A = [A, A] = {a ∈ R | A ≤ a ≤ A}. Here A, A ∈ R mean the
+lower and upper bounds of A, respectively. In the case of A = A we call
+
+Circle Packing into the Square
+
+19
+
+A a point interval. For a given set of reals D ⊆ R, I(D) denotes the set of
+all intervals in D. The width of an interval is defined by w(A) := A − A.
+The real arithmetic operations can be extended for intervals by applying the general definition A ◦ B := {a ◦ b | a ∈ A, b ∈ B}, which can
+be calculated by the following formulas:
+A + B = [A + B, A + B],
+A − B = [A − B, A − B],
+A · B = [min{A B, A B, A B, A B}, max{A B, A B, A B, A B}],
+A/B = A · [1/B, 1/B], if 0 6∈ B.
+Let ϕ : D ⊆ R → R be an elementary real function which is continuous
+in all A ∈ I(D) intervals. Then the interval extension of the elementary
+function ϕ is Φ : I(D) → I, Φ(A) := {ϕ(a) | a ∈ A}. For a given function
+the corresponding interval extension can be calculated e.g. by invoking
+monotonicity properties.
+A vector of n intervals is called an n-dimensional interval (or shortly,
+a box): X = (X1 , X2 , . . . , Xn ), X ∈ In , and Xi ∈ I for i = 1, 2, . . . , n.
+For a given n-dimensional set D ⊆ Rn we denote the set of n-dimensional
+boxes in D by I(D). The extension of the basic arithmetic operations
+and elementary functions for multidimensional intervals is defined componentwise, similarly as for real vectors.
+In order to define interval extensions for compound real functions, we
+introduce the concept of interval inclusion functions. We call F : I(D) →
+I an inclusion function of f : D ⊆ Rn → R, if f (X) = {f (x) | x ∈ X} ⊆
+F (X) holds for all X ∈ I(D), where f (X) denotes the range of f over
+X.
+Beyond the theoretical reliability of interval computations, the inclusion properties should be guaranteed also in the case when finite
+precision floating-point computer arithmetic is applied, i.e. the rounding errors should be controlled. This is usually done by the computational environment using exactly representable floating-point numbers
+(also called machine numbers) together with directed outward rounding
+procedures.
+
+6.3
+
+The optimization frame algorithm
+
+We have applied an interval branch-and-bound optimization approach
+(see e.g. Csallner, Csendes, and Markót (2000); Csendes and Ratz (1997);
+Hammer, Hocks, Kulisch, and Ratz (1993); Hansen (1992); Kearfott
+(1996); Markót, Csendes, and Csallner (2000); Ratschek and Rokne
+
+20
+(1988)) designed for determining all the global maximizers of the general
+global optimization problem
+max f (z),
+
+(1.4)
+
+z∈Z0
+
+where f : Rn → R is a continuous objective function and Z0 ∈ In is the
+search space. The main building blocks of the algorithm are basically
+the same as the steps of the classical B&B methods. We utilize the fact
+that interval arithmetic provides a general tool to compute guaranteed
+enclosures F (Z) of the range of the objective function f (z) over a box
+Z. At each iteration cycle, we choose a box Z from the list of boxes
+(WorkList) waiting for further subdivision, and split it into subboxes,
+U 1 , . . . , U s (we used s = 2 in the present method).
+Then for all U i subintervals some shrinking tools, the so-called accelerating devices are applied, which delete some parts of U i that cannot
+contain a global maximizer point. When the box Û i enclosing all the
+remaining parts of U i fulfills a certain termination criterion, we put Uˆi
+into the list of the result boxes (ResultList), otherwise we store Û i for
+further processing in the WorkList. At each iteration we also try to
+update the best known lower bound f˜ of the global maximum value.
+f˜ is also called as cutoff value: we can delete all boxes U i from the
+WorkList for which F (U i ) < f˜ holds. The algorithm stops when the
+WorkList becomes empty: then the candidate boxes in the ResultList
+contain the enclosures of all the global maximizers, and moreover, the
+interval [f˜ , max{F (Z) | Z ∈ ResultList}] encloses the global maximum
+value.
+In the following, we specify the algorithmic details by defining an inclusion function of (1.3) and introducing a special accelerating device.
+Note that already in the first phase of our study it turned out that the
+classical accelerating devices are not enough, we have to tune our algorithm by designing special interval-based tools utilizing the geometric
+properties of the problem class.
+
+6.4
+
+Introducing an interval inclusion function
+
+Markót (2000) gives a non-trivial interval inclusion function of the
+objective function (1.3):
+
+Theorem 1.5 (Markót (2000), slightly modified) Assume that (X, Y ) ⊆
+[0, 1]2n , and let
+Dij = (Xi − Xj )2 + (Yi − Yj )2 ,
+
+for all 1 ≤ i 6= j ≤ n.
+
+21
+
+Circle Packing into the Square
+
+Define a := min1≤i6=j≤n Dij , a ∈ R, and b := min1≤i6=j≤n Dij , b ∈ R.
+Then the interval Fn (X, Y ) := [ a, b ] encloses the range of fn (x, y) over
+the (X, Y ) box.
+
+6.5
+
+The method of active areas
+
+This method played a key role in the earlier theoretical and computeraided optimality proofs, e.g. in de Groot, Monagan, Peikert, and Würtz
+(1992); de Groot, Peikert, and Würtz (1990); Kirchner and Wengerodt
+(1987); Locatelli and Raber (2002); Nurmela and Östergård (1999);
+Nurmela and Östergård (1999b); Peikert, Würtz, Monagan, and de Groot
+(1992). The essence of the method is the following: assume that we have
+an f˜0 lower bound for the maximum of the minimal pairwise distances.
+Let C = (C1 , . . . , Cn ), Ci ⊆ [0, 1]2 , i = 1, . . . , n be the currently investigated search set (with a suitable representation), where Ci contains the
+ith point of all packing configurations in C. Then, from each component
+Ci we can iteratively delete those points which have a distance smaller
+than f˜0 to all points of the remained region of an other component.
+Figure 1.6.
+
+Approximating the active regions by polygons (with exact arithmetic).
+
+p6
+B
+
+~ ~
+fl < f 0
+
+p5
+p4
+
+~
+fl
+p
+
+1
+
+p3
+p2
+
+A
+~
+fl
+~
+fl
+
+Figure 1.6 shows an example of eliminating a region (the shaded polygon) from polygon B using polygon A, when assuming exact computations.
+In the first version of our interval approach (Markót (2000)) the remaining (active) region of each component was approximated by a rect-
+
+22
+angle (or unions of rectangles obtained after a horizontal and/or vertical
+quantization) during the basic elimination step. This matches the idea
+proposed by de Groot et al. and by Nurmela and Östergård. However,
+our algorithm variant using this device was only able to confirm the local
+optimality of the earlier found optimal packings.
+Instead of representing the remaining regions simply by unions of
+cells, Nurmela and Östergård (1999) approximated the remaining sets
+by polygons. The proposed procedure raises several problems when using floating point computations. As a solution, in Markót and Csendes
+(2004) we developed a reliable version of this polygonal approach using interval arithmetic. This method proved to be the most efficient
+accelerating test of the present algorithm.
+
+6.6
+
+The method of handling free circles
+
+The efficient way of handling free circles in the optimal solution (or
+equivalently, handling free points in the corresponding point packing
+problem) is crucial when circle packing problems are solved with interval
+algorithms, since free circles pose a positive measure, continuum set of
+equivalent global optimizers. The simple method below shows a suitable
+way to overcome this difficulty. The basic idea is that – under certain
+conditions – some remaining regions can temporarily be replaced by
+machine points, i.e. by pairs of two machine numbers without losing any
+global optimizers.
+1. Let (X, Y ) ∈ I2n enclose all the remaining boxes (stored either in the
+WorkList or in the ResultList) after a certain number of iteration loops
+when executing the B&B algorithm. Let f˜ be the current cutoff value.
+2. Assume that there exist machine points pk1 , . . . , pkt , pks ∈ (Xks , Yks ),
+s ∈ {1, . . . , t} within t different components of (X, Y ) such that
+D(pks , (Xj , Yj )) > F (X, Y ) ≥ f˜
+holds for all s ∈ {1, . . . , t} and for all j 6= ks , j ∈ {1, . . . , n}. Let K
+denote the index set {k1 , . . . , kt }.
+3. Replace the components (Xi , Yi ) with the point intervals pi for each
+i ∈ K. Run the B&B algorithm on the resulting (X 0 , Y 0 ) box ignoring
+the step of improving f˜ and stop it after a certain number of iterations.
+4. Let (X 00 , Y 00 ) ∈ I2n include all the remaining boxes. The output box
+of the procedure is then given by (Xi , Yi ) for i ∈ K and by (Xj00 , Yj00 ) for
+j 6∈ K.
+
+Circle Packing into the Square
+
+23
+
+Theorem 1.6 Markót and Csendes (2004) The above procedure is correct in the sense that all the optimal solutions in (X, Y ) are also contained in the output box.
+
+6.7
+
+Investigating subsets of tile combinations
+
+In order to avoid (a part of) the extra amount of work caused by
+geometrically equivalent packing configurations and to restrict the application of the method of active areas to a local investigation, most
+computer methods for circle packing include a preprocessing procedure
+called tiling:
+Assume that a lower bound f˜ for the maximum value of the considered point packing problem instance is given. Split the unit square into
+regions (tiles) in such a way, that the square of distance between any
+two points within each tile is less than f˜ (or the distance between any
+two points within each tile is less than the f˜0 value of Section 6.5). Then
+for a feasible solution having an objective function value greater than
+or equal to f˜, each tile can contain obviously at most one point of this
+solution. The optimal packings can be then found by running the search
+procedure on all possible tile combinations.
+Prior to the results of the present studies, the main problem when
+solving circle packing problem instances for n > 27, n 6= 36 was the
+highly increasing number of initial tile combinations. For n = 28, a
+sequential process on those combinations would have required about
+1000 times more processor time (about several decades) even with noninterval computations — compared to the case of n = 27.
+The idea behind the newly proposed method is that we can utilize
+the local relations (patterns) between the tiles and eliminate groups of
+tile combinations together. Let us denote a generalized point packing
+problem instance by P (n, X1 , . . . , Xn , Y1 , . . . , Yn ), where n is the number
+of points to be located, (Xi , Yi ) ∈ I2 , i = 1, . . . n are the components
+of the starting box, and the objective function of the problem is given
+by (1.3). The theorem below shows how to apply a result achieved on
+a 2m-dimensional packing problem to a 2n-dimensional problem with
+n ≥ m ≥ 2.
+
+Theorem 1.7 Markót and Csendes (2004) Assume that n ≥ m ≥ 2 are
+integers and let
+Pm = P (m, Z1 , . . . , Zm , W1 , . . . , Wm ) = P (m, (Z, W )), and
+Pn = P (n, X1 , . . . , Xn , Y1 , . . . , Yn ) = P (n, (X, Y ))
+be point packing problem instances (Xi , Yi , Zi , Wi ∈ I; Xi , Yi , Zi , Wi ⊆
+[0, 1]). Run the B&B algorithm on Pm using an f˜ cutoff value in the ac-
+
+24
+celerating devices but skipping the step of improving f˜. Stop after an ar0 , W 0 , . . . , W 0 ) :=
+bitrary preset number of iteration steps. Let (Z10 , . . . , Zm
+m
+1
+0
+0
+(Z , W ) be the enclosure of all the elements placed on the WorkList
+and on the ResultList. Assume that there exists an invertable, distancepreserving geometric transformation ϕ with ϕ(Zi ) = Xi and ϕ(Wi ) = Yi ,
+∀i = 1, . . . , m. Then for each point packing (x, y) ∈ R2n satisfying
+(x, y) ∈ (X, Y ) and fn (x, y) ≥ f˜, the statement
+0 ), X
+(x, y) ∈ (ϕ(Z10 ), . . . , ϕ(Zm
+m+1 , . . . , Xn ,
+0
+0
+ϕ(W1 ), . . . , ϕ(Wm ), Ym+1 , . . . , Yn ) := (X 0 , Y 0 )
+
+also holds.
+The meaning of Theorem 1.7 is the following: assume that we are able
+to reduce some search regions on a tile set S 0 . When processing a higher
+dimensional subproblem on a tile set S containing the image of the tile
+set of the smaller problem, it is enough to consider the image of those
+of the remaining regions of S 0 as the particular components of the latter
+problem.
+Figure 1.7.
+
+The idea behind processing tile combinations.
+
+S
+
+S
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+b
+c
+
+b
+c
+
+^
+_
+
+^
+_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+b
+c
+
+b
+c
+
+^
+_
+
+^
+_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+b
+c
+
+b
+c
+
+^
+_
+
+^
+_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+b
+c
+
+b
+c
+
+^
+_
+
+^
+_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+>
+?
+
+>
+?
+
+B
+C
+
+@
+A
+
+/
+
+/
+
+.
+
+.
+
+B
+C
+
+A
+
+
+
+
+
+
+
+
+
+
+
+/
+.
+
+
+
+
+
+
+
+
+
+
+/
+.
+
+
+
+
+
+/
+
+/
+
+.
+
+.
+
+
+
+
+
+
+"
+#
+
+"
+#
+
+
+
+
+
+
+
+
+"
+#
+
+"
+#
+
+
+
+
+
+
+
+
+"
+#
+
+"
+#
+
+
+
+
+
+
+
+
+
+
+
+"
+#
+
+"
+#
+
+,
+-
+
+,
+-
+
+,
+-
+
+,
+-
+
+,
+-
+
+,
+-
+
+,
+(
+)
+
+,
+(
+)
+
+/
+
+/
+
+.
+
+.
+
+'
+
+'
+
+&
+
+&
+
+d
+e
+
+d
+e
+
+P
+Q
+
++
+
++
+
+*
+
+*
+
++
+
++
+
+*
+
+*
+
++
+
++
+
+*
+
+*
+
++
+
++
+
+*
+
+*
+
+<
+=
+
+6
+7
+
+<
+=
+
+6
+7
+
+(
+)
+
+(
+)
+
+(
+)
+
+(
+)
+$
+%
+
+(
+)
+$
+%
+
+'
+
+'
+
+&
+
+&
+
+'
+
+'
+
+&
+
+&
+
+'
+
+'
+
+&
+
+&
+
+`
+a
+
+`
+a
+
+`
+a
+
+`
+a
+
+`
+a
+
+`
+a
+
+\
+]
+
+\
+]
+
+\
+]
+
+\
+]
+
+\
+]
+
+\
+]
+
+\
+]
+
+\
+]
+
+d
+e
+
+d
+e
+
+P
+Q
+
+n
+o
+
+n
+o
+
+N
+O
+
+d
+e
+
+d
+e
+
+d
+e
+
+d
+e
+
+I
+H
+
+I
+V
+
+F
+G
+
+D
+E
+
+8
+9
+
+D
+E
+
+W
+T
+U
+
+B&B
+0
+1
+
+N
+O
+
+I
+H
+
+F
+G
+
+6
+7
+
+8
+9
+
+V
+
+refl.
+
+8
+9
+:
+;
+
+n
+o
+
+n
+o
+
+n
+o
+
+n
+o
+
+n
+o
+
+n
+o
+
+W
+T
+U
+
+:
+;
+(
+)
+
+`
+a
+
+H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`
+a
+
+@
+
+
+
+
+
+
+
+
+
+
+S’
+
+
+
+
+R
+S
+
+D
+E
+J
+K
+
+p
+q
+
+p
+q
+
+p
+q
+
+p
+q
+
+p
+q
+
+p
+q
+
+p
+q
+
+p
+q
+
+R
+S
+
+D
+E
+J
+K
+
+X
+Y
+
+0
+1
+
+R
+S
+
+$
+%
+
+$
+%
+
+0
+1
+
+X
+Y
+
+0
+1
+
+R
+S
+
+2
+3
+4
+5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+X
+Y
+
+f
+g
+
+f
+g
+
+f
+g
+
+f
+g
+
+f
+g
+
+f
+g
+
+f
+g
+h
+i
+
+f
+g
+h
+i
+
+j
+k
+
+j
+k
+
+l
+m
+
+l
+m
+
+h
+i
+
+h
+i
+
+j
+k
+
+j
+k
+
+l
+m
+
+l
+m
+
+!
+
+h
+i
+
+h
+i
+
+j
+k
+
+j
+k
+
+l
+m
+
+l
+m
+
+!
+
+h
+i
+
+h
+i
+
+j
+k
+
+j
+k
+
+l
+m
+
+l
+m
+
+$
+%
+
+$
+%
+
+0
+1
+
+0
+1
+
+$
+%
+
+$
+%
+
+0
+1
+
+0
+1
+
+L
+M
+
+L
+M
+
+2
+3
+4
+5
+
+Z
+[
+
+Z
+[
+
+Figure 1.7 illustrates the application of the idea of handling sets of
+tile-combinations: the remaining regions of the tile combinations S and
+S 0 are given by the shaded areas. The transformation ϕ is a reflection
+to the horizontal centerline of the rectangular region enclosing S 0 .
+
+Corollary 1.8 Markót and Csendes (2004) Let ϕ be the identity transformation and assume that the B&B algorithm terminates with an empty
+WorkList and with an empty ResultList, i.e. the whole search region
+(Z, W ) = (Z1 , . . . , Zm , W1 , . . . , Wm ) = (X1 , . . . , Xm , Y1 , . . . , Ym ) is eliminated by the accelerating devices using (the same) f˜. Then (X, Y ) does
+not contain any (x, y) ∈ R2n vectors for which fn (x, y) ≥ f˜ holds.
+
+25
+
+Circle Packing into the Square
+
+6.8
+
+Tile algorithms used in the optimality proofs
+
+The method of the optimality proofs is started by finding feasible tile
+patterns and their remaining areas on some small subsets of the whole
+set of tiles. Then bigger and bigger subsets are processed while using
+the results of the previous steps. Thus, the whole method consists of
+several phases. The two basic procedures are:
+– Grow(): add tiles from a new column to each element of a set of tile
+combinations.
+– Join(): join the elements of two sets of tile combinations pairwise.
+The detailed description of Join() and Grow() and the strategy of increasing the dimensionality of the subproblems can be found in Markót
+and Csendes (2004).
+
+6.9
+
+Numerical results: optimal packings for
+n = 28, 29, 30
+
+The results obtained with the multiphase interval arithmetic based
+optimality proofs are summarized below:
+– Apart from symmetric cases, one initial tile combination (more precisely, the remaining areas of the particular combination) contains
+all the global optimal solutions of the packing problem of n points.
+– The guaranteed enclosures of the global maximum values of Problem
+2 are
+∗
+F28
+= [0.2305354936426673, 0.2305354936426743],
+∗
+F29
+= [0.2268829007442089, 0.2268829007442240],
+∗
+F30
+= [0.2245029645310881, 0.2245029645310903],
+
+∗
+w(F28
+) ≈ 7 · 10−15 ,
+∗
+w(F29 ) ≈ 2 · 10−14 ,
+∗
+w(F30
+) ≈ 2 · 10−15 .
+
+– The exact global maximum value differs from the currently best
+known function value by at most w(Fn∗ ).
+– Apart from symmetric cases, all the global optimizers of the problem
+of packing n points are located in an (X, Y )∗n box (see Markót and
+Csendes (2004)). The components of the result boxes have the
+widths of between approximately 10−12 –10−14 (with the exception
+of the components enclosing possibly free points).
+– The differences between the volume of the whole search space and the
+result boxes are more than 711, 764, and 872 orders of magnitudes,
+respectively.
+
+26
+– The total computational time was approximately 53, 50, and 20 hours,
+respectively. The total time complexities are remarkably less than
+the forecasted execution times of the predecessor methods.
+
+6.10
+
+Optimality of the conjectured best
+structures
+
+An optimal packing structure specifies which points are located on
+the sides of the square, which pairs have minimal distance, and which
+points of the packing can move while keeping optimality. The output of
+our methods serves only as a numerical approximation to the solution of
+the particular problems but it says nothing about the structure of the
+optimal packing(s). Extending the ideas given in Nurmela and Östergård
+(1999) to an interval-based context, in a forthcoming paper we intent to
+prove also some structural properties of the global optimizers (for details
+see Markót (2003b)).
+
+Acknowledgments
+The authors are grateful for all the help given by colleagues for the
+underlying research. This work was supported by the Grants OTKA T
+016413, T 017241, OTKA T 034350, FKFP 0739/97, and by the Grants
+OMFB D-30/2000, OMFB E-24/2001.
+
+References
+G. Alefeld and J. Herzberger. Introduction to Interval Computations.
+Academic Press, New York, 1983.
+I. Althöfer and K.U. Koschnick. On the convergence of threshold accepting. Applied Mathematics and Optimization, 24:183–195, 1991.
+P. Ament and G. Blind, Packing equal circles in a square. Studia Scientiarum Mathematicarum Hungarica, 36:313-316, 2000.
+D.W. Boll, J. Donovan, R.L. Graham, and B.D. Lubachevsky. Improving
+Dense Packings of Equal Disks in a Square. Electronic J. of Combinatorics 7(2000) #R46. It is available at
+http://www.combinatorics.org/Volume 7/PostScriptfiles/v7i1r46.ps
+
+F. Bolyai. Tentamen Juventutem Studiosam in Elementa Matheseos Purae, Elementaris Ac Sublimioris, Methodo Intituitiva, Evidentiaque
+Huic Propria, Introducendi, Second edition, Volume 2, 119–122, 1904.
+L.G. Casado, I. Garcı́a, and Ya.D. Sergeyev. Interval Branch and Bound
+algorithm for finding the first-zero-crossing-point in one-dimensional
+functions. Reliable Computing, 6:179–191, 2000.
+
+Circle Packing into the Square
+
+27
+
+L.G. Casado, I. Garcı́a, P.G. Szabó, and T. Csendes, Packing Equal
+Circles in a Square II. — New results for up to 100 circles using
+the TAMSASS-PECS stochastic algorithm, In: Optimization Theory:
+Recent Developments from Mátraháza, Kluwer, Dordrecht, 207–224,
+2001.
+H.T. Croft, K.J. Falconer, and R.K. Guy. Unsolved Problems in Geometry, Springer, New York, 108–110, 1991.
+A.E. Csallner, T. Csendes, and M.Cs. Markót (2000). Multisection in
+Interval Methods for Global Optimization I. Theoretical Results, J.
+Global Optimization, 16:371–392, 2000.
+T. Csendes. Nonlinear parameter estimation by global optimization —
+efficiency and reliability, Acta Cybernetica, 8:361–370, 1988.
+T. Csendes and D. Ratz. Subdivision direction selection in interval methods for global optimization, SIAM J. Numerical Analysis, 34:922–938,
+1997.
+D.Z. Du and P.M. Pardalos. Minimax and Applications. Kluwer, Dordrecht, 1995
+G. Dueck and T. Scheuer. Threshold accepting: a general purpose optimization algorithm appearing superior to simulated annealing. J.
+Comput. Phys., 90:161–175, 1990.
+L. Fejes Tóth. Lagerungen in der Ebene, auf der Kugel und im Raum,
+Springer-Verlag, Berlin, 1972.
+G. Fejes Tóth. Handbook of Discrete and Computational Geometry. CRC
+Press, Boca Raton, 1997.
+F. Fodor. The densest packing of 19 congruent circles in a circle. Geometriae Dedicata 74:139–145, 1999.
+J.H. Folkman and R.L. Graham. A packing inequality for compact convex subsets of the plane. Canadian Mathematical Bulletin, 12:745–752,
+1969.
+H. Fukagawa and D. Pedoe. Japanese temple geometry problems = Sangaku. Charles Babbage Research Centre, Winnipeg, Canada, 1989.
+M. Goldberg. The packing of equal circles in a square. Mathematics
+Magazine, 43:24–30, 1970.
+M. Goldberg. Packing of 14, 16, 17 and 20 circles in a circles. Mathematics Magazine, 44:134–139, 1971.
+R.L. Graham and B.D. Lubachevsky. Dense packings of equal disks in
+an equilateral triangle from 22 to 34 and beyond, The Electronic J.
+of Combinatorics 2, 1995.
+R.L. Graham and B.D. Lubachevsky. Repeated Patterns of Dense Packings of Equal Circles in a Square, The Electronic J. of Combinatorics,
+3:211–227, 1996.
+
+28
+R.L. Graham, B.D. Lubachevsky, K.J. Nurmela, and P.R.J. Östergård.
+Dense packings of congruent circles in a circle. Discrete Mathematics
+181:139–154, 1998.
+M. Grannell. An even better packing of ten equal circles in a square.
+Manuscript., 1990.
+C. de Groot, M. Monagan, R. Peikert, and D. Würtz. Packing circles in
+a square: review and new results. In: System Modeling and Optimization, Lecture Notes in Control and Information Services, 180:45–54,
+1992.
+C. de Groot, R. Peikert, and D. Würtz. The Optimal Packing of Ten
+Equal Circles in a Square. IPS Research Report, Eidgenössiche Technische Hochschule, Zürich, No. 90–12, August, 1990.
+B. Grünbaum. An improved packing of ten circles in a square. Manuscript,
+1990.
+H. Hadwiger. Über extremale Punktverteilungen in ebenen Gebieten.
+Math. Zeitschrift, 49:370–373, 1944.
+R. Hammer, M. Hocks, U. Kulisch, and D. Ratz. Numerical Toolbox for
+Verified Computing I., Springer-Verlag, Berlin, 1993.
+E. Hansen. Global Optimization Using Interval Analysis, Marcel Dekker,
+New York, 1992.
+P. van Hentenryck, D. McAllester, and D. Kapur. Solving Polynomial
+Systems Using a Branch and Prune Approach, SIAM J. on Numerical
+Analysis, 34:797–827, 1997.
+R. Horst and N.V. Thoai. D.C. Programming: Overview, J. of Optimization Theory and Applications, 103:1–43, 1999.
+M. Hujter, Some Numerical Problems in Dsicrete Geometry. Computers
+and Mathematics with Applications, 38:175-178, 1999.
+D.C. Karnop. Random search techniques for optimization problems. Automatica, 1:111–121, 1963.
+R.B. Kearfott. Test Results for an Interval Branch and Bound Algorithm
+for Equality-Constrained Optimization. In: Computational Methods
+and Applications, Kluwer, Dordrecht, 181–200, 1996.
+K. Kirchner and G. Wengerodt. Die dichteste Packung von 36 Kreisen
+in einem Quadrat. Beiträge zur Algebra und Geometrie, 25:147–159,
+1987.
+O. Knüppel. PROFIL — Programmer’s Runtime Optimized Fast Interval Library. Bericht 93.4., Technische Universität Hamburg-Harburg,
+1993.
+O. Knüppel. A Multiple Precision Arithmetic for PROFIL. Bericht 93.6,
+Technische Universität Hamburg-Harburg, 1993.
+S. Kravitz. Packing cylinders into cylindrical containers. Mathematics
+Magazine, 40:65–71, 1967.
+
+Circle Packing into the Square
+
+29
+
+M. Locatelli and U. Raber. A Deterministic Global Optimization Approach for Solving the Problem of Packing Equal Circles in a Square.
+International Workshop on Global Optimization (GO.99), Firenze,
+Italy, 1999.
+M. Locatelli and U. Raber. Packing equal circles in a square: a deterministic global optimization approach. Discrete Applied Mathematics,
+122:139–166, 2002.
+B.D. Lubachevsky. How to simulate billiards and similar systems. J.
+Computational Physics, 94:255–283, 1991.
+B.D. Lubachevsky and R.L. Graham. Curved hexagonal packings of
+equal disks in a circle. Discrete & Computational Geometry, 18:179–
+194, 1997.
+B.D. Lubachevsky, R.L. Graham, and F.H. Stillinger. Patterns and Structures in disk packings. Periodica Mathematica Hungarica, 34:123–142,
+1997.
+B.D Lubachevsky and F.H. Stillinger. Geometric properties of random
+disk packings. J. Statistical Physics, 60:561–583, 1990.
+C.D. Maranas, C.A. Floudas, and P.M. Pardalos. New results in the
+packing of equal circles in a square. Discrete Mathematics, 128:187–
+193, 1995.
+M.Cs. Markót. An Interval Method to Validate Optimal Solutions of the
+”Packing Circles in a Unit Square” Problems. Central European J. of
+Operational Research, 8:63–78, 2000.
+M.Cs. Markót. Optimal Packing of 28 Equal Circles in a Unit Square —
+the First Reliable Solution. Numerical Algorithms 37:253–261, 2004.
+M.Cs. Markót. Reliable Global Optimization Methods for Constrained
+Problems and Their Application for Solving Circle Packing Problems (in Hungarian). PhD dissertation. Szeged, 2003. Available at
+http://www.inf.u-szeged.hu/ markot/phdmm.ps.gz
+M.Cs. Markót and T. Csendes. A New Verified Optimization Technique
+for the ”Packing Circles in a Unit Square” Problems. Accepted for
+publication in SIAM J. Optimization.
+M.Cs. Markót, T. Csendes, and A.E. Csallner. Multisection in Interval
+Methods for Global Optimization II., Numerical Tests, J. of Global
+Optimization, 16:219–228, 2000.
+J. Matyas. Random optimization. Automatization and Remote Control,
+26:244–251, 1965.
+J.R. McDonnell and D. Waagen. Evolving recurrent perceptrons for
+time-series modeling. IEEE Trans. on Neural Networks, 5:24–38, 1994.
+J.B.M. Melissen. Densest packings for congruent circles in an equilateral
+triangle. American Mathematical Monthly, 100:916–925, 1993.
+
+30
+J.B.M. Melissen. Densest packing of six equal circles in a square. Elemente der Mathematik, 49:27–31, 1994.
+J.B.M. Melissen. Densest packing of eleven congruent circles in a circle.
+Geometriae Dedicata, 50:15–25, 1994.
+J.B.M. Melissen. Optimal packings of eleven equal circles in an equilateral triangle. Acta Mathematica Hungarica, 65:389–393, 1994.
+J.B.M. Melissen and P.C. Schuur. Packing 16, 17 or 18 circles in an
+equilateral triangle. Discrete Mathematics, 145:333–342, 1995.
+R. Milano. Configurations optimales de desques dans un polygone régulier. Mémoire de Licence, Université Libre de Bruxelles, 1987.
+M. Mollard and C. Payan. Some progress in the packing of equal circles
+in a square. Discrete Mathematics, 84:303–307, 1990.
+R.E. Moore. Interval Analysis. Prentice-Hall, Englewood Cliffs, 1966.
+L. Moser, Problem 24 (corrected), Canadian Mathematical Bulletin, 8:78,
+1960.
+A. Neumaier. Introduction to Numerical Analysis. Cambridge Univ. Press,
+Cambridge, 2001.
+K.J. Nurmela. Constructing combinatorial designs by local search. Series A: Research Reports 27, Digital Systems Laboratory, Helsinki
+University of Technology, 1993.
+K.J. Nurmela and P.R.J. Östergård. Packing up to 50 Equal Circles in
+a Square. Discrete & Computational Geometry, 18:111–120, 1997.
+K.J. Nurmela and P.R.J. Östergård. More Optimal Packings of Equal
+Circles in a Square. Discrete & Computational Geometry, 22:439–457,
+1999.
+K.J. Nurmela and P.R.J. Östergård. Optimal packings of equal circles
+in a square. In Y. Alavi, D.R. Lick, and A. Schwenk (eds.). Combinatorics, Graph Theory, and Algorithms (Proc. 8th Quadrennial International Conference on Graph Theory, Combinatorics, Algorithms,
+and Applications), 671–680, 1999.
+K.J. Nurmela, P.R.J. Östergård, and R. aus dem Spring. Asymptotic
+Behaviour of Optimal Circle Packings in a Square. Canadian Mathematical Bulletin, 42:380–385, 1999.
+N. Oler. An inequality in the geometry of numbers. Acta Math., 105:19–
+48, 1961.
+N. Oler. A finite packing problem. Canadian Mathematical Bulletin,
+4:153–155, 1961.
+R. Peikert. Dichteste Packungen von gleichen Kreisen in einem Quadrat,
+Elemente der Mathematik, 49:16–26, 1994.
+R. Peikert, D. Würtz, M. Monagan, and C. de Groot. Packing Circles in
+a Square: A Review and New Results. In: P. Kall (ed.): System Mod-
+
+Circle Packing into the Square
+
+31
+
+elling and Optimization, Lecture Notes in Control and Information
+Sciences, Berlin, Springer–Verlag, 180:45–54, 1992.
+J. Petris and N. Hungerbüler. Manuscript, 1990.
+U. Pirl. Der Mindestabstand von n in der Einheitskreisscheibe gelegenen
+Punkten. Math. Nachr., 40:111–124, 1969.
+U. Raber. Nonconvex All-Quadratic Global Optimization Problems: Solution Methods, Application and Related Topics, PhD thesis, University
+of Trier, 1999.
+S.S. Rao. Optimization Theory and Applications. John Willey and Sons,
+New York, 1978.
+H. Ratschek and J. Rokne. New Computer Methods for Global Optimization. Ellis Horwood, Chichester, 1988.
+G.E. Reis. Dense packings of equal circles within a circle. Mathematics
+Magazine, 48:33–37, 1975.
+M. Ruda. Packing circles in a rectangle (in Hungarian). MTA III. Osztály
+Közleményei, 19:73–87, 1969.
+J. Schaer. The densest packing of nine circles in a square, Canadian
+Mathematical Bulletin, 8:273–277, 1965.
+J. Schaer. On the densest packing of ten equal circles in a square. Mathematics Magazine, 44:139–140, 1971.
+J. Schaer and A. Meir. On a geometric extremum problem. Canadian
+Mathematical Bulletin, 8:21–27, 1965.
+K. Schlüter. Kreispackung in Quadraten. Elemente der Mathematik,
+34:12–14, 1979.
+B.L. Schwartz. Separating points in a square. J. of Recreational Mathematics, 3:195–204, 1970.
+F.J. Solis and J.B. Wets. Minimization by random search techniques.
+Mathematics of Operations Research, 6:19–50, 1981.
+E. Specht’s packing web site. http://www.packomania.com
+E. Specht and P.G. Szabó. Lattice and near-lattice packings of equal
+circles in a square. In preparation.
+Gy. Staar. The lived mathematics (in Hungarian), Gondolat, Budapest,
+Hungary, 1990.
+P.G. Szabó. Optimal packings of circles in a square. (in Hungarian) Polygon, X:48–64, 2000.
+P.G. Szabó. Some new structures for the ”equal circles packing in a
+square” problem. Central European J. of Operations Research, 8:79–
+91, 2000.
+P.G. Szabó, Sangaku — wooden boards of Mathematics in Japanese
+temples. (in Hungarian) KöMaL 7:386–388, 2001.
+
+32
+P.G. Szabó and T. Csendes. Dezső Lázár and the densest packing of
+equal circles in a square problem. (in Hungarian) Magyar Tudomány,
+8:984–985, 2001.
+P.G. Szabó, T. Csendes, L.G. Casado, and I. Garcı́a. Packing Equal Circles in a Square I. — Problem Setting and Bounds for Optimal Solutions. In: Optimization Theory: Recent Developments from Mátraháza,
+Kluwer, Dordrecht, 191–206, 2001.
+P.G. Szabó, Optimal substructures in optimal and approximate circle
+packings. Accepted for publication in Beiträge zur Algebra und Geometrie.
+P.G. Szabó and E. Specht. Packing up to 200 equal circles in a square.
+Submitted for publication.
+T. Tarnai. Packing of equal circles in a circle. Structural Morphology: Toward the New Millenium, The University of Nottingham, Nottingham,
+UK, 217–224, 1997.
+T. Tarnai and Zs. Gáspár, Packing of equal circles in a square. Acta
+Technica Acad. Sci. Hung., 107(1-2):123-135, 1995-96.
+G. Valette. A better packing of ten circles in a square. Discrete Mathematics, 76:57–59, 1989.
+G. Wengerodt. Die dichteste Packung von 16 Kreisen in einem Quadrat.
+Beiträge zur Algebra und Geometrie, 16:173–190, 1983.
+G. Wengerodt. Die dichteste Packung von 14 Kreisen in einem Quadrat.
+Beiträge zur Algebra und Geometrie, 25:25–46, 1987.
+G. Wengerodt. Die dichteste Packung von 25 Kreisen in einem Quadrat.
+Ann. Univ. Sci. Budapest Eötvös Sect. Math., 30:3–15, 1987.
+D. Würtz, M. Monagan, and R. Peikert. The history of packing circles
+in a square. Maple Technical Newsletter, 0:35–42, 1994.
+
+

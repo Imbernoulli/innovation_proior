@@ -1,0 +1,861 @@
+The strong thirteen spheres problem
+Oleg R. Musin∗, Alexey S. Tarasov †
+
+arXiv:1002.1439v3 [math.MG] 16 Jan 2012
+
+October 31, 2018
+
+Abstract
+The thirteen spheres problem is asking if 13 equal size nonoverlapping spheres in
+three dimensions can touch another sphere of the same size. This problem was the
+subject of the famous discussion between Isaac Newton and David Gregory in 1694.
+The problem was solved by Schütte and van der Waerden only in 1953.
+A natural extension of this problem is the strong thirteen spheres problem (or the
+Tammes problem for 13 points) which asks to find an arrangement and the maximum
+radius of 13 equal size nonoverlapping spheres touching the unit sphere. In the paper we
+give a solution of this long-standing open problem in geometry. Our computer-assisted
+proof is based on a enumeration of the so-called irreducible graphs.
+
+1
+
+Introduction
+
+1.1
+
+The thirteen spheres problem
+
+The kissing number k(n) is the highest number of equal nonoverlapping spheres in Rn that
+touch another sphere of the same size. In three dimensions the kissing number problem is
+asking how many white billiard balls can kiss (touch) a black ball.
+The most symmetrical configuration, 12 balls around another, is achieved if the 12 balls
+are placed at positions corresponding to the vertices of a regular icosahedron concentric with
+the central ball. However, these 12 outer balls do not kiss each other and may all be moved
+freely. So perhaps if you moved all of them to one side, a 13th ball would possibly fit in?
+This problem was the subject of the famous discussion between Isaac Newton and David
+Gregory in 1694 (May 4, 1694; see [29] for details of this discussion). Most reports say that
+Newton believed the answer was 12 balls, while Gregory thought that 13 might be possible.
+However, Casselman [10] found some puzzling features in this story.
+This problem is often called the thirteen spheres problem. Hoppe [15] thought he had
+solved the problem (1874). But there was a mistake - an analysis of this mistake was published
+∗
+†
+
+Research supported in part by NSF grant DMS-0807640 and NSA grant MSPF-08G-201.
+Research supported by program P15 of presidium of RAS and RFBR grant 08-07-00430.
+
+1
+
+by Hales in 1994 [14] (see also [29]). Finally this problem was solved by Schütte and van
+der Waerden in 1953 [28]. A subsequent two-page sketch of an elegant proof was given by
+Leech [17] in 1956. Leech’s proof was presented in the first edition of the well-known book
+by Aigner and Ziegler [1], the authors removed this chapter from the second edition because
+a complete proof would have to include so much spherical trigonometry.
+The thirteen spheres problem continues to be of interest, and new proofs have been
+published in the last several years by Hsiang [16], Maehara [19, 20] (this proof is based on
+Leech’s proof), Böröczky [5], Anstreicher [2], and Musin [21].
+Note that for n > 3 the kissing number problem is solved only for n = 8, 24 [18, 23], and
+for n = 4 [22] (see [25] for a beautiful exposition of this problem).
+
+1.2
+
+The Tammes problem
+
+If N unit spheres kiss the unit sphere in Rn , then the set of kissing points is an arrangement
+on the central sphere such that the (Euclidean) distance between any two points is at least 1.
+So the kissing number problem can be stated in other way: How many points can be placed
+on the surface of Sn−1 so that the angular separation between any two points be at least 60◦ ?
+This leads to an important generalization: a finite subset X of Sn−1 is called a spherical
+ψ-code if for every pair (x, y) of X with x 6= y its angular distance dist(x, y) is at least ψ.
+Let X be a finite subset of S2 . Denote
+ψ(X) := min {dist(x, y)}, where x 6= y.
+x,y∈X
+
+Then X is a spherical ψ(X)-code.
+Denote by dN the largest angular separation ψ(X) with |X| = N that can be attained
+in S2 , i.e.
+dN := max2 {ψ(X)}, where |X| = N.
+X⊂S
+
+In other words, how are N congruent, not overlapping circles distributed on the sphere when
+their common radius of the circles has to be as large as possible?
+This question, also known as the problem of the “inimical dictators”: Where should N
+dictators build their palaces on a planet so as to be as far away from each other as possible?
+The problem was first asked by the Dutch botanist Tammes [30] (see [8, Section 1.6: Problem
+6]), who was led to this problem by examining the distribution of openings on the pollen
+grains of different flowers.
+The Tammes problem is presently solved only for several values of N: for N = 3, 4, 6, 12
+by L. Fejes Tóth [12]; for N = 5, 7, 8, 9 by Schütte and van der Waerden [27]; for N = 10, 11
+by Danzer [11] (for N = 11 see also Böröczky [4]); and for N = 24 by Robinson [26].
+
+1.3
+
+The Tammes problem for N = 13
+
+The first unsolved case of the Tammes problem is N = 13, which is particularly interesting
+because of its relation to the kissing problem and the Kepler conjecture [6, 13, 29].
+2
+
+Actually this problem is equivalent to the strong thirteen spheres problem, which asks to
+find an arrangement and the maximum radius of 13 equal size nonoverlapping spheres in R3
+touching the unit sphere.
+It is clear that the equality k(3) = 12 implies d13 < 60◦ . Böröczky and Szabó [6] proved
+that d13 < 58.7◦ . Recently Bachoc and Vallentin [3] have shown that d13 < 58.5◦ .
+We note that there is an arrangement of 13 points on S2 such that the distance between
+any two points of the arrangement is at least 57.1367◦ (see [13, Ch. VI, Sec. 4]). This
+arrangement is shown in Fig. 1.
+6
+
+11
+
+6
+
+3
+
+10
+
+7
+12
+4
+8
+
+10
+
+11
+3
+2
+
+1
+
+7
+9
+
+2
+1
+
+4
+
+13
+5
+
+9
+5
+
+8
+12
+
+13
+
+Figure 1: An arrangement of 13 points P13 and its contact graph Γ13 with ψ(P13 ) ≈ 57.1367◦.
+Remark. Denote the constant ψ(P13 ) by δ13 . The value d = δ13 can be found analytically.
+Indeed, we have (see for notations and functions Fig. 9 and Section 3): u0 + 2u13 + u2 = 2π,
+where u2 = π/2, a := u0 = α(d), u13 = ρ(u9 , d), u9 = 2π − 2u5 , u5 = ρ(u2 , d). This yields:
+
+
+1 − 2 cos a
+cos a
+3π a
+=
+−
+, cos d =
+.
+2 tan
+2
+8
+4
+cos a
+1 − cos a
+Thus, we have a13 := α(δ13 ) ≈ 69.4051◦ and δ13 ≈ 57.1367◦.
+
+2
+
+Main theorem
+
+In this paper we present a solution of the Tammes problem for N = 13.
+Theorem 1. The arrangement of 13 points in S2 which is shown in Fig. 1 is the best possible,
+the maximal arrangement is unique up to isometry, and d13 = δ13 .
+
+2.1
+
+Basic definitions
+
+Contact graphs. Let X be a finite set in S2 . The contact graph CG(X) is the graph with
+vertices in X and edges (x, y), x, y ∈ X such that dist(x, y) = ψ(X).
+
+3
+
+Shift of a single vertex. Let X be a finite set in S2 . Let x ∈ X be a vertex of CG(X) with
+deg(x) > 0, i.e. there is y ∈ X such that dist(x, y) = ψ(X). We say that there exists a shift
+of x if x can be slightly shifted to x′ such that dist(x′ , X \ {x}) > ψ(X).
+Danzer’s flip. Danzer [11, Sec. 1] defined the following flip. Let x, y, z be vertices of CG(X)
+with dist(x, y) = dist(x, z) = ψ(X). We say that x is flipped over yz if x is replaced by its
+mirror image x′ relative to the great circle yz (see Fig. 2). We say that this flip is Danzer’s
+flip if dist(x′ , X \ {x, y, z}) > ψ(X).
+z
+
+x′
+
+x
+
+y
+
+Figure 2: Danzer’s flip
+Irreducible graphs. We say that the graph CG(X) is irreducible1 (or jammed) if there are
+neither Danzer’s flips nor shifts of vertices.
+P13 and Γ13 . Denote by P13 the arrangement of 13 points in Fig. 1. Let Γ13 := CG(P13 ). It
+is not hard to see that the graph Γ13 is irreducible.
+Maximal graphs G13 . Let X be a subset of S2 with |X| = 13 and ψ(X) = d13 . Denote by
+G13 the graph CG(X). Actually, this definition does not assume that G13 is unique. We use
+this designation for some CG(X) with ψ(X) = d13 .
+(i)
+
+(i)
+
+Graphs Γ13 . Let us define four planar graphs Γ13 (see Fig. 3), where i = 0, 1, 2, 3, and
+(0)
+(i)
+Γ13 := Γ13 . Note that Γ13 , i > 0, is obtained from Γ13 by removing certain edges.
+
+(0)
+
+Γ13
+
+(1)
+
+(2)
+
+Γ13
+
+Γ13
+
+(3)
+
+Γ13
+
+(i)
+
+Figure 3: Graphs Γ13 .
+1
+
+This terminology was used by Schütte - van der Waerden [27, 28], Fejes Tóth [13], and Danzer [11].
+
+4
+
+2.2
+
+Main lemmas
+(i)
+
+Lemma 1. G13 is isomorphic to Γ13 with i = 0, 1, 2, or 3.
+(0)
+
+Lemma 2. G13 is isomorphic to Γ13 and d13 = δ13 ≈ 57.1367◦.
+It is clear that Lemma 2 yields Theorem 1. Now our goal is to prove these lemmas.
+
+3
+
+Properties of G13
+
+3.1
+
+Combinatorial properties of G13
+
+Proposition 3.1. Let X be a finite set in S2 . Then CG(X) is a planar graph.
+Proof. Let a, b, x, y ∈ X with dist(a, b) = dist(x, y) = ψ(X). Then the shortest arcs ab and
+xy don’t intersect. Otherwise, the length of at least one of the arcs ax, ay, bx, by has to be
+less than ψ(X). This yields the planarity of CG(X).
+The following three propositions are proved in [11] (also see [13, Chap. VI], [6, 7]).
+Proposition 3.2. Let X be a subset of S2 with |X| = N and ψ(X) = dN . Then for N > 6
+the graph CG(X) is irreducible.
+Proposition 3.3. Let X ⊂ S2 . If the graph CG(X) is irreducible, then degrees of its vertices
+can take only the values 0 (isolated vertices), 3, 4, or 5.
+Proposition 3.4. Let X ⊂ S2 with |X| = N. If the graph CG(X) is irreducible, then its
+faces are polygons with at most ⌊2π/dN ⌋ vertices.
+Böröczky and Szabó [6, Lemma 8 and Lemma 9(iii)] considered isolated vertices in irreducible graphs with 13 vertices.
+Proposition 3.5. Let X ⊂ S2 with |X| = 13. Let the graph CG(X) be irreducible. If
+CG(X) contains an isolated vertex, then it lies in the interior of a hexagon of CG(X) and
+this hexagon cannot contain other vertices of CG(X).
+Combining these propositions, we obtain the following combinatorial properties of G13 .
+Corollary 3.1.
+
+1. G13 is a planar graph;
+
+2. Any vertex of G13 is of degree 0, 3, 4, or 5;
+3. Any face of G13 is a polygon with 3, 4, 5 or 6 vertices;
+4. If G13 contains an isolated vertex v, then v lies in a hexagonal face. Moreover, a
+hexagonal face of G13 cannot contain two or more isolated vertices.
+5
+
+3.2
+
+Geometric properties of G13
+
+Let X ⊂ S2 with |X| = 13. Let the graph CG(X) be irreducible. Note that all faces of
+CG(X) are convex polygons. (Otherwise, a “concave” vertex of a polygon P can be shifted
+to the interior of P .) Then the faces of the graph CG(X) in S2 are regular triangles, rhombi,
+convex equilateral pentagons, and convex equilateral hexagons. Polygons with more than
+six vertices cannot occur. Note that the triangles, rhombi, or pentagons of CG(X) cannot
+contain isolated vertices in their interiors. The lengths of all edges of CG(X) equal ψ(X).
+Consider as parameters (variables) of CG(X) in S2 the set of all angles ui of its faces and
+d := ψ(X). Clearly, the graph G = CG(X), d, and the set {ui } uniquely (up to isometry)
+determine embedding X \ {isolated vertices} in S2 .
+We obviously have the following constraints for these parameters.
+Proposition 3.6.
+
+1. ui < π for all ui ;
+
+2. ui ≥ α(ψ(X)) for all ui , where
+α(d) := cos
+
+−1
+
+
+
+cos d
+1 + cos d
+
+
+
+is the angle of a regular triangle in S2 with sides of length d;
+P
+3.
+k∈I(v) uk = 2π for all vertices v of G, where I(v) is the set of subscripts of angles
+that are adjacent to v;
+Let F be a face of G. Then F is a polygon with m vertices, where m = 3, 4, 5, or 6.
+Consider all possible cases.
+1. m = 3: triangle. In this case, F is a regular triangle.
+Proposition 3.7. Let F be a triangular face of G13 with angles u1 , u2 , u3 . Then u1 = u2 =
+u3 = α13 := α(d13 ).
+2. m = 4: quadrilateral. In this case, F = A1 A2 A3 A4 is a rhombus. Then we have u1 = u3
+and u2 = u4 . Using the spherical Pythagorean theorem, one can show that
+cot
+
+u1
+u2
+cot
+= cos d.
+2
+2
+
+Then
+u2 = ρ(u1 , d) := 2 cot−1 (tan (u1/2) cos d).
+Since u2 ≥ α(d), we have u1 = ρ(u2 , d) ≤ ρ(α(d), d) = 2α(d) (Fig. 4).
+Proposition 3.8. Let F be a quadrilateral of G13 with angles u1 , u2 , u3 , u4. Then u3 =
+u1 , u4 = u2 , u2 = ρ(u1 , d13 ), u1 = ρ(u2 , d13 ), and α13 ≤ ui ≤ 2α13 for all i = 1, 2, 3, 4.
+6
+
+2.4
+2.2
+
+u2
+
+2
+1.8
+1.6
+1.4
+1.2
+1.2 1.4 1.6 1.8 2 2.2 2.4
+u1
+
+Figure 4: The graph of the function u2 = ρ(u1 , d), where d = 57.1367◦.
+u2
+3.14
+
+3.14 u1
+
+0
+
+Figure 5: The set of admissible pairs (u1 , u2) for a pentagon with d = 57.1367◦.
+3. m = 5: pentagon. In this case, F is a convex equilateral pentagon A1 A2 A3 A4 A5 . Let
+u1 , u2 , u3, u4 , u5 be its angles. Then F is uniquely determined by d and any pair of these
+angles, for instance, by (u1 , u2 ) (Fig. 5).
+It is not hard for given parameters x = u1 , y = u2 and d to find u3 , u4 , u5 as functions of
+x, y, d, i.e. ui = fi (x, y, d), where i = 3, 4, 5. Let f1 (x, y, d) = x and f2 (x, y, d) = y. Then we
+have ui = fi (x, y, d) for all i = 1, . . . , 5. We have that all fi (x, y, d) ≥ α(d).
+Denote by A′i the image of Ai after Danzer’s flip. Let ξi (x, y, d) denote the minimum
+distance between A′i and Aj , where j 6= i. If F is a face of CG(X) and CG(X) is irreducible,
+then F does not admit Danzer’s flips. Therefore, ξi (x, y, d) < d for all i. Thus we have the
+following proposition.
+Proposition 3.9. Let F be a pentagonal face of G13 with angles u1 , . . . , u5 . Then
+fi (u1 , u2 , d13 ) ≥ α13 and ξi (u1 , u2 , d13 ) < d13 for all i = 1, . . . , 5.
+4. m = 6: hexagon. In this case, F = A1 A2 A3 A4 A5 A6 is a convex equilateral hexagon with
+angles u1 , . . . , u6. Clearly, F is uniquely defined by any three angles and d.
+7
+
+u4
+u4
+3.14
+3.14 u3
+0
+u2
+0
+
+u3
+
+3.14 u2
+
+Figure 6: Admissible angles (u1 , u2, u3 , u4 , u5) of a pentagon projected into (u2 , u3 , u4)
+Let ui = gi (u1 , u2 , u3 , d) for i = 4, 5, 6. Let gi (u1 , u2, u3 , d) = ui for i = 1, 2, 3. Then we
+have ui = gi (u1, u2 , u3 , d) for all i = 1, . . . , 6.
+In fact, for the case m = 6 we have two subcases: (a) F has no isolated vertices, and (b)
+F has an isolated vertex.
+It is easy to see that for case 4(a) there exists an analog of Proposition 3.9. Let
+ζi (u1 , u2, u3 , d) denote the minimum distance between A′i and Aj , where j 6= i.
+Proposition 3.10. Let F be a hexagonal face of G13 with angles u1, . . . , u6 . Suppose the face
+F has no isolated vertices in its interior. Then gi (u1 , u2 , u3 , d13 ) ≥ α13 and ζi (u1 , u2 , u3, d13 ) <
+d13 for all i = 1, . . . , 6 (Fig. 7).
+
+u5
+3.14
+
+1.4
+
+u5
+
+3.14
+u3
+
+3.14 u3
+2.9
+1.2
+
+0
+
+2.9
+
+3.14 u1
+a)
+
+3.14 u1
+b)
+
+Figure 7: (a) The set of admissible triplets for (u1 , u2 , u3 ) for empty hexagon with d =
+57.1367◦. (b) A component with zoom.
+Now consider case 4(b). Denote by Π the set of all points p in the interior of F such that
+there is a pair (i, j), 1 ≤ i, j ≤ 6, i 6= j, with dist(p, Ai ) = dist(p, Aj ) = d. Clearly, |Π| ≤ 18.
+Let p ∈ Π be defined by a pair (i, j). Denote by K(p) the set of all k = 1, . . . , 6 such that
+k 6= i and k 6= j. Let
+λ(u1, u2 , u3 , d) = λ̃(F ) := max min {dist(p, Ai )}.
+p∈Π i∈K(p)
+
+8
+
+Since F contains an isolated vertex, we have λ̃(F ) ≥ d.
+Proposition 3.11. Let F be a hexagonal face of G13 with angles u1 , . . . , u6 . Suppose the
+face F has an isolated vertex in its interior.
+Then gi (u1 , u2 , u3, d13 ) ≥ α13 for all i = 1, . . . , 6 and λ(u1, u2 , u3 , d13 ) ≥ d13 .
+
+4
+
+Proof of Lemma 1
+
+Here we give a sketch of our computer proof. For more details see
+http://dcs.isa.ru/taras/tammes13/∼.
+The proof consists of two parts:
+(I) Create the list L13 of all graphs with 13 vertices that satisfy Corollary 3.1;
+(II) Using linear approximations and linear programming remove from the list L13 all graphs
+that do not satisfy the geometric properties of G13 (see Propositions 3.6-3.11).
+(I). To create L13 we use the program plantri (see [24]).2 This program is the isomorphfree generator of planar graphs, including triangulations, quadrangulations, and convex polytopes. (The paper [9] describes plantri’s principles of operation, the basis for its efficiency,
+and recursive algorithms behind many of its capabilities.)
+The program plantri generates 94,754,965 graphs in L13 , i.e. graphs that satisfy Corollary 3.1. Namely, L13 contains 30,829,972 graphs with triangular and quadrilateral faces;
+49,665,852 with at least one pentagonal face and with triangular and quadrilaterals;
+13,489,261 with at least one hexagonal face which do not contain isolated vertices; 769,3753
+graphs with one isolated vertex, 5053 with two isolated vertices, and no graphs with three
+or more isolated vertices.
+(II). Let us consider a graph G from L13 . We start from the level of approximation ℓ = 1.
+Now using Propositions 3.6-3.11 we write linear equalities and inequalities for the parameters
+(angles) {ui } of this graph.
+For ℓ = 1 we use the
+Pfollowing linear equalities and inequalities:
+(i) 13 linear equalities k∈I(v) uk = 2π in Proposition 3.6(3);
+(ii) Since 57.1367◦ = 0.9972 ≤ d13 < 1.021 = 58.5◦ , we have 1.2113 ≤ α13 < 1.2205;
+(iii) For a quadrilateral from Proposition 3.8 we have equalities u3 = u1 , u4 = u2 , and inequalities α13 ≤ ui ≤ 2α13 , i = 1, 2;
+(iv) For a quadrilateral, (ii) and u2 = ρ(u1 , d13 ) yield 3.6339 ≤ u1 + u2 ≤ 3.779657;
+(v) Let F be a pentagonal face. Consider all vectors U5 := {(u1 , . . . , u5)} that satisfy Proposition 3.9 (see Fig. 6). We use a convex polytope P5 in R5 which contains U5 . Actually,
+P5 is defined by certain linear inequalities. For instance, 2.96 ≤ u1 + u2 − 0.63u4 ≤ 3.26,
+u1 + u3 + 1.8u2 ≤ 9.05, etc;
+(vi) For a hexagonal face F that contains no isolated vertices, using Proposition 3.10,
+2
+3
+
+The authors of this program are Gunnar Brinkmann and Brendan McKay.
+Perhaps contains isomorphic graphs.
+
+9
+
+we find a set of three polytopes P6k , U6 ⊂ ∪3k=1 P6k which are defined by the inequalities
+1.2 ≤ uk , uk+3 ≤ 1.34 and 2.9 ≤ uk+1, uk+2, uk+4, uk+5;
+P
+(vii) For a hexagonal face with an isolated vertex, Proposition 3.11 yields 6i=1 ui ≥ 15.936.
+Using this set of linear inequalities, we find minimal and maximal value of each variable
+by linear programming. This gives us a convex region in the space of possible solutions that
+contains all possible solutions for given graph (if they exist). If the region becomes empty,
+this means that we can eliminate the graph considered. This step “kills” almost all graphs.
+After this step, there remain 2013 graphs without hexagons, 40910 graphs with hexagons
+and without isolated vertices, 9073 graphs with one isolated vertex, and 272 graphs with two
+isolated vertices.
+For ℓ = 2 we use the following idea. This region is smaller than the original region, so
+we can adjust linear estimates for nonlinear equalities and inequalities. For quadrilaterals we
+adjust inequalities using (iv). For pentagons we are using an additional set of inequalities.
+Namely, using functions f3 (u1 , u5 , d), f3 (u2 , u4 , d), and bounds for u1 , u2, u4 , u5 , d can be
+obtained minimal and maximal linear bounds for u3 .
+Repeating this procedure , we obtain a chain of nested convex regions, which contain all
+possible solutions. This chain converges to empty or non-empty region. If this result is empty,
+the graph is eliminated. After this step, only 260 graphs remain in the main group, 9991
+graphs remain in the second group, 126 graphs remain in the third group, and no graphs
+remain in the fourth group.
+For the level of approximation ℓ = 3, we split the region into two smaller regions and
+repeat the same procedure as for ℓ = 2 independently. For graphs with empty hexagons, we
+make a specific split by taking different values of k from item (vi) (see above).
+(i)
+Repeating the splitting procedure, we “kill” all graphs except Γ13 .
+This result gives us two surprises. We expected that subgraphs were to remain, because
+they can be infinitesimally close to Γ13 , and so they cannot be eliminated by computer
+program. But we didn’t expect that all other graphs would be killed. Also manually, we
+(1)
+(2)
+found two subgraphs which could be contact graphs: Γ13 and Γ13 . But we missed the graph
+(3)
+Γ13 with one isolated vertex, which was found by computer program.
+
+a)
+
+b)
+
+c)
+
+d)
+
+e)
+
+f)
+
+Figure 8: Strongest eliminated graphs
+(i)
+
+Remark. In Fig. 8 are presented examples of graphs which are not isomorphic to Γ13 and
+have been eliminated only after many iterations. The most “surviving” graph is a). This graph
+(0)
+is also a subgraph of Γ13 . After eliminating four edges, the graph contains four pentagons.
+10
+
+The reason why it was eliminated because there are angles ui which are slightly bigger than
+π, so that the pentagons are not convex. Therefore, this graph is not irreducible. Other most
+surviving graphs were “strong” because they have several pentagons and hexagons. Note that
+here we use weak bounds for pentagons and hexagons given by (v),(vi),(vii). Our elimination
+procedure works very fast when we have sufficiently many triangles and quadrilaterals, and
+it works worse (slowly) when we have several pentagons and hexagons.
+
+5
+
+Proof of Lemma 2
+
+Proof. This proof is based on geometric properties of G13 . In Section 4 we substitute all
+nonlinear equations by certain linear inequalities. Note that a statement d13 ≈ δ13 is a
+by-product of this approximation. Here we prove that d13 = δ13 based on original equations.
+(i)
+Lemma 1 says that G13 = Γ13 , where i = 0, 1, 2, or 3. We are going to prove that if
+(i)
+CG(X) = Γ13 with i > 0, then ψ(X) < δ13 = ψ(P13 ).
+u0
+u13
+
+b1
+
+u9
+u
+u6 10 u
+14
+u5 u2 u7
+u1 u3
+u17
+u18
+u4
+u16
+u8
+u12
+u11
+u0
+
+b2
+
+u15
+
+(2)
+
+Figure 9: Angles of Γ13
+(2)
+
+(2)
+
+5.0. Angles of Γ13 . Let u0 := α(d). For G13 = Γ13 we have (see Fig. 9):
+u5 = ρ(u1 , d)
+u6 = ρ(u2 , d)
+u9 = 2π − u5 − u6
+u13 = ρ(u9 , d)
+u14 = 2π − u0 − u13 − u2
+u10 = ρ(u14 )
+u7 = 2π − u6 − u10
+u3 = ρ(u7 , d)
+u4 = 2π − u1 − u2 − u3
+u8 = ρ(u4 , d)
+u11 = 2π − u7 − u8
+u12 = 2π − u8 − u5
+u15 = ρ(u11 , d)
+u16 = ρ(u12 , d)
+Therefore, for 3 ≤ i ≤ 16 the value ui are functions in the variables u1 , u2 , d. Since we
+have also an additional equation for the vertex v8 (see Fig. 1 and Fig. 9):
+u0 + u15 + u4 + u16 = 2π,
+the value d is a function in u1 , u2, as well as u2 is a function in the variables u1 and d. Thus,
+all ui and d are functions in u1 , u2 or in u1 , d.
+11
+
+(i)
+
+Now we consider three cases G13 = Γ13 , where i = 1, 2, 3.
+(1)
+
+5.1. The case G13 = Γ13 . In this case u17 = u0 . Then for the vertex v7 we have the equation:
+u1 + u13 + u0 + u16 = 2π.
+From this it follows that u1 and therefore all ui are functions in d. Note that
+u18 = 2π − u14 − u3 − u15 .
+Thus, u18 is a function in d (see Fig. 10).
+76
+
+u18(d)
+74
+
+d=δ13 ≈ 57.1367°
+
+72
+
+u=a13 ≈ 69.4051°
+
+70
+
+68
+
+66
+
+64
+56.95
+
+57
+
+57.05
+
+57.1
+
+57.15
+
+57.2
+
+57.25
+
+57.3
+
+57.35
+
+Figure 10: The graph of the function u18 (d)
+(1)
+
+If G13 = Γ13 , then u18 > u0 ≥ a13 . Since the function u18 (d) is monotone decreasing, we
+(1)
+have u18 (d) > a13 only if d < δ13 . Thus, G13 6= Γ13 .
+(2)
+
+5.2. The case G13 = Γ13 . It is already shown that d and all ui are functions in u1 , u2 . Let
+D1 := {(u1 , u2) : u17 ≥ u0 , u18 ≥ u0 } and D2 := {(u1, u2 ) : u0 = α(d) ≥ a13 }.
+We can see from Fig. 11 that the intersection I := D1 ∩ D2 ⊂ R2 consists of one point
+with u1 = u2 = 90◦ . It is not hard to prove this fact. Indeed, conversely, d13 > δ13 and there
+is a point (u1, u2 ) on the boundary of I such that u17 = u0 or u18 = u0 . Therefore, we have
+(2)
+the same case as in 5.1, a contradiction. Thus, G13 6= Γ13 .
+(3)
+
+5.3. The case G13 = Γ13 . This case can be considered by the same method as the case
+(2)
+G13 = Γ13 . Actually, for given u1 , u2 , d all angles ui , 3 ≤ i ≤ 16, i 6= 15 can be found by the
+same formulas as in 5.0. On the other hand,
+u15 = 2π − u4 − u16 − u0 .
+12
+
+90.8
+90.6
+
+D
+
+1
+
+90.4
+90.2
+90
+89.8
+89.6
+
+D
+
+2
+
+89.4
+
+89.4
+
+89.6
+
+89.8
+
+90
+
+90.2
+
+90.4
+
+90.6
+
+90.8
+
+Figure 11: D1 and D2
+Then all ui are functions in the variables u1 , u2 , and d. Since u17 = u0 (or equivalently
+b1 = d), we have the equation:
+u1 + u13 + u0 + u16 = 2π.
+It yields that all ui depend on two parameters.
+u0
+u13
+
+u0
+u13
+
+u9
+u
+u6 10 u
+14
+u5 u2 u7
+u1 u3
+u18
+u4
+u16
+u8
+u12
+u11
+
+u9
+u
+u19
+u6 10 u
+14
+u5 u2 u7
+u1 u3
+u18
+u4
+u16
+u8
+u12
+u11
+
+u15
+
+u15
+
+u0
+
+u0
+
+b3
+u20
+
+(3)
+
+Figure 12: Two subcases for the case G13 = Γ13 .
+The vertex v13 is isolated. In fact, we can shift this point in such a way that at least
+two edges v13 vk , where k = 8, 9, 10, 12, have lengths d. Then for two other edges we have
+inequalities: dist(v13 , vi ) ≥ d and dist(v13 , vj ) ≥ d.
+Arguing as in 5.2, we can show that there are parameters u1 , u2 such that u0 > a13 and
+at least one of the inequalities dist(v13 , vk ) ≥ d, k = i, j, becomes equality. It is not hard
+13
+
+to see that there are exactly two geometrically nonequivalent cases with exactly one edge
+v13 vk , k = 8, 9, 10, or 12, such that dist(v13 vk ) > d. These cases are shown in Fig. 12.
+Actually, the first subcase is case 5.1. For the second subcase consider the pentagon
+F := v5 v8 v12 v13 v10 . All angles of F can be found as functions in u1 , d. Since d and any two
+angles of F define all other angles we can use one of these equations to find u1 as a function
+in d. Then u19 (see Fig. 12) is a function in d. In fact, the graph of the function u19 (d) is
+very similar to the graph u18 (d) in Fig. 10, and u19 (d) is a monotone decreasing function.
+(3)
+Thus, u19 (d) cannot be greater than a13 , and G13 6= Γ13 .
+We see that if CG(X) = G13 , then CG(X) is isomorphic to Γ13 . Moreover, X is uniquely
+defined up to isometry and ψ(X) = δ13 ≈ 57.1367◦. This completes the proof.
+Acknowledgment. We wish to thank Robert Connelly, Alexey Glazyrin, Nikita Netsvetaev,
+and Günter Ziegler for helpful discussions and comments.
+
+References
+[1] M. Aigner and G.M. Ziegler, Proofs from THE BOOK, Springer, 1998 (first ed.) and
+2002 (second ed.)
+[2] K. Anstreicher, The thirteen spheres: A new proof, Discrete Comput. Geom. 31(2004),
+613-625.
+[3] C. Bachoc and F. Vallentin, New upper bounds for kissing numbers from semidefinite
+programming, J. Amer. Math. Soc. 21 (2008), 909-924.
+[4] K. Böröczky, The problem of Tammes for n = 11, Studia. Sci. Math. Hungar. 18 (1983)
+165-171.
+[5] K. Böröczky, The Newton-Gregory problem revisited, In: Discrete Geometry, A. Bezdek
+(ed.), Dekker, 2003, 103-110.
+[6] K. Böröczky, L. Szabó, Arrangements of 13 points on a sphere, In: Discrete Geometry,
+A. Bezdek (ed.), Dekker, 2003, 111-184.
+[7] K. Böröczky, L. Szabó, Arrangements of 14, 15, 16 and 17 points on a sphere, Studi.
+Sci. Math. Hung. 40 (2003), 407-421.
+[8] P. Brass, W.O.J. Moser, J. Pach, Research problems in discrete geometry, SpringerVerlag, 2005.
+[9] G. Brinkmann and B. D. McKay, Fast generation of planar graphs (expanded edition),
+http://cs.anu.edu.au/∼bdm/papers/plantri-full.pdf
+
+14
+
+[10] B. Casselman, The difficulties of kissing in three dimensions, Notices Amer. Math. Soc.,
+51(2004), 884-885.
+[11] L. Danzer, Finite point-sets on S2 with minimum distance as large as possible, Discr.
+Math., 60 (1986), 3-66.
+[12] L. Fejes Tóth, Über die Abschätzung des kürzesten Abstandes zweier Punkte eines
+auf einer Kugelfläche liegenden Punktsystems, Jber. Deutch. Math. Verein. 53 (1943),
+66-68.
+[13] L. Fejes Tóth, Lagerungen in der Ebene, auf der Kugel und in Raum, Springer-Verlag,
+1953; Russian translation, Moscow, 1958
+[14] T. Hales, The status of the Kepler conjecture, Mathematical Intelligencer 16(1994),
+47-58.
+[15] R. Hoppe, Bemerkung der Redaction, Archiv Math. Physik (Grunet) 56 (1874), 307-312.
+[16] W.-Y. Hsiang, Least action principle of crystal formation of dense packing type and
+Kepler’s conjecture, World Scientific, 2001.
+[17] J. Leech, The problem of the thirteen spheres, Math. Gazette 41 (1956), 22-23.
+[18] V.I. Levenshtein, On bounds for packing in n-dimensional Euclidean space, Sov. Math.
+Dokl. 20(2), 1979, 417-421.
+[19] H. Maehara, Isoperimetric theorem for spherical polygons and the problem of 13 spheres,
+Ryukyu Math. J., 14 (2001), 41-57.
+[20] H. Maehara, The problem of thirteen spheres - a proof for undergraduates, European
+Journal of Combinatorics, 28 (2007), 1770-1778.
+[21] O. R. Musin, The kissing problem in three dimensions, Discrete Comput. Geom., 35
+(2006), 375-384.
+[22] O. R. Musin, The kissing number in four dimensions, Ann. of Math., 168 (2008), 1-32.
+[23] A.M. Odlyzko and N.J.A. Sloane, New bounds on the number of unit spheres that can
+touch a unit sphere in n dimensions, J. of Combinatorial Theory A, 26 (1979), 210-214.
+[24] plantri and fullgen, http://cs.anu.edu.au/∼bdm/plantri/
+[25] F. Pfender and G.M. Ziegler, Kissing numbers, sphere packings, and some unexpected
+proofs, Notices Amer. Math. Soc., 51(2004), 873-883.
+[26] R.M. Robinson, Arrangement of 24 Circles on a Sphere, Math. Ann. 144 (1961), 17-48.
+
+15
+
+[27] K. Schütte and B.L. v. d. Waerden, Auf welcher Kugel haben 5,6,7,8 oder 9 Punkte mit
+Mindestabstand 1 Platz? Math. Ann. 123 (1951), 96-124.
+[28] K. Schütte and B.L. van der Waerden, Das Problem der dreizehn Kugeln, Math. Ann.
+125 (1953), 325-334.
+[29] G.G. Szpiro, Kepler’s conjecture, Wiley, 2002.
+[30] R.M.L. Tammes, On the Origin Number and Arrangement of the Places of Exits on the
+Surface of Pollengrains, Rec. Trv. Bot. Neerl. 27 (1930), 1-84.
+
+O. R. Musin, Department of Mathematics, University of Texas at Brownsville, 80 Fort
+Brown, Brownsville, TX, 78520, USA.
+E-mail address: oleg.musin@utb.edu
+A. S. Tarasov, Institute for System Analysis, Russian Academy of Science, 9 Pr. 60-letiya
+Oktyabrya, Moscow, Russia.
+E-mail address: tarasov.alexey@gmail.com
+
+16
+
+

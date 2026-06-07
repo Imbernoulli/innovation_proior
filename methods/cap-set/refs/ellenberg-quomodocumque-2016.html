@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<title>Bounds for cap sets | Quomodocumque</title>
+	<link rel="profile" href="http://gmpg.org/xfn/11" />
+	<link rel="pingback" href="https://quomodocumque.wordpress.com/xmlrpc.php" />
+	<meta name='robots' content='max-image-preview:large' />
+<link rel='dns-prefetch' href='//widgets.wp.com' />
+<link rel='dns-prefetch' href='//s0.wp.com' />
+<link rel='dns-prefetch' href='//fonts-api.wp.com' />
+<link rel="alternate" type="application/rss+xml" title="Quomodocumque &raquo; Feed" href="https://quomodocumque.wordpress.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Quomodocumque &raquo; Comments Feed" href="https://quomodocumque.wordpress.com/comments/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Quomodocumque &raquo; Bounds for cap&nbsp;sets Comments Feed" href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/feed/" />
+	<script type="text/javascript">
+		/* <![CDATA[ */
+		function addLoadEvent(func) {
+			var oldonload = window.onload;
+			if (typeof window.onload != 'function') {
+				window.onload = func;
+			} else {
+				window.onload = function () {
+					oldonload();
+					func();
+				}
+			}
+		}
+		/* ]]> */
+	</script>
+	<link crossorigin='anonymous' rel='stylesheet' id='all-css-0-1' href='/_static/??-eJxtjEsKgDAMBS9kjbqwuBDPUtog9o9J8fpaEQSRBw8GhoEjC50iY2QIRWRf1i0SWOSstHsYQkr1TPFIsKNXjEbkRPyhVhM18J/0m8M3fFPVlzD3UnbTtWG0J2CTNNk=&cssminify=yes' type='text/css' media='all' />
+<style id="wp-emoji-styles-inline-css">
+
+	img.wp-smiley, img.emoji {
+		display: inline !important;
+		border: none !important;
+		box-shadow: none !important;
+		height: 1em !important;
+		width: 1em !important;
+		margin: 0 0.07em !important;
+		vertical-align: -0.1em !important;
+		background: none !important;
+		padding: 0 !important;
+	}
+/*# sourceURL=wp-emoji-styles-inline-css */
+</style>
+<style id="wp-block-library-inline-css">
+:root{--wp-block-synced-color:#7a00df;--wp-block-synced-color--rgb:122,0,223;--wp-bound-block-color:var(--wp-block-synced-color);--wp-editor-canvas-background:#ddd;--wp-admin-theme-color:#007cba;--wp-admin-theme-color--rgb:0,124,186;--wp-admin-theme-color-darker-10:#006ba1;--wp-admin-theme-color-darker-10--rgb:0,107,160.5;--wp-admin-theme-color-darker-20:#005a87;--wp-admin-theme-color-darker-20--rgb:0,90,135;--wp-admin-border-width-focus:2px}@media (min-resolution:192dpi){:root{--wp-admin-border-width-focus:1.5px}}.wp-element-button{cursor:pointer}:root .has-very-light-gray-background-color{background-color:#eee}:root .has-very-dark-gray-background-color{background-color:#313131}:root .has-very-light-gray-color{color:#eee}:root .has-very-dark-gray-color{color:#313131}:root .has-vivid-green-cyan-to-vivid-cyan-blue-gradient-background{background:linear-gradient(135deg,#00d084,#0693e3)}:root .has-purple-crush-gradient-background{background:linear-gradient(135deg,#34e2e4,#4721fb 50%,#ab1dfe)}:root .has-hazy-dawn-gradient-background{background:linear-gradient(135deg,#faaca8,#dad0ec)}:root .has-subdued-olive-gradient-background{background:linear-gradient(135deg,#fafae1,#67a671)}:root .has-atomic-cream-gradient-background{background:linear-gradient(135deg,#fdd79a,#004a59)}:root .has-nightshade-gradient-background{background:linear-gradient(135deg,#330968,#31cdcf)}:root .has-midnight-gradient-background{background:linear-gradient(135deg,#020381,#2874fc)}:root{--wp--preset--font-size--normal:16px;--wp--preset--font-size--huge:42px}.has-regular-font-size{font-size:1em}.has-larger-font-size{font-size:2.625em}.has-normal-font-size{font-size:var(--wp--preset--font-size--normal)}.has-huge-font-size{font-size:var(--wp--preset--font-size--huge)}:root .has-text-align-center{text-align:center}:root .has-text-align-left{text-align:left}:root .has-text-align-right{text-align:right}.has-fit-text{white-space:nowrap!important}#end-resizable-editor-section{display:none}.aligncenter{clear:both}.items-justified-left{justify-content:flex-start}.items-justified-center{justify-content:center}.items-justified-right{justify-content:flex-end}.items-justified-space-between{justify-content:space-between}.screen-reader-text{word-wrap:normal!important;border:0;clip-path:inset(50%);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px;word-break:normal!important}.screen-reader-text:focus{background-color:#ddd;clip-path:none;color:#444;display:block;font-size:1em;height:auto;left:5px;line-height:normal;padding:15px 23px 14px;text-decoration:none;top:5px;width:auto;z-index:100000}html :where(.has-border-color){border-style:solid}html :where([style*=border-color]){border-style:solid}html :where([style*=border-top-color]){border-top-style:solid}html :where([style*=border-right-color]){border-right-style:solid}html :where([style*=border-bottom-color]){border-bottom-style:solid}html :where([style*=border-left-color]){border-left-style:solid}html :where([style*=border-width]){border-style:solid}html :where([style*=border-top-width]){border-top-style:solid}html :where([style*=border-right-width]){border-right-style:solid}html :where([style*=border-bottom-width]){border-bottom-style:solid}html :where([style*=border-left-width]){border-left-style:solid}html :where(img[class*=wp-image-]){height:auto;max-width:100%}:where(figure){margin:0 0 1em}html :where(.is-position-sticky){--wp-admin--admin-bar--position-offset:var(--wp-admin--admin-bar--height,0px)}@media screen and (max-width:600px){html :where(.is-position-sticky){--wp-admin--admin-bar--position-offset:0px}}
+
+/*# sourceURL=/wp-content/plugins/gutenberg-core/v23.3.2/build/styles/block-library/common.min.css */
+</style>
+<style id="wp-block-library-inline-css-extra">
+.has-text-align-justify {
+	text-align:justify;
+}
+.has-text-align-justify{text-align:justify;}
+/*# sourceURL=wp-block-library-inline-css */
+</style>
+
+<style id="classic-theme-styles-inline-css">
+.wp-block-button__link{background-color:#32373c;border-radius:9999px;box-shadow:none;color:#fff;font-size:1.125em;padding:calc(.667em + 2px) calc(1.333em + 2px);text-decoration:none}.wp-block-file__button{background:#32373c;color:#fff}.wp-block-accordion-heading{margin:0}.wp-block-accordion-heading__toggle{background-color:inherit!important;color:inherit!important}.wp-block-accordion-heading__toggle:not(:focus-visible){outline:none}.wp-block-accordion-heading__toggle:focus,.wp-block-accordion-heading__toggle:hover{background-color:inherit!important;border:none;box-shadow:none;color:inherit;padding:var(--wp--preset--spacing--20,1em) 0;text-decoration:none}.wp-block-accordion-heading__toggle:focus-visible{outline:auto;outline-offset:0}.wp-block-tab:not(.has-text-color){color:inherit!important}.wp-block-tab:not(.has-background){background-color:inherit!important}.wp-block-tab:focus,.wp-block-tab:hover{text-decoration:none}.wp-block-tab:focus-visible{outline:auto;outline-offset:0}
+/*# sourceURL=/wp-content/plugins/gutenberg-core/v23.3.2/build/styles/block-library/classic.min.css */
+</style>
+
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-8-1' href='/_static/??/wp-content/mu-plugins/core-compat/wp-mediaelement.css,/wp-content/mu-plugins/wpcom-bbpress-premium-themes.css?m=1432920480j&cssminify=yes' type='text/css' media='all' />
+<style id="global-styles-inline-css">
+:root{--wp--preset--aspect-ratio--square: 1;--wp--preset--aspect-ratio--4-3: 4/3;--wp--preset--aspect-ratio--3-4: 3/4;--wp--preset--aspect-ratio--3-2: 3/2;--wp--preset--aspect-ratio--2-3: 2/3;--wp--preset--aspect-ratio--16-9: 16/9;--wp--preset--aspect-ratio--9-16: 9/16;--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgb(6,147,227) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgb(252,185,0) 0%,rgb(255,105,0) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgb(255,105,0) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--font-family--albert-sans: 'Albert Sans', sans-serif;--wp--preset--font-family--alegreya: Alegreya, serif;--wp--preset--font-family--arvo: Arvo, serif;--wp--preset--font-family--bodoni-moda: 'Bodoni Moda', serif;--wp--preset--font-family--bricolage-grotesque: 'Bricolage Grotesque', sans-serif;--wp--preset--font-family--cabin: Cabin, sans-serif;--wp--preset--font-family--chivo: Chivo, sans-serif;--wp--preset--font-family--commissioner: Commissioner, sans-serif;--wp--preset--font-family--cormorant: Cormorant, serif;--wp--preset--font-family--courier-prime: 'Courier Prime', monospace;--wp--preset--font-family--crimson-pro: 'Crimson Pro', serif;--wp--preset--font-family--dm-mono: 'DM Mono', monospace;--wp--preset--font-family--dm-sans: 'DM Sans', sans-serif;--wp--preset--font-family--dm-serif-display: 'DM Serif Display', serif;--wp--preset--font-family--domine: Domine, serif;--wp--preset--font-family--eb-garamond: 'EB Garamond', serif;--wp--preset--font-family--epilogue: Epilogue, sans-serif;--wp--preset--font-family--fahkwang: Fahkwang, sans-serif;--wp--preset--font-family--figtree: Figtree, sans-serif;--wp--preset--font-family--fira-sans: 'Fira Sans', sans-serif;--wp--preset--font-family--fjalla-one: 'Fjalla One', sans-serif;--wp--preset--font-family--fraunces: Fraunces, serif;--wp--preset--font-family--gabarito: Gabarito, system-ui;--wp--preset--font-family--ibm-plex-mono: 'IBM Plex Mono', monospace;--wp--preset--font-family--ibm-plex-sans: 'IBM Plex Sans', sans-serif;--wp--preset--font-family--ibarra-real-nova: 'Ibarra Real Nova', serif;--wp--preset--font-family--instrument-serif: 'Instrument Serif', serif;--wp--preset--font-family--inter: Inter, sans-serif;--wp--preset--font-family--josefin-sans: 'Josefin Sans', sans-serif;--wp--preset--font-family--jost: Jost, sans-serif;--wp--preset--font-family--libre-baskerville: 'Libre Baskerville', serif;--wp--preset--font-family--libre-franklin: 'Libre Franklin', sans-serif;--wp--preset--font-family--literata: Literata, serif;--wp--preset--font-family--lora: Lora, serif;--wp--preset--font-family--merriweather: Merriweather, serif;--wp--preset--font-family--montserrat: Montserrat, sans-serif;--wp--preset--font-family--newsreader: Newsreader, serif;--wp--preset--font-family--noto-sans-mono: 'Noto Sans Mono', sans-serif;--wp--preset--font-family--nunito: Nunito, sans-serif;--wp--preset--font-family--open-sans: 'Open Sans', sans-serif;--wp--preset--font-family--overpass: Overpass, sans-serif;--wp--preset--font-family--pt-serif: 'PT Serif', serif;--wp--preset--font-family--petrona: Petrona, serif;--wp--preset--font-family--piazzolla: Piazzolla, serif;--wp--preset--font-family--playfair-display: 'Playfair Display', serif;--wp--preset--font-family--plus-jakarta-sans: 'Plus Jakarta Sans', sans-serif;--wp--preset--font-family--poppins: Poppins, sans-serif;--wp--preset--font-family--raleway: Raleway, sans-serif;--wp--preset--font-family--roboto: Roboto, sans-serif;--wp--preset--font-family--roboto-slab: 'Roboto Slab', serif;--wp--preset--font-family--rubik: Rubik, sans-serif;--wp--preset--font-family--rufina: Rufina, serif;--wp--preset--font-family--sora: Sora, sans-serif;--wp--preset--font-family--source-sans-3: 'Source Sans 3', sans-serif;--wp--preset--font-family--source-serif-4: 'Source Serif 4', serif;--wp--preset--font-family--space-mono: 'Space Mono', monospace;--wp--preset--font-family--syne: Syne, sans-serif;--wp--preset--font-family--texturina: Texturina, serif;--wp--preset--font-family--urbanist: Urbanist, sans-serif;--wp--preset--font-family--work-sans: 'Work Sans', sans-serif;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgb(255, 255, 255), 6px 6px rgb(0, 0, 0);--wp--preset--shadow--crisp: 6px 6px 0px rgb(0, 0, 0);}.wp-block-button{--wp--preset--dimension--25: 25%;--wp--preset--dimension--50: 50%;--wp--preset--dimension--75: 75%;--wp--preset--dimension--100: 100%;}:where(body) { margin: 0; }:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flex{display: flex;}.is-layout-flex{flex-wrap: wrap;align-items: center;}.is-layout-flex > :is(*, div){margin: 0;}body .is-layout-grid{display: grid;}.is-layout-grid > :is(*, div){margin: 0;}body{padding-top: 0px;padding-right: 0px;padding-bottom: 0px;padding-left: 0px;}:root :where(.wp-element-button, .wp-block-button__link){background-color: #32373c;border-width: 0;color: #fff;font-family: inherit;font-size: inherit;font-style: inherit;font-weight: inherit;letter-spacing: inherit;line-height: inherit;padding-top: calc(0.667em + 2px);padding-right: calc(1.333em + 2px);padding-bottom: calc(0.667em + 2px);padding-left: calc(1.333em + 2px);text-decoration: none;text-transform: inherit;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}.has-albert-sans-font-family{font-family: var(--wp--preset--font-family--albert-sans) !important;}.has-alegreya-font-family{font-family: var(--wp--preset--font-family--alegreya) !important;}.has-arvo-font-family{font-family: var(--wp--preset--font-family--arvo) !important;}.has-bodoni-moda-font-family{font-family: var(--wp--preset--font-family--bodoni-moda) !important;}.has-bricolage-grotesque-font-family{font-family: var(--wp--preset--font-family--bricolage-grotesque) !important;}.has-cabin-font-family{font-family: var(--wp--preset--font-family--cabin) !important;}.has-chivo-font-family{font-family: var(--wp--preset--font-family--chivo) !important;}.has-commissioner-font-family{font-family: var(--wp--preset--font-family--commissioner) !important;}.has-cormorant-font-family{font-family: var(--wp--preset--font-family--cormorant) !important;}.has-courier-prime-font-family{font-family: var(--wp--preset--font-family--courier-prime) !important;}.has-crimson-pro-font-family{font-family: var(--wp--preset--font-family--crimson-pro) !important;}.has-dm-mono-font-family{font-family: var(--wp--preset--font-family--dm-mono) !important;}.has-dm-sans-font-family{font-family: var(--wp--preset--font-family--dm-sans) !important;}.has-dm-serif-display-font-family{font-family: var(--wp--preset--font-family--dm-serif-display) !important;}.has-domine-font-family{font-family: var(--wp--preset--font-family--domine) !important;}.has-eb-garamond-font-family{font-family: var(--wp--preset--font-family--eb-garamond) !important;}.has-epilogue-font-family{font-family: var(--wp--preset--font-family--epilogue) !important;}.has-fahkwang-font-family{font-family: var(--wp--preset--font-family--fahkwang) !important;}.has-figtree-font-family{font-family: var(--wp--preset--font-family--figtree) !important;}.has-fira-sans-font-family{font-family: var(--wp--preset--font-family--fira-sans) !important;}.has-fjalla-one-font-family{font-family: var(--wp--preset--font-family--fjalla-one) !important;}.has-fraunces-font-family{font-family: var(--wp--preset--font-family--fraunces) !important;}.has-gabarito-font-family{font-family: var(--wp--preset--font-family--gabarito) !important;}.has-ibm-plex-mono-font-family{font-family: var(--wp--preset--font-family--ibm-plex-mono) !important;}.has-ibm-plex-sans-font-family{font-family: var(--wp--preset--font-family--ibm-plex-sans) !important;}.has-ibarra-real-nova-font-family{font-family: var(--wp--preset--font-family--ibarra-real-nova) !important;}.has-instrument-serif-font-family{font-family: var(--wp--preset--font-family--instrument-serif) !important;}.has-inter-font-family{font-family: var(--wp--preset--font-family--inter) !important;}.has-josefin-sans-font-family{font-family: var(--wp--preset--font-family--josefin-sans) !important;}.has-jost-font-family{font-family: var(--wp--preset--font-family--jost) !important;}.has-libre-baskerville-font-family{font-family: var(--wp--preset--font-family--libre-baskerville) !important;}.has-libre-franklin-font-family{font-family: var(--wp--preset--font-family--libre-franklin) !important;}.has-literata-font-family{font-family: var(--wp--preset--font-family--literata) !important;}.has-lora-font-family{font-family: var(--wp--preset--font-family--lora) !important;}.has-merriweather-font-family{font-family: var(--wp--preset--font-family--merriweather) !important;}.has-montserrat-font-family{font-family: var(--wp--preset--font-family--montserrat) !important;}.has-newsreader-font-family{font-family: var(--wp--preset--font-family--newsreader) !important;}.has-noto-sans-mono-font-family{font-family: var(--wp--preset--font-family--noto-sans-mono) !important;}.has-nunito-font-family{font-family: var(--wp--preset--font-family--nunito) !important;}.has-open-sans-font-family{font-family: var(--wp--preset--font-family--open-sans) !important;}.has-overpass-font-family{font-family: var(--wp--preset--font-family--overpass) !important;}.has-pt-serif-font-family{font-family: var(--wp--preset--font-family--pt-serif) !important;}.has-petrona-font-family{font-family: var(--wp--preset--font-family--petrona) !important;}.has-piazzolla-font-family{font-family: var(--wp--preset--font-family--piazzolla) !important;}.has-playfair-display-font-family{font-family: var(--wp--preset--font-family--playfair-display) !important;}.has-plus-jakarta-sans-font-family{font-family: var(--wp--preset--font-family--plus-jakarta-sans) !important;}.has-poppins-font-family{font-family: var(--wp--preset--font-family--poppins) !important;}.has-raleway-font-family{font-family: var(--wp--preset--font-family--raleway) !important;}.has-roboto-font-family{font-family: var(--wp--preset--font-family--roboto) !important;}.has-roboto-slab-font-family{font-family: var(--wp--preset--font-family--roboto-slab) !important;}.has-rubik-font-family{font-family: var(--wp--preset--font-family--rubik) !important;}.has-rufina-font-family{font-family: var(--wp--preset--font-family--rufina) !important;}.has-sora-font-family{font-family: var(--wp--preset--font-family--sora) !important;}.has-source-sans-3-font-family{font-family: var(--wp--preset--font-family--source-sans-3) !important;}.has-source-serif-4-font-family{font-family: var(--wp--preset--font-family--source-serif-4) !important;}.has-space-mono-font-family{font-family: var(--wp--preset--font-family--space-mono) !important;}.has-syne-font-family{font-family: var(--wp--preset--font-family--syne) !important;}.has-texturina-font-family{font-family: var(--wp--preset--font-family--texturina) !important;}.has-urbanist-font-family{font-family: var(--wp--preset--font-family--urbanist) !important;}.has-work-sans-font-family{font-family: var(--wp--preset--font-family--work-sans) !important;}
+/*# sourceURL=global-styles-inline-css */
+</style>
+
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-10-1' href='/wp-content/mu-plugins/jetpack-mu-wpcom-plugin/moon/jetpack_vendor/automattic/jetpack-mu-wpcom/src/build/verbum-comments/verbum-comments.css?m=1777410324i&cssminify=yes' type='text/css' media='all' />
+<link rel='stylesheet' id='verbum-gutenberg-css-css' href='https://widgets.wp.com/verbum-block-editor/block-editor.css?ver=1771405207' media='all' />
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-12-1' href='/wp-content/themes/pub/chunk/style.css?m=1741693326i&cssminify=yes' type='text/css' media='all' />
+<link rel='stylesheet' id='oswald-css' href='https://fonts-api.wp.com/css?family=Oswald&#038;subset=latin,latin-ext&#038;ver=7.0-RC4-62382' media='all' />
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-14-1' href='/_static/??-eJx9y0EKwkAMheELGUNhRF2IZ2lDnI5mkqHJULy9dVc37t4P78O1AZkGa2DMXNmx9Qlp7vrCooQeb2FYG1k9kvsBd6B2aNJzUceFJ7G8zYzba5f/UGYDMRqjmP4EPGQsy5fe621Ip2tKl/OQnh94REAa&cssminify=yes' type='text/css' media='all' />
+<link crossorigin='anonymous' rel='stylesheet' id='print-css-15-1' href='/wp-content/mu-plugins/global-print/global-print.css?m=1465851035i&cssminify=yes' type='text/css' media='print' />
+<style id="jetpack-global-styles-frontend-style-inline-css">
+:root { --font-headings: unset; --font-base: unset; --font-headings-default: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif; --font-base-default: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;}
+/*# sourceURL=jetpack-global-styles-frontend-style-inline-css */
+</style>
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-18-1' href='/_static/??-eJyNjcEKAjEMRH/IGlcqPYmfIt20tF3TpJiWxb/XFS/ixcswD4Y3sDaDwj1yhzpMo5EKKyyxN4+3D0MV2SIMigqa/T0GH8LjXQunParu4H/TtTDCPAoFUMHiyZAk0S/4cfYc6+s9W0gks6dtcKnnyTl7stPh6JYnG8BLYw==&cssminify=yes' type='text/css' media='all' />
+<script id="jetpack_related-posts-js-extra">
+var related_posts_js_options = {"post_heading":"h4"};
+//# sourceURL=jetpack_related-posts-js-extra
+</script>
+<script id="wpcom-actionbar-placeholder-js-extra">
+var actionbardata = {"siteID":"1236000","postID":"5616","siteURL":"https://quomodocumque.wordpress.com","xhrURL":"https://quomodocumque.wordpress.com/wp-admin/admin-ajax.php","nonce":"97c876b1da","isLoggedIn":"","statusMessage":"","subsEmailDefault":"instantly","proxyScriptUrl":"https://s0.wp.com/wp-content/js/wpcom-proxy-request.js?m=1513050504i&amp;ver=20211021","shortlink":"https://wp.me/p5bxu-1sA","i18n":{"followedText":"New posts from this site will now appear in your \u003Ca href=\"https://wordpress.com/reader\"\u003EReader\u003C/a\u003E","foldBar":"Collapse this bar","unfoldBar":"Expand this bar","shortLinkCopied":"Shortlink copied to clipboard."}};
+//# sourceURL=wpcom-actionbar-placeholder-js-extra
+</script>
+<script id="jetpack-mu-wpcom-settings-js-before">
+var JETPACK_MU_WPCOM_SETTINGS = {"assetsUrl":"https://s0.wp.com/wp-content/mu-plugins/jetpack-mu-wpcom-plugin/moon/jetpack_vendor/automattic/jetpack-mu-wpcom/src/build/"};
+//# sourceURL=jetpack-mu-wpcom-settings-js-before
+</script>
+<script crossorigin='anonymous' type='text/javascript'  src='/_static/??/wp-content/mu-plugins/jetpack-plugin/moon/_inc/build/related-posts/related-posts.min.js,/wp-content/js/rlt-proxy.js?m=1755006225j'></script>
+<script id="rlt-proxy-js-after">
+	rltInitialize( {"token":null,"iframeOrigins":["https:\/\/widgets.wp.com"]} );
+//# sourceURL=rlt-proxy-js-after
+</script>
+<link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://quomodocumque.wordpress.com/xmlrpc.php?rsd" />
+<meta name="generator" content="WordPress.com" />
+<link rel="canonical" href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/" />
+<link rel='shortlink' href='https://wp.me/p5bxu-1sA' />
+<link rel="alternate" type="application/json+oembed" href="https://public-api.wordpress.com/oembed/?format=json&amp;url=https%3A%2F%2Fquomodocumque.wordpress.com%2F2016%2F05%2F13%2Fbounds-for-cap-sets%2F&amp;for=wpcom-auto-discovery" /><link rel="alternate" type="application/xml+oembed" href="https://public-api.wordpress.com/oembed/?format=xml&amp;url=https%3A%2F%2Fquomodocumque.wordpress.com%2F2016%2F05%2F13%2Fbounds-for-cap-sets%2F&amp;for=wpcom-auto-discovery" />
+<!-- Jetpack Open Graph Tags -->
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Bounds for cap sets" />
+<meta property="og:url" content="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/" />
+<meta property="og:description" content="Briefly:  it seems to me that the idea of the Croot-Lev-Pach paper I posted about yesterday can indeed be used to give a new bound on the size of subsets of F_3^n with no three-term arithmetic prog…" />
+<meta property="article:published_time" content="2016-05-13T22:29:29+00:00" />
+<meta property="article:modified_time" content="2016-05-31T01:19:23+00:00" />
+<meta property="og:site_name" content="Quomodocumque" />
+<meta property="og:image" content="https://s0.wp.com/i/blank.jpg?m=1383295312i" />
+<meta property="og:image:width" content="200" />
+<meta property="og:image:height" content="200" />
+<meta property="og:image:alt" content="" />
+<meta property="og:locale" content="en_US" />
+<meta property="fb:app_id" content="249643311490" />
+<meta property="article:publisher" content="https://www.facebook.com/WordPresscom" />
+<meta name="twitter:text:title" content="Bounds for cap&nbsp;sets" />
+<meta name="twitter:card" content="summary" />
+
+<!-- End Jetpack Open Graph Tags -->
+<link rel="shortcut icon" type="image/x-icon" href="https://s0.wp.com/i/favicon.ico?m=1713425267i" sizes="16x16 24x24 32x32 48x48" />
+<link rel="icon" type="image/x-icon" href="https://s0.wp.com/i/favicon.ico?m=1713425267i" sizes="16x16 24x24 32x32 48x48" />
+<link rel="apple-touch-icon" href="https://s0.wp.com/i/webclip.png?m=1713868326i" />
+<link rel='openid.server' href='https://quomodocumque.wordpress.com/?openidserver=1' />
+<link rel='openid.delegate' href='https://quomodocumque.wordpress.com/' />
+<link rel="search" type="application/opensearchdescription+xml" href="https://quomodocumque.wordpress.com/osd.xml" title="Quomodocumque" />
+<link rel="search" type="application/opensearchdescription+xml" href="https://s1.wp.com/opensearch.xml" title="WordPress.com" />
+<style>.recentcomments a{display:inline !important;padding:0 !important;margin:0 !important;}</style>		<style type="text/css">
+			.recentcomments a {
+				display: inline !important;
+				padding: 0 !important;
+				margin: 0 !important;
+			}
+
+			table.recentcommentsavatartop img.avatar, table.recentcommentsavatarend img.avatar {
+				border: 0px;
+				margin: 0;
+			}
+
+			table.recentcommentsavatartop a, table.recentcommentsavatarend a {
+				border: 0px !important;
+				background-color: transparent !important;
+			}
+
+			td.recentcommentsavatarend, td.recentcommentsavatartop {
+				padding: 0px 0px 1px 0px;
+				margin: 0px;
+			}
+
+			td.recentcommentstextend {
+				border: none !important;
+				padding: 0px 0px 2px 10px;
+			}
+
+			.rtl td.recentcommentstextend {
+				padding: 0px 10px 2px 0px;
+			}
+
+			td.recentcommentstexttop {
+				border: none;
+				padding: 0px 0px 0px 10px;
+			}
+
+			.rtl td.recentcommentstexttop {
+				padding: 0px 10px 0px 0px;
+			}
+		</style>
+		<meta name="description" content="Briefly:  it seems to me that the idea of the Croot-Lev-Pach paper I posted about yesterday can indeed be used to give a new bound on the size of subsets of F_3^n with no three-term arithmetic progression! Such a set has size at most (2.756)^n. (There&#039;s actually a closed form for the constant, I think,&hellip;" />
+<link crossorigin='anonymous' rel='stylesheet' id='all-css-0-3' href='/wp-content/mu-plugins/jetpack-plugin/moon/modules/widgets/top-posts/style.css?m=1753284714i&cssminify=yes' type='text/css' media='all' />
+
+</head>
+<body class="wp-singular post-template-default single single-post postid-5616 single-format-standard wp-theme-pubchunk customizer-styles-applied single-author jetpack-reblog-enabled">
+
+<div id="container">
+
+	<div id="header">
+		<h1 id="site-title"><a href="https://quomodocumque.wordpress.com/" title="Quomodocumque" rel="home">Quomodocumque</a></h1>
+		<h2 id="site-description">Math, Madison, food, the Orioles, books, my kids.</h2>
+	</div>
+
+	<div id="menu">
+				<div class="menu"><ul>
+<li ><a href="https://quomodocumque.wordpress.com/">Home</a></li><li class="page_item page-item-2"><a href="https://quomodocumque.wordpress.com/about/">About</a></li>
+<li class="page_item page-item-2673"><a href="https://quomodocumque.wordpress.com/the-booklist/">Booklist 2011-</a></li>
+<li class="page_item page-item-4503"><a href="https://quomodocumque.wordpress.com/how-not-to-be-wrong/">How Not To Be&nbsp;Wrong</a></li>
+</ul></div>
+	</div>
+
+	<div id="contents">
+					
+				
+<div class="post-5616 post type-post status-publish format-standard hentry category-math tag-additive-combinatorics tag-affine-cap tag-arithmetic-progressions tag-cap-set tag-combinatorics" id="post-5616">
+	<div class="entry-meta">
+				<div class="date"><a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/">May 13 2016</a></div>
+						<div class="comments"><a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comments">38 Comments</a></div>
+						<span class="byline">
+			<a href="https://quomodocumque.wordpress.com/author/cjse/">
+				By JSE			</a>
+		</span><!-- .byline -->
+				<span class="cat-links"><a href="https://quomodocumque.wordpress.com/category/math/" rel="category tag">math</a></span>
+							</div>
+	<div class="main">
+						<h2 class="entry-title">
+					Bounds for cap&nbsp;sets				</h2>
+		
+		<div class="entry-content">
+						<p>Briefly:  it seems to me that the idea of the Croot-Lev-Pach paper <a href="https://quomodocumque.wordpress.com/2016/05/12/croot-lev-pach-on-ap-free-sets-in-z4zn/">I posted about yesterday</a> can indeed be used to give a new bound on the size of subsets of F_3^n with no three-term arithmetic progression! Such a set has size at most (2.756)^n. (There&#8217;s actually a closed form for the constant, I think, but I haven&#8217;t written it down yet.)</p>
+<p>Here&#8217;s the preprint. It&#8217;s very short. I&#8217;ll post this to the arXiv in a day or two, assuming I (or you) don&#8217;t find anything wrong with it, so comment if you have comments! <strong>Note:</strong> I&#8217;ve removed the link, since the official version of this result is now <a href="https://arxiv.org/abs/1605.09223">the joint paper by me and Gijswijt</a>, and the old version shouldn&#8217;t be cited.</p>
+<p><strong>Update:</strong>  Busy few days of administrative stuff and travel, sorry for not having updated the preprint yet, will try to finish it today.  One note, already observed below in the comments:  you get a similar bound for subsets of (F_q)^n free of solutions to (ax+by+cz=0) for any (a,b,c) with a+b+c=0; the cap set case is q=3, (a,b,c) = (1,1,1).</p>
+<p><strong>Update 2:</strong>  Dion Gijswijt and I will be submitting this result as a joint paper, which will amalgamate the presentations of our essentially identical arguments.  Dion carried out his work independently of mine at around the same time, and the idea should be credited to both of us.  <a href="https://arxiv.org/abs/1605.09223">Our joint paper is available on the arXiv</a>.</p>
+<p>&nbsp;</p>
+<div id="jp-post-flair" class="sharedaddy sd-like-enabled sd-sharing-enabled"><div class="sharedaddy sd-sharing-enabled"><div class="robots-nocontent sd-block sd-social sd-social-text sd-sharing"><h3 class="sd-title">Share this:</h3><div class="sd-content"><ul><li class="share-email"><a rel="nofollow noopener noreferrer"
+				data-shared="sharing-email-5616"
+				class="share-email sd-button no-icon"
+				href="mailto:?subject=%5BShared%20Post%5D%20Bounds%20for%20cap%20sets&#038;body=https%3A%2F%2Fquomodocumque.wordpress.com%2F2016%2F05%2F13%2Fbounds-for-cap-sets%2F&#038;share=email"
+				target="_blank"
+				aria-labelledby="sharing-email-5616"
+				data-email-share-error-title="Do you have email set up?" data-email-share-error-text="If you&#039;re having problems sharing via email, you might not have email set up for your browser. You may need to create a new email yourself." data-email-share-nonce="9687e3a79d" data-email-share-track-url="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/?share=email">
+				<span id="sharing-email-5616" hidden>Email a link to a friend (Opens in new window)</span>
+				<span>Email</span>
+			</a></li><li class="share-facebook"><a rel="nofollow noopener noreferrer"
+				data-shared="sharing-facebook-5616"
+				class="share-facebook sd-button no-icon"
+				href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/?share=facebook"
+				target="_blank"
+				aria-labelledby="sharing-facebook-5616"
+				>
+				<span id="sharing-facebook-5616" hidden>Share on Facebook (Opens in new window)</span>
+				<span>Facebook</span>
+			</a></li><li class="share-reddit"><a rel="nofollow noopener noreferrer"
+				data-shared="sharing-reddit-5616"
+				class="share-reddit sd-button no-icon"
+				href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/?share=reddit"
+				target="_blank"
+				aria-labelledby="sharing-reddit-5616"
+				>
+				<span id="sharing-reddit-5616" hidden>Share on Reddit (Opens in new window)</span>
+				<span>Reddit</span>
+			</a></li><li class="share-twitter"><a rel="nofollow noopener noreferrer"
+				data-shared="sharing-twitter-5616"
+				class="share-twitter sd-button no-icon"
+				href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/?share=twitter"
+				target="_blank"
+				aria-labelledby="sharing-twitter-5616"
+				>
+				<span id="sharing-twitter-5616" hidden>Share on X (Opens in new window)</span>
+				<span>X</span>
+			</a></li><li class="share-end"></li></ul></div></div></div><div class='sharedaddy sd-block sd-like jetpack-likes-widget-wrapper jetpack-likes-widget-unloaded' id='like-post-wrapper-1236000-5616-6a23e1e07708f' data-src='//widgets.wp.com/likes/index.html?ver=20260606#blog_id=1236000&amp;post_id=5616&amp;origin=quomodocumque.wordpress.com&amp;obj_id=1236000-5616-6a23e1e07708f' data-name='like-post-frame-1236000-5616-6a23e1e07708f' data-title='Like or Reblog'><div class='likes-widget-placeholder post-likes-widget-placeholder' style='height: 55px;'><span class='button'><span>Like</span></span> <span class='loading'>Loading...</span></div><span class='sd-text-color'></span><a class='sd-link-color'></a></div>
+<div id='jp-relatedposts' class='jp-relatedposts' >
+	<h3 class="jp-relatedposts-headline"><em>Related</em></h3>
+</div></div>		</div>
+		<span class="tag-links"><strong>Tagged</strong> <a href="https://quomodocumque.wordpress.com/tag/additive-combinatorics/" rel="tag">additive combinatorics</a>, <a href="https://quomodocumque.wordpress.com/tag/affine-cap/" rel="tag">affine cap</a>, <a href="https://quomodocumque.wordpress.com/tag/arithmetic-progressions/" rel="tag">arithmetic progressions</a>, <a href="https://quomodocumque.wordpress.com/tag/cap-set/" rel="tag">cap set</a>, <a href="https://quomodocumque.wordpress.com/tag/combinatorics/" rel="tag">combinatorics</a></span>	</div>
+</div>
+
+
+<div id="comments">
+
+			<h2 id="comments-title">
+			38 thoughts on &ldquo;<span>Bounds for cap&nbsp;sets</span>&rdquo;		</h2>
+
+		<ol class="commentlist">
+					<li class="comment byuser comment-author-teorth even thread-even depth-1" id="comment-25408">
+				<div id="div-comment-25408" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://www.math.ucla.edu/~tao" class="url" rel="ugc external nofollow">Terence Tao</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25408">May 13, 2016 at 4:55 pm</a>		</div>
+
+		<p>Congratulations!  It gives hope that the Croot-Lev-Pach version of the polynomial method can be applied to other problems in this area.  (For instance, the <a HREF="https://terrytao.wordpress.com/2007/03/11/ben-green-the-polynomial-freiman-ruzsa-conjecture/" rel="nofollow">Polynomial Freiman-Ruzsa conjecture</a> in F_2^n is one possible target; it&#8217;s another place where Fourier methods give close to the best known bounds, but fall short of the conjectured truth.)</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gowers odd alt thread-odd thread-alt depth-1" id="comment-25410">
+				<div id="div-comment-25410" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://gowers.wordpress.com" class="url" rel="ugc external nofollow">gowers</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25410">May 14, 2016 at 1:39 am</a>		</div>
+
+		<p>So the arXiv is no longer quick enough for getting results into the public domain &#8230;</p>
+<p>Anyhow, this is very exciting!</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-anuragbishnoi even thread-even depth-1" id="comment-25412">
+				<div id="div-comment-25412" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://anuragbishnoi.wordpress.com" class="url" rel="ugc external nofollow">Anurag Bishnoi</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25412">May 14, 2016 at 3:12 am</a>		</div>
+
+		<p>This is great! </p>
+<p>The paper of Croot-Lev-Pach somehow gave the impression that the methods are specific to Z_4. Apparently not.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-anuragbishnoi odd alt thread-odd thread-alt depth-1" id="comment-25413">
+				<div id="div-comment-25413" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://anuragbishnoi.wordpress.com" class="url" rel="ugc external nofollow">Anurag Bishnoi</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25413">May 14, 2016 at 4:08 am</a>		</div>
+
+		<p>If I am not mistaken, then Proposition 1 should work over all finite fields F_q, with S_n^d denoting the space of F_q^n-reduced polynomials  (those where each variable has degree at most q &#8211; 1) of total degree at most d, M_n^d the monomial basis of S_n^d, and m_d the dimension of S_n^d. Is there a special reason why in Remark 3 you only consider F_p, for prime p instead of F_q?</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment even thread-even depth-1" id="comment-25414">
+				<div id="div-comment-25414" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn">Seva Lev</cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25414">May 14, 2016 at 4:48 am</a>		</div>
+
+		<p>@Anurag: Proposition 1 certainly works for F_q with q a prime power. We also thought in this directions, of course, and were aware of this extension of our Lemma 1. If I am not mistaken, Peter has even mentioned to me at some point that it also works for *rings*, but I have never checked this carefully.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gowers odd alt thread-odd thread-alt depth-1" id="comment-25415">
+				<div id="div-comment-25415" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://gowers.wordpress.com" class="url" rel="ugc external nofollow">gowers</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25415">May 14, 2016 at 6:26 am</a>		</div>
+
+		<p>For what it&#8217;s worth, I did a back-of-envelope calculation that appeared to confirm that everything goes through for more general F_p^n, giving a bound of c^n for the density, where c doesn&#8217;t depend on p. I imagine you&#8217;ve done the same.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-cjse bypostauthor even thread-even depth-1" id="comment-25416">
+				<div id="div-comment-25416" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25416">May 14, 2016 at 9:04 am</a>		</div>
+
+		<p>Good morning, everyone!  Yes, I don&#8217;t know why I wrote F_p; Lemma 1 is really OK for an arbitrary F_q.  And I agree with Tim that it works for general p; what I haven&#8217;t worked out is how the rate of the variable uniformly distributed on 0,1,..p-1 looks as a function of p, but I think that should just be a computation.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-anuragbishnoi odd alt thread-odd thread-alt depth-1" id="comment-25418">
+				<div id="div-comment-25418" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://anuragbishnoi.wordpress.com" class="url" rel="ugc external nofollow">Anurag Bishnoi</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25418">May 14, 2016 at 10:38 am</a>		</div>
+
+		<p>@Seva: I guess both Lemma 1 of your preprint and Proposition 1 of Jordan&#8217;s preprint might work over rings if we take A to be a special kind of subset of R^n. One could assume, for example,&#8221;Condition (D)&#8221;: for every two distinct elements a, b in A, a &#8211; b is not a zero divisor, as we did in our work for generalising polynomial method to rings: <a href="http://arxiv.org/abs/1508.06020" rel="nofollow ugc">http://arxiv.org/abs/1508.06020</a>, <a href="http://arxiv.org/abs/1506.06743" rel="nofollow ugc">http://arxiv.org/abs/1506.06743</a>. But I am not too sure if that would work here as we were only considering the case when A is a &#8216;grid&#8217; (and the problems look quite different). Or did you/Peter mean some other kind of extension of your Lemma to rings?</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gowers even thread-even depth-1" id="comment-25419">
+				<div id="div-comment-25419" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://gowers.wordpress.com" class="url" rel="ugc external nofollow">gowers</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25419">May 14, 2016 at 2:41 pm</a>		</div>
+
+		<p>I may have done something silly, but I think if you just want an exponential (in the dimension) bound for arbitrary p, then something simple like Azuma&#8217;s inequality is enough. You want a random pth-power-free monomial in n variables to have an exponentially small probability of having degree greater than d and an exponentially small probability of having degree less than d/2. It looks to me as though the degree is just the sum of n independent random variables taking values in {0,1,&#8230;,p-1}, so taking d=2pn/3 does the job: the mean of the sum is around pn/2, so the probability that it is bigger than 2pn/3 or less than pn/3 is exponentially small, by Azuma (and with a bound that doesn&#8217;t depend on p).</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-cjse bypostauthor odd alt thread-odd thread-alt depth-1" id="comment-25420">
+				<div id="div-comment-25420" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25420">May 14, 2016 at 3:32 pm</a>		</div>
+
+		<p>Agreed &#8212; the pn/3 is the threshold no matter what p is, and in fact the way I am rewriting it now you can just directly get the upper bound to be constant * number of monomials of that degree, and then I&#8217;ll move the exponential estimate to the end; I think that will make it easier to read.  I didn&#8217;t know Azuma&#8217;s inequality until I just looked it up but I think this Cramer thing with the rate gives the &#8220;correct&#8221; exponent so I will stick with it!</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gowers even thread-even depth-1" id="comment-25422">
+				<div id="div-comment-25422" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://gowers.wordpress.com" class="url" rel="ugc external nofollow">gowers</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25422">May 14, 2016 at 4:35 pm</a>		</div>
+
+		<p>Absolutely. I wasn&#8217;t suggesting you removed that rate calculation, since you might as well go for the best exponent you can. I just found it helpful for my own understanding to realize that the fact that there&#8217;s an exponential bound is a simple consequence of the fact that the probability that a sum of n independent [0,1]-valued random variables differs from its mean by at least cn is exponentially small.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment odd alt thread-odd thread-alt depth-1" id="comment-25423">
+				<div id="div-comment-25423" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://plus.google.com/112323225026455580520" class="url" rel="ugc external nofollow">Ben Green</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25423">May 15, 2016 at 12:07 am</a>		</div>
+
+		<p>A very minor bibliographical point: Azuma&#8217;s inequality is a concentration result for martingales with bounded differences. I think that the correct name for what is needed is the Bernstein inequality, as Bernstein had the key idea in the 1920s. Other variants are called the Chernoff bound or Hoeffding&#8217;s inequality, but these two authors (and Azuma) came considerably later. Of course in the specific situation here, one can be quite explicit and appeal to none of these bounds, which apply to general bounded independent random variables.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback even thread-even depth-1" id="comment-25426">
+				<div id="div-comment-25426" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://gilkalai.wordpress.com/2016/05/15/mind-boggling-following-the-work-of-croot-lev-and-pach-jordan-ellenberg-settled-the-cap-set-problem/" class="url" rel="ugc external nofollow">Mind Boggling: Following the work of Croot, Lev, and Pach, Jordan Ellenberg settled the cap set problem! | Combinatorics and more</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25426">May 15, 2016 at 7:20 am</a>		</div>
+
+		<p>[&#8230;] A quote from a recent post from Jordan Ellenberg&#8216;s blog Quomodocumque: [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment odd alt thread-odd thread-alt depth-1" id="comment-25428">
+				<div id="div-comment-25428" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://homepage.tudelft.nl/64a8q/index.html" class="url" rel="ugc external nofollow">Dion Gijswijt</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25428">May 15, 2016 at 10:57 am</a>		</div>
+
+		<p>What a nice result, congratulations! </p>
+<p>Last week, I&#8217;ve also been writing a proof of an upper bound O(p^{cn}), c&lt;1 for progression-free sets, in Z_p^n based on the same paper of Croot, Lev and Pach, see </p>
+<p><a href="http://homepage.tudelft.nl/64a8q/progressions.pdf" target="_blank" rel="noopener noreferrer nofollow">Click to access progressions.pdf</a></p>
+<p>So I guess, you beat me to it!  Also, your constant for the case p=3 is better than mine (O(2.76^n) vs O(2.84^n)).  I think the CLP-paper is a real gem in its simplicity.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-cjse bypostauthor even thread-even depth-1" id="comment-25429">
+				<div id="div-comment-25429" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25429">May 15, 2016 at 11:06 am</a>		</div>
+
+		<p>Dion &#8212; I don&#8217;t think my constant is actually better than yours &#8212; really I am proving the same thing, that the bound is the number of monomials with degree at most q-1 in each variable and of total degree at most (qn/3).  I think I&#8217;m just using a tighter bound on the tail of the distribution than the Hoeffding inequality.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gowers odd alt thread-odd thread-alt depth-1" id="comment-25430">
+				<div id="div-comment-25430" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://gowers.wordpress.com" class="url" rel="ugc external nofollow">gowers</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25430">May 15, 2016 at 1:07 pm</a>		</div>
+
+		<p>Agreed &#8212; I was being lazy, and Azuma&#8217;s inequality is indeed overkill.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-enaslund even thread-even depth-1" id="comment-25436">
+				<div id="div-comment-25436" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://enaslund.wordpress.com" class="url" rel="ugc external nofollow">Eric Naslund</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25436">May 16, 2016 at 11:20 am</a>		</div>
+
+		<p>Dion Gijswijt &#8211; The bound you obtain is identical to Ellenberg&#8217;s if you replace Hoeffding&#8217;s inequality by a more precise estimate of rate function. Instead of 1-1/(18 log p) one obtains 1-(1+o_p(1))/(6*log p) where the o_p(1) is negative and increasing towards 0 as p&#8211;&gt; infinity. In the specific case of p=3, the constant obtained from the optimization has a &#8216;nicer&#8217; form, and is the root of a degree 6 polynomial: 3/8(207+33^(3/2))^(1/3). (which is approximately 2.755104613&#8230;)</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-enaslund odd alt thread-odd thread-alt depth-1" id="comment-25437">
+				<div id="div-comment-25437" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://enaslund.wordpress.com" class="url" rel="ugc external nofollow">Eric Naslund</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25437">May 16, 2016 at 11:27 am</a>		</div>
+
+		<p>This upper bound for progressions in F_3^n also implies an upper bound for a weaker version of the Erdos-Rado sunflower conjecture.<br />
+**Corollary:** If S is a collection of subsets of {1,2,&#8230;,n} such that no three distinct members of S form a sunflower, then |S|&lt;c^n where c=1.97938019&#8230;</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-gilkalai even thread-even depth-1" id="comment-25438">
+				<div id="div-comment-25438" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://www.ma.huji.ac.il/~kalai/" class="url" rel="ugc external nofollow">Gil Kalai</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25438">May 16, 2016 at 1:34 pm</a>		</div>
+
+		<p>Of course, a crucial question is the following. If A is a subset of Z_p^n without a 3-term AP then a hyperoptimistic conjecture would be that |A| is bounded more or less by a little inflated version of r_3(p) to the n-th power. (So for p=3 we inflated 2 to 2.756). Now if the polynomial method gives when n is large a Behrend type upper bound for Z_p^n without undesired constants depending on p then we might be in business also Roth-wise. (This is inspired also by a comment from Noga last week regarding the relevance of CEP method for even p and Behrend.) </p>
+<p>This will be a little strange because we know that the bound for Z_p^n is worse than the nth power of the bound for Z_p. So it will be rather unusual if the polynomial method will work for large n while not for n=1. This looks far-fetched but still&#8230; we can play with the relation between p and n for our purposes and maybe the probabilistic considerations and concentration behavior will work for us especially when n is large and the &#8220;inflation&#8221; we get for p will still give us a behavior like exp (sqrt p) perhaps with worse constants in the exponent. Right now it is nor clear that there will be disturbing constants depending on p but often the polynomial method gives rater clean bounds.</p>
+<p>But maybe it is known that the above hyperoptimistic conjecture is false.</p>
+<p>Regarding the weaker sunflower conjecture it is interesting whether we can somehow apply the polynomial method directly to the binary case (perhaps with a better bound) without  going through Z_3.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback odd alt thread-odd thread-alt depth-1" id="comment-25441">
+				<div id="div-comment-25441" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://gilkalai.wordpress.com/2016/05/17/polymath-10-emergency-post-5-the-erdos-szemeredi-sunflower-conjecture-is-now-proven/" class="url" rel="ugc external nofollow">Polymath 10 Emergency Post 5: The Erdos-Szemeredi Sunflower Conjecture is Now Proven. | Combinatorics and more</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25441">May 17, 2016 at 11:57 am</a>		</div>
+
+		<p>[&#8230;] the previous post) and this implies also the Erdos-Szemeredi sunflower conjecture! (Eric Naslund  computed the derived upper bound to be 1.97938019 [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment even thread-even depth-1" id="comment-25444">
+				<div id="div-comment-25444" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn">Nate</cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25444">May 17, 2016 at 3:47 pm</a>		</div>
+
+		<p>Hmm&#8230; This tells us if A is larger than C^n it must contain a triple a,b,c such that c = 1/2a+1/2b, i.e. c is the average of a and b. Maybe not a super-interesting direction to generalize, but it seems to me that the proof should also go through almost the same for weighted averages c = lambda*a+(1-lambda)b, for fixed rational lambda (with denominator coprime to the characteristic). </p>
+<p>For example if lambda = 1/3.  Then lemma 1 should now say that if P(a+2a&#8217;)= 0 for a, a&#8217; distinct elements of A that P(3a) is nonzero for all but 2m_{d/2} values of a in A. We&#8217;ve broken symmetry a bit so the line at the bottom of page 1 should now read P(x+2y) = Sum_m m(x)F_m(y) + Sum_m m(y)G_m(x), with m running over M^{d/2} in both sums as before. If we now let Phi(x)(m) = (m(x),G_m(x)) and Psi(x)(m) = (m(x),F_m(x)) then P(x+2y) = .  If a_1, a_2, &#8230; a_k are such that P(3a_i) is nonzero, then we have Phi(a_1), Phi(a_2), &#8230; Phi(a_k) are linearly independent as we have k linear functions  each of which vanishes on all but one of them.  </p>
+<p>I haven&#8217;t checked in great detail but it seems like then the proof of the main theorem goes through just replacing the role of -A with 3A, and the role of A+A by A+2A. Does this all seem right?</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment odd alt thread-odd thread-alt depth-1" id="comment-25445">
+				<div id="div-comment-25445" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn">Nate</cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25445">May 17, 2016 at 3:50 pm</a>		</div>
+
+		<p>It seems to have deleted a bunch of brackets from my above post and I&#8217;m not sure how to fix it. I hope it&#8217;s still understandable.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback even thread-even depth-1" id="comment-25446">
+				<div id="div-comment-25446" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://anuragbishnoi.wordpress.com/2016/05/18/the-new-bound-on-cap-sets/" class="url" rel="ugc external nofollow">The new bound on cap sets | Anurag&#039;s Math Blog</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25446">May 17, 2016 at 4:50 pm</a>		</div>
+
+		<p>[&#8230;] Four days back Jordan Ellenberg posted the following on his blog: [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-cjse bypostauthor odd alt thread-odd thread-alt depth-1" id="comment-25448">
+				<div id="div-comment-25448" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25448">May 17, 2016 at 8:12 pm</a>		</div>
+
+		<p>Yep, Nate, that&#8217;s exactly right.  In the version I&#8217;m writing up now it&#8217;ll be in that generality &#8212; as you say, the proof is exactly the same.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-anuragbishnoi even thread-even depth-1" id="comment-25449">
+				<div id="div-comment-25449" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://anuragbishnoi.wordpress.com" class="url" rel="ugc external nofollow">Anurag Bishnoi</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25449">May 17, 2016 at 8:21 pm</a>		</div>
+
+		<p>Affine caps satisfy the condition that <img src="https://s0.wp.com/latex.php?latex=A+%2B+%5Clambda+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=A+%2B+%5Clambda+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=A+%2B+%5Clambda+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="A + &#92;lambda A" class="latex" /> is disjoint from <img src="https://s0.wp.com/latex.php?latex=%281+%2B+%5Clambda%29A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%281+%2B+%5Clambda%29A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%281+%2B+%5Clambda%29A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="(1 + &#92;lambda)A" class="latex" /> for all <img src="https://s0.wp.com/latex.php?latex=%5Clambda+%5Cnot+%5Cin+%5C%7B0%2C+-1%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Clambda+%5Cnot+%5Cin+%5C%7B0%2C+-1%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Clambda+%5Cnot+%5Cin+%5C%7B0%2C+-1%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;lambda &#92;not &#92;in &#92;{0, -1&#92;}" class="latex" />. So, in principle it is possible that for affine caps the upper bound is better than the one for a cap set; right? If you assume this condition for one particular <img src="https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;lambda" class="latex" />, then as Nate points out, the bounds are the same, but if we assume it for all <img src="https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Clambda&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;lambda" class="latex" />&#8216;s simultaneously, then perhaps we can do more &#8230;</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback odd alt thread-odd thread-alt depth-1" id="comment-25450">
+				<div id="div-comment-25450" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://lucatrevisan.wordpress.com/2016/05/17/ellenbergs-announcement-of-a-solution-to-the-cap-set-problem/" class="url" rel="ugc external nofollow">Ellenberg&#8217;s announcement of a solution to the cap-set problem | in theory</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25450">May 17, 2016 at 8:36 pm</a>		</div>
+
+		<p>[&#8230;] Ellenberg has just announced a resolution of the &#8220;cap problem&#8221; using techniques of Croot, Lev and Pach, in a [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback even thread-even depth-1" id="comment-25453">
+				<div id="div-comment-25453" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://terrytao.wordpress.com/2016/05/18/a-symmetric-formulation-of-the-croot-lev-pach-ellenberg-gijswijt-capset-bound/" class="url" rel="ugc external nofollow">A symmetric formulation of the Croot-Lev-Pach-Ellenberg-Gijswijt capset bound | What's new</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25453">May 18, 2016 at 2:13 am</a>		</div>
+
+		<p>[&#8230;] as 2012 to  for some absolute constant  by Bateman and Katz. But in a very recent breakthrough, Ellenberg (and independently Gijswijt) obtained the exponentially superior bound , using a version of the [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment odd alt thread-odd thread-alt depth-1" id="comment-25455">
+				<div id="div-comment-25455" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://math.mit.edu/~nharman/" class="url" rel="ugc external nofollow">Nate</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25455">May 18, 2016 at 3:37 pm</a>		</div>
+
+		<p>Epsilon more of an observation, similar to what I said before:  With very little changes this also gives bounds for sets X avoiding non-trivial solutions to a_1x_1+a_2x_2+ &#8230; + a_kx_k, with a_1+a_2+&#8230;+a_k=0, where &#8220;non-trivial&#8221; now means that the x_i are not all equal, but are not necessarily distinct (Note that for k=3, not all the equal implies distinct for this class of equations). The bound this method gives depends on k and the ground field, but not on the choice of coefficients a_i.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment even thread-even depth-1" id="comment-25456">
+				<div id="div-comment-25456" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://www.facebook.com/app_scoped_user_id/10207205173466066/" class="url" rel="ugc external nofollow">Fedor Petrov</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25456">May 18, 2016 at 6:58 pm</a>		</div>
+
+		<p>Maybe, this (see pdf) approach is slightly different, at least it gives formally better bound (by a factor of 3/2, not in exponent, unfortunately), and it does not use vectors with many non-zero coordinates. I am sorry that notations are different from yours (I am afraid that changing them now would increase misprints.) </p>
+<p>I tried to type this as a comment in Terence Tao&#8217;s blog, but it looks very ugly after formatting. Thus pdf. </p>
+<p>Fedya</p>
+<p><a href="https://dl.dropboxusercontent.com/u/15433464/f3_eng.pdf" target="_blank" rel="noopener noreferrer nofollow">Click to access f3_eng.pdf</a></p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment odd alt thread-odd thread-alt depth-1" id="comment-25469">
+				<div id="div-comment-25469" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://sites.google.com/site/igorshinkar/" class="url" rel="ugc external nofollow">igors</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25469">May 20, 2016 at 9:00 am</a>		</div>
+
+		<p>The last two paragraphs can be shortened a bit more. Specifically, from (2) it follows that <img src="https://s0.wp.com/latex.php?latex=%7CA%7C+%3C+3m_%7Bd%2F2%7D+%2B+%283%5En+-+m_d%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%7CA%7C+%3C+3m_%7Bd%2F2%7D+%2B+%283%5En+-+m_d%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%7CA%7C+%3C+3m_%7Bd%2F2%7D+%2B+%283%5En+-+m_d%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="|A| &lt; 3m_{d/2} + (3^n - m_d)" class="latex" />. So for <img src="https://s0.wp.com/latex.php?latex=d+%3D+4%2F3n&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=d+%3D+4%2F3n&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=d+%3D+4%2F3n&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="d = 4/3n" class="latex" /> this gives the bound of <img src="https://s0.wp.com/latex.php?latex=%7CA%7C+%3D+O%283%5En+%5Ccdot+e%5E%7B-I%282%2F3%29+n%7D%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%7CA%7C+%3D+O%283%5En+%5Ccdot+e%5E%7B-I%282%2F3%29+n%7D%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%7CA%7C+%3D+O%283%5En+%5Ccdot+e%5E%7B-I%282%2F3%29+n%7D%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="|A| = O(3^n &#92;cdot e^{-I(2/3) n})" class="latex" />. Right?</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-anuragbishnoi even thread-even depth-1" id="comment-25476">
+				<div id="div-comment-25476" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://anuragbishnoi.wordpress.com" class="url" rel="ugc external nofollow">Anurag Bishnoi</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25476">May 21, 2016 at 11:42 am</a>		</div>
+
+		<p>Using some ideas from Fedor&#8217;s proof above, I think we have the following alternate proof of your Proposition 1. Denote by <img src="https://s0.wp.com/latex.php?latex=%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;mathcal{P}_d(n, q)" class="latex" /> the space of all reduced polynomials in <img src="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5Bx_1%2C+%5Cdots%2C+x_n%5D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5Bx_1%2C+%5Cdots%2C+x_n%5D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5Bx_1%2C+%5Cdots%2C+x_n%5D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;mathbb{F}_q[x_1, &#92;dots, x_n]" class="latex" /> that have degree at most <img src="https://s0.wp.com/latex.php?latex=d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="d" class="latex" /> (what you call <img src="https://s0.wp.com/latex.php?latex=S_n%5Ed&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=S_n%5Ed&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=S_n%5Ed&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="S_n^d" class="latex" />). Let <img src="https://s0.wp.com/latex.php?latex=P+%5Cin+%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=P+%5Cin+%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=P+%5Cin+%5Cmathcal%7BP%7D_d%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="P &#92;in &#92;mathcal{P}_d(n, q)" class="latex" /> be such that <img src="https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="P(a + b) = 0" class="latex" /> for all <img src="https://s0.wp.com/latex.php?latex=a%2C+b+%5Cin+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=a%2C+b+%5Cin+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=a%2C+b+%5Cin+A&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="a, b &#92;in A" class="latex" /> with <img src="https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="a &#92;neq b" class="latex" />.<br />
+Let <img src="https://s0.wp.com/latex.php?latex=S+%3D+%5C%7Ba+%5Cin+A+%3A+P%282a%29+%5Cneq+0%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=S+%3D+%5C%7Ba+%5Cin+A+%3A+P%282a%29+%5Cneq+0%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=S+%3D+%5C%7Ba+%5Cin+A+%3A+P%282a%29+%5Cneq+0%5C%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="S = &#92;{a &#92;in A : P(2a) &#92;neq 0&#92;}" class="latex" />.<br />
+Define <img src="https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="V_{d/2}" class="latex" /> to be the subspace of functions <img src="https://s0.wp.com/latex.php?latex=f&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=f&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=f&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="f" class="latex" /> in <img src="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;mathbb{F}_q^S" class="latex" />, that satisfy <img src="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+Q%28a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+Q%28a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+Q%28a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;sum_{a &#92;in S} f(a) Q(a) = 0" class="latex" /> for all <img src="https://s0.wp.com/latex.php?latex=Q+%5Cin+%5Cmathcal%7BP%7D_%7Bd%2F2%7D%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=Q+%5Cin+%5Cmathcal%7BP%7D_%7Bd%2F2%7D%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=Q+%5Cin+%5Cmathcal%7BP%7D_%7Bd%2F2%7D%28n%2C+q%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="Q &#92;in &#92;mathcal{P}_{d/2}(n, q)" class="latex" />.<br />
+Then <img src="https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cgeq+%7CS%7C+-+m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cgeq+%7CS%7C+-+m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cgeq+%7CS%7C+-+m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;dim V_{d/2} &#92;geq |S| - m_{d/2}" class="latex" />.<br />
+Define a symmetric bilinear form on elements of <img src="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cmathbb%7BF%7D_q%5ES&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;mathbb{F}_q^S" class="latex" /> by <img src="https://s0.wp.com/latex.php?latex=%5Clangle+f%2C+g+%5Crangle+%3D+%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+g%28a%29+P%282a%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Clangle+f%2C+g+%5Crangle+%3D+%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+g%28a%29+P%282a%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Clangle+f%2C+g+%5Crangle+%3D+%5Csum_%7Ba+%5Cin+S%7D+f%28a%29+g%28a%29+P%282a%29&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;langle f, g &#92;rangle = &#92;sum_{a &#92;in S} f(a) g(a) P(2a)" class="latex" />.<br />
+Since <img src="https://s0.wp.com/latex.php?latex=%5Cdeg+P+%5Cleq+d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cdeg+P+%5Cleq+d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cdeg+P+%5Cleq+d&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;deg P &#92;leq d" class="latex" />, for all <img src="https://s0.wp.com/latex.php?latex=f%2C+g+%5Cin+V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=f%2C+g+%5Cin+V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=f%2C+g+%5Cin+V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="f, g &#92;in V_{d/2}" class="latex" />, we have <img src="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba%2C+b+%5Cin+S%7D+f%28a%29g%28b%29+P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba%2C+b+%5Cin+S%7D+f%28a%29g%28b%29+P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Csum_%7Ba%2C+b+%5Cin+S%7D+f%28a%29g%28b%29+P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;sum_{a, b &#92;in S} f(a)g(b) P(a + b) = 0" class="latex" />,<br />
+which gives us <img src="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+A%7D+f%28a%29+g%28a%29+P%282a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+A%7D+f%28a%29+g%28a%29+P%282a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Csum_%7Ba+%5Cin+A%7D+f%28a%29+g%28a%29+P%282a%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;sum_{a &#92;in A} f(a) g(a) P(2a) = 0" class="latex" /> sine <img src="https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=P%28a+%2B+b%29+%3D+0&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="P(a + b) = 0" class="latex" /> for all <img src="https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=a+%5Cneq+b&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="a &#92;neq b" class="latex" />.<br />
+Thus, <img src="https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=V_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="V_{d/2}" class="latex" /> is contained in its orthogonal complement, which implies that <img src="https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%5Cdim+V_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="&#92;dim V_{d/2} &#92;leq |S|/2" class="latex" />.<br />
+This gives <img src="https://s0.wp.com/latex.php?latex=%7CS%7C+-+m_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%7CS%7C+-+m_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%7CS%7C+-+m_%7Bd%2F2%7D+%5Cleq+%7CS%7C%2F2&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="|S| - m_{d/2} &#92;leq |S|/2" class="latex" />, implying <img src="https://s0.wp.com/latex.php?latex=%7CS%7C+%5Cleq+2m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002" srcset="https://s0.wp.com/latex.php?latex=%7CS%7C+%5Cleq+2m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002 1x, https://s0.wp.com/latex.php?latex=%7CS%7C+%5Cleq+2m_%7Bd%2F2%7D&#038;bg=ffffff&#038;fg=555555&#038;s=0&#038;c=20201002&#038;zoom=4.5 4x" alt="|S| &#92;leq 2m_{d/2}" class="latex" />.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-thomasfchurch odd alt thread-odd thread-alt depth-1" id="comment-25483">
+				<div id="div-comment-25483" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://thomasfchurch.wordpress.com" class="url" rel="ugc external nofollow">Tom Church</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25483">May 24, 2016 at 12:17 am</a>		</div>
+
+		<p>My collaborators and I have just posted a paper on consequences of the Ellenberg-Gijswijt result for fast matrix multiplication.</p>
+<p>Jonah Blasiak, Thomas Church, Henry Cohn, Joshua A. Grochow, Chris Umans<br />
+On cap sets and the group-theoretic approach to matrix multiplication<br />
+<a href="http://arxiv.org/abs/1605.06702" rel="nofollow ugc">http://arxiv.org/abs/1605.06702</a></p>
+<p>Abstract: In 2003, Cohn and Umans described a framework for proving upper bounds on the exponent ω of matrix multiplication by reducing matrix multiplication to group algebra multiplication. In 2005 Cohn, Kleinberg, Szegedy, and Umans proposed specific conjectures for how to obtain ω=2 in this framework. In this note we rule out obtaining ω=2 in this framework from the groups (𝔽_p)^n, using the breakthrough results of Croot, Lev, Pach, Ellenberg, and Gijswijt on cap sets. These restrictions do not however rule out abelian groups in general, let alone nonabelian groups.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback even thread-even depth-1" id="comment-25489">
+				<div id="div-comment-25489" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://gilkalai.wordpress.com/2016/05/27/polymath-10-post-6-the-erdos-rado-sunflower-conjecture-and-the-turan-43-problem-homological-approaches/" class="url" rel="ugc external nofollow">Polymath 10 post 6: The Erdos-Rado sunflower conjecture, and the Turan (4,3) problem: homological approaches. | Combinatorics and more</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25489">May 27, 2016 at 2:11 am</a>		</div>
+
+		<p>[&#8230;] sets.)   More cap set updates are added to this post, and can be found in the comment threads here and [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback odd alt thread-odd thread-alt depth-1" id="comment-25501">
+				<div id="div-comment-25501" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://quomodocumque.wordpress.com/2016/05/29/sumsets-and-sumsets-of-subsets/" class="url" rel="ugc">Sumsets and sumsets of subsets | Quomodocumque</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25501">May 29, 2016 at 9:25 pm</a>		</div>
+
+		<p>[&#8230;] here&#8217;s an interesting fact.  I have been turning over this argument of Croot-Lev-Pach and mine and Gijswijt&#8217;s for a couple of weeks now, trying to understand what it&#8217;s really doing that leads to control [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="comment byuser comment-author-enaslund even thread-even depth-1" id="comment-25582">
+				<div id="div-comment-25582" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="http://enaslund.wordpress.com" class="url" rel="ugc external nofollow">Eric Naslund</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25582">June 15, 2016 at 2:11 pm</a>		</div>
+
+		<p>With respect to my previous comment concern the constant when p&#8211;&gt; infty, one actually gets a slightly better constant than e^(-1/6). Instead it is c=0.8414, which is the minimum of the function e^(t/3)(1-e^(-t))/t. That is, an arithmetic progression free set in F_p^n has size at most (c+o(1))^n p^n, where the o(1) tends to 0 as p&#8211;&gt;infty.</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback odd alt thread-odd thread-alt depth-1" id="comment-25914">
+				<div id="div-comment-25914" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://dustingmixon.wordpress.com/2016/09/09/introduction-to-the-polynomial-method-and-other-similar-things/" class="url" rel="ugc external nofollow">Introduction to the polynomial method (and other similar things) | Short, Fat Matrices</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-25914">September 9, 2016 at 11:48 am</a>		</div>
+
+		<p>[&#8230;] polynomial method has made some waves recently (see this and that, for instance), and last week, Boris Alexeev gave a very nice talk on various applications [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback even thread-even depth-1" id="comment-28210">
+				<div id="div-comment-28210" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://mathsci.kaist.ac.kr/~sangil/ko/2016/mathdonga/" class="url" rel="ugc external nofollow">수학동아 연재 (2016년) - Prof. Sang-il Oum</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-28210">July 1, 2017 at 11:29 pm</a>		</div>
+
+		<p>[&#8230;] 블로그글: Ellenberg 블로그, Tim Gowers 블로그, Terrence Tao [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		<li class="pingback odd alt thread-odd thread-alt depth-1" id="comment-32164">
+				<div id="div-comment-32164" class="comment-body">
+				<div class="comment-author vcard">
+						<cite class="fn"><a href="https://dimag.ibs.re.kr/home/sangil/2016/mathdonga/" class="url" rel="ugc external nofollow">수학동아 연재 (2016년) - Sang-il Oum</a></cite> <span class="says">says:</span>		</div>
+		
+		<div class="comment-meta commentmetadata">
+			<a href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comment-32164">March 19, 2019 at 4:58 am</a>		</div>
+
+		<p>[&#8230;] 블로그글: Ellenberg 블로그, Tim Gowers 블로그, Terrence Tao [&#8230;]</p>
+
+		
+				</div>
+				</li><!-- #comment-## -->
+		</ol>
+
+		
+	
+	
+		<div id="respond" class="comment-respond">
+		<h3 id="reply-title" class="comment-reply-title">Leave a comment</h3><form action="https://quomodocumque.wordpress.com/wp-comments-post.php" method="post" id="commentform" class="comment-form">
+
+
+<div class="comment-form__verbum transparent"></div><div class="verbum-form-meta"><input type='hidden' name='comment_post_ID' value='5616' id='comment_post_ID' />
+<input type='hidden' name='comment_parent' id='comment_parent' value='0' />
+
+			<input type="hidden" name="highlander_comment_nonce" id="highlander_comment_nonce" value="38b19aa590" />
+			<input type="hidden" name="verbum_show_subscription_modal" value="" /></div><p style="display: none;"><input type="hidden" id="akismet_comment_nonce" name="akismet_comment_nonce" value="5727939b2b" /></p><p style="display: none !important;" class="akismet-fields-container" data-prefix="ak_"><label>&#916;<textarea name="ak_hp_textarea" cols="45" rows="8" maxlength="100"></textarea></label><input type="hidden" id="ak_js_1" name="ak_js" value="42"/><script>
+document.getElementById( "ak_js_1" ).setAttribute( "value", ( new Date() ).getTime() );
+</script>
+</p></form>	</div><!-- #respond -->
+	
+</div><!-- #comments -->			</div><!-- #contents -->
+
+	<div class="navigation">
+		<div class="nav-previous"><a href="https://quomodocumque.wordpress.com/2016/05/12/croot-lev-pach-on-ap-free-sets-in-z4zn/" rel="prev"><span class="meta-nav">&larr;</span> Previous post</a></div>
+		<div class="nav-next"><a href="https://quomodocumque.wordpress.com/2016/05/29/sumsets-and-sumsets-of-subsets/" rel="next">Next post <span class="meta-nav">&rarr;</span></a></div>
+	</div>
+
+
+<div id="widgets">
+		<div class="widget-area">
+		
+		<aside id="recent-posts-2" class="widget widget_recent_entries">
+		<h3 class="widget-title">Recent Posts</h3>
+		<ul>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/06/05/recent-progress-around-cohen-lenstra-heuristics-notes-from-a-bourbaki-talk/">Recent progress around Cohen-Lenstra heuristics (notes from a Bourbaki&nbsp;talk)</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/">The Leiden Declaration on Artificial Intelligence and&nbsp;Mathematics</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/">Human character, continuity&nbsp;of</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/24/nicknames-for-ottawa-illinois/">Nicknames for Ottawa,&nbsp;Illinois</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/24/memorial-day/">Memorial Day</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/21/is-there-a-higher-belyi-theorem/">Is there a higher Belyi&nbsp;theorem?</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/20/brewers-5-cubs-2/">Brewers 5, Cubs&nbsp;2</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/20/wittgensteinian-aphorism-after-six-hours-spent-in-the-company-of-college-undergraduates/">Wittgensteinian aphorism (after six hours spent in the company of college&nbsp;undergraduates)</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/18/roger-brown-on-ms/">Roger Brown on &#8220;Ms.&#8221;</a>
+									</li>
+											<li>
+					<a href="https://quomodocumque.wordpress.com/2026/05/10/my-hatred-of-you-has-turned-to-pity/">&#8220;My hatred of you has turned to&nbsp;pity&#8221;</a>
+									</li>
+					</ul>
+
+		</aside><aside id="recent-comments-2" class="widget widget_recent_comments"><h3 class="widget-title">Recent Comments</h3>				<ul id="recentcomments">
+											<li class="recentcomments">
+							<a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a> on <a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/#comment-39926">The Leiden Declaration on Artificial Intelligence and&nbsp;Mathematics</a>						</li>
+
+												<li class="recentcomments">
+							Anonymous Coward on <a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/#comment-39925">The Leiden Declaration on Artificial Intelligence and&nbsp;Mathematics</a>						</li>
+
+												<li class="recentcomments">
+							<a href="https://nsnyder1.pages.iu.edu" class="url" rel="ugc external nofollow">Noah Snyder</a> on <a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/#comment-39924">The Leiden Declaration on Artificial Intelligence and&nbsp;Mathematics</a>						</li>
+
+												<li class="recentcomments">
+							<a href="http://galoisrepresentations.wordpress.com" class="url" rel="ugc external nofollow">galoisrepresentations</a> on <a href="https://quomodocumque.wordpress.com/2026/06/05/recent-progress-around-cohen-lenstra-heuristics-notes-from-a-bourbaki-talk/#comment-39923">Recent progress around Cohen-Lenstra heuristics (notes from a Bourbaki&nbsp;talk)</a>						</li>
+
+												<li class="recentcomments">
+							<a href="http://galoisrepresentations.wordpress.com" class="url" rel="ugc external nofollow">galoisrepresentations</a> on <a href="https://quomodocumque.wordpress.com/2026/06/05/recent-progress-around-cohen-lenstra-heuristics-notes-from-a-bourbaki-talk/#comment-39922">Recent progress around Cohen-Lenstra heuristics (notes from a Bourbaki&nbsp;talk)</a>						</li>
+
+												<li class="recentcomments">
+							George J.R. on <a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/#comment-39921">The Leiden Declaration on Artificial Intelligence and&nbsp;Mathematics</a>						</li>
+
+												<li class="recentcomments">
+							George J.R. on <a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/#comment-39920">Human character, continuity&nbsp;of</a>						</li>
+
+												<li class="recentcomments">
+							<a href="https://quomodocumque.wordpress.com" class="url" rel="ugc">JSE</a> on <a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/#comment-39919">Human character, continuity&nbsp;of</a>						</li>
+
+												<li class="recentcomments">
+							George J.R. on <a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/#comment-39918">Human character, continuity&nbsp;of</a>						</li>
+
+												<li class="recentcomments">
+							RP on <a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/#comment-39917">Human character, continuity&nbsp;of</a>						</li>
+
+										</ul>
+				</aside><aside id="top-posts-4" class="widget widget_top-posts"><h3 class="widget-title">Top Posts &amp; Pages</h3><ul><li><a href="https://quomodocumque.wordpress.com/2026/06/04/the-leiden-declaration-on-artificial-intelligence-and-mathematics/" class="bump-view" data-bump-view="tp">The Leiden Declaration on Artificial Intelligence and Mathematics</a></li><li><a href="https://quomodocumque.wordpress.com/2026/06/05/recent-progress-around-cohen-lenstra-heuristics-notes-from-a-bourbaki-talk/" class="bump-view" data-bump-view="tp">Recent progress around Cohen-Lenstra heuristics (notes from a Bourbaki talk)</a></li><li><a href="https://quomodocumque.wordpress.com/2026/05/30/human-character-continuity-of/" class="bump-view" data-bump-view="tp">Human character, continuity of</a></li><li><a href="https://quomodocumque.wordpress.com/2024/12/20/three-ways-to-apply-ai-to-mathematics/" class="bump-view" data-bump-view="tp">Three ways to apply AI to mathematics</a></li><li><a href="https://quomodocumque.wordpress.com/2010/04/27/the-case-of-xxxxxx-xxxxxx/" class="bump-view" data-bump-view="tp">The case of XXXXXX XXXXXX</a></li><li><a href="https://quomodocumque.wordpress.com/about/" class="bump-view" data-bump-view="tp">About</a></li><li><a href="https://quomodocumque.wordpress.com/2012/02/18/the-hardest-rush-hour-position/" class="bump-view" data-bump-view="tp">The hardest Rush Hour position</a></li><li><a href="https://quomodocumque.wordpress.com/2026/05/20/wittgensteinian-aphorism-after-six-hours-spent-in-the-company-of-college-undergraduates/" class="bump-view" data-bump-view="tp">Wittgensteinian aphorism (after six hours spent in the company of college undergraduates)</a></li><li><a href="https://quomodocumque.wordpress.com/the-booklist/" class="bump-view" data-bump-view="tp">Booklist 2011-</a></li><li><a href="https://quomodocumque.wordpress.com/how-not-to-be-wrong/" class="bump-view" data-bump-view="tp">How Not To Be Wrong</a></li></ul></aside><aside id="linkcat-1356" class="widget widget_links"><h3 class="widget-title">Blogroll</h3>
+	<ul class='xoxo blogroll'>
+<li><a href="https://twitter.com/JSEllenberg" title="My twitter account">@JSEllenberg at Twitter</a></li>
+<li><a href="http://mathbabe.org/" title="Cathy O’Neil&#8217;s &#8220;Mathbabe&#8221; blog.">Cathy O&#039;Neil</a></li>
+<li><a href="http://www.crookedtimber.org/" title="Group blog, mostly social science and whimsy">Crooked Timber</a></li>
+<li><a href="http://blogs.ethz.ch/kowalski/" rel="friend met colleague">Emmanuel Kowalski&#039;s Blog</a></li>
+<li><a href="http://andrewgelman.com/" title="Andrew Gelman&#8217;s blog">Gelman blog</a></li>
+<li><a href="http://gottwurfelt.wordpress.com/" title="M Lugo&#8217;s blog">God Plays Dice</a></li>
+<li><a href="http://gowers.wordpress.com/">Gowers&#039;s weblog</a></li>
+<li><a href="http://www.lacunae.com/" rel="friend met" title="Douglas Wolk&#8217;s links, clips, notes, etc.">Lacunae</a></li>
+<li><a href="http://lfab-uvm.blogspot.com/" title="CL Hanson&#8217;s blog">Letters from a broad&#8230;</a></li>
+<li><a href="http://jennydavidson.blogspot.com/" rel="friend met" title="Jenny Davidson&#8217;s blog">Light Reading</a></li>
+<li><a href="http://malvasiabianca.org/" title="David Carlton&#8217;s blog">Malvasia Blanca</a></li>
+<li><a href="http://galoisrepresentations.wordpress.com/" title="Sharp opinions and Galois representations">Persiflage</a></li>
+<li><a href="http://tea-lemon-oldbooks.blogspot.com/" title="Adam&#8217;s blog">Tea, Lemon, Old Books</a></li>
+<li><a href="http://valuevar.wordpress.com/">The Value of the Variable</a></li>
+<li><a href="http://terrytao.wordpress.com/" title="T Tao&#8217;s blog">What&#039;s New</a></li>
+
+	</ul>
+</aside>
+<aside id="tag_cloud-2" class="widget widget_tag_cloud"><h3 class="widget-title"></h3><div style="overflow: hidden;"><a href="https://quomodocumque.wordpress.com/category/ab/" style="font-size: 105.46875%; padding: 1px; margin: 1px;"  title="ab (36)">ab</a> <a href="https://quomodocumque.wordpress.com/category/academia/" style="font-size: 125.29296875%; padding: 1px; margin: 1px;"  title="academia (94)">academia</a> <a href="https://quomodocumque.wordpress.com/category/bad-statistics/" style="font-size: 117.7734375%; padding: 1px; margin: 1px;"  title="bad statistics (72)">bad statistics</a> <a href="https://quomodocumque.wordpress.com/category/baseball/" style="font-size: 155.712890625%; padding: 1px; margin: 1px;"  title="baseball (183)">baseball</a> <a href="https://quomodocumque.wordpress.com/category/blog/" style="font-size: 104.443359375%; padding: 1px; margin: 1px;"  title="blog (33)">blog</a> <a href="https://quomodocumque.wordpress.com/category/books/" style="font-size: 155.37109375%; padding: 1px; margin: 1px;"  title="books (182)">books</a> <a href="https://quomodocumque.wordpress.com/category/cars/" style="font-size: 100%; padding: 1px; margin: 1px;"  title="cars (20)">cars</a> <a href="https://quomodocumque.wordpress.com/category/children/" style="font-size: 117.431640625%; padding: 1px; margin: 1px;"  title="children (71)">children</a> <a href="https://quomodocumque.wordpress.com/category/cj/" style="font-size: 122.900390625%; padding: 1px; margin: 1px;"  title="cj (87)">cj</a> <a href="https://quomodocumque.wordpress.com/category/college/" style="font-size: 107.861328125%; padding: 1px; margin: 1px;"  title="college (43)">college</a> <a href="https://quomodocumque.wordpress.com/category/comedy/" style="font-size: 104.443359375%; padding: 1px; margin: 1px;"  title="comedy (33)">comedy</a> <a href="https://quomodocumque.wordpress.com/category/commerce/" style="font-size: 120.849609375%; padding: 1px; margin: 1px;"  title="commerce (81)">commerce</a> <a href="https://quomodocumque.wordpress.com/category/computers/" style="font-size: 112.98828125%; padding: 1px; margin: 1px;"  title="computers (58)">computers</a> <a href="https://quomodocumque.wordpress.com/category/economics/" style="font-size: 118.798828125%; padding: 1px; margin: 1px;"  title="economics (75)">economics</a> <a href="https://quomodocumque.wordpress.com/category/education/" style="font-size: 119.140625%; padding: 1px; margin: 1px;"  title="education (76)">education</a> <a href="https://quomodocumque.wordpress.com/category/ethics/" style="font-size: 108.544921875%; padding: 1px; margin: 1px;"  title="ethics (45)">ethics</a> <a href="https://quomodocumque.wordpress.com/category/family/" style="font-size: 103.41796875%; padding: 1px; margin: 1px;"  title="family (30)">family</a> <a href="https://quomodocumque.wordpress.com/category/food/" style="font-size: 152.978515625%; padding: 1px; margin: 1px;"  title="food (175)">food</a> <a href="https://quomodocumque.wordpress.com/category/friends/" style="font-size: 119.482421875%; padding: 1px; margin: 1px;"  title="friends (77)">friends</a> <a href="https://quomodocumque.wordpress.com/category/harvard/" style="font-size: 109.5703125%; padding: 1px; margin: 1px;"  title="harvard (48)">harvard</a> <a href="https://quomodocumque.wordpress.com/category/history/" style="font-size: 125.29296875%; padding: 1px; margin: 1px;"  title="history (94)">history</a> <a href="https://quomodocumque.wordpress.com/category/how-not-to-be-wrong/" style="font-size: 105.46875%; padding: 1px; margin: 1px;"  title="how not to be wrong (36)">how not to be wrong</a> <a href="https://quomodocumque.wordpress.com/category/language/" style="font-size: 128.02734375%; padding: 1px; margin: 1px;"  title="language (102)">language</a> <a href="https://quomodocumque.wordpress.com/category/lists/" style="font-size: 119.82421875%; padding: 1px; margin: 1px;"  title="lists (78)">lists</a> <a href="https://quomodocumque.wordpress.com/category/madison/" style="font-size: 170.751953125%; padding: 1px; margin: 1px;"  title="madison (227)">madison</a> <a href="https://quomodocumque.wordpress.com/category/magazines/" style="font-size: 106.15234375%; padding: 1px; margin: 1px;"  title="magazines (38)">magazines</a> <a href="https://quomodocumque.wordpress.com/category/math/" style="font-size: 275%; padding: 1px; margin: 1px;"  title="math (532)">math</a> <a href="https://quomodocumque.wordpress.com/category/movies/" style="font-size: 105.126953125%; padding: 1px; margin: 1px;"  title="movies (35)">movies</a> <a href="https://quomodocumque.wordpress.com/category/music/" style="font-size: 151.953125%; padding: 1px; margin: 1px;"  title="music (172)">music</a> <a href="https://quomodocumque.wordpress.com/category/news/" style="font-size: 119.82421875%; padding: 1px; margin: 1px;"  title="news (78)">news</a> <a href="https://quomodocumque.wordpress.com/category/nostalgia/" style="font-size: 121.19140625%; padding: 1px; margin: 1px;"  title="nostalgia (82)">nostalgia</a> <a href="https://quomodocumque.wordpress.com/category/offhand/" style="font-size: 224.755859375%; padding: 1px; margin: 1px;"  title="offhand (385)">offhand</a> <a href="https://quomodocumque.wordpress.com/category/orioles/" style="font-size: 130.078125%; padding: 1px; margin: 1px;"  title="orioles (108)">orioles</a> <a href="https://quomodocumque.wordpress.com/category/papers/" style="font-size: 102.05078125%; padding: 1px; margin: 1px;"  title="papers (26)">papers</a> <a href="https://quomodocumque.wordpress.com/category/philosophy/" style="font-size: 114.35546875%; padding: 1px; margin: 1px;"  title="philosophy (62)">philosophy</a> <a href="https://quomodocumque.wordpress.com/category/poetry/" style="font-size: 103.759765625%; padding: 1px; margin: 1px;"  title="poetry (31)">poetry</a> <a href="https://quomodocumque.wordpress.com/category/politics/" style="font-size: 163.232421875%; padding: 1px; margin: 1px;"  title="politics (205)">politics</a> <a href="https://quomodocumque.wordpress.com/category/psychology/" style="font-size: 124.609375%; padding: 1px; margin: 1px;"  title="psychology (92)">psychology</a> <a href="https://quomodocumque.wordpress.com/category/recipes/" style="font-size: 102.05078125%; padding: 1px; margin: 1px;"  title="recipes (26)">recipes</a> <a href="https://quomodocumque.wordpress.com/category/shows/" style="font-size: 105.810546875%; padding: 1px; margin: 1px;"  title="shows (37)">shows</a> <a href="https://quomodocumque.wordpress.com/category/slate/" style="font-size: 102.05078125%; padding: 1px; margin: 1px;"  title="slate (26)">slate</a> <a href="https://quomodocumque.wordpress.com/category/teaching/" style="font-size: 106.8359375%; padding: 1px; margin: 1px;"  title="teaching (40)">teaching</a> <a href="https://quomodocumque.wordpress.com/category/travel/" style="font-size: 120.849609375%; padding: 1px; margin: 1px;"  title="travel (81)">travel</a> <a href="https://quomodocumque.wordpress.com/category/uncategorized/" style="font-size: 104.443359375%; padding: 1px; margin: 1px;"  title="Uncategorized (33)">Uncategorized</a> <a href="https://quomodocumque.wordpress.com/category/writing/" style="font-size: 133.49609375%; padding: 1px; margin: 1px;"  title="writing (118)">writing</a> </div></aside><aside id="search-2" class="widget widget_search"><form role="search" method="get" id="searchform" class="searchform" action="https://quomodocumque.wordpress.com/">
+				<div>
+					<label class="screen-reader-text" for="s">Search for:</label>
+					<input type="text" value="" name="s" id="s" />
+					<input type="submit" id="searchsubmit" value="Search" />
+				</div>
+			</form></aside><aside id="rss_links-3" class="widget widget_rss_links"><h3 class="widget-title">RSS Feed</h3><ul><li><a href="https://quomodocumque.wordpress.com/feed/" title="Subscribe to Posts">RSS - Posts</a></li><li><a href="https://quomodocumque.wordpress.com/comments/feed/" title="Subscribe to Comments">RSS - Comments</a></li></ul>
+</aside>	</div><!-- #first .widget-area -->
+	</div><!-- #widgets -->
+	<div id="footer">
+		<a href="https://wordpress.com/?ref=footer_blog" rel="nofollow">Blog at WordPress.com.</a>
+		
+			</div>
+
+</div>
+
+<!--  -->
+<script type="speculationrules">
+{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":["/wp-*.php","/wp-admin/*","/files/*","/wp-content/*","/wp-content/plugins/*","/wp-content/themes/pub/chunk/*","/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
+</script>
+	<div style="display:none">
+	</div>
+		<div id="actionbar" dir="ltr" style="display: none;"
+			class="actnbr-pub-chunk actnbr-has-follow actnbr-has-actions">
+		<ul>
+								<li class="actnbr-btn actnbr-hidden">
+						<a class="actnbr-action actnbr-actn-comment" href="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/#comments">
+							<svg class="gridicon gridicons-comment" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g><path d="M12 16l-5 5v-5H5c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2h-7z"/></g></svg>							<span>Comment						</span>
+						</a>
+					</li>
+									<li class="actnbr-btn actnbr-hidden">
+						<a class="actnbr-action actnbr-actn-reblog" href="">
+							<svg class="gridicon gridicons-reblog" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g><path d="M22.086 9.914L20 7.828V18c0 1.105-.895 2-2 2h-7v-2h7V7.828l-2.086 2.086L14.5 8.5 19 4l4.5 4.5-1.414 1.414zM6 16.172V6h7V4H6c-1.105 0-2 .895-2 2v10.172l-2.086-2.086L.5 15.5 5 20l4.5-4.5-1.414-1.414L6 16.172z"/></g></svg><span>Reblog</span>
+						</a>
+					</li>
+									<li class="actnbr-btn actnbr-hidden">
+								<a class="actnbr-action actnbr-actn-follow " href="">
+			<svg class="gridicon" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path clip-rule="evenodd" d="m4 4.5h12v6.5h1.5v-6.5-1.5h-1.5-12-1.5v1.5 10.5c0 1.1046.89543 2 2 2h7v-1.5h-7c-.27614 0-.5-.2239-.5-.5zm10.5 2h-9v1.5h9zm-5 3h-4v1.5h4zm3.5 1.5h-1v1h1zm-1-1.5h-1.5v1.5 1 1.5h1.5 1 1.5v-1.5-1-1.5h-1.5zm-2.5 2.5h-4v1.5h4zm6.5 1.25h1.5v2.25h2.25v1.5h-2.25v2.25h-1.5v-2.25h-2.25v-1.5h2.25z"  fill-rule="evenodd"></path></svg>
+			<span>Subscribe</span>
+		</a>
+		<a class="actnbr-action actnbr-actn-following  no-display" href="">
+			<svg class="gridicon" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill-rule="evenodd" clip-rule="evenodd" d="M16 4.5H4V15C4 15.2761 4.22386 15.5 4.5 15.5H11.5V17H4.5C3.39543 17 2.5 16.1046 2.5 15V4.5V3H4H16H17.5V4.5V12.5H16V4.5ZM5.5 6.5H14.5V8H5.5V6.5ZM5.5 9.5H9.5V11H5.5V9.5ZM12 11H13V12H12V11ZM10.5 9.5H12H13H14.5V11V12V13.5H13H12H10.5V12V11V9.5ZM5.5 12H9.5V13.5H5.5V12Z" fill="#008A20"></path><path class="following-icon-tick" d="M13.5 16L15.5 18L19 14.5" stroke="#008A20" stroke-width="1.5"></path></svg>
+			<span>Subscribed</span>
+		</a>
+							<div class="actnbr-popover tip tip-top-left actnbr-notice" id="follow-bubble">
+							<div class="tip-arrow"></div>
+							<div class="tip-inner actnbr-follow-bubble">
+															<ul>
+											<li class="actnbr-sitename">
+			<a href="https://quomodocumque.wordpress.com">
+				<img loading='lazy' alt='' src='https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i' srcset='https://s0.wp.com/i/logo/wpcom-gray-white.png 1x' class='avatar avatar-50' height='50' width='50' />				Quomodocumque			</a>
+		</li>
+										<div class="actnbr-message no-display"></div>
+									<form method="post" action="https://subscribe.wordpress.com" accept-charset="utf-8" style="display: none;">
+																						<div class="actnbr-follow-count">Join 1,009 other subscribers</div>
+																					<div>
+										<input type="email" name="email" placeholder="Enter your email address" class="actnbr-email-field" aria-label="Enter your email address" />
+										</div>
+										<input type="hidden" name="action" value="subscribe" />
+										<input type="hidden" name="blog_id" value="1236000" />
+										<input type="hidden" name="source" value="https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/" />
+										<input type="hidden" name="sub-type" value="actionbar-follow" />
+										<input type="hidden" id="_wpnonce" name="_wpnonce" value="06a9f6130c" />										<div class="actnbr-button-wrap">
+											<button type="submit" value="Sign me up">
+												Sign me up											</button>
+										</div>
+									</form>
+									<li class="actnbr-login-nudge">
+										<div>
+											Already have a WordPress.com account? <a href="https://wordpress.com/log-in?redirect_to=https%3A%2F%2Fquomodocumque.wordpress.com%2F2016%2F05%2F13%2Fbounds-for-cap-sets%2F&#038;signup_flow=account">Log in now.</a>										</div>
+									</li>
+								</ul>
+															</div>
+						</div>
+					</li>
+							<li class="actnbr-ellipsis actnbr-hidden">
+				<svg class="gridicon gridicons-ellipsis" height="24" width="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g><path d="M7 12c0 1.104-.896 2-2 2s-2-.896-2-2 .896-2 2-2 2 .896 2 2zm12-2c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zm-7 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2z"/></g></svg>				<div class="actnbr-popover tip tip-top-left actnbr-more">
+					<div class="tip-arrow"></div>
+					<div class="tip-inner">
+						<ul>
+								<li class="actnbr-sitename">
+			<a href="https://quomodocumque.wordpress.com">
+				<img loading='lazy' alt='' src='https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i' srcset='https://s0.wp.com/i/logo/wpcom-gray-white.png 1x' class='avatar avatar-50' height='50' width='50' />				Quomodocumque			</a>
+		</li>
+								<li class="actnbr-folded-follow">
+										<a class="actnbr-action actnbr-actn-follow " href="">
+			<svg class="gridicon" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path clip-rule="evenodd" d="m4 4.5h12v6.5h1.5v-6.5-1.5h-1.5-12-1.5v1.5 10.5c0 1.1046.89543 2 2 2h7v-1.5h-7c-.27614 0-.5-.2239-.5-.5zm10.5 2h-9v1.5h9zm-5 3h-4v1.5h4zm3.5 1.5h-1v1h1zm-1-1.5h-1.5v1.5 1 1.5h1.5 1 1.5v-1.5-1-1.5h-1.5zm-2.5 2.5h-4v1.5h4zm6.5 1.25h1.5v2.25h2.25v1.5h-2.25v2.25h-1.5v-2.25h-2.25v-1.5h2.25z"  fill-rule="evenodd"></path></svg>
+			<span>Subscribe</span>
+		</a>
+		<a class="actnbr-action actnbr-actn-following  no-display" href="">
+			<svg class="gridicon" height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill-rule="evenodd" clip-rule="evenodd" d="M16 4.5H4V15C4 15.2761 4.22386 15.5 4.5 15.5H11.5V17H4.5C3.39543 17 2.5 16.1046 2.5 15V4.5V3H4H16H17.5V4.5V12.5H16V4.5ZM5.5 6.5H14.5V8H5.5V6.5ZM5.5 9.5H9.5V11H5.5V9.5ZM12 11H13V12H12V11ZM10.5 9.5H12H13H14.5V11V12V13.5H13H12H10.5V12V11V9.5ZM5.5 12H9.5V13.5H5.5V12Z" fill="#008A20"></path><path class="following-icon-tick" d="M13.5 16L15.5 18L19 14.5" stroke="#008A20" stroke-width="1.5"></path></svg>
+			<span>Subscribed</span>
+		</a>
+								</li>
+														<li class="actnbr-signup"><a href="https://wordpress.com/start/">Sign up</a></li>
+							<li class="actnbr-login"><a href="https://wordpress.com/log-in?redirect_to=https%3A%2F%2Fquomodocumque.wordpress.com%2F2016%2F05%2F13%2Fbounds-for-cap-sets%2F&#038;signup_flow=account">Log in</a></li>
+																<li class="actnbr-shortlink">
+										<a href="https://wp.me/p5bxu-1sA">
+											<span class="actnbr-shortlink__text">Copy shortlink</span>
+											<span class="actnbr-shortlink__icon"><svg class="gridicon gridicons-checkmark" height="16" width="16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g><path d="M9 19.414l-6.707-6.707 1.414-1.414L9 16.586 20.293 5.293l1.414 1.414"/></g></svg></span>
+										</a>
+									</li>
+																<li class="flb-report">
+									<a href="https://wordpress.com/abuse/?report_url=https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/" target="_blank" rel="noopener noreferrer">
+										Report this content									</a>
+								</li>
+															<li class="actnbr-reader">
+									<a href="https://wordpress.com/reader/blogs/1236000/posts/5616">
+										View post in Reader									</a>
+								</li>
+															<li class="actnbr-subs">
+									<a href="https://subscribe.wordpress.com/">Manage subscriptions</a>
+								</li>
+																<li class="actnbr-fold"><a href="">Collapse this bar</a></li>
+														</ul>
+					</div>
+				</div>
+			</li>
+		</ul>
+	</div>
+	
+<script>
+window.addEventListener( "DOMContentLoaded", function( event ) {
+	var link = document.createElement( "link" );
+	link.href = "/wp-content/mu-plugins/actionbar/actionbar.css?v=20250116";
+	link.type = "text/css";
+	link.rel = "stylesheet";
+	document.head.appendChild( link );
+
+	var script = document.createElement( "script" );
+	script.src = "/wp-content/mu-plugins/actionbar/actionbar.js?v=20250204";
+	document.body.appendChild( script );
+} );
+</script>
+
+	
+	<script type="text/javascript">
+		window.WPCOM_sharing_counts = {"https://quomodocumque.wordpress.com/2016/05/13/bounds-for-cap-sets/":5616};
+	</script>
+				
+	<script type="text/javascript">
+		(function () {
+			var wpcom_reblog = {
+				source: 'toolbar',
+
+				toggle_reblog_box_flair: function (obj_id, post_id) {
+
+					// Go to site selector. This will redirect to their blog if they only have one.
+					const postEndpoint = `https://wordpress.com/post`;
+
+					// Ideally we would use the permalink here, but fortunately this will be replaced with the 
+					// post permalink in the editor.
+					const originalURL = `${ document.location.href }?page_id=${ post_id }`; 
+					
+					const url =
+						postEndpoint +
+						'?url=' +
+						encodeURIComponent( originalURL ) +
+						'&is_post_share=true' +
+						'&v=5';
+
+					const redirect = function () {
+						if (
+							! window.open( url, '_blank' )
+						) {
+							location.href = url;
+						}
+					};
+
+					if ( /Firefox/.test( navigator.userAgent ) ) {
+						setTimeout( redirect, 0 );
+					} else {
+						redirect();
+					}
+				},
+			};
+
+			window.wpcom_reblog = wpcom_reblog;
+		})();
+	</script>
+<script crossorigin='anonymous' type='text/javascript'  src='/wp-content/mu-plugins/likes/queuehandler.js?m=1741961244i'></script>
+<script id="wp-hooks-js" src="/wp-content/plugins/gutenberg-core/v23.3.2/build/scripts/hooks/index.min.js?m=1780625085i&#038;ver=7496969728ca0f95732d"></script>
+<script id="wp-i18n-js" src="/wp-content/plugins/gutenberg-core/v23.3.2/build/scripts/i18n/index.min.js?m=1780625085i&#038;ver=125448662852c5e18937"></script>
+<script id="wp-i18n-js-after">
+wp.i18n.setLocaleData( { 'text direction\u0004ltr': [ 'ltr' ] } );
+//# sourceURL=wp-i18n-js-after
+</script>
+<script id="verbum-settings-js-before">
+window.VerbumComments = {"Log in or provide your name and email to leave a reply.":"Log in or provide your name and email to leave a reply.","Log in or provide your name and email to leave a comment.":"Log in or provide your name and email to leave a comment.","Receive web and mobile notifications for posts on this site.":"Receive web and mobile notifications for posts on this site.","Name":"Name","Email (address never made public)":"Email (address never made public)","Website (optional)":"Website (optional)","Leave a reply. (log in optional)":"Leave a reply. (log in optional)","Leave a comment. (log in optional)":"Leave a comment. (log in optional)","Log in to leave a reply.":"Log in to leave a reply.","Log in to leave a comment.":"Log in to leave a comment.","Logged in via %s":"Logged in via %s","Log out":"Log out","Email":"Email","(Address never made public)":"(Address never made public)","Instantly":"Instantly","Daily":"Daily","Reply":"Reply","Comment":"Comment","WordPress":"WordPress","Weekly":"Weekly","Notify me of new posts":"Notify me of new posts","Email me new posts":"Email me new posts","Email me new comments":"Email me new comments","Cancel":"Cancel","Write a comment...":"Write a comment...","Write a reply...":"Write a reply...","Website":"Website","Optional":"Optional","We'll keep you in the loop!":"We'll keep you in the loop!","Loading your comment...":"Loading your comment...","Discover more from":"Discover more from Quomodocumque","Subscribe now to keep reading and get access to the full archive.":"Subscribe now to keep reading and get access to the full archive.","Continue reading":"Continue reading","Never miss a beat!":"Never miss a beat!","Interested in getting blog post updates? Simply click the button below to stay in the loop!":"Interested in getting blog post updates? Simply click the button below to stay in the loop!","Enter your email address":"Enter your email address","Subscribe":"Subscribe","Comment sent successfully":"Comment sent successfully","Save my name, email, and website in this browser for the next time I comment.":"Save my name, email, and website in this browser for the next time I comment.","hovercardi18n":{"Edit your profile \u2192":"Edit your profile \u2192","View profile \u2192":"View profile \u2192","Contact":"Contact","Send money":"Send money","Gravatar not found.":"Gravatar not found.","This profile is private.":"This profile is private.","Too Many Requests.":"Too Many Requests.","Internal Server Error.":"Internal Server Error.","Sorry, we are unable to load this Gravatar profile.":"Sorry, we are unable to load this Gravatar profile."},"siteId":1236000,"postId":5616,"mustLogIn":false,"requireNameEmail":true,"commentRegistration":false,"connectURL":"https://quomodocumque.wordpress.com/public.api/connect/?action=request\u0026from_comments=yes","logoutURL":"https://quomodocumque.wordpress.com/wp-login.php?action=logout\u0026_wpnonce=e49f3ab8d5","homeURL":"https://quomodocumque.wordpress.com/","subscribeToBlog":true,"subscribeToComment":true,"isJetpackCommentsLoggedIn":false,"jetpackUsername":"","jetpackUserId":0,"jetpackSignature":"","jetpackAvatar":null,"enableBlocks":true,"enableSubscriptionModal":true,"currentLocale":"en","isJetpackComments":false,"allowedBlocks":["core/paragraph","core/list","core/code","core/list-item","core/quote","core/image","core/embed","core/quote","core/code"],"embedNonce":"4d1dd06599","verbumBundleUrl":"/wp-content/mu-plugins/jetpack-mu-wpcom-plugin/moon/jetpack_vendor/automattic/jetpack-mu-wpcom/src/features/verbum-comments/dist/index.js","isRTL":false,"vbeCacheBuster":1771405207,"iframeUniqueId":0,"colorScheme":false}
+//# sourceURL=verbum-settings-js-before
+</script>
+<script data-wp-strategy="defer" defer id="verbum-dynamic-loader-js" src="/wp-content/mu-plugins/jetpack-mu-wpcom-plugin/moon/jetpack_vendor/automattic/jetpack-mu-wpcom/src/build/verbum-comments/assets/dynamic-loader.js?m=1772518873i&#038;minify=false&#038;ver=8b5296f9195db92c42e4"></script>
+<script id="sharing-js-js-extra">
+var sharing_js_options = {"lang":"en","counts":"1","is_stats_active":"1"};
+//# sourceURL=sharing-js-js-extra
+</script>
+<script id="jetpack-script-data-js-before">
+window.JetpackScriptData = {"site":{"host":"wpcom","is_wpcom_platform":true}};
+//# sourceURL=jetpack-script-data-js-before
+</script>
+<script crossorigin='anonymous' type='text/javascript'  src='/_static/??-eJx9jtsOgjAMhl/IUQ8kwIXxUUjdJhZYt2ydxLeXoBAvjHfN9/c/wBSU9iyWBVxWYcwdcYLeSkA9qBlNQXv3EcB5z6vYPiwbHwGzeIcipDcbpmQlwTXTaDaYdKQgyqBg0acd/G7GgZKzok7FHlpivYFbXJ7NH+/a9D12yXgPSXeM1qAxz+Uk7gpHPOdd3PlQVU1T1+Wx7F9m0WZp'></script>
+<script id="sharing-js-js-after">
+var windowOpen;
+			( function () {
+				function matches( el, sel ) {
+					return !! (
+						el.matches && el.matches( sel ) ||
+						el.msMatchesSelector && el.msMatchesSelector( sel )
+					);
+				}
+
+				document.body.addEventListener( 'click', function ( event ) {
+					if ( ! event.target ) {
+						return;
+					}
+
+					var el;
+					if ( matches( event.target, 'a.share-facebook' ) ) {
+						el = event.target;
+					} else if ( event.target.parentNode && matches( event.target.parentNode, 'a.share-facebook' ) ) {
+						el = event.target.parentNode;
+					}
+
+					if ( el ) {
+						event.preventDefault();
+
+						// If there's another sharing window open, close it.
+						if ( typeof windowOpen !== 'undefined' ) {
+							windowOpen.close();
+						}
+						windowOpen = window.open( el.getAttribute( 'href' ), 'wpcomfacebook', 'menubar=1,resizable=1,width=600,height=400' );
+						return false;
+					}
+				} );
+			} )();
+var windowOpen;
+			( function () {
+				function matches( el, sel ) {
+					return !! (
+						el.matches && el.matches( sel ) ||
+						el.msMatchesSelector && el.msMatchesSelector( sel )
+					);
+				}
+
+				document.body.addEventListener( 'click', function ( event ) {
+					if ( ! event.target ) {
+						return;
+					}
+
+					var el;
+					if ( matches( event.target, 'a.share-twitter' ) ) {
+						el = event.target;
+					} else if ( event.target.parentNode && matches( event.target.parentNode, 'a.share-twitter' ) ) {
+						el = event.target.parentNode;
+					}
+
+					if ( el ) {
+						event.preventDefault();
+
+						// If there's another sharing window open, close it.
+						if ( typeof windowOpen !== 'undefined' ) {
+							windowOpen.close();
+						}
+						windowOpen = window.open( el.getAttribute( 'href' ), 'wpcomtwitter', 'menubar=1,resizable=1,width=600,height=350' );
+						return false;
+					}
+				} );
+			} )();
+//# sourceURL=sharing-js-js-after
+</script>
+<script id="wp-emoji-settings" type="application/json">
+{"baseUrl":"https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/72x72/","ext":".png","svgUrl":"https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/","svgExt":".svg","source":{"concatemoji":"/wp-includes/js/wp-emoji-release.min.js?m=1764078722i&ver=7.0-RC4-62382"}}
+</script>
+<script type="module">
+/*! This file is auto-generated */
+const a=JSON.parse(document.getElementById("wp-emoji-settings").textContent),o=(window._wpemojiSettings=a,"wpEmojiSettingsSupports"),s=["flag","emoji"];function i(e){try{var t={supportTests:e,timestamp:(new Date).valueOf()};sessionStorage.setItem(o,JSON.stringify(t))}catch(e){}}function c(e,t,n){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);t=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data);e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(n,0,0);const a=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data);return t.every((e,t)=>e===a[t])}function p(e,t){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);var n=e.getImageData(16,16,1,1);for(let e=0;e<n.data.length;e++)if(0!==n.data[e])return!1;return!0}function u(e,t,n,a){switch(t){case"flag":return n(e,"\ud83c\udff3\ufe0f\u200d\u26a7\ufe0f","\ud83c\udff3\ufe0f\u200b\u26a7\ufe0f")?!1:!n(e,"\ud83c\udde8\ud83c\uddf6","\ud83c\udde8\u200b\ud83c\uddf6")&&!n(e,"\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f","\ud83c\udff4\u200b\udb40\udc67\u200b\udb40\udc62\u200b\udb40\udc65\u200b\udb40\udc6e\u200b\udb40\udc67\u200b\udb40\udc7f");case"emoji":return!a(e,"\ud83e\u1fac8")}return!1}function f(e,t,n,a){let r;const o=(r="undefined"!=typeof WorkerGlobalScope&&self instanceof WorkerGlobalScope?new OffscreenCanvas(300,150):document.createElement("canvas")).getContext("2d",{willReadFrequently:!0}),s=(o.textBaseline="top",o.font="600 32px Arial",{});return e.forEach(e=>{s[e]=t(o,e,n,a)}),s}function r(e){var t=document.createElement("script");t.src=e,t.defer=!0,document.head.appendChild(t)}a.supports={everything:!0,everythingExceptFlag:!0},new Promise(t=>{let n=function(){try{var e=JSON.parse(sessionStorage.getItem(o));if("object"==typeof e&&"number"==typeof e.timestamp&&(new Date).valueOf()<e.timestamp+604800&&"object"==typeof e.supportTests)return e.supportTests}catch(e){}return null}();if(!n){if("undefined"!=typeof Worker&&"undefined"!=typeof OffscreenCanvas&&"undefined"!=typeof URL&&URL.createObjectURL&&"undefined"!=typeof Blob)try{var e="postMessage("+f.toString()+"("+[JSON.stringify(s),u.toString(),c.toString(),p.toString()].join(",")+"));",a=new Blob([e],{type:"text/javascript"});const r=new Worker(URL.createObjectURL(a),{name:"wpTestEmojiSupports"});return void(r.onmessage=e=>{i(n=e.data),r.terminate(),t(n)})}catch(e){}i(n=f(s,u,c,p))}t(n)}).then(e=>{for(const n in e)a.supports[n]=e[n],a.supports.everything=a.supports.everything&&a.supports[n],"flag"!==n&&(a.supports.everythingExceptFlag=a.supports.everythingExceptFlag&&a.supports[n]);var t;a.supports.everythingExceptFlag=a.supports.everythingExceptFlag&&!a.supports.flag,a.supports.everything||((t=a.source||{}).concatemoji?r(t.concatemoji):t.wpemoji&&t.twemoji&&(r(t.twemoji),r(t.wpemoji)))});
+//# sourceURL=/wp-includes/js/wp-emoji-loader.min.js
+</script>
+	<iframe src='https://widgets.wp.com/likes/master.html?ver=20260606#ver=20260606' scrolling='no' id='likes-master' name='likes-master' style='display:none;'></iframe>
+	<div id='likes-other-gravatars' role="dialog" aria-hidden="true" tabindex="-1"><div class="likes-text"><span>%d</span></div><ul class="wpl-avatars sd-like-gravatars"></ul></div>
+	<script src="//stats.wp.com/w.js?68" defer></script> <script type="text/javascript">
+_tkq = window._tkq || [];
+_stq = window._stq || [];
+_tkq.push(['storeContext', {'blog_id':'1236000','blog_tz':'-6','user_lang':'en','blog_lang':'en','user_id':'0'}]);
+		// Prevent sending pageview tracking from WP-Admin pages.
+		_stq.push(['view', {'blog':'1236000','v':'wpcom','tz':'-6','user_id':'0','post':'5616','subd':'quomodocumque'}]);
+		_stq.push(['extra', {'crypt':'UE5tW3cvZGQ9MGtYK3AwYit2K1AwfkhmPWhPUEJocjNKLG03OGJvWnUmVjQ0b3Z2c3NnR3dddXhUQ3lkfk9VTixrRHhwai58R1txSERKeX4lcWUlSllqQzN0YkU0OF1kMTFxOGhrMTQ4SjFjTEVTXzVCOUJTVFdLW1JaNmpxUltBZyxKcktqTmprSTdaaEtXaGwycWhyW29wYm9kTVAxS2QzRGZ0blt1d0pddVZyLzN4cUl3dWt3NkNrbVYzVkRxbHBiLDNCRSw/c3NFTy8vT0lPQktGK0ctLWZrcE13SD84ZnlaUzFGVz1HLDlkS0pnZF9tajFsbFNMNVhtK2YwQUZtZHw='}]);
+_stq.push([ 'clickTrackerInit', '1236000', '5616' ]);
+</script>
+<noscript><img src="https://pixel.wp.com/b.gif?v=noscript" style="height:1px;width:1px;overflow:hidden;position:absolute;bottom:1px;" alt="" /></noscript>
+<meta id="bilmur" property="bilmur:data" content="" data-provider="wordpress.com" data-service="simple" data-site-tz="Etc/GMT+6" data-custom-props="{&quot;logged_in&quot;:&quot;0&quot;,&quot;wptheme&quot;:&quot;pub\/chunk&quot;,&quot;wptheme_is_block&quot;:&quot;0&quot;}"  >
+		<script defer src="/wp-content/js/bilmur.min.js?i=17&amp;m=202623"></script> 	
+<script>
+(function() {
+	'use strict';
+
+	const fetches = {};
+	const promises = {};
+	const urls = {
+		'wp-polyfill': '/wp-includes/js/dist/vendor/wp-polyfill.min.js?m=1775575011i&ver=3.15.0',
+		'verbum': '/wp-content/mu-plugins/jetpack-mu-wpcom-plugin/moon/jetpack_vendor/automattic/jetpack-mu-wpcom/src/build/verbum-comments/verbum-comments.js?m=1777410324i&minify=false&ver=daa565a7d230e522cf9c'
+	};
+	const loaders = {
+		'verbum': () => {
+			fetchExternalScript('wp-polyfill');
+			fetchExternalScript('verbum');
+			promises['wp-polyfill'] = promises['wp-polyfill'] || loadWPScript('wp-polyfill');
+			promises['verbum'] = promises['verbum'] || promises['wp-polyfill'].then( () => loadWPScript('verbum') );
+			return promises['verbum'];
+		},
+		
+	};
+	const scriptExtras = {
+		
+	};
+
+	window.WP_Enqueue_Dynamic_Script = {
+		loadScript: (handle) => {
+			if (!loaders[handle]) {
+				console.error('WP_Enqueue_Dynamic_Script: unregistered script `' + handle + '`.');
+			}
+			return loaders[handle]();
+		}
+	};
+
+	function fetchExternalScript(handle) {
+		if (!urls[handle]) {
+			return Promise.resolve();
+		}
+
+		fetches[handle] = fetches[handle] || fetch(urls[handle], { mode: 'no-cors' });
+		return fetches[handle];
+	}
+
+	function runExtraScript(handle, type, index) {
+		const id = 'wp-enqueue-dynamic-script:' + handle + ':' + type + ':' + (index + 1);
+		const template = document.getElementById(id);
+		if (!template) {
+			return Promise.reject();
+		}
+
+		const script = document.createElement( 'script' );
+		script.innerHTML = template.innerHTML;
+		document.body.appendChild( script );
+		return Promise.resolve();
+	}
+
+	function loadExternalScript(handle) {
+		if (!urls[handle]) {
+			return Promise.resolve();
+		}
+
+		return fetches[handle].then(() => {
+			return new Promise((resolve, reject) => {
+				const script = document.createElement('script');
+				script.onload = () => resolve();
+				script.onerror = (e) => reject(e);
+				script.src = urls[handle];
+				document.body.appendChild(script);
+			});
+		});
+	}
+
+	function loadExtra(handle, pos) {
+		const count = (scriptExtras[handle] && scriptExtras[handle][pos]) || 0;
+		let promise = Promise.resolve();
+
+		for (let i = 0; i < count; i++) {
+			promise = promise.then(() => runExtraScript(handle, pos, i));
+		}
+
+		return promise;
+	}
+
+	function loadWPScript(handle) {
+		// Core loads scripts in this order. See: https://github.com/WordPress/WordPress/blob/a59eb9d39c4fcba834b70c9e8dfd64feeec10ba6/wp-includes/class-wp-scripts.php#L428.
+		return loadExtra(handle, 'translations')
+			.then(() => loadExtra(handle, 'before'))
+			.then(() => loadExternalScript(handle))
+			.then(() => loadExtra(handle, 'after'));
+	}
+} )();
+</script>
+
+</body>
+</html>

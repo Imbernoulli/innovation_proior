@@ -1,0 +1,2394 @@
+This is a Chapter from the Handbook of Applied Cryptography, by A. Menezes, P. van
+Oorschot, and S. Vanstone, CRC Press, 1996.
+For further information, see www.cacr.math.uwaterloo.ca/hac
+
+
+CRC Press has granted the following specific permissions for the electronic version of this
+book:
+
+     Permission is granted to retrieve, print and store a single copy of this chapter for
+     personal use. This permission does not extend to binding multiple chapters of
+     the book, photocopying or producing copies for other than personal use of the
+     person creating the copy, or making electronic copies available for retrieval by
+     others without prior permission in writing from CRC Press.
+
+
+Except where over-ridden by the specific permission above, the standard copyright notice
+from CRC Press applies to this electronic version:
+
+     Neither this book nor any part may be reproduced or transmitted in any form or
+     by any means, electronic or mechanical, including photocopying, microfilming,
+     and recording, or by any information storage or retrieval system, without prior
+     permission in writing from the publisher.
+     The consent of CRC Press does not extend to copying for general distribution,
+     for promotion, for creating new works, or for resale. Specific permission must be
+     obtained in writing from CRC Press for such copying.
+
+
+
+c 1997 by CRC Press, Inc.
+Chapter           14  Efficient Implementation
+     Contents in Brief
+               14.1   Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 591
+               14.2   Multiple-precision integer arithmetic . . . . . . . . . . . . . . . . 592
+               14.3   Multiple-precision modular arithmetic . . . . . . . . . . . . . . . 599
+               14.4   Greatest common divisor algorithms . . . . . . . . . . . . . . . . 606
+               14.5   Chinese remainder theorem for integers . . . . . . . . . . . . . . 610
+               14.6   Exponentiation . . . . . . . . . . . . . . . . . . . . . . . . . . . 613
+               14.7   Exponent recoding . . . . . . . . . . . . . . . . . . . . . . . . . 627
+               14.8   Notes and further references . . . . . . . . . . . . . . . . . . . . 630
+
+
+
+
+14.1 Introduction
+     Many public-key encryption and digital signature schemes, and some hash functions (see
+     §9.4.3), require computations in Zm , the integers modulo m (m is a large positive integer
+     which may or may not be a prime). For example, the RSA, Rabin, and ElGamal schemes re-
+     quire efficient methods for performing multiplication and exponentiation in Zm . Although
+     Zm is prominent in many aspects of modern applied cryptography, other algebraic struc-
+     tures are also important. These include, but are not limited to, polynomial rings, finite fields,
+     and finite cyclic groups. For example, the group formed by the points on an elliptic curve
+     over a finite field has considerable appeal for various cryptographic applications. The effi-
+     ciency of a particular cryptographic scheme based on any one of these algebraic structures
+     will depend on a number of factors, such as parameter size, time-memory tradeoffs, process-
+     ing power available, software and/or hardware optimization, and mathematical algorithms.
+          This chapter is concerned primarily with mathematical algorithms for efficiently carry-
+     ing out computations in the underlying algebraic structure. Since many of the most widely
+     implemented techniques rely on Zm , emphasis is placed on efficient algorithms for per-
+     forming the basic arithmetic operations in this structure (addition, subtraction, multiplica-
+     tion, division, and exponentiation).
+          In some cases, several algorithms will be presented which perform the same operation.
+     For example, a number of techniques for doing modular multiplication and exponentiation
+     are discussed in §14.3 and §14.6, respectively. Efficiency can be measured in numerous
+     ways; thus, it is difficult to definitively state which algorithm is the best. An algorithm may
+     be efficient in the time it takes to perform a certain algebraic operation, but quite inefficient
+     in the amount of storage it requires. One algorithm may require more code space than an-
+     other. Depending on the environment in which computations are to be performed, one algo-
+     rithm may be preferable over another. For example, current chipcard technology provides
+
+                                                    591
+592                                                                 Ch. 14 Efficient Implementation
+
+
+        very limited storage for both precomputed values and program code. For such applications,
+        an algorithm which is less efficient in time but very efficient in memory requirements may
+        be preferred.
+             The algorithms described in this chapter are those which, for the most part, have re-
+        ceived considerable attention in the literature. Although some attempt is made to point out
+        their relative merits, no detailed comparisons are given.
+
+
+Chapter outline
+        §14.2 deals with the basic arithmetic operations of addition, subtraction, multiplication,
+        squaring, and division for multiple-precision integers. §14.3 describes the basic arithmetic
+        operations of addition, subtraction, and multiplication in Zm . Techniques described for per-
+        forming modular reduction for an arbitrary modulus m are the classical method (§14.3.1),
+        Montgomery’s method (§14.3.2), and Barrett’s method (§14.3.3). §14.3.4 describes a re-
+        duction procedure ideally suited to moduli of a special form. Greatest common divisor
+        (gcd) algorithms are the topic of §14.4, including the binary gcd algorithm (§14.4.1) and
+        Lehmer’s gcd algorithm (§14.4.2). Efficient algorithms for performing extended gcd com-
+        putations are given in §14.4.3. Modular inverses are also considered in §14.4.3. Garner’s
+        algorithm for implementing the Chinese remainder theorem can be found in §14.5. §14.6 is
+        a treatment of several of the most practical exponentiation algorithms. §14.6.1 deals with
+        exponentiation in general, without consideration of any special conditions. §14.6.2 looks
+        at exponentiation when the base is variable and the exponent is fixed. §14.6.3 considers al-
+        gorithms which take advantage of a fixed-base element and variable exponent. Techniques
+        involving representing the exponent in non-binary form are given in §14.7; recoding the ex-
+        ponent may allow significant performance enhancements. §14.8 contains further notes and
+        references.
+
+
+
+14.2 Multiple-precision integer arithmetic
+        This section deals with the basic operations performed on multiple-precision integers: ad-
+        dition, subtraction, multiplication, squaring, and division. The algorithms presented in this
+        section are commonly referred to as the classical methods.
+
+
+14.2.1 Radix representation
+        Positive integers can be represented in various ways, the most common being base 10. For
+        example, a = 123 base 10 means a = 1 · 102 + 2 · 101 + 3 · 100 . For machine computations,
+        base 2 (binary representation) is preferable. If a = 1111011 base 2, then a = 26 + 25 +
+        24 + 23 + 0 · 22 + 21 + 20 .
+
+  14.1 Fact If b ≥ 2 is an integer, then any positive integer a can be expressed uniquely as a =
+       an bn + an−1 bn−1 + · · · + a1 b + a0 , where ai is an integer with 0 ≤ ai < b for 0 ≤ i ≤ n,
+       and an 6= 0.
+
+  14.2 Definition The representation of a positive integer a as a sum of multiples of powers of
+       b, as given in Fact 14.1, is called the base b or radix b representation of a.
+
+
+        c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.2 Multiple-precision integer arithmetic                                                          593
+
+
+  14.3 Note (notation and terminology)
+          (i) The base b representation of a positive integer a given in Fact 14.1 is usually written
+              as a = (an an−1 · · · a1 a0 )b . The integers ai , 0 ≤ i ≤ n, are called digits. an is
+              called the most significant digit or high-order digit; a0 the least significant digit or
+              low-order digit. If b = 10, the standard notation is a = an an−1 · · · a1 a0 .
+         (ii) It is sometimes convenient to pad high-order digits of a base b representation with
+              0’s; such a padded number will also be referred to as the base b representation.
+        (iii) If (an an−1 · · · a1 a0 )b is the base b representation of a and an 6= 0, then the precision
+              or length of a is n+1. If n = 0, then a is called a single-precision integer; otherwise,
+              a is a multiple-precision integer. a = 0 is also a single-precision integer.
+              The division algorithm for integers (see Definition 2.82) provides an efficient method
+         for determining the base b representation of a non-negative integer, for a given base b. This
+         provides the basis for Algorithm 14.4.
+
+  14.4 Algorithm Radix b representation
+         INPUT: integers a and b, a ≥ 0, b ≥ 2.
+         OUTPUT: the base b representation a = (an · · · a1 a0 )b , where n ≥ 0 and an 6= 0 if n ≥ 1.
+           1. i←0, x←a, q←b xb c, ai ←x − qb. (b·c is the floor function; see page 49.)
+           2. While q > 0, do the following:
+               2.1 i←i + 1, x←q, q←b xb c, ai ←x − qb.
+           3. Return((ai ai−1 · · · a1 a0 )).
+
+
+  14.5 Fact If (an an−1 · · · a1 a0 )b is the base b representation of a and k is a positive integer,
+       then (ul ul−1 · · · u1 u0 )bk is the base bk representation of a, where l = d(n + 1)/ke − 1,
+             Pk−1                                            Pn−lk
+       ui = j=0 aik+j bj for 0 ≤ i ≤ l − 1, and ul = j=0 alk+j bj .
+
+  14.6 Example (radix b representation) The base 2 representation of a = 123 is (1111011)2.
+       The base 4 representation of a is easily obtained from its base 2 representation by grouping
+       digits in pairs from the right: a = ((1)2 (11)2 (10)2 (11)2 )4 = (1323)4 .                
+
+         Representing negative numbers
+         Negative integers can be represented in several ways. Two commonly used methods are:
+            1. signed-magnitude representation
+            2. complement representation.
+         These methods are described below. The algorithms provided in this chapter all assume a
+         signed-magnitude representation for integers, with the sign digit being implicit.
+         (i) Signed-magnitude representation
+         The sign of an integer (i.e., either positive or negative) and its magnitude (i.e., absolute
+         value) are represented separately in a signed-magnitude representation. Typically, a posi-
+         tive integer is assigned a sign digit 0, while a negative integer is assigned a sign digit b − 1.
+         For n-digit radix b representations, only 2bn−1 sequences out of the bn possible sequences
+         are utilized: precisely bn−1 − 1 positive integers and bn−1 − 1 negative integers can be rep-
+         resented, and 0 has two representations. Table 14.1 illustrates the binary signed-magnitude
+         representation of the integers in the range [7, −7].
+
+
+         Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+594                                                                 Ch. 14 Efficient Implementation
+
+
+            Signed-magnitude representation has the drawback that when certain operations (such
+       as addition and subtraction) are performed, the sign digit must be checked to determine the
+       appropriate manner to perform the computation. Conditional branching of this type can be
+       costly when many operations are performed.
+       (ii) Complement representation
+       Addition and subtraction using complement representation do not require the checking of
+       the sign digit. Non-negative integers in the range [0, bn−1 − 1] are represented by base b
+       sequences of length n with the high-order digit being 0. Suppose x is a positive integer
+       in this range represented by the sequence (xn xn−1 · · · x1 x0 )b where xn = 0. Then −x is
+       represented by the sequence x = (xn xn−1 · · · x1 x0 )+1 where xi = b−1−xi and + is the
+       standard addition with carry. Table 14.1 illustrates the binary complement representation of
+       the integers in the range [−7, 7]. In the binary case, complement representation is referred
+       to as two’s complement representation.
+
+             Sequence     Signed-       Two’s            Sequence      Signed-       Two’s
+                         magnitude    complement                      magnitude    complement
+               0111          7            7                 1111         −7           −1
+               0110          6            6                 1110         −6           −2
+               0101          5            5                 1101         −5           −3
+               0100          4            4                 1100         −4           −4
+               0011          3            3                 1011         −3           −5
+               0010          2            2                 1010         −2           −6
+               0001          1            1                 1001         −1           −7
+               0000          0            0                 1000         −0           −8
+
+          Table 14.1: Signed-magnitude and two’s complement representations of integers in [−7, 7].
+
+
+
+
+14.2.2 Addition and subtraction
+       Addition and subtraction are performed on two integers having the same number of base b
+       digits. To add or subtract two integers of different lengths, the smaller of the two integers
+       is first padded with 0’s on the left (i.e., in the high-order positions).
+
+  14.7 Algorithm Multiple-precision addition
+       INPUT: positive integers x and y, each having n + 1 base b digits.
+       OUTPUT: the sum x + y = (wn+1 wn · · · w1 w0 )b in radix b representation.
+         1. c←0 (c is the carry digit).
+         2. For i from 0 to n do the following:
+             2.1 wi ←(xi + yi + c) mod b.
+             2.2 If (xi + yi + c) < b then c←0; otherwise c←1.
+         3. wn+1 ←c.
+         4. Return((wn+1 wn · · · w1 w0 )).
+
+  14.8 Note (computational efficiency) The base b should be chosen so that (xi + yi + c) mod b
+       can be computed by the hardware on the computing device. Some processors have instruc-
+       tion sets which provide an add-with-carry to facilitate multiple-precision addition.
+
+        c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.2 Multiple-precision integer arithmetic                                                         595
+
+
+
+  14.9 Algorithm Multiple-precision subtraction
+         INPUT: positive integers x and y, each having n + 1 base b digits, with x ≥ y.
+         OUTPUT: the difference x − y = (wn wn−1 · · · w1 w0 )b in radix b representation.
+            1. c←0.
+            2. For i from 0 to n do the following:
+                2.1 wi ←(xi − yi + c) mod b.
+                2.2 If (xi − yi + c) ≥ 0 then c←0; otherwise c← − 1.
+            3. Return((wn wn−1 · · · w1 w0 )).
+
+
+ 14.10 Note (eliminating the requirement x ≥ y) If the relative magnitudes of the integers x
+       and y are unknown, then Algorithm 14.9 can be modified as follows. On termination of
+       the algorithm, if c = −1, then repeat Algorithm 14.9 with x = (00 · · · 00)b and y =
+       (wn wn−1 · · · w1 w0 )b . Conditional checking on the relative magnitudes of x and y can also
+       be avoided by using a complement representation (§14.2.1(ii)).
+
+ 14.11 Example (modified subtraction) Let x = 3996879 and y = 4637923 in base 10, so that
+       x < y. Table 14.2 shows the steps of the modified subtraction algorithm (cf. Note 14.10). 
+
+               First execution of Algorithm 14.9             Second execution of Algorithm 14.9
+              i       6 5 4        3     2 1 0           i      6    5     4     3     2    1   0
+             xi       3 9 9        6     8 7 9          xi      0    0     0     0     0    0   0
+             yi       4 6 3        7     9 2 3          yi      9    3     5     8     9    5   6
+             wi       9 3 5        8     9 5 6          wi      0    6     4     1     0    4   4
+             c −1 0 0 −1 −1 0 0                         c     −1 −1 −1 −1 −1 −1 −1
+
+                              Table 14.2: Modified subtraction (see Example 14.11).
+
+
+14.2.3 Multiplication
+         Let x and y be integers expressed in radix b representation: x = (xn xn−1 · · · x1 x0 )b and
+         y = (yt yt−1 · · · y1 y0 )b . The product x · y will have at most (n + t + 2) base b digits. Al-
+         gorithm 14.12 is a reorganization of the standard pencil-and-paper method taught in grade
+         school. A single-precision multiplication means the multiplication of two base b digits. If
+         xj and yi are two base b digits, then xj · yi can be written as xj · yi = (uv)b , where u and
+         v are base b digits, and u may be 0.
+
+ 14.12 Algorithm Multiple-precision multiplication
+         INPUT: positive integers x and y having n + 1 and t + 1 base b digits, respectively.
+         OUTPUT: the product x · y = (wn+t+1 · · · w1 w0 )b in radix b representation.
+           1. For i from 0 to (n + t + 1) do: wi ←0.
+           2. For i from 0 to t do the following:
+               2.1 c←0.
+               2.2 For j from 0 to n do the following:
+                        Compute (uv)b = wi+j + xj · yi + c, and set wi+j ←v, c←u.
+               2.3 wi+n+1 ←u.
+           3. Return((wn+t+1 · · · w1 w0 )).
+
+
+         Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+596                                                                    Ch. 14 Efficient Implementation
+
+
+ 14.13 Example (multiple-precision multiplication) Take x = x3 x2 x1 x0 = 9274 and y =
+       y2 y1 y0 = 847 (base 10 representations), so that n = 3 and t = 2. Table 14.3 shows
+       the steps performed by Algorithm 14.12 to compute x · y = 7855078.               
+
+
+              i    j   c   wi+j + xj yi + c    u    v    w6       w5   w4   w3    w2    w1   w0
+              0    0   0     0 + 28 + 0        2    8    0        0    0    0     0     0    8
+                   1   2     0 + 49 + 2        5    1    0        0    0    0     0     1    8
+                   2   5     0 + 14 + 5        1    9    0        0    0    0     9     1    8
+                   3   1     0 + 63 + 1        6    4    0        0    6    4     9     1    8
+              1    0   0     1 + 16 + 0        1    7    0        0    6    4     9     7    8
+                   1   1     9 + 28 + 1        3    8    0        0    6    4     8     7    8
+                   2   3      4+8+3            1    5    0        0    6    5     8     7    8
+                   3   1     6 + 36 + 1        4    3    0        4    3    5     8     7    8
+              2    0   0     8 + 32 + 0        4    0    0        4    3    5     0     7    8
+                   1   4     5 + 56 + 4        6    5    0        4    3    5     0     7    8
+                   2   6     3 + 16 + 6        2    5    0        4    5    5     0     7    8
+                   3   2     4 + 72 + 2        7    8    7        8    5    5     0     7    8
+
+                       Table 14.3: Multiple-precision multiplication (see Example 14.13).
+
+
+
+ 14.14 Remark (pencil-and-paper method) The pencil-and-paper method for multiplying x =
+       9274 and y = 847 would appear as
+                                                9    2   7    4
+                                                ×    8   4    7
+                                           6    4    9   1    8        (row 1)
+                                       3   7    0    9   6             (row 2)
+                                   7   4   1    9    2                 (row 3)
+                                   7   8   5    5    0   7    8
+
+        The shaded entries in Table 14.3 correspond to row 1, row 1 + row 2, and row 1 + row 2 +
+        row 3, respectively.
+
+ 14.15 Note (computational efficiency of Algorithm 14.12)
+          (i) The computationally intensive portion of Algorithm 14.12 is step 2.2. Computing
+              wi+j + xj · yi + c is called the inner-product operation. Since wi+j , xj , yi and c
+              are all base b digits, the result of an inner-product operation is at most (b − 1) + (b −
+              1)2 + (b − 1) = b2 − 1 and, hence, can be represented by two base b digits.
+         (ii) Algorithm 14.12 requires (n + 1)(t + 1) single-precision multiplications.
+        (iii) It is assumed in Algorithm 14.12 that single-precision multiplications are part of the
+              instruction set on a processor. The quality of the implementation of this instruction
+              is crucial to an efficient implementation of Algorithm 14.12.
+
+
+
+14.2.4 Squaring
+        In the preceding algorithms, (uv)b has both u and v as single-precision integers. This nota-
+        tion is abused in this subsection by permitting u to be a double-precision integer, such that
+        0 ≤ u ≤ 2(b − 1). The value v will always be single-precision.
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.2 Multiple-precision integer arithmetic                                                        597
+
+
+
+ 14.16 Algorithm Multiple-precision squaring
+         INPUT: positive integer x = (xt−1 xt−2 · · · x1 x0 )b .
+         OUTPUT: x · x = x2 in radix b representation.
+            1. For i from 0 to (2t − 1) do: wi ←0.
+            2. For i from 0 to (t − 1) do the following:
+                2.1 (uv)b ←w2i + xi · xi , w2i ←v, c←u.
+                2.2 For j from (i + 1) to (t − 1) do the following:
+                         (uv)b ←wi+j + 2xj · xi + c, wi+j ←v, c←u.
+                2.3 wi+t ←u.
+            3. Return((w2t−1 w2t−2 . . . w1 w0 )b ).
+
+
+ 14.17 Note (computational efficiency of Algorithm 14.16)
+         (i) (overflow) In step 2.2, u can be larger than a single-precision integer. Since wi+j
+             is always set to v, wi+j ≤ b − 1. If c ≤ 2(b − 1), then wi+j + 2xj xi + c ≤
+             (b − 1) + 2(b − 1)2 + 2(b − 1) = (b − 1)(2b + 1), implying 0 ≤ u ≤ 2(b − 1). This
+             value of u may exceed single-precision, and must be accommodated.
+        (ii) (number of operations) The computationally intensive part of the algorithm is step 2.
+             The number of single-precision multiplications is about (t2 + t)/2, discounting the
+             multiplication by 2. This is approximately one half of the single-precision multipli-
+             cations required by Algorithm 14.12 (cf. Note 14.15(ii)).
+
+ 14.18 Note (squaring vs. multiplication in general) Squaring a positive integer x (i.e., computing
+       x2 ) can at best be no more than twice as fast as multiplying distinct integers x and y. To
+       see this, consider the identity xy = ((x + y)2 − (x − y)2 )/4. Hence, x · y can be computed
+       with two squarings (i.e., (x + y)2 and (x − y)2 ). Of course, a speed-up by a factor of 2 can
+       be significant in many applications.
+
+ 14.19 Example (squaring) Table 14.4 shows the steps performed by Algorithm 14.16 in squar-
+       ing x = 989. Here, t = 3 and b = 10.                                              
+
+
+            i   j     w2i + x2i   wi+j + 2xj xi + c     u    v     w5   w4    w3    w2   w1   w0
+            0   −      0 + 81             −             8    1     0    0      0    0    0    1
+                1        −         0+2·8·9+8            15   2     0    0      0    0    2    1
+                2        −        0 + 2 · 9 · 9 + 15    17   7     0    0      0    7    2    1
+                                                        17   7     0    0     17    7    2    1
+            1   −      7 + 64             −             7    1     0    0     17    1    2    1
+                2        −         17 + 2 · 9 · 8 + 7   16   8     0    0      8    1    2    1
+                                                        16   8     0    16     8    1    2    1
+            2   −     16 + 81             −             9    7     0    7      8    1    2    1
+                                                         9   7     9    7      8    1    2    1
+
+                          Table 14.4: Multiple-precision squaring (see Example 14.19).
+
+
+
+
+         Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+598                                                                   Ch. 14 Efficient Implementation
+
+
+
+
+14.2.5 Division
+        Division is the most complicated and costly of the basic multiple-precision operations. Al-
+        gorithm 14.20 computes the quotient q and remainder r in radix b representation when x is
+        divided by y.
+
+ 14.20 Algorithm Multiple-precision division
+        INPUT: positive integers x = (xn · · · x1 x0 )b , y = (yt · · · y1 y0 )b with n ≥ t ≥ 1, yt 6= 0.
+        OUTPUT: the quotient q = (qn−t · · · q1 q0 )b and remainder r = (rt · · · r1 r0 )b such that
+        x = qy + r, 0 ≤ r < y.
+           1. For j from 0 to (n − t) do: qj ←0.
+           2. While (x ≥ ybn−t ) do the following: qn−t ←qn−t + 1, x←x − ybn−t .
+           3. For i from n down to (t + 1) do the following:
+               3.1 If xi = yt then set qi−t−1 ←b − 1; otherwise set qi−t−1 ←b(xi b + xi−1 )/yt )c.
+               3.2 While (qi−t−1 (yt b + yt−1 ) > xi b2 + xi−1 b + xi−2 ) do: qi−t−1 ←qi−t−1 − 1.
+               3.3 x←x − qi−t−1 ybi−t−1 .
+               3.4 If x < 0 then set x←x + ybi−t−1 and qi−t−1 ←qi−t−1 − 1.
+           4. r←x.
+           5. Return(q,r).
+
+
+ 14.21 Example (multiple-precision division) Let x = 721948327, y = 84461, so that n = 8 and
+       t = 4. Table 14.5 illustrates the steps in Algorithm 14.20. The last row gives the quotient
+       q = 8547 and the remainder r = 60160.                                                    
+
+                i   q4    q3   q2   q1    q0   x8    x7    x6    x5   x4    x3    x2     x1   x0
+                –   0     0    0    0     0    7     2     1     9    4     8     3      2    7
+                8   0     9    0    0     0    7     2     1     9    4     8     3      2    7
+                          8    0    0     0          4     6     2    6     0     3      2    7
+                7         8    5    0     0                4     0    2     9     8      2    7
+                6         8    5    5     0                4     0    2     9     8      2    7
+                          8    5    4     0                      6    5     1     3      8    7
+                5         8    5    4     8                      6    5     1     3      8    7
+                          8    5    4     7                           6     0     1      6    0
+
+                          Table 14.5: Multiple-precision division (see Example 14.21).
+
+
+
+ 14.22 Note (comments on Algorithm 14.20)
+         (i) Step 2 of Algorithm 14.20 is performed at most once if yt ≥ b 2b c and b is even.
+        (ii) The condition n ≥ t ≥ 1 can be replaced by n ≥ t ≥ 0, provided one takes xj =
+             yj = 0 whenever a subscript j < 0 in encountered in the algorithm.
+
+ 14.23 Note (normalization) The estimate for the quotient digit qi−t−1 in step 3.1 of Algorithm
+       14.20 is never less than the true value of the quotient digit. Furthermore, if yt ≥ b 2b c, then
+       step 3.2 is repeated no more than twice. If step 3.1 is modified so that qi−t−1 ←b(xi b2 +
+       xi−1 b + xi−2 )/(yt b + yt−1 )c, then the estimate is almost always correct and step 3.2 is
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.3 Multiple-precision modular arithmetic                                                         599
+
+
+        never repeated more than once. One can always guarantee that yt ≥ b 2b c by replacing the
+        integers x, y by λx, λy for some suitable choice of λ. The quotient of λx divided by λy is
+        the same as that of x by y; the remainder is λ times the remainder of x divided by y. If the
+        base b is a power of 2 (as in many applications), then the choice of λ should be a power of 2;
+        multiplication by λ is achieved by simply left-shifting the binary representations of x and
+        y. Multiplying by a suitable choice of λ to ensure that yt ≥ b 2b c is called normalization.
+        Example 14.24 illustrates the procedure.
+
+ 14.24 Example (normalized division) Take x = 73418 and y = 267. Normalize x and y by
+       multiplying each by λ = 3: x0 = 3x = 220254 and y 0 = 3y = 801. Table 14.6 shows
+       the steps of Algorithm 14.20 as applied to x0 and y 0 . When x0 is divided by y 0 , the quotient
+       is 274, and the remainder is 780. When x is divided by y, the quotient is also 274 and the
+       remainder is 780/3 = 260.                                                                     
+
+
+                          i     q3    q2   q1    q0    x5    x4   x3    x2    x1    x0
+                          −     0     0    0     0     2     2    0     2     5     4
+                          5     0     2    0     0           6    0     0     5     4
+                          4           2    7     0                3     9     8     4
+                          3           2    7     4                      7     8     0
+
+                 Table 14.6: Multiple-precision division after normalization (see Example 14.24).
+
+
+
+ 14.25 Note (computational efficiency of Algorithm 14.20 with normalization)
+         (i) (multiplication count) Assuming that normalization extends the number of digits in
+             x by 1, each iteration of step 3 requires 1 + (t + 2) = t + 3 single-precision multi-
+             plications. Hence, Algorithm 14.20 with normalization requires about (n − t)(t + 3)
+             single-precision multiplications.
+        (ii) (division count) Since step 3.1 of Algorithm 14.20 is executed n − t times, at most
+             n − t single-precision divisions are required when normalization is used.
+
+
+
+
+14.3 Multiple-precision modular arithmetic
+        §14.2 provided methods for carrying out the basic operations (addition, subtraction, multi-
+        plication, squaring, and division) with multiple-precision integers. This section deals with
+        these operations in Zm , the integers modulo m, where m is a multiple-precision positive
+        integer. (See §2.4.3 for definitions of Zm and related operations.)
+              Let m = (mn mn−1 · · · m1 m0 )b be a positive integer in radix b representation. Let
+        x = (xn xn−1 · · · x1 x0 )b and y = (yn yn−1 · · · y1 y0 )b be non-negative integers in base b
+        representation such that x < m and y < m. Methods described in this section are for
+        computing x + y mod m (modular addition), x − y mod m (modular subtraction), and
+        x · y mod m (modular multiplication). Computing x−1 mod m (modular inversion) is ad-
+        dressed in §14.4.3.
+
+ 14.26 Definition If z is any integer, then z mod m (the integer remainder in the range [0, m−1]
+       after z is divided by m) is called the modular reduction of z with respect to modulus m.
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+600                                                                Ch. 14 Efficient Implementation
+
+
+       Modular addition and subtraction
+       As is the case for ordinary multiple-precision operations, addition and subtraction are the
+       simplest to compute of the modular operations.
+
+ 14.27 Fact Let x and y be non-negative integers with x, y < m. Then:
+          (i) x + y < 2m;
+         (ii) if x ≥ y, then 0 ≤ x − y < m; and
+        (iii) if x < y, then 0 ≤ x + m − y < m.
+            If x, y ∈ Zm , then modular addition can be performed by using Algorithm 14.7 to add
+       x and y as multiple-precision integers, with the additional step of subtracting m if (and only
+       if) x + y ≥ m. Modular subtraction is precisely Algorithm 14.9, provided x ≥ y.
+
+
+14.3.1 Classical modular multiplication
+       Modular multiplication is more involved than multiple-precision multiplication (§14.2.3),
+       requiring both multiple-precision multiplication and some method for performing modular
+       reduction (Definition 14.26). The most straightforward method for performing modular re-
+       duction is to compute the remainder on division by m, using a multiple-precision division
+       algorithm such as Algorithm 14.20; this is commonly referred to as the classical algorithm
+       for performing modular multiplication.
+
+ 14.28 Algorithm Classical modular multiplication
+       INPUT: two positive integers x, y and a modulus m, all in radix b representation.
+       OUTPUT: x · y mod m.
+         1. Compute x · y (using Algorithm 14.12).
+         2. Compute the remainder r when x · y is divided by m (using Algorithm 14.20).
+         3. Return(r).
+
+
+
+14.3.2 Montgomery reduction
+       Montgomery reduction is a technique which allows efficient implementation of modular
+       multiplication without explicitly carrying out the classical modular reduction step.
+            Let m be a positive integer, and let R and T be integers such that R > m, gcd(m, R) =
+       1, and 0 ≤ T < mR. A method is described for computing T R−1 mod m without using
+       the classical method of Algorithm 14.28. T R−1 mod m is called a Montgomery reduction
+       of T modulo m with respect to R. With a suitable choice of R, a Montgomery reduction
+       can be efficiently computed.
+            Suppose x and y are integers such that 0 ≤ x, y < m. Let x         e = xR mod m and
+       ye = yR mod m. The Montgomery reduction of x                eyeR−1 mod m = xyR mod m.
+                                                            eye is x
+       This observation is used in Algorithm 14.94 to provide an efficient method for modular
+       exponentiation.
+            To briefly illustrate, consider computing x5 mod m for some integer x, 1 ≤ x < m.
+       First compute xe = xR mod m. Then compute the Montgomery reduction of x         ex
+                                                                                        e, which is
+       A=x   e2 R−1 mod m. The Montgomery reduction of A2 is A2 R−1 mod m = x          e4 R−3 mod
+        m. Finally, the Montgomery reduction of (A2 R−1 mod m)e       x is (A2 R−1 )e
+                                                                                    xR−1 mod m =
+         5 −4                  5                                            −1
+       xe R mod m = x R mod m. Multiplying this value by R mod m and reducing
+
+
+
+        c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.3 Multiple-precision modular arithmetic                                                        601
+
+
+        modulo m gives x5 mod m. Provided that Montgomery reductions are more efficient to
+        compute than classical modular reductions, this method may be more efficient than com-
+        puting x5 mod m by repeated application of Algorithm 14.28.
+            If m is represented as a base b integer of length n, then a typical choice for R is bn . The
+        condition R > m is clearly satisfied, but gcd(R, m) = 1 will hold only if gcd(b, m) = 1.
+        Thus, this choice of R is not possible for all moduli. For those moduli of practical interest
+        (such as RSA moduli), m will be odd; then b can be a power of 2 and R = bn will suffice.
+            Fact 14.29 is basic to the Montgomery reduction method. Note 14.30 then implies that
+        R = bn is sufficient (but not necessary) for efficient implementation.
+
+ 14.29 Fact (Montgomery reduction) Given integers m and R where gcd(m, R) = 1, let m0 =
+       −m−1 mod R, and let T be any integer such that 0 ≤ T < mR. If U = T m0 mod R,
+       then (T + U m)/R is an integer and (T + U m)/R ≡ T R−1 (mod m).
+        Justification. T + U m ≡ T (mod m) and, hence, (T + U m)R−1 ≡ T R−1 (mod m).
+        To see that (T + U m)R−1 is an integer, observe that U = T m0 + kR and m0 m = −1 + lR
+        for some integers k and l. It follows that (T + U m)/R = (T + (T m0 + kR)m)/R =
+        (T + T (−1 + lR) + kRm)/R = lT + km.
+
+ 14.30 Note (implications of Fact 14.29)
+         (i) (T + U m)/R is an estimate for T R−1 mod m. Since T < mR and U < R, then
+             (T +U m)/R < (mR+mR)/R = 2m. Thus either (T +U m)/R = T R−1 mod m
+             or (T +U m)/R = (T R−1 mod m)+m (i.e., the estimate is within m of the residue).
+             Example 14.31 illustrates that both possibilities can occur.
+        (ii) If all integers are represented in radix b and R = bn , then T R−1 mod m can be
+             computed with two multiple-precision multiplications (i.e., U = T · m0 and U · m)
+             and simple right-shifts of T + U m in order to divide by R.
+
+ 14.31 Example (Montgomery reduction) Let m = 187, R = 190. Then R−1 mod m = 125,
+       m−1 mod R = 63, and m0 = 127. If T = 563, then U = T m0 mod R = 61 and
+       (T + U m)/R = 63 = T R−1 mod m. If T = 1125 then U = T m0 mod R = 185 and
+       (T + U m)/R = 188 = (T R−1 mod m) + m.                                  
+             Algorithm 14.32 computes the Montgomery reduction of T = (t2n−1 · · · t1 t0 )b when
+        R = bn and m = (mn−1 · · · m1 m0 )b . The algorithm makes implicit use of Fact 14.29
+        by computing quantities which have similar properties to U = T m0 mod R and T + U m,
+        although the latter two expressions are not computed explicitly.
+
+ 14.32 Algorithm Montgomery reduction
+        INPUT: integers m = (mn−1 · · · m1 m0 )b with gcd(m, b) = 1, R = bn , m0 = −m−1 mod
+         b, and T = (t2n−1 · · · t1 t0 )b < mR.
+        OUTPUT: T R−1 mod m.
+            1. A←T . (Notation: A = (a2n−1 · · · a1 a0 )b .)
+            2. For i from 0 to (n − 1) do the following:
+                2.1 ui ←ai m0 mod b.
+                2.2 A←A + ui mbi .
+            3. A←A/bn .
+            4. If A ≥ m then A←A − m.
+            5. Return(A).
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+602                                                                   Ch. 14 Efficient Implementation
+
+
+ 14.33 Note (comments on Montgomery reduction)
+          (i) Algorithm 14.32 does not require m0 = −m−1 mod R, as Fact 14.29 does, but rather
+              m0 = −m−1 mod b. This is due to the choice of R = bn .
+         (ii) At step 2.1 of the algorithm with i = l, A has the property that aj = 0, 0 ≤ j ≤ l −1.
+              Step 2.2 does not modify these values, but does replace al by 0. It follows that in
+              step 3, A is divisible by bn .
+        (iii) Going into step 3, the value of A equals T plus some multiple of m (see step 2.2);
+              here A = (T + km)/bn is an integer (see (ii) above) and A ≡ T R−1 (mod m). It
+              remains to show that A is less than 2m, so that atP step 4, a subtraction (rather than a
+                                                                                     Pn−1
+                                                                    n−1
+              division) will suffice. Going into step 3, A = T + i=0 ui bi m. But i=0 ui bi m <
+              bn m = Rm and T < Rm; hence, A < 2Rm. Going into step 4 (after division of A
+              by R), A < 2m as required.
+
+ 14.34 Note (computational efficiency of Montgomery reduction) Step 2.1 and step 2.2 of Algo-
+       rithm 14.32 require a total of n + 1 single-precision multiplications. Since these steps are
+       executed n times, the total number of single-precision multiplications is n(n + 1). Algo-
+       rithm 14.32 does not require any single-precision divisions.
+
+ 14.35 Example (Montgomery reduction) Let m = 72639, b = 10, R = 105 , and T = 7118368.
+       Here n = 5, m0 = −m−1 mod 10 = 1, T mod m = 72385, and T R−1 mod m = 39796.
+       Table 14.7 displays the iterations of step 2 in Algorithm 14.32.              
+
+                            i    ui = ai m0 mod 10           ui mbi             A
+                           −             −                      −         7118368
+                           0             8                 581112         7699480
+                           1             8                5811120        13510600
+                           2             6               43583400        57094000
+                           3             4              290556000       347650000
+                           4             5             3631950000      3979600000
+
+                       Table 14.7: Montgomery reduction algorithm (see Example 14.35).
+
+        Montgomery multiplication
+        Algorithm 14.36 combines Montgomery reduction (Algorithm 14.32) and multiple-precis-
+        ion multiplication (Algorithm 14.12) to compute the Montgomery reduction of the product
+        of two integers.
+
+ 14.36 Algorithm Montgomery multiplication
+        INPUT: integers m = (mn−1 · · · m1 m0 )b , x = (xn−1 · · · x1 x0 )b , y = (yn−1 · · · y1 y0 )b
+        with 0 ≤ x, y < m, R = bn with gcd(m, b) = 1, and m0 = −m−1 mod b.
+        OUTPUT: xyR−1 mod m.
+           1. A←0. (Notation: A = (an an−1 · · · a1 a0 )b .)
+           2. For i from 0 to (n − 1) do the following:
+               2.1 ui ←(a0 + xi y0 )m0 mod b.
+               2.2 A←(A + xi y + ui m)/b.
+           3. If A ≥ m then A←A − m.
+           4. Return(A).
+
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.3 Multiple-precision modular arithmetic                                                       603
+
+
+ 14.37 Note (partial justification of Algorithm 14.36) Suppose at the ith iteration of step 2 that
+       0 ≤ A < 2m − 1. Step 2.2 replaces A with (A + xi y + uim)/b; but (A + xi y + ui m)/b ≤
+       (2m − 2 + (b − 1)(m − 1) + (b − 1)m)/b = 2m − 1 − (1/b). Hence, A < 2m − 1,
+       justifying step 3.
+
+ 14.38 Note (computational efficiency of Algorithm 14.36) Since A + xi y + uim is a multiple of
+       b, only a right-shift is required to perform a division by b in step 2.2. Step 2.1 requires two
+       single-precision multiplications and step 2.2 requires 2n. Since step 2 is executed n times,
+       the total number of single-precision multiplications is n(2 + 2n) = 2n(n + 1).
+
+ 14.39 Note (computing xy mod m with Montgomery multiplication) Suppose x, y, and m are
+       n-digit base b integers with 0 ≤ x, y < m. Neglecting the cost of the precomputation in
+       the input, Algorithm 14.36 computes xyR−1 mod m with 2n(n + 1) single-precision mul-
+       tiplications. Neglecting the cost to compute R2 mod m and applying Algorithm 14.36 to
+       xyR−1 mod m and R2 mod m, xy mod m is computed in 4n(n + 1) single-precision op-
+       erations. Using classical modular multiplication (Algorithm 14.28) would require 2n(n+1)
+       single-precision operations and no precomputation. Hence, the classical algorithm is supe-
+       rior for doing a single modular multiplication; however, Montgomery multiplication is very
+       effective for performing modular exponentiation (Algorithm 14.94).
+
+ 14.40 Remark (Montgomery reduction vs. Montgomery multiplication) Algorithm 14.36 (Mont-
+       gomery multiplication) takes as input two n-digit numbers and then proceeds to interleave
+       the multiplication and reduction steps. Because of this, Algorithm 14.36 is not able to take
+       advantage of the special case where the input integers are equal (i.e., squaring). On the other
+       hand, Algorithm 14.32 (Montgomery reduction) assumes as input the product of two inte-
+       gers, each of which has at most n digits. Since Algorithm 14.32 is independent of multiple-
+       precision multiplication, a faster squaring algorithm such as Algorithm 14.16 may be used
+       prior to the reduction step.
+
+ 14.41 Example (Montgomery multiplication) In Algorithm 14.36, let m = 72639, R = 105 ,
+       x = 5792, y = 1229. Here n = 5, m0 = −m−1 mod 10 = 1, and xyR−1 mod m =
+       39796. Notice that m and R are the same values as in Example 14.35, as is xy = 7118368.
+       Table 14.8 displays the steps in Algorithm 14.36.                                    
+
+                               i   xi   x i y0   ui     xi y    ui m       A
+                               0   2     18      8     2458    581112    58357
+                               1   9     81      8    11061    581112    65053
+                               2   7     63      6     8603    435834    50949
+                               3   5     45      4     6145    290556    34765
+                               4   0      0      5       0     363195    39796
+
+                          Table 14.8: Montgomery multiplication (see Example 14.41).
+
+
+
+
+14.3.3 Barrett reduction
+        Barrett reduction (Algorithm 14.42) computes r = x mod m given x and m. The algorithm
+        requires the precomputation of the quantity µ = bb2k /mc; it is advantageous if many reduc-
+        tions are performed with a single modulus. For example, each RSA encryption for one en-
+        tity requires reduction modulo that entity’s public key modulus. The precomputation takes
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+604                                                                              Ch. 14 Efficient Implementation
+
+
+        a fixed amount of work, which is negligible in comparison to modular exponentiation cost.
+        Typically, the radix b is chosen to be close to the word-size of the processor. Hence, assume
+        b > 3 in Algorithm 14.42 (see Note 14.44 (ii)).
+
+ 14.42 Algorithm Barrett modular reduction
+        INPUT: positive integers x = (x2k−1 · · · x1 x0 )b , m = (mk−1 · · · m1 m0 )b (with mk−1 6=
+        0), and µ = bb2k /mc.
+        OUTPUT: r = x mod m.
+            1. q1 ←bx/bk−1 c, q2 ←q1 · µ, q3 ←bq2 /bk+1 c.
+            2. r1 ←x mod bk+1 , r2 ←q3 · m mod bk+1 , r←r1 − r2 .
+            3. If r < 0 then r←r + bk+1 .
+            4. While r ≥ m do: r←r − m.
+            5. Return(r).
+
+ 14.43 Fact By the division algorithm (Definition 2.82), there exist integers Q and R such that
+       x = Qm + R and 0 ≤ R < m. In step 1 of Algorithm 14.42, the following inequality is
+       satisfied: Q − 2 ≤ q3 ≤ Q.
+
+ 14.44 Note (partial justification of correctness of Barrett reduction)
+         (i) Algorithm 14.42 is based on the observation that bx/mc can be written as Q =
+             b(x/bk−1 )(b2k /m)(1/bk+1
+                                       )c. Moreover, Q can be approximated by the quantity
+             q3 = bx/bk−1 cµ/bk+1 . Fact 14.43 guarantees that q3 is never larger than the true
+             quotient Q, and is at most 2 smaller.
+        (ii) In step 2, observe that −bk+1 < r1 − r2 < bk+1 , r1 − r2 ≡ (Q − q3 )m + R
+             (mod bk+1 ), and 0 ≤ (Q − q3 )m + R < 3m < bk+1 since m < bk and 3 < b. If
+             r1 − r2 ≥ 0, then r1 − r2 = (Q − q3 )m + R. If r1 − r2 < 0, then r1 − r2 + bk+1 =
+             (Q − q3 )m + R. In either case, step 4 is repeated at most twice since 0 ≤ r < 3m.
+
+ 14.45 Note (computational efficiency of Barrett reduction)
+          (i) All divisions performed in Algorithm 14.42 are simple right-shifts of the base b rep-
+              resentation.
+         (ii) q2 is only used to compute q3 . Since the k + 1 least significant digits of q2 are not
+              needed to determine q3 , only a partial multiple-precision multiplication (i.e., q1 · µ)
+              is necessary. The only influence of the k + 1 least significant digits on the higher
+              order digits is the carry from position k + 1 to position k + 2. Provided the base b
+              is sufficiently large with respect to k, this carry can be accurately computed by only
+              calculating the digits at positions k and k+1. 1 Hence, the k−1 least significant digits
+              of q2 need not be computed. Since  µ and q1 have at most k + 1 digits, determining q3
+              requires at most (k + 1)2 − k2 = (k 2 + 5k + 2)/2 single-precision multiplications.
+        (iii) In step 2 of Algorithm 14.42, r2 can also be computed by a partial multiple-precision
+              multiplication which evaluates  only the least significant k + 1 digits of q3 · m. This
+              can be done in at most k+1  2    + k single-precision multiplications.
+
+ 14.46 Example (Barrett reduction) Let b = 4, k = 3, x = (313221)b, and m = (233)b (i.e.,
+       x = 3561 and m = 47). Then µ = b46 /mc = 87 = (1113)b , q1 = b(313221)b/42 c =
+       (3132)b , q2 = (3132)b · (1113)b = (10231302)b, q3 = (1023)b , r1 = (3221)b , r2 =
+       (1023)b · (233)b mod b4 = (3011)b , and r = r1 − r2 = (210)b . Thus x mod m = 36. 
+           1 If b > k, then the carry computed by simply considering the digits at position k − 1 (and ignoring the carry
+
+        from position k − 2) will be in error by at most 1.
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.3 Multiple-precision modular arithmetic                                                        605
+
+
+
+
+14.3.4 Reduction methods for moduli of special form
+        When the modulus has a special (customized) form, reduction techniques can be employed
+        to allow more efficient computation. Suppose that the modulus m is a t-digit base b positive
+        integer of the form m = bt − c, where c is an l-digit base b positive integer (for some
+        l < t). Algorithm 14.47 computes x mod m for any positive integer x by using only shifts,
+        additions, and single-precision multiplications of base b numbers.
+
+ 14.47 Algorithm Reduction modulo m = bt − c
+        INPUT: a base b, positive integer x, and a modulus m = bt − c, where c is an l-digit base
+        b integer for some l < t.
+        OUTPUT: r = x mod m.
+            1. q0 ←bx/bt c, r0 ←x − q0 bt , r←r0 , i←0.
+            2. While qi > 0 do the following:
+                2.1 qi+1 ←bqi c/bt c, ri+1 ←qi c − qi+1 bt .
+                2.2 i←i + 1, r←r + ri .
+            3. While r ≥ m do: r←r − m.
+            4. Return(r).
+
+
+ 14.48 Example (reduction modulo bt − c) Let b = 4, m = 935 = (32213)4, and x = 31085 =
+       (13211231)4. Since m = 45 − (1121)4 , take c = (1121)4. Here t = 5 and l = 4.
+       Table 14.9 displays the quotients and remainders produced by Algorithm 14.47. At the be-
+       ginning of step 3, r = (102031)4. Since r > m, step 3 computes r − m = (3212)4 .      
+
+
+                              i     qi−1 c        qi          ri           r
+                              0       –         (132)4    (11231)4      (11231)4
+                              1   (221232)4      (2)4     (21232)4      (33123)4
+                              2    (2302)4       (0)4      (2302)4     (102031)4
+
+                        Table 14.9: Reduction modulo m = bt − c (see Example 14.48).
+
+
+
+ 14.49 Fact (termination) For some integer s ≥ 0, qs = 0; hence, Algorithm 14.47 terminates.
+        Justification. qi c = qi+1 bt +ri+1 , i ≥ 0. Since c < bt , qi = (qi+1 bt /c)+(ri+1 /c) > qi+1 .
+        Since the qi ’s are non-negative integers which strictly decrease as i increases, there is some
+        integer s ≥ 0 such that qs = 0.
+
+ 14.50 Fact (correctness) Algorithm 14.47 terminates with the correct residue modulo m.
+        Justification. Suppose that s is the smallest index i for which qi = 0 (i.e., qs = 0). Now,
+        x = q0 bt + r0and qi c = qi+1 bt + ri+1 , 0 ≤ i ≤ s − 1. Adding these equations gives
+               Ps−1              Ps−1             Ps
+                                                     i=0 ri . Since b ≡ c (mod m), it follows that
+                                              t                      t
+        x+        i=0 qi c =       i=0 qi b +
+              Ps                                                                  Ps
+        x ≡ i=0 ri (mod m). Hence, repeated subtraction of m from r = i=0 ri gives the
+        correct residue.
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+606                                                                  Ch. 14 Efficient Implementation
+
+
+ 14.51 Note (computational efficiency of reduction modulo bt − c)
+         (i) Suppose that x has 2t base b digits. If l ≤ t/2, then Algorithm 14.47 executes step 2
+             at most s = 3 times, requiring 2 multiplications by c. In general, if l is approxi-
+             mately (s − 2)t/(s − 1), then Algorithm 14.47 executes step 2 about s times. Thus,
+             Algorithm 14.47 requires about sl single-precision multiplications.
+        (ii) If c has few non-zero digits, then multiplication by c will be relatively inexpensive.
+             If c is large but has few non-zero digits, the number of iterations of Algorithm 14.47
+             will be greater, but each iteration requires a very simple multiplication.
+
+ 14.52 Note (modifications) Algorithm 14.47 can be modified if m = bt + c for some positive
+       integer c < bt : in step 2.2, replace r←r + ri with r←r + (−1)i ri .
+
+ 14.53 Remark (using moduli of a special form) Selecting RSA moduli of the form bt ± c for
+       small values of c limits the choices of primes p and q. Care must also be exercised when
+       selecting moduli of a special form, so that factoring is not made substantially easier; this is
+       because numbers of this form are more susceptible to factoring by the special number field
+       sieve (see §3.2.7). A similar statement can be made regarding the selection of primes of a
+       special form for cryptographic schemes based on the discrete logarithm problem.
+
+
+
+14.4 Greatest common divisor algorithms
+        Many situations in cryptography require the computation of the greatest common divisor
+        (gcd) of two positive integers (see Definition 2.86). Algorithm 2.104 describes the classical
+        Euclidean algorithm for this computation. For multiple-precision integers, Algorithm 2.104
+        requires a multiple-precision division at step 1.1 which is a relatively expensive operation.
+        This section describes three methods for computing the gcd which are more efficient than
+        the classical approach using multiple-precision numbers. The first is non-Euclidean and
+        is referred to as the binary gcd algorithm (§14.4.1). Although it requires more steps than
+        the classical algorithm, the binary gcd algorithm eliminates the computationally expen-
+        sive division and replaces it with elementary shifts and additions. Lehmer’s gcd algorithm
+        (§14.4.2) is a variant of the classical algorithm more suited to multiple-precision computa-
+        tions. A binary version of the extended Euclidean algorithm is given in §14.4.3.
+
+
+14.4.1 Binary gcd algorithm
+ 14.54 Algorithm Binary gcd algorithm
+        INPUT: two positive integers x and y with x ≥ y.
+        OUTPUT: gcd(x, y).
+          1. g←1.
+          2. While both x and y are even do the following: x←x/2, y←y/2, g←2g.
+          3. While x 6= 0 do the following:
+              3.1 While x is even do: x←x/2.
+              3.2 While y is even do: y←y/2.
+              3.3 t←|x − y|/2.
+              3.4 If x ≥ y then x←t; otherwise, y←t.
+          4. Return(g · y).
+
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.4 Greatest common divisor algorithms                                                           607
+
+
+ 14.55 Example (binary gcd algorithm) The following table displays the steps performed by Al-
+       gorithm 14.54 for computing gcd(1764, 868) = 28.                                    
+
+                           x    1764    441    112      7     7     7     7    7   0
+                           y     868    217    217    217   105    49    21    7   7
+                           g       1      4      4      4     4     4     4    4   4
+
+ 14.56 Note (computational efficiency of Algorithm 14.54)
+         (i) If x and y are in radix 2 representation, then the divisions by 2 are simply right-shifts.
+        (ii) Step 3.3 for multiple-precision integers can be computed using Algorithm 14.9.
+
+
+
+14.4.2 Lehmer’s gcd algorithm
+        Algorithm 14.57 is a variant of the classical Euclidean algorithm (Algorithm 2.104) and
+        is suited to computations involving multiple-precision integers. It replaces many of the
+        multiple-precision divisions by simpler single-precision operations.
+             Let x and y be positive integers in radix b representation, with x ≥ y. Without loss
+        of generality, assume that x and y have the same number of base b digits throughout Algo-
+        rithm 14.57; this may necessitate padding the high-order digits of y with 0’s.
+
+ 14.57 Algorithm Lehmer’s gcd algorithm
+        INPUT: two positive integers x and y in radix b representation, with x ≥ y.
+        OUTPUT: gcd(x, y).
+          1. While y ≥ b do the following:
+                      e, ye to be the high-order digit of x, y, respectively (e
+              1.1 Set x                                                       y could be 0).
+              1.2 A←1, B←0, C←0, D←1.
+              1.3 While (e y + C) 6= 0 and (e y + D) 6= 0 do the following:
+                      q←b(e   x + A)/(e y + C)c, q 0 ←b(ex + B)/(e  y + D)c.
+                      If q 6= q 0 then go to step 1.4.
+                      t←A − qC, A←C, C←t, t←B − qD, B←D, D←t.
+                      t←e  x − qe    e←e
+                                  y, x   y, ye←t.
+              1.4 If B = 0, then T ←x mod y, x←y, y←T ;
+                  otherwise, T ←Ax + By, u←Cx + Dy, x←T , y←u.
+          2. Compute v = gcd(x, y) using Algorithm 2.104.
+          3. Return(v).
+
+
+ 14.58 Note (implementation notes for Algorithm 14.57)
+          (i) T is a multiple-precision variable. A, B, C, D, and t are signed single-precision
+              variables; hence, one bit of each of these variables must be reserved for the sign.
+         (ii) The first operation of step 1.3 may result in overflow since 0 ≤ xe + A, ye + D ≤ b.
+              This possibility needs to be accommodated. One solution is to reserve two bits more
+                                                             e and ye to accommodate both the sign
+              than the number of bits in a digit for each of x
+              and the possible overflow.
+        (iii) The multiple-precision additions of step 1.4 are actually subtractions, since AB ≤ 0
+              and CD ≤ 0.
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+608                                                                Ch. 14 Efficient Implementation
+
+
+ 14.59 Note (computational efficiency of Algorithm 14.57)
+         (i) Step 1.3 attempts to simulate multiple-precision divisions by much simpler single-
+             precision operations. In each iteration of step 1.3, all computations are single preci-
+             sion. The number of iterations of step 1.3 depends on b.
+        (ii) The modular reduction in step 1.4 is a multiple-precision operation. The other op-
+             erations are multiple-precision, but require only linear time since the multipliers are
+             single precision.
+
+ 14.60 Example (Lehmer’s gcd algorithm) Let b = 103 , x = 768 454 923, and y = 542 167 814.
+       Since b = 103 , the high-order digits of x and y are xe = 768 and ye = 542, respectively.
+       Table 14.10 displays the values of the variables at various stages of Algorithm 14.57. The
+       single-precision computations (Step 1.3) when q = q 0 are shown in Table 14.11. Hence
+       gcd(x, y) = 1.                                                                          
+
+
+
+14.4.3 Binary extended gcd algorithm
+        Given integers x and y, Algorithm 2.107 computes integers a and b such that ax + by = v,
+        where v = gcd(x, y). It has the drawback of requiring relatively costly multiple-precision
+        divisions when x and y are multiple-precision integers. Algorithm 14.61 eliminates this
+        requirement at the expense of more iterations.
+
+ 14.61 Algorithm Binary extended gcd algorithm
+        INPUT: two positive integers x and y.
+        OUTPUT: integers a, b, and v such that ax + by = v, where v = gcd(x, y).
+          1. g←1.
+          2. While x and y are both even, do the following: x←x/2, y←y/2, g←2g.
+          3. u←x, v←y, A←1, B←0, C←0, D←1.
+          4. While u is even do the following:
+              4.1 u←u/2.
+              4.2 If A ≡ B ≡ 0 (mod 2) then A←A/2, B←B/2; otherwise, A←(A + y)/2,
+                   B←(B − x)/2.
+          5. While v is even do the following:
+              5.1 v←v/2.
+              5.2 If C ≡ D ≡ 0 (mod 2) then C←C/2, D←D/2; otherwise, C←(C + y)/2,
+                   D←(D − x)/2.
+          6. If u ≥ v then u←u − v, A←A − C, B←B − D;
+             otherwise, v←v − u, C←C − A, D←D − B.
+          7. If u = 0, then a←C, b←D, and return(a, b, g · v); otherwise, go to step 4.
+
+
+ 14.62 Example (binary extended gcd algorithm) Let x = 693 and y = 609. Table 14.12 dis-
+       plays the steps in Algorithm 14.61 for computing integers a, b, v such that 693a+609b = v,
+       where v = gcd(693, 609). The algorithm returns v = 21, a = −181, and b = 206.           
+
+
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.4 Greatest common divisor algorithms                                                         609
+
+
+
+
+                              x              y     q    q0   precision     reference
+                    768 454 923    542 167 814     1    1     single     Table 14.11(i)
+                     89 593 596     47 099 917     1    1     single     Table 14.11(ii)
+                     42 493 679      4 606 238    10    8    multiple
+                      4 606 238      1 037 537     5    2    multiple
+                      1 037 537        456 090     –    –    multiple
+                        456 090        125 357     3    3     single     Table 14.11(iii)
+                         34 681         10 657     3    3     single     Table 14.11(iv)
+                         10 657          2 710     5    3    multiple
+                          2 710          2 527     1    0    multiple
+                          2 527            183                           Algorithm 2.104
+                            183            148                           Algorithm 2.104
+                            148             35                           Algorithm 2.104
+                             35              8                           Algorithm 2.104
+                              8              3                           Algorithm 2.104
+                              3              2                           Algorithm 2.104
+                              2              1                           Algorithm 2.104
+                              1              0                           Algorithm 2.104
+
+                         Table 14.10: Lehmer’s gcd algorithm (see Example 14.60).
+
+
+
+
+                                    e
+                                    x     ye      A     B     C    D      q    q0
+                            (i)   768   542       1     0     0    1      1     1
+                                  542   226       0     1     1   −1      2     2
+                                  226    90       1    −1    −2    3      2     2
+                                   90    46      −2     3     5   −7      1     2
+                           (ii)    89    47       1     0     0    1      1     1
+                                   47    42       0     1     1   −1      1     1
+                                   42      5      1    −1    −1    2     10     5
+                          (iii)   456   125       1     0     0    1      3     3
+                                  125    81       0     1     1   −3      1     1
+                                   81    44       1    −3    −1    4      1     1
+                                   44    37      −1     4     2   −7      1     1
+                                   37      7      2    −7    −3   11      9     1
+                           (iv)    34    10       1     0     0    1      3     3
+                                   10      4      0     1     1   −3      2    11
+
+               Table 14.11: Single-precision computations (see Example 14.60 and Table 14.10).
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+610                                                                 Ch. 14 Efficient Implementation
+
+
+                                   u     v     A       B       C        D
+                                 693   609      1       0       0        1
+                                  84   609      1     −1        0        1
+                                  42   609    305    −347       0        1
+                                  21   609    457    −520       0        1
+                                  21   588    457    −520    −457      521
+                                  21   294    457    −520      76      −86
+                                  21   147    457    −520      38      −43
+                                  21   126    457    −520    −419      477
+                                  21    63    457    −520      95     −108
+                                  21    42    457    −520    −362      412
+                                  21    21    457    −520    −181      206
+                                   0    21    638    −726    −181      206
+
+          Table 14.12: The binary extended gcd algorithm with x = 693, y = 609 (see Example 14.62).
+
+
+
+ 14.63 Note (computational efficiency of Algorithm 14.61)
+         (i) The only multiple-precision operations needed for Algorithm 14.61 are addition and
+             subtraction. Division by 2 is simply a right-shift of the binary representation.
+        (ii) The number of bits needed to represent either u or v decreases by (at least) 1, after at
+             most two iterations of steps 4 – 7; thus, the algorithm takes at most 2(blg xc+blg yc+
+             2) such iterations.
+
+
+ 14.64 Note (multiplicative inverses) Given positive integers m and a, it is often necessary to
+       find an integer z ∈ Zm such that az ≡ 1 (mod m), if such an integer exists. z is called
+       the multiplicative inverse of a modulo m (see Definition 2.115). For example, construct-
+       ing the private key for RSA requires the computation of an integer d such that ed ≡ 1
+         (mod (p − 1)(q − 1)) (see Algorithm 8.1). Algorithm 14.61 provides a computation-
+       ally efficient method for determining z given a and m, by setting x = m and y = a. If
+       gcd(x, y) = 1, then, at termination, z = D if D > 0, or z = m + D if D < 0; if
+       gcd(x, y) 6= 1, then a is not invertible modulo m. Notice that if m is odd, it is not nec-
+       essary to compute the values of A and C. It would appear that step 4 of Algorithm 14.61
+       requires both A and B in order to decide which case in step 4.2 is executed. But if m is odd
+       and B is even, then A must be even; hence, the decision can be made using the parities of
+       B and m.
+             Example 14.65 illustrates Algorithm 14.61 for computing a multiplicative inverse.
+
+ 14.65 Example (multiplicative inverse) Let m = 383 and a = 271. Table 14.13 illustrates the
+       steps of Algorithm 14.61 for computing 271−1 mod 383 = 106. Notice that values for the
+       variables A and C need not be computed.                                             
+
+
+
+
+14.5 Chinese remainder theorem for integers
+        Fact 2.120 introduced the Chinese remainder theorem (CRT) and Fact 2.121 outlined an al-
+        gorithm for solving the associated system of linear congruences. Although the method de-
+        scribed there is the one found in most textbooks on elementary number theory, it is not the
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.5 Chinese remainder theorem for integers                                                                 611
+
+
+          iteration:      1         2        3       4       5        6        7         8        9       10
+              u         383       112       56      28      14        7        7         7        7        7
+              v         271       271      271     271     271      271      264       132       66       33
+              B           0        −1     −192     −96     −48      −24      −24       −24      −24      −24
+              D           1         1        1       1       1        1       25      −179     −281     −332
+          iteration:     11        12       13      14      15       16       17        18       19
+              u           7         7        7       7       4        2        1         1        1
+              v          26        13        6       3       3        3        3         2        1
+              B         −24       −24      −24     −24      41     −171     −277      −277     −277
+              D        −308      −154     −130     −65     −65      −65      −65       212      106
+
+         Table 14.13: Inverse computation using the binary extended gcd algorithm (see Example 14.65).
+
+
+
+        method of choice for large integers. Garner’s algorithm (Algorithm 14.71) has some com-
+        putational advantages. §14.5.1 describes an alternate (non-radix) representation for non-
+        negative integers, called a modular representation, that allows some computational advan-
+        tages compared to standard radix representations. Algorithm 14.71 provides a technique
+        for converting numbers from modular to base b representation.
+
+
+14.5.1 Residue number systems
+        In previous sections, non-negative integers have been represented in radix b notation. An
+        alternate means is to use a mixed-radix representation.
+
+ 14.66 Fact Let B be a fixed positive integer. Let
+                                                Qtm1 , m2 , . . . , mt be positive integers such that
+       gcd(mi , mj ) = 1 for all i 6= j, and M = i=1 mi ≥ B. Then each integer x, 0 ≤ x < B,
+       can be uniquely represented by the sequence of integers v(x) = (v1 , v2 , . . . , vt ), where
+       vi = x mod mi , 1 ≤ i ≤ t.
+
+ 14.67 Definition Referring to Fact 14.66, v(x) is called the modular representation or mixed-
+       radix representation of x for the moduli m1 , m2 , . . . , mt . The set of modular representa-
+       tions for all integers x in the range 0 ≤ x < B is called a residue number system.
+               If v(x) = (v1 , v2 , . . . , vt ) and v(y) = (u1 , u2 , . . . , ut ), define v(x)+v(y) = (w1 , w2 ,
+        . . . , wt ) where wi = vi + ui mod mi , and v(x) · v(y) = (z1 , z2 , . . . , zt ) where zi =
+        vi · ui mod mi .
+
+ 14.68 Fact If 0 ≤ x, y < M , then v((x + y) mod M ) = v(x) + v(y) and v((x · y) mod M ) =
+       v(x) · v(y).
+
+ 14.69 Example (modular representation) Let M = 30 = 2 × 3 × 5; here, t = 3, m1 = 2, m1 =
+       3, and m3 = 5. Table 14.14 displays each residue modulo 30 along with its associated
+       modular representation. As an example of Fact 14.68, note that 21 + 27 ≡ 18 (mod 30)
+       and (101) + (102) = (003). Also 22 · 17 ≡ 14 (mod 30) and (012) · (122) = (024). 
+
+
+ 14.70 Note (computational efficiency of modular representation for RSA decryption) Suppose
+       that n = pq, where p and q are distinct primes. Fact 14.68 implies that xd mod n can be
+       computed in a modular representation as v d (x); that is, if v(x) = (v1 , v2 ) with respect to
+       moduli m1 = p, m2 = q, then v d (x) = (v1d mod p, v2d mod q). In general, computing
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+612                                                                      Ch. 14 Efficient Implementation
+
+
+                    x    v(x)      x      v(x)     x     v(x)      x      v(x)     x      v(x)
+                    0    (000)      6    (001)     12    (002)     18    (003)     24    (004)
+                    1    (111)      7    (112)     13    (113)     19    (114)     25    (110)
+                    2    (022)      8    (023)     14    (024)     20    (020)     26    (021)
+                    3    (103)      9    (104)     15    (100)     21    (101)     27    (102)
+                    4    (014)     10    (010)     16    (011)     22    (012)     28    (013)
+                    5    (120)     11    (121)     17    (122)     23    (123)     29    (124)
+
+                           Table 14.14: Modular representations (see Example 14.69).
+
+
+
+        v1d mod p and v2d mod q is faster than computing xd mod n. For RSA, if p and q are part
+        of the private key, modular representation can be used to improve the performance of both
+        decryption and signature generation (see Note 14.75).
+             Converting an integer x from a base b representation to a modular representation is eas-
+        ily done by applying a modular reduction algorithm to compute vi = x mod mi , 1 ≤ i ≤ t.
+        Modular representations of integers in ZM may facilitate some computational efficiencies,
+        provided conversion from a standard radix to modular representation and back are relatively
+        efficient operations. Algorithm 14.71 describes one way of converting from modular rep-
+        resentation back to a standard radix representation.
+
+
+14.5.2 Garner’s algorithm
+        Garner’s algorithm is an efficient method for determining x, 0 ≤ x < M , given v(x) =
+        (v1 , v2 , . . . , vt ), the residues of x modulo the pairwise co-prime moduli m1 , m2 , . . . , mt .
+
+ 14.71 Algorithm Garner’s algorithm for CRT
+                                        Qt
+       INPUT: a positive integer M = i=1 mi > 1, with gcd(mi , mj ) = 1 for all i 6= j, and a
+       modular representation v(x) = (v1 , v2 , . . . , vt ) of x for the mi .
+       OUTPUT: the integer x in radix b representation.
+         1. For i from 2 to t do the following:
+             1.1 Ci ←1.
+             1.2 For j from 1 to (i − 1) do the following:
+                      u←m−1 j mod mi (use Algorithm 14.61).
+                      Ci ←u · Ci mod mi .
+         2. u←v1 , x←u.
+                                                                                  Qi−1
+         3. For i from 2 to t do the following: u←(vi − x)Ci mod mi , x←x + u · j=1 mj .
+         4. Return(x).
+
+
+ 14.72 Fact x returned by Algorithm 14.71 satisfies 0 ≤ x < M , x ≡ vi (mod mi ), 1 ≤ i ≤ t.
+
+ 14.73 Q
+       Example (Garner’s algorithm) Let m1 = 5, m2 = 7, m3 = 11, m4 = 13, M =
+         4
+         i=1 mi = 5005, and v(x) = (2, 1, 3, 8). The constants Ci computed are C2 = 3,
+       C3 = 6, and C4 = 5. The values of (i, u, x) computed in step 3 of Algorithm 14.71 are
+       (1, 2, 2), (2, 4, 22), (3, 7, 267), and (4, 5, 2192). Hence, the modular representation v(x) =
+       (2, 1, 3, 8) corresponds to the integer x = 2192.                                            
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                             613
+
+
+ 14.74 Note (computational efficiency of Algorithm 14.71)
+         (i) If Garner’s algorithm is used repeatedly with the same modulus M and the same fac-
+             tors of M , then step 1 can be considered as a precomputation, requiring the storage
+             of t − 1 numbers.
+        (ii) The classical algorithm for the CRT (Algorithm 2.121) typically requires a modular
+             reduction with modulus M , whereas Algorithm 14.71 does not. Suppose M is a kt-
+             bit integer and each mi is a k-bit integer. A modular reduction by M takes O((kt)2 )
+             bit operations, whereas a modular reduction by mi takes O(k 2 ) bit operations. Since
+             Algorithm 14.71 only does modular reduction with mi , 2 ≤ i ≤ t, it takes O(tk 2 )
+             bit operations in total for the reduction phase, and is thus more efficient.
+
+ 14.75 Note (RSA decryption and signature generation)
+         (i) (special case of two moduli) Algorithm 14.71 is particularly efficient for RSA moduli
+             n = pq, where m1 = p and m2 = q are distinct primes. Step 1 computes a single
+             value C2 = p−1 mod q. Step 3 is executed once: u = (v2 − v1 )C2 mod q and
+             x = v1 + up.
+        (ii) (RSA exponentiation) Suppose p and q are t-bit primes, and let n = pq. Let d be a 2t-
+             bit RSA private key. RSA decryption and signature generation compute xd mod n
+             for some x ∈ Zn . Suppose that modular multiplication and squaring require k 2 bit
+             operations for k-bit inputs, and that exponentiation with a k-bit exponent requires
+             about 32 k multiplications and squarings (see Note 14.78). Then computing xd mod n
+             requires about 32 (2t)3 = 12t3 bit operations. A more efficient approach is to compute
+             xdp mod p and xdq mod q (where dp = d mod (p − 1) and dq = d mod (q − 1)),
+             and then use Garner’s algorithm to construct xd mod pq. Although this procedure
+             takes two exponentiations, each is considerably more efficient because the moduli
+             are smaller. Assuming that the cost of Algorithm 14.71 is negligible with respect to
+             the exponentiations, computing xd mod n is about 32 (2t)3 /2( 32 t3 ) = 4 times faster.
+
+
+
+
+14.6 Exponentiation
+        One of the most important arithmetic operations for public-key cryptography is exponen-
+        tiation. The RSA scheme (§8.2) requires exponentiation in Zm for some positive integer
+        m, whereas Diffie-Hellman key agreement (§12.6.1) and the ElGamal encryption scheme
+        (§8.4) use exponentiation in Zp for some large prime p. As pointed out in §8.4.2, ElGamal
+        encryption can be generalized to any finite cyclic group. This section discusses methods for
+        computing the exponential g e , where the base g is an element of a finite group G (§2.5.1)
+        and the exponent e is a non-negative integer. A reader uncomfortable with the setting of a
+        general group may consider G to be Z∗m ; that is, read g e as g e mod m.
+             An efficient method for multiplying two elements in the group G is essential to per-
+        forming efficient exponentiation. The most naive way to compute g e is to do e − 1 multi-
+        plications in the group G. For cryptographic applications, the order of the group G typically
+        exceeds 2160 elements, and may exceed 21024 . Most choices of e are large enough that it
+        would be infeasible to compute g e using e − 1 successive multiplications by g.
+             There are two ways to reduce the time required to do exponentiation. One way is to
+        decrease the time to multiply two elements in the group; the other is to reduce the number
+        of multiplications used to compute g e . Ideally, one would do both.
+             This section considers three types of exponentiation algorithms.
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+614                                                                   Ch. 14 Efficient Implementation
+
+
+           1. basic techniques for exponentiation. Arbitrary choices of the base g and exponent e
+              are allowed.
+           2. fixed-exponent exponentiation algorithms. The exponent e is fixed and arbitrary choi-
+              ces of the base g are allowed. RSA encryption and decryption schemes benefit from
+              such algorithms.
+           3. fixed-base exponentiation algorithms. The base g is fixed and arbitrary choices of
+              the exponent e are allowed. ElGamal encryption and signatures schemes and Diffie-
+              Hellman key agreement protocols benefit from such algorithms.
+
+
+14.6.1 Techniques for general exponentiation
+        This section includes general-purpose exponentiation algorithms referred to as repeated
+        square-and-multiply algorithms.
+        (i) Basic binary and k-ary exponentiation
+        Algorithm 14.76 is simply Algorithm 2.143 restated in terms of an arbitrary finite abelian
+        group G with identity element 1.
+
+ 14.76 Algorithm Right-to-left binary exponentiation
+        INPUT: an element g ∈ G and integer e ≥ 1.
+        OUTPUT: g e .
+          1. A←1, S←g.
+          2. While e 6= 0 do the following:
+              2.1 If e is odd then A←A · S.
+              2.2 e←be/2c.
+              2.3 If e 6= 0 then S←S · S.
+          3. Return(A).
+
+ 14.77 Example (right-to-left binary exponentiation) The following table displays the values of
+       A, e, and S during each iteration of Algorithm 14.76 for computing g 283 .            
+
+                     A     1     g     g3   g3   g 11   g 27   g 27    g 27   g 27    g 283
+                     e   283    141   70    35    17     8      4       2      1       0
+                     S     g     g2    g4   g8   g 16   g 32   g 64   g 128   g 256    −
+
+ 14.78 Note (computational efficiency of Algorithm 14.76) Let t + 1 be the bitlength of the bi-
+       nary representation of e, and let wt(e) be the number of 1’s in this representation. Algo-
+       rithm 14.76 performs t squarings and wt(e) − 1 multiplications. If e is randomly selected
+       in the range 0 ≤ e < |G| = n, then about blg nc squarings and 12 (blg nc + 1) multiplica-
+       tions can be expected. (The assignment 1 · x is not counted as a multiplication, nor is the
+       operation 1 · 1 counted as a squaring.) If squaring is approximately as costly as an arbi-
+       trary multiplication (cf. Note 14.18), then the expected amount of work is roughly 32 blg nc
+       multiplications.
+             Algorithm 14.76 computes A · S whenever e is odd. For some choices of g, A · g can
+        be computed more efficiently than A · S for arbitrary S. Algorithm 14.79 is a left-to-right
+        binary exponentiation which replaces the operation A · S (for arbitrary S) by the operation
+        A · g (for fixed g).
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                                615
+
+
+
+ 14.79 Algorithm Left-to-right binary exponentiation
+        INPUT: g ∈ G and a positive integer e = (et et−1 · · · e1 e0 )2 .
+        OUTPUT: g e .
+            1. A←1.
+            2. For i from t down to 0 do the following:
+                2.1 A←A · A.
+                2.2 If ei = 1, then A←A · g.
+            3. Return(A).
+
+
+ 14.80 Example (left-to-right binary exponentiation) The following table displays the values of
+       A during each iteration of Algorithm 14.79 for computing g 283 . Note that t = 8 and 283 =
+       (100011011)2.                                                                            
+
+                            i    8    7    6     5     4      3      2       1       0
+                           ei    1    0    0     0     1      1      0       1       1
+                            A    g   g2    g4   g8    g 17   g 35   g 70    g 141   g 283
+
+ 14.81 Note (computational efficiency of Algorithm 14.79) Let t + 1 be the bitlength of the bi-
+       nary representation of e, and let wt(e) be the number of 1’s in this representation. Algo-
+       rithm 14.79 performs t + 1 squarings and wt(e) − 1 multiplications by g. The number of
+       squarings and multiplications is the same as in Algorithm 14.76 but, in this algorithm, mul-
+       tiplication is always with the fixed value g. If g has a special structure, this multiplication
+       may be substantially easier than multiplying two arbitrary elements. For example, a fre-
+       quent operation in ElGamal public-key schemes is the computation of g k mod p, where g
+       is a generator of Z∗p and p is a large prime number. The multiple-precision computation A·g
+       can be done in linear time if g is chosen so that it can be represented by a single-precision
+       integer (e.g., g = 2). If the radix b is sufficiently large, there is a high probability that such
+       a generator exists.
+             Algorithm 14.82, sometimes referred to as the window method for exponentiation, is a
+        generalization of Algorithm 14.79 which processes more than one bit of the exponent per
+        iteration.
+
+ 14.82 Algorithm Left-to-right k-ary exponentiation
+        INPUT: g and e = (et et−1 · · · e1 e0 )b , where b = 2k for some k ≥ 1.
+        OUTPUT: g e .
+          1. Precomputation.
+              1.1 g0 ←1.
+              1.2 For i from 1 to (2k − 1) do: gi ←gi−1 · g. (Thus, gi = g i .)
+          2. A←1.
+          3. For i from t down to 0 do the following:
+                             k
+                3.1 A←A2 .
+                3.2 A←A · gei .
+            4. Return(A).
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+616                                                                       Ch. 14 Efficient Implementation
+
+
+            In Algorithm 14.83, Algorithm 14.82 is modified slightly to reduce the amount of pre-
+        computation. The following notation is used: for each i, 0 ≤ i ≤ t, if ei 6= 0, then write
+        ei = 2hi ui where ui is odd; if ei = 0, then let hi = 0 and ui = 0.
+
+ 14.83 Algorithm Modified left-to-right k-ary exponentiation
+        INPUT: g and e = (et et−1 · · · e1 e0 )b , where b = 2k for some k ≥ 1.
+        OUTPUT: g e .
+          1. Precomputation.
+              1.1 g0 ←1, g1 ←g, g2 ←g 2 .
+              1.2 For i from 1 to (2k−1 − 1) do: g2i+1 ←g2i−1 · g2 .
+          2. A←1.
+                                                     k−hi          hi
+          3. For i from t down to 0 do: A←(A2              · gui )2 .
+          4. Return(A).
+
+
+ 14.84 Remark (right-to-left k-ary exponentiation) Algorithm 14.82 is a generalization of Algo-
+       rithm 14.79. In a similar manner, Algorithm 14.76 can be generalized to the k-ary case.
+       However, the optimization given in Algorithm 14.83 is not possible for the generalized
+       right-to-left k-ary exponentiation method.
+        (ii) Sliding-window exponentiation
+        Algorithm 14.85 also reduces the amount of precomputation compared to Algorithm 14.82
+        and, moreover, reduces the average number of multiplications performed (excluding squar-
+        ings). k is called the window size.
+
+ 14.85 Algorithm Sliding-window exponentiation
+        INPUT: g, e = (et et−1 · · · e1 e0 )2 with et = 1, and an integer k ≥ 1.
+        OUTPUT: g e .
+          1. Precomputation.
+              1.1 g1 ←g, g2 ←g 2 .
+              1.2 For i from 1 to (2k−1 − 1) do: g2i+1 ←g2i−1 · g2 .
+          2. A←1, i←t.
+          3. While i ≥ 0 do the following:
+              3.1 If ei = 0 then do: A←A2 , i←i − 1.
+              3.2 Otherwise (ei 6= 0), find the longest bitstring ei ei−1 · · · el such that i−l+1 ≤ k
+                   and el = 1, and do the following:
+                                i−l+1
+                       A←A2             · g(ei ei−1 ...el )2 , i←l − 1.
+           4. Return(A).
+
+
+ 14.86 Example (sliding-window exponentiation) Take e = 11749 = (10110111100101)2 and
+       k = 3. Table 14.15 illustrates the steps of Algorithm 14.85. Notice that the sliding-window
+       method for this exponent requires three multiplications, corresponding to i = 7, 4, and 0.
+       Algorithm 14.79 would have required four multiplications for the same values of k and e. 
+
+
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                                        617
+
+
+                                   i               A               Longest bitstring
+                                  13                1                    101
+                                  10               g5                    101
+                                              5 8 5        45
+                                   7        (g ) g = g                   111
+                                   4       (g 45 )8 g 7 = g 367           −
+                                   3        (g 367 )2 = g 734             −
+                                   2       (g 734 )2 = g 1468            101
+                                   0    (g 1468 )8 g 5 = g 11749          −
+
+         Table 14.15: Sliding-window exponentiation with k = 3 and exponent e = (10110111100101)2 .
+
+
+
+ 14.87 Note (comparison of exponentiation algorithms) Let t + 1 be the bitlength of e, and let
+       l + 1 be the number of k-bit words formed from e; that is, l = d(t + 1)/ke − 1 = bt/kc.
+       Table 14.16 summarizes the number of squarings and multiplications required by Algo-
+       rithms 14.76, 14.79, 14.82, and 14.83. Analysis of the number of squarings and multipli-
+       cations for Algorithm 14.85 is more difficult, although it is the recommended method.
+           (i) (squarings for Algorithm 14.82) The number of squarings for Algorithm 14.82 is lk.
+               Observe that lk = bt/kck = t − (t mod k). It follows that t − (k − 1) ≤ lk ≤ t
+               and that Algorithm 14.82 can save up to k − 1 squarings over Algorithms 14.76 and
+               14.79. An optimal value for k in Algorithm 14.82 will depend on t.
+          (ii) (squarings for Algorithm 14.83) The number of squarings for Algorithm 14.83 is lk+
+               hl where 0 ≤ hl ≤ t mod k. Since t−(k −1) ≤ lk ≤ lk +hl ≤ lk +(t mod k) = t
+               or t − (k − 1) ≤ lk + hl ≤ t, the number of squarings for this algorithm has the same
+               bounds as Algorithm 14.82.
+
+
+                          Precomputation                                             Multiplications
+            Algorithm     sq     mult                  squarings               worst case    average case
+              14.76       0        0                       t                       t              t/2
+              14.79       0        0                       t                       t              t/2
+              14.82       1     2k − 3           t − (k − 1) ≤ lk ≤ t            l−1        l(2k − 1)/2k
+              14.83       1    2k−1 − 1       t − (k − 1) ≤ lk + hl ≤ t          l−1        l(2k − 1)/2k
+
+         Table 14.16: Number of squarings (sq) and multiplications (mult) for exponentiation algorithms.
+
+
+
+        (iii) Simultaneous multiple exponentiation
+        There are a number of situations which require computation of the product of several ex-
+        ponentials with distinct bases and distinct exponents (for example, verification of ElGa-
+        mal signatures; see Note 14.91). Rather than computing each exponential separately, Al-
+        gorithm 14.88 presents a method to do them simultaneously.
+              Let e0 , e1 , . . . , ek−1 be positive integers each of bitlength t; some of the high-order bits
+        of some of the exponents might be 0, but there is at least one ei whose high-order bit is 1.
+        Form a k×t array EA (called the exponent array) whose rows are the binary representations
+        of the exponents ei , 0 ≤ i ≤ k − 1. Let Ij be the non-negative integer whose binary
+        representation is the jth column, 1 ≤ j ≤ t, of EA, where low-order bits are at the top of
+        the column.
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+618                                                                                          Ch. 14 Efficient Implementation
+
+
+
+ 14.88 Algorithm Simultaneous multiple exponentiation
+        INPUT: group elements g0 , g1 , . . . , gk−1 and non-negative t-bit integers e0 , e1 , . . . ek−1 .
+                                 ek−1
+        OUTPUT: g0e0 g1e1 · · · gk−1  .
+                                                                Qk−1 i
+          1. Precomputation. For i from 0 to (2k − 1): Gi ← j=0 gjj where i = (ik−1 · · · i0 )2 .
+          2. A←1.
+          3. For i from 1 to t do the following: A←A · A, A←A · GIi .
+          4. Return(A).
+
+ 14.89 Example (simultaneous multiple exponentiation) In this example, g030 g110 g224 is computed
+       using Algorithm 14.88. Let e0 = 30 = (11110)2, e1 = 10 = (01010)2, and e2 = 24 =
+       (11000)2. The 3 × 5 array EA is:
+                                                       1     1      1        1      0
+                                                       0     1      0        1      0
+                                                       1     1      0        0      0
+        The next table displays precomputed values from step 1 of Algorithm 14.88.
+                            i     0       1        2         3          4           5            6             7
+                           Gi     1       g0      g1        g0 g1       g2       g0 g2       g1 g2        g0 g1 g2
+
+        Finally, the value of A at the end of each iteration of step 3 is shown in the following table.
+        Here, I1 = 5, I2 = 7, I3 = 1, I4 = 3, and I5 = 0.
+                            i         1            2                3                   4                  5
+                            A     g0 g2        g03 g1 g23     g07 g12 g26        g015 g15 g212       g030 g110 g224
+
+                                                                                                                         
+
+ 14.90 Note (computational efficiency of Algorithm 14.88)
+                                                       ek−1
+         (i) Algorithm 14.88 computes g0e0 g1e1 · · · gk−1  (where each ei is represented by t bits)
+             by performing t − 1 squarings and at most (2k − 2) + t − 1 multiplications. The
+             multiplication is trivial for any column consisting of all 0’s.
+        (ii) Not all of the Gi , 0 ≤ i ≤ 2k −1, need to be precomputed, but only for those i whose
+             binary representation is a column of EA.
+
+ 14.91 Note (ElGamal signature verification) The signature verification equation for the ElGa-
+       mal signature scheme (Algorithm 11.64) is αh(m) (α−a )r ≡ rs (mod p) where p is a large
+       prime, α a generator of Z∗p , αa is the public key, and (r, s) is a signature for message m.
+       It would appear that three exponentiations and one multiplication are required to verify
+       the equation. If t = dlg pe and Algorithm 11.64 is applied, the number of squarings is
+       3(t − 1) and the number of multiplications is, on average, 3t/2. Hence, one would ex-
+       pect to perform about (9t − 4)/2 multiplications and squarings modulo p. Algorithm 14.88
+       can reduce the number of computations substantially if the verification equation is rewrit-
+       ten as αh(m) (α−a )r r−s ≡ 1 (mod p). Taking g0 = α, g1 = α−a , g2 = r, and e0 =
+       h(m) mod (p − 1), e1 = r mod (p − 1), e2 = −s mod (p − 1) in Algorithm 14.88, the
+       expected number of multiplications and squarings is (t−1)+(6+(7t/8)) = (15t+40)/8.
+       (For random exponents, one would expect that, on average, 78 of the columns of EA will be
+       non-zero and necessitate a non-trivial multiplication.) This is only about 25% more costly
+       than a single exponentiation computed by Algorithm 14.79.
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                               619
+
+
+        (iv) Additive notation
+        Algorithms 14.76 and 14.79 have been described in the setting of a multiplicative group.
+        Algorithm 14.92 uses the methodology of Algorithm 14.79 to perform efficient multiplica-
+        tion in an additive group G. (For example, the group formed by the points on an elliptic
+        curve over a finite field uses additive notation.) Multiplication in an additive group corre-
+        sponds to exponentiation in a multiplicative group.
+
+ 14.92 Algorithm Left-to-right binary multiplication in an additive group
+        INPUT: g ∈ G, where G is an additive group, and a positive integer e = (et et−1 · · · e1 e0 )2 .
+        OUTPUT: e · g.
+          1. A←0.
+          2. For i from t down to 0 do the following:
+              2.1 A←A + A.
+              2.2 If ei = 1 then A←A + g.
+          3. Return(A).
+
+
+ 14.93 Note (the additive group Zm )
+          (i) If G is the additive group Zm , then Algorithm 14.92 provides a method for doing
+              modular multiplication. For example, if a, b ∈ Zm , then a · b mod m can be com-
+              puted using Algorithm 14.92 by taking g = a and e = b, provided b is written in
+              binary.
+         (ii) If a, b ∈ Zm , then a < m and b < m. The accumulator A in Algorithm 14.92
+              never contains an integer as large as 2m; hence, modular reduction of the value in
+              the accumulator can be performed by a simple subtraction when A ≥ m; thus no
+              divisions are required.
+        (iii) Algorithms 14.82 and 14.83 can also be used for modular multiplication. In the case
+              of the additive group Zm , the time required to do modular multiplication can be im-
+              proved at the expense of precomputing a table of residues modulo m. For a left-to-
+              right k-ary exponentiation scheme, the table will contain 2k − 1 residues modulo m.
+        (v) Montgomery exponentiation
+        The introductory remarks to §14.3.2 outline an application of the Montgomery reduction
+        method for exponentiation. Algorithm 14.94 below combines Algorithm 14.79 and Al-
+        gorithm 14.36 to give a Montgomery exponentiation algorithm for computing xe mod m.
+        Note the definition of m0 requires that gcd(m, R) = 1. For integers u and v where 0 ≤
+        u, v < m, define Mont(u, v) to be uvR−1 mod m as computed by Algorithm 14.36.
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+620                                                                   Ch. 14 Efficient Implementation
+
+
+
+ 14.94 Algorithm Montgomery exponentiation
+        INPUT: m = (ml−1 · · · m0 )b , R = bl , m0 = −m−1 mod b, e = (et · · · e0 )2 with et = 1,
+        and an integer x, 1 ≤ x < m.
+        OUTPUT: xe mod m.
+              e← Mont(x, R2 mod m), A←R mod m. (R mod m and R2 mod m may be pro-
+           1. x
+              vided as inputs.)
+           2. For i from t down to 0 do the following:
+               2.1 A← Mont(A, A).
+               2.2 If ei = 1 then A← Mont(A, x   e).
+           3. A← Mont(A, 1).
+           4. Return(A).
+
+
+ 14.95 Example (Montgomery exponentiation) Let x, m, and R be integers suitable as inputs to
+       Algorithm 14.94. Let e = 11 = (1011)2 ; here, t = 3. The following table displays the
+       values of A mod m at the end of each iteration of step 2, and after step 3.        
+
+                   i        3       2         1          0                     Step 3
+              A mod m       e
+                            x    e2 R−1
+                                 x         e5 R−4
+                                           x          e11 R−10
+                                                      x                         e11 R−11 = x11
+                                                                   Mont(A, 1) = x
+
+ 14.96 Note (computational efficiency of Montgomery exponentiation)
+          (i) Table 14.17 displays the average number of single-precision multiplications required
+              for each step of Algorithm 14.94. The expected number of single-precision multipli-
+              cations to compute xe mod m by Algorithm 14.94 is 3l(l + 1)(t + 1).
+         (ii) Each iteration of step 2 in Algorithm 14.94 applies Algorithm 14.36 at a cost of 2l(l+
+              1) single-precision multiplications but no single-precision divisions. A similar algo-
+              rithm for modular exponentiation based on classical modular multiplication (Algo-
+              rithm 14.28) would similarly use 2l(l + 1) single-precision multiplications per iter-
+              ation but also l single-precision divisions.
+        (iii) Any of the other exponentiation algorithms discussed in §14.6.1 can be combined
+              with Montgomery reduction to give other Montgomery exponentiation algorithms.
+
+
+                Step                                              1           2            3
+                                                                              3
+                Number of Montgomery multiplications              1           2
+                                                                                t          1
+                Number of single-precision multiplications    2l(l + 1)   3tl(l + 1)    l(l + 1)
+
+          Table 14.17: Average number of single-precision multiplications per step of Algorithm 14.94.
+
+
+
+
+14.6.2 Fixed-exponent exponentiation algorithms
+        There are numerous situations in which a number of exponentiations by a fixed exponent
+        must be performed. Examples include RSA encryption and decryption, and ElGamal de-
+        cryption. This subsection describes selected algorithms which improve the repeated square-
+        and-multiply algorithms of §14.6.1 by reducing the number of multiplications.
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                                   621
+
+
+         (i) Addition chains
+         The purpose of an addition chain is to minimize the number of multiplications required for
+         an exponentiation.
+
+ 14.97 Definition An addition chain V of length s for a positive integer e is a sequence u0 , u1 ,
+       . . . , us of positive integers, and an associated sequence w1 , . . . , ws of pairs wi = (i1 , i2 ),
+       0 ≤ i1 , i2 < i, having the following properties:
+            (i) u0 = 1 and us = e; and
+          (ii) for each ui , 1 ≤ i ≤ s, ui = ui1 + ui2 .
+
+ 14.98 Algorithm Addition chain exponentiation
+         INPUT: a group element g, an addition chain V = (u0 , u1 , . . . , us ) of length s for a positive
+         integer e, and the associated sequence w1 , . . . , ws , where wi = (i1 , i2 ).
+         OUTPUT: g e .
+            1. g0 ←g.
+            2. For i from 1 to s do: gi ←gi1 · gi2 .
+            3. Return(gs ).
+
+
+ 14.99 Example (addition chain exponentiation) An addition chain of length 5 for e = 15 is
+       u0 = 1, u1 = 2, u2 = 3, u3 = 6, u4 = 12, u5 = 15. The following table displays the
+       values of wi and gi during each iteration of Algorithm 14.98 for computing g 15 . 
+
+                                i     0      1        2         3        4        5
+                               wi     −    (0, 0)   (0, 1)   (2, 2)   (3, 3)   (2, 4)
+                               gi     g      g2       g3       g6      g 12      g 15
+
+14.100 Remark (addition chains and binary representations) Given the binary representation of
+       an exponent e, it is a relatively simple task to construct an addition chain directly from this
+       representation. Chains constructed in this way generally do not provide the shortest addition
+       chain possible for the given exponent. The methods for exponentiation described in §14.6.1
+       could be phrased in terms of addition chains, but this is typically not done.
+
+14.101 Note (computational efficiency of addition chain exponentiation) Given an addition chain
+       of length s for the positive integer e, Algorithm 14.98 computes g e for any g ∈ G, g 6= 1,
+       using exactly s multiplications.
+
+14.102 Fact If l is the length of a shortest addition chain for a positive integer e, then l ≥ (lg e +
+       lg wt(e) − 2.13), where wt(e) is the number of 1’s in the binary representation of e. An
+       upper bound of (blg ec + wt(e) − 1) is obtained by constructing an addition chain for e
+       from its binary representation. Determining a shortest addition chain for e is known to be
+       an NP-hard problem.
+
+
+
+
+         Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+622                                                                                     Ch. 14 Efficient Implementation
+
+
+         (ii) Vector-addition chains
+                                                                                 ek−1
+         Algorithms 14.88 and 14.104 are useful for computing g0e0 g1e1 · · · gk−1    where g0 , g1 , . . . ,
+         gk−1 are arbitrary elements in a group G and e0 , e1 , . . . , ek−1 are fixed positive integers.
+         These algorithms can also be used to advantage when the exponents are not necessarily fixed
+         values (see Note 14.91). Algorithm 14.104 makes use of vector-addition chains.
+
+14.103 Definition Let s and k be positive integers and let vi denote a k-dimensional vector of
+       non-negative integers. An ordered set V = {vi : −k + 1 ≤ i ≤ s} is called a vector-
+       addition chain of length s and dimension k if V satisfies the following:
+          (i) Each vi , −k + 1 ≤ i ≤ 0, has a 0 in each coordinate position, except for coordinate
+              position i + k − 1, which is a 1. (Coordinate positions are labeled 0 through k − 1.)
+         (ii) For each vi , 1 ≤ i ≤ s, there exists an associated pair of integers wi = (i1 , i2 ) such
+              that −k + 1 ≤ i1 , i2 < i and vi = vi1 + vi2 (i1 = i2 is allowed).
+               Example 14.105 illustrates a sample vector-addition chain. Let V = {vi : −k + 1 ≤
+         i ≤ s} be a vector-addition chain of length s and dimension k with associated sequence
+                                                                      ek−1
+         w1 , . . . , ws . Algorithm 14.104 computes g0e0 g1e1 · · · gk−1  where vs = (e0 , e1 , . . . , ek−1 ).
+
+14.104 Algorithm Vector-addition chain exponentiation
+         INPUT: group elements g0 , g1 , . . . , gk−1 and a vector-addition chain V of length s and di-
+         mension k with associated sequence w1 , . . . , ws , where wi = (i1 , i2 ).
+                                  ek−1
+         OUTPUT: g0e0 g1e1 · · · gk−1  where vs = (e0 , e1 , . . . , ek−1 ).
+           1. For i from (−k + 1) to 0 do: ai ←gi+k−1 .
+           2. For i from 1 to s do: ai ←ai1 · ai2 .
+           3. Return(as ).
+
+
+14.105 Example (vector-addition chain exponentiation) A vector-addition chain V of length s =
+       9 and dimension k = 3 is displayed in the following table.
+                         v−2       v−1       v0   v1       v2     v3      v4      v5    v6       v7   v8       v9
+                          1         0        0    1        2      2       3       5     6        12   15       30
+                          0         1        0    0        0      1       1       2     2        4    5        10
+                          0         0        1    1        2      2       2       4     5        10   12       24
+
+         The following table displays the values of wi and ai during each iteration of step 2 in Al-
+         gorithm 14.104 for computing g030 g110 g224 . Nine multiplications are required.         
+
+           i       1           2         3             4           5             6           7             8              9
+          wi    (−2, 0) (1, 1) (−1, 2) (−2, 3)                   (3, 4)        (1, 5)     (6, 6)        (4, 7)          (8, 8)
+          ai     g0 g2     g02 g22   g02 g1 g22   g03 g1 g22    g05 g12 g24 g06 g12 g25 g012 g14 g210 g015 g15 g212 g030 g110 g224
+
+
+14.106 Note (computational efficiency of vector-addition chain exponentiation)
+         (i) (multiplications) Algorithm 14.104 performs exactly s multiplications for a vector-
+                                                                       ek−1
+             addition chain of length s. To compute g0e0 g1e1 · · · gk−1     using Algorithm 14.104, one
+             would like to find a vector-addition chain of length s and dimension k with vs =
+             (e0 , e1 , . . . , ek−1 ), where s is as small as possible (see Fact 14.107).
+
+
+
+          c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                                       623
+
+
+          (ii) (storage) Algorithm 14.104 requires intermediate storage for the elements ai , −k +
+               1 ≤ i < t, at the tth iteration of step 2. If not all of these are required for succeeding
+               iterations, then they need not be stored. Algorithm 14.88 provides a special case of
+               Algorithm 14.104 where the intermediate storage is no larger than 2k − 1 vectors of
+               dimension k.
+
+14.107 Fact The minimum value of s in Note 14.106(i) satisfies the following bound, where M =
+       max{ei : 0 ≤ i ≤ k − 1} and c is a constant:
+                                 s ≤ k − 1 + lg M + ck · lg M/ lg lg(M + 2).
+
+14.108 Example (vector-addition chains from binary representations) The vector-addition chain
+       implicit in Algorithm 14.88 is not necessarily of minimum length. The vector-addition
+       chain associated with Example 14.89 is displayed in Table 14.18. This chain is longer than
+       the one used in Example 14.105. The advantage of Algorithm 14.88 is that the vector-
+       addition chain does not have to be explicitly provided to the algorithm. In view of this,
+       Algorithm 14.88 can be applied more generally to situations where the exponents are not
+       necessarily fixed.                                                                      
+
+
+                   v−2     v−1     v0    v1    v2    v3    v4    v5    v6    v7    v8    v9     v10
+                    1       0      0     1     1     1     2     3     6     7     14    15     30
+                    0       1      0     1     1     0     0     1     2     2     4     5      10
+                    0       0      1     0     1     1     2     3     6     6     12    12     24
+
+                 Table 14.18: Binary vector-addition chain exponentiation (see Example 14.108).
+
+
+
+
+14.6.3 Fixed-base exponentiation algorithms
+        Three methods are presented for exponentiation when the base g is fixed and the exponent
+        e varies. With a fixed base, precomputation can be done once and used for many exponen-
+        tiations. For example, Diffie-Hellman key agreement (Protocol 12.47) requires the compu-
+        tation of αx , where α is a fixed element in Z∗p .
+              For each of the algorithms described in this section, {b0 , b1 , . . . , bt } is a set of integers
+        for
+        Pt   some   t ≥ 0, such that any exponent e ≥ 1 (suitably bounded) can be written as e =
+           i=0 i i , where 0 ≤ ei < h for some fixed positive integer h. For example, if e is any
+               e  b
+        (t + 1)-digit base b integer with b ≥ 2, then bi = bi and h = b are possible choices.
+              Algorithms 14.109 and 14.113 are two fixed-base exponentiation methods. Both re-
+        quire precomputation of the exponentials g b0 , g b1 , . . . , g bt , e.g., using one of the algorithms
+        from §14.6.1. The precomputation needed for Algorithm 14.117 is more involved and is ex-
+        plicitly described in Algorithm 14.116.
+        (i) Fixed-base windowing method
+                                     Pt the precomputed exponentials gi = g , 0 ≤ i ≤ t, and
+                                                                               bi
+        Algorithm 14.109 takes as input
+        positive integers h and e = i=0 ei bi where 0 ≤ ei < h, 0 ≤ i ≤ t. The basis for the
+                                               Qt         Qh−1 Q
+        algorithm is the observation that g e = i=0 giei = j=1 ( ei =j gi )j .
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+624                                                                        Ch. 14 Efficient Implementation
+
+
+
+14.109 Algorithm Fixed-base windowing method for exponentiation
+                                                Pt
+       INPUT: {g b0 , g b1 , . . . , g bt }, e = i=0 ei bi , and h.
+       OUTPUT: g e .
+         1. A←1, B←1.
+         2. For j from (h − 1) down to 1 do the following:
+             2.1 For each i for which ei = j do: B←B · g bi .
+             2.2 A←A · B.
+         3. Return(A).
+
+
+14.110 Example (fixed-base windowing exponentiation) Precompute the group elements g 1 , g 4 ,
+       g 16 , g 64 , g 256 . To compute g e for e = 862 = (31132)4, take t = 4, h = 4, and bi = 4i for
+       0 ≤ i ≤ 4, in Algorithm 14.109. The following table displays the values of A and B at the
+       end of each iteration of step 2.                                                             
+
+                       j    −            3                       2                     1
+                                   4 256        260        260       261       261 16 64
+                       B     1    g g      =g          g   g=g             g       g g = g 341
+                       A     1          g 260          260 261
+                                                      g g      = g 521         g 521 g 341 = g 862
+
+14.111 Note (computational efficiency of fixed-base windowing exponentiation)
+         (i) (number of multiplications) Suppose t + h ≥ 2. Only multiplications where both
+             operands are distinct from 1 are counted. Step 2.2 is executed h−1 times, but at least
+             one of these multiplications involves an operand with value 1 (A is initialized to 1).
+             Since B is also initially 1, at most t multiplications are done in step 2.1. Thus, Algo-
+             rithm 14.109 computes g e with at most t + h − 2 multiplications (cf. Note 14.112).
+        (ii) (storage) Storage is required for the t + 1 group elements gi , 0 ≤ i ≤ t.
+
+14.112 Note (a particular case) The most obvious application of Algorithm 14.109 is the case
+                                                                P                        i
+       where the exponent e is represented in radix b. If e = ti=0 ei bi , then gi = g b , 0 ≤ i ≤ t,
+       are precomputed. If e is randomly selected from {0, 1, . . . , m − 1}, then t + 1 ≤ dlogb me
+       and, on average, 1b of the base b digits in e will be 0. In this case, the expected number of
+                           b dlogb me + b − 3. If m is a 512-bit integer and b = 32, then 128.8
+       multiplications is b−1
+       multiplications are needed on average, 132 in the worst case; 103 values must be stored.
+
+         (ii) Fixed-base Euclidean method
+         Let {x0 , x1 , . . . , xt } be a set of integers with t ≥ 2. Define M to be an integer in the
+         interval [0, t] such that xM ≥ xi for all 0 ≤ i ≤ t. Define N to be an integer in the interval
+         [0, t], N 6= M , such that eN ≥ ei for all 0 ≤ i ≤ t, i 6= M .
+
+14.113 Algorithm Fixed-base Euclidean method for exponentiation
+                                                   Pt
+       INPUT: {g b0 , g b1 , . . . , g bt } and e = i=0 ei bi .
+       OUTPUT: g e .
+         1. For i from 0 to t do the following: gi ←g bi , xi ←ei .
+         2. Determine the indices M and N for {x0 , x1 , . . . , xt }.
+         3. While xN 6= 0 do the following:
+             3.1 q←bxM /xN c, gN ←(gM )q · gN , xM ←xM mod xN .
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.6 Exponentiation                                                                                             625
+
+
+                3.2 Determine the indices M and N for {x0 , x1 , . . . , xt }.
+                       xM
+            4. Return(gM  ).
+
+
+14.114 Example (fixed-base Euclidean method) This example repeats the computation of g e , e =
+       862 done in Example 14.110, but now uses Algorithm 14.113. Take b0 = 1, b1 = 16, b2 =
+       256. Then e = (3, 5, 14)16 . Precompute g 1 , g 16 , g 256 . Table 14.19 illustrates the steps
+       performed by Algorithm 14.113. Notice that for this example, Algorithm 14.113 does 8
+
+                               x0     x1    x2       M        N            q    g0           g1      g2
+                                                                                              18
+                               14     5         3        0        1    2         g          g       g 256
+                               4      5         3        1        0    1        g 19        g 18    g 256
+                               4      1         3        0        2    1        g 19        g 18    g 275
+                               1      1         3        2        1    3        g 19        g 843   g 275
+                               1      1         0        0        1    1        g 19        g 862   g 275
+                               0      1         0        1        0    −        g 19        g 862   g 275
+
+                Table 14.19: Fixed-base Euclidean method to compute g 862 (see Example 14.114).
+
+
+         multiplications, whereas Algorithm 14.109 needs only 6 to do the same computation. Stor-
+         age requirements for Algorithm 14.113 are, however, smaller. The vector-addition chain
+         (Definition 14.103) corresponding to this example is displayed in the following table. 
+
+                         v−2        v−1    v0       v1       v2       v3       v4      v5      v6    v7     v8
+                          1          0     0        2        2        3        3       6       9     11     14
+                          0          1     0        0        1        1        1       2       3     4       5
+                          0          0     1        0        0        0        1       2       3     3       3
+
+14.115 Note (fixed-base Euclidean vs. fixed-base windowing methods)
+         (i) In most cases, the quotient q computed in step 3.1 of Algorithm 14.113 is 1. For a
+             given base b, the computational requirements of this algorithm are not significantly
+             greater than those of Algorithm 14.109.
+        (ii) Since the division algorithm is logarithmic in the size of the inputs, Algorithm 14.113
+             can take advantage of a larger value of h than Algorithm 14.109. This results in less
+             storage for precomputed values.
+
+         (iii) Fixed-base comb method
+         Algorithm 14.117 computes g e where e = (et et−1 · · · e1 e0 )2 , t ≥ 1. Select an integer h,
+         1 ≤ h ≤ t + 1 and compute a = d(t + 1)/he. Select an integer v, 1 ≤ v ≤ a, and compute
+         b = da/ve. Clearly, ah ≥ t + 1. Let X = Rh−1 ||Rh−2 || · · · ||R0 be a bitstring formed
+         from e by padding (if necessary) e on the left with 0’s, so that X has bitlength ah and each
+         Ri , 0 ≤ i ≤ h − 1, is a bitstring of length a. Form an h × a array EA (called the exponent
+         array) where row i of EA is the bitstring Ri , 0 ≤ i ≤ h − 1. Algorithm 14.116 is the
+         precomputation required for Algorithm 14.117.
+
+
+
+
+         Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+626                                                                                 Ch. 14 Efficient Implementation
+
+
+
+14.116 Algorithm Precomputation for Algorithm 14.117
+        INPUT: group element g and parameters h, v, a, and b (defined above).
+        OUTPUT: {G[j][i] : 1 ≤ i < 2h , 0 ≤ j < v}.
+                                                ia
+          1. For i from 0 to (h − 1) do: gi ←g 2 .
+          2. For i from 1 to (2h − 1) (where i = (ih−1 · · · i0 )2 ), do the following:
+                             Qh−1 i
+              2.1 G[0][i]← j=0 gjj .
+                                                                                     jb
+                2.2 For j from 1 to (v − 1) do: G[j][i]←(G[0][i])2 .
+            3. Return({G[j][i] : 1 ≤ i < 2h , 0 ≤ j < v}).
+
+             Let Ij,k , 0 ≤ k < b, 0 ≤ j < v, be the integer whose binary representation is column
+        (jb + k) of EA, where column 0 is on the right and the least significant bits of a column are
+        at the top.
+
+14.117 Algorithm Fixed-base comb method for exponentiation
+        INPUT: g, e and {G[j][i] : 1 ≤ i < 2h , 0 ≤ j < v} (precomputed in Algorithm 14.116).
+        OUTPUT: g e .
+          1. A←1.
+          2. For k from (b − 1) down to 0 do the following:
+              2.1 A←A · A.
+              2.2 For j from (v − 1) down to 0 do: A←G[j][Ij,k ] · A.
+          3. Return(A).
+
+14.118 Example (fixed-base comb method for exponentiation) Let t = 9 and h = 3; then a =
+       d10/3e = 4. Let v = 2; then b = da/ve = 2. Suppose the exponent input to Algo-
+       rithm 14.117 is e = (e9 e8 · · · e1 e0 )2 . Form the bitstring X = x11 x10 · · · x1 x0 where
+       xi = ei , 0 ≤ i ≤ 9, and x11 = x10 = 0. The following table displays the exponent
+       array EA.
+                                             I1,1      I1,0    I0,1          I0,0
+                                              x3        x2      x1            x0
+                                              x7        x6      x5            x4
+                                             x11       x10      x9            x8
+                                                                                                                       ia
+        The precomputed values from Algorithm 14.116 are displayed below. Recall that gi = g 2 ,
+        0 ≤ i < 3.
+                             i        1     2         3       4            5          6             7
+                          G[0][i]     g0    g1      g1 g0     g2         g2 g0      g2 g1       g2 g1 g0
+                          G[1][i]     g04   g14     g14 g04   g24        g24 g04    g24 g14     g24 g14 g04
+        Finally, the following table displays the steps in Algorithm 14.117 for EA.
+                                                    A = g0l0 g1l1 g2l2
+            k    j               l0                                 l1                                        l2
+            1    −              0                             0                                          0
+            1    1            4x3                           4x7                                        4x11
+            1    0          4x3 + x1                      4x7 + x5                                   4x11 + x9
+            0    −         8x3 + 2x1                     8x7 + 2x5                                  8x11 + 2x9
+            0    1      8x3 + 2x1 + 4x2               8x7 + 2x5 + 4x6                           8x11 + 2x9 + 4x10
+            0    0    8x3 + 2x1 + 4x2 + x0          8x7 + 2x5 + 4x6 + x4                      8x11 + 2x9 + 4x10 + x8
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.7 Exponent recoding                                                                              627
+
+
+                                                     P11       i
+        The last row of the table corresponds to g     i=0 xi 2    = ge.                               
+
+14.119 Note (computational efficiency of fixed-base comb method)
+          (i) (number of multiplications) Algorithm 14.117 requires at most one multiplication for
+              each column of EA. The right-most column of EA requires a multiplication with the
+              initial value 1 of the accumulator A. The algorithm also requires a squaring of the
+              accumulator A for each k, 0 ≤ k < b, except for k = b − 1 when A has value
+              1. Discounting multiplications by 1, the total number of non-trivial multiplications
+              (including squarings) is, at most, a + b − 2.
+         (ii) (storage) Algorithm 14.117 requires storage for the v(2h − 1) precomputed group
+              elements (Algorithm 14.116). If squaring is a relatively simple operation compared
+              to multiplication in the group, then some space-saving can be achieved by storing
+              only 2h − 1 group elements (i.e., only those elements computed in step 2.1 of Algo-
+              rithm 14.116).
+        (iii) (trade-offs) Since h and v are independent of the number of bits in the exponent, se-
+              lection of these parameters can be made based on the amount of storage available vs.
+              the amount of time (determined by multiplication) to do the computation.
+
+
+
+
+14.7 Exponent recoding
+        Another approach to reducing the number of multiplications in the basic repeated square-
+        and-multiply algorithms (§14.6.1) is to replace the binary representation of the exponent e
+        with a representation which has fewer non-zero terms. Since the binary representation is
+        unique (Fact 14.1), finding a representation with fewer non-zero components necessitates
+        the use of digits besides 0 and 1. Transforming an exponent from one representation to an-
+        other is called exponent recoding. Many techniques for exponent recoding have been pro-
+        posed in the literature. This section describes two possibilities: signed-digit representation
+        (§14.7.1) and string-replacement representation (§14.7.2).
+
+
+14.7.1 Signed-digit representation
+                           Pt
+14.120 Definition If e = i=0 di 2i where di ∈ {0, 1, −1}, 0 ≤ i ≤ t, then (dt · · · d1 d0 )SD is
+       called a signed-digit representation with radix 2 for the integer e.
+            Unlike the binary representation, the signed-digit representation of an integer is not
+        unique. The binary representation is an example of a signed-digit representation. Let e be a
+        positive integer whose binary representation is (et+1 et et−1 · · · e1 e0 )2 , with et+1 = et = 0.
+        Algorithm 14.121 constructs a signed-digit representation for e having at most t + 1 digits
+        and the smallest possible number of non-zero terms.
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+628                                                                   Ch. 14 Efficient Implementation
+
+
+
+14.121 Algorithm Signed-digit exponent recoding
+         INPUT: a positive integer e = (et+1 et et−1 · · · e1 e0 )2 with et+1 = et = 0.
+         OUTPUT: a signed-digit representation (dt · · · d1 d0 )SD for e. (See Definition 14.120.)
+            1. c0 ←0.
+            2. For i from 0 to t do the following:
+                2.1 ci+1 ←b(ei + ei+1 + ci )/2c, di ←ei + ci − 2ci+1 .
+            3. Return((dt · · · d1 d0 )SD ).
+
+
+14.122 Example (signed-digit exponent recoding) Table 14.20 lists all possible inputs to the ith
+       iteration of step 2, and the corresponding outputs. If e = (1101110111)2, then Algo-
+       rithm 14.121 produces the signed-digit representation e = (10010001001)SD where 1 =
+       −1. Note that e = 29 + 28 + 26 + 25 + 24 + 22 + 2 + 1 = 210 − 27 − 23 − 1.             
+
+                           inputs    ei      0    0    0    0     1     1    1    1
+                                     ci      0    0    1    1     0     0    1    1
+                                    ei+1     0    1    0    1     0     1    0    1
+                          outputs   ci+1     0    0    0    1     0     1    1    1
+                                     di      0    0    1   −1     1    −1    0    0
+
+                       Table 14.20: Signed-digit exponent recoding (see Example 14.122).
+
+
+
+14.123 Definition A signed-digit representation of an integer e is said to be sparse if no two non-
+       zero entries are adjacent in the representation.
+
+14.124 Fact (sparse signed-digit representation)
+          (i) Every integer e has a unique sparse signed-digit representation.
+         (ii) A sparse signed-digit representation for e has the smallest number of non-zero entries
+              among all signed-digit representations for e.
+        (iii) The signed-digit representation produced by Algorithm 14.121 is sparse.
+
+14.125 Note (computational efficiency of signed-digit exponent recoding)
+         (i) Signed-digit exponent recoding as per Algorithm 14.121 is very efficient, and can be
+             done by table look-up (using Table 14.20).
+        (ii) When e is given in a signed-digit representation, computing g e requires both g and
+             g −1 . If g is a fixed base, then g −1 can be precomputed. For a variable base g, unless
+             g −1 can be computed very quickly, recoding an exponent to signed-digit representa-
+             tion may not be worthwhile.
+
+
+
+14.7.2 String-replacement representation
+14.126 Definition Let k ≥ 1 be a positive integer. A non-negative integer e is said to have a
+       k-ary string-replacement representation (ft−1 ft−2 · · · f1 f0 )SR(k) , denoted SR(k), if e =
+       Pt−1
+         i=0 fi 2 and fi ∈ {2 − 1 : 0 ≤ j ≤ k} for 0 ≤ i ≤ t − 1.
+                 i           j
+
+
+
+
+         c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.7 Exponent recoding                                                                           629
+
+
+14.127 Example (non-uniqueness of string-replacement representations) A string-replacement
+       representation for a non-negative integer is generally not unique. The binary representa-
+       tion is a 1-ary string-replacement representation. If k = 3 and e = 987 = (1111011011)2,
+       then some other string-replacements of e are (303003003)SR(3) , (1007003003)SR(3) , and
+       (71003003)SR(3) .                                                                      
+
+14.128 Algorithm k-ary string-replacement representation
+        INPUT: e = (et−1 et−2 · · · e1 e0 )2 and positive integer k ≥ 2.
+        OUTPUT: e = (ft−1 ft−2 · · · f1 f0 )SR(k) .
+          1. For i from k down to 2 do the following: starting with the most significant digit of
+             e = (et−1 et−2 · · · e1 e0 )2 , replace each consecutive string of i ones with a string of
+             length i consisting of i − 1 zeros in the high-order string positions and the integer
+             2i − 1 in the low-order position.
+          2. Return((ft−1 ft−2 · · · f1 f0 )SR(k) ).
+
+
+14.129 Example (k-ary string-replacement) Suppose e = (110111110011101)2 and k = 3. The
+       SR(3) representations of e at the end of each of the two iterations of Algorithm 14.128 are
+       (110007110000701)SR(3) and (030007030000701)SR(3) .                                      
+
+14.130 Algorithm Exponentiation using an SR(k) representation
+        INPUT: an integer k ≥ 2, an element g ∈ G, and e = (ft−1 ft−2 · · · f1 f0 )SR(k) .
+        OUTPUT: g e .
+            1. Precomputation. Set g1 ←g. For i from 2 to k do: g2i −1 ←(g2i−1 −1 )2 · g.
+            2. A←1.
+            3. For i from (t − 1) down to 0 do the following:
+                3.1 A←A · A.
+                3.2 If fi 6= 0 then A←A · gfi .
+            4. Return(A).
+
+
+14.131 Example (SR(k) vs. left-to-right binary exponentiation) Let e = 987 = (1111011011)2
+       and consider the 3-ary string-replacement representation (0071003003)SR(3) . Computing
+       g e using Algorithm 14.79 requires 9 squarings and 7 multiplications. Algorithm 14.130
+       requires 2 squarings and 2 multiplications for computing g 3 and g 7 , and then 7 squarings
+       and 3 multiplications for the main part of the algorithm. In total, the SR(3) for e computes
+       g e with 9 squarings and 5 multiplications.                                               
+
+14.132 Note (computational efficiency of Algorithm 14.130) The precomputation requires k − 1
+       squarings and k − 1 multiplications. Algorithm 14.128 is not guaranteed to produce an
+       SR(k) representation with a minimum number of non-zero entries, but in practice it seems
+       to give representations which are close to minimal. Heuristic arguments indicate that a ran-
+       domly selected t-bit exponent will be encoded with a suitably chosen value of k to an SR(k)
+       representation having about t/4 non-zero entries; hence, one expects to perform t−1 squar-
+       ings in step 3, and about t/4 multiplications.
+
+
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+630                                                                  Ch. 14 Efficient Implementation
+
+
+
+
+14.8 Notes and further references
+§14.1
+        This chapter deals almost exclusively with methods to perform operations in the integers
+        and the integers modulo some positive integer. When p is a prime number, Zp is called a
+        finite field (Fact 2.184). There are other finite fields which have significance in cryptogra-
+        phy. Of particular importance are those of characteristic two, F2m . Perhaps the most useful
+        property of these structures is that squaring is a linear operator (i.e., if α, β ∈ F2m , then
+        (α + β)2 = α2 + β 2 ). This property leads to efficient methods for exponentiation and for
+        inversion. Characteristic two finite fields have been used extensively in connection with
+        error-correcting codes; for example, see Berlekamp [118] and Lin and Costello [769]. For
+        error-correcting codes, m is typically quite small (e.g., 1 ≤ m ≤ 16); for cryptographic
+        applications, m is usually much larger (e.g., m ≥ 100).
+        The majority of the algorithms presented in this chapter are best suited to software imple-
+        mentations. There is a vast literature on methods to perform modular multiplication and
+        other operations in hardware. The basis for most hardware implementations for modular
+        multiplication is efficient methods for integer addition. In particular, carry-save adders and
+        delayed-carry adders are at the heart of the best methods to perform modular multiplica-
+        tion. The concept of a delayed-carry adder was proposed by Norris and Simmons [933] to
+        produce a hardware modular multiplier which computes the product of two t-bit operands
+        modulo a t-bit modulus in 2t clock cycles. Brickell [199] improved the idea to produce a
+        modular multiplier requiring only t + 7 clock cycles. Enhancements of Brickell’s method
+        were given by Walter [1230]. Koç [699] gives a comprehensive survey of hardware meth-
+        ods for modular multiplication.
+§14.2
+        For a treatment of radix representations including mixed-radix representations, see Knuth
+        [692]. Knuth describes efficient methods for performing radix conversions. Representing
+        and manipulating negative numbers is an important topic; for an introduction, consult the
+        book by Koren [706].
+        The techniques described in §14.2 are commonly referred to as the classical algorithms for
+        multiple-precision addition, subtraction, multiplication, and division. These algorithms are
+        the most useful for integers of the size used for cryptographic purposes. For much larger in-
+        tegers (on the order of thousands of decimal digits), more efficient methods exist. Although
+        not of current practical interest, some of these may become more useful as security require-
+        ments force practitioners to increase parameter sizes. The Karatsuba-Ofman method, de-
+        scribed next, is practical in some situations.
+        The classical algorithm for multiplication (Algorithm 14.12) takes O(n2 ) bit operations for
+        multiplying two n-bit integers. A recursive algorithm due to Karatsuba and Ofman [661]
+        reduces the complexity of multiplying two n-bit integers to O(n1.58 ). This divide-and-
+        conquer method is based on the following simple observation. Suppose that x and y are n-
+        bit integers and n = 2t. Then x = 2t x1 +x0 and y = 2t y1 +y0 , where x1 , y1 are the t high-
+        order bits of x and y, respectively, and x0 , y0 are the t low-order bits. Furthermore, x · y =
+        u2 22t +u1 2t +u0 where u0 = x0 ·y0 , u2 = x1 ·y1 and u1 = (x0 +x1 )·(y0 +y1 )−u0 −u2 .
+        It follows that x · y can be computed by performing three multiplications of t-bit integers
+        (as opposed to one multiplication with 2t-bit integers) along with two additions and two
+        subtractions. For large values of t, the cost of the additions and subtractions is insignifi-
+        cant relative to the cost of the multiplications. With appropriate modifications, u0 , u1 and
+
+        c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.8 Notes and further references                                                                 631
+
+
+        (x0 + x1 ) · (y0 + y1 ) can each be computed similarly. This procedure is continued on the
+        intermediate values until the size of the integers reaches the word size of the computing de-
+        vice, and multiplication can be efficiently accomplished. Due to the recursive nature of the
+        algorithm, a number of intermediate results must be stored which can add significant over-
+        head, and detract from the algorithm’s efficiency for relatively small integers. Combining
+        the Karatsuba-Ofman method with classical multiplication may have some practical signif-
+        icance. For a more detailed treatment of the Karatsuba-Ofman algorithm, see Knuth [692],
+        Koç [698], and Geddes, Czapor, and Labahn [445].
+        Another commonly used method for multiple-precision integer multiplication is the discrete
+        Fourier transform (DFT). Although mathematically elegant and asymptotically better than
+        the classical algorithm, it does not appear to be superior for the size of integers of practical
+        importance to cryptography. Lipson [770] provides a well-motivated and easily readable
+        treatment of this method.
+        The identity given in Note 14.18 was known to Karatsuba and Ofman [661].
+§14.3
+        There is an extensive literature on methods for multiple-precision modular arithmetic. A
+        detailed treatment of methods for performing modular multiplication can be found in Knuth
+        [692]. Koç [698] and Bosselaers, Govaerts, and Vandewalle [176] provide comprehensive
+        but brief descriptions of the classical method for modular multiplication.
+        Montgomery reduction (Algorithm 14.32) is due to Montgomery [893], and is one of the
+        most widely used methods in practice for performing modular exponentiation (Algorithm
+        14.94). Dussé and Kaliski [361] discuss variants of Montgomery’s method. Montgomery
+        reduction is a generalization of a much older technique due to Hensel (see Shand and
+        Vuillemin [1119] and Bosselaers, Govaerts, and Vandewalle [176]). Hensel’s observation
+        is the following. If m is an odd positive integer less than 2k (k a positive integer) and T is
+        some integer such that 2k ≤ T < 22k , then R0 = (T + q0 m)/2, where q0 = T mod 2
+        is an integer and R0 ≡ T 2−1 mod m. More generally, Ri = (Ri−1 + qi m)/2, where
+        qi = Ri−1 mod 2 is an integer and Ri ≡ N 2−i+1 mod m. Since T < 22k , it follows that
+        Rk−1 < 2m.
+        Barrett reduction (Algorithm 14.42) is due to Barrett [75]. Bosselaers, Govaerts, and Van-
+        dewalle [176] provide a clear and concise description of the algorithm along with motiva-
+        tion and justification for various choices of parameters and steps, and compare three alter-
+        native methods: classical (§14.3.1), Montgomery reduction (§14.3.2), and Barrett reduction
+        (§14.3.3). This comparison indicates that there is not a significant difference in performance
+        between the three methods, provided the precomputation necessary for Montgomery and
+        Barrett reduction is ignored. Montgomery exponentiation is shown to be somewhat better
+        than the other two methods. The conclusions are based on both theoretical analysis and
+        machine implementation for various sized moduli. Koç, Acar, and Kaliski [700] provide a
+        more detailed comparison of various Montgomery multiplication algorithms; see also Nac-
+        cache, M’Raı̈hi, and Raphaeli [915]. Naccache and M’silti [917] provide proofs for the
+        correctness of Barrett reduction along with a possible optimization.
+        Mohan and Adiga [890] describe a special case of Algorithm 14.47 where b = 2.
+        Hong, Oh, and Yoon [561] proposed new methods for modular multiplication and modu-
+        lar squaring. They report improvements of 50% and 30%, respectively, on execution times
+        over Montgomery’s method for multiplication and squaring. Their approach to modular
+        multiplication interleaves multiplication and modular reduction and uses precomputed ta-
+        bles such that one operand is always single-precision. Squaring uses recursion and pre-
+
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+632                                                                 Ch. 14 Efficient Implementation
+
+
+        computed tables and, unlike Montgomery’s method, also integrates the multiplication and
+        reduction steps.
+§14.4
+        The binary gcd algorithm (Algorithm 14.54) is due to Stein [1170]. An analysis of the al-
+        gorithm is given by Knuth [692]. Harris [542] proposed an algorithm for computing gcd’s
+        which combines the classical Euclidean algorithm (Algorithm 2.104) and binary operations;
+        the method is called the binary Euclidean algorithm.
+        Lehmer’s gcd algorithm (Algorithm 14.57), due to Lehmer [743], determines the gcd of two
+        positive multiple-precision integers using mostly single-precision operations. This has the
+        advantage of using the hardware divide in the machine and only periodically resorting to
+        an algorithm such as Algorithm 14.20 for a multiple-precision divide. Knuth [692] gives a
+        comprehensive description of the algorithm along with motivation of its correctness. Co-
+        hen [263] provides a similar discussion, but without motivation. Lehmer’s gcd algorithm
+        is readily adapted to the extended Euclidean algorithm (Algorithm 2.107).
+        According to Sorenson [1164], the binary gcd algorithm is the most efficient method for
+        computing the greatest common divisor. Jebelean [633] suggests that Lehmer’s gcd algo-
+        rithm is more efficient. Sorenson [1164] also describes a k-ary version of the binary gcd
+        algorithm, and proves a worst-case running time of O(n2 / lg n) bit operations for comput-
+        ing the gcd of two n-bit integers.
+        The binary extended gcd algorithm was first described by Knuth [692], who attributes it to
+        Penk. Algorithm 14.61 is due to Bach and Shallit [70], who also give a comprehensive and
+        clear analysis of several gcd and extended gcd algorithms. Norton [934] described a version
+        of the binary extended gcd algorithm which is somewhat more complicated than Algorithm
+        14.61. Gordon [516] proposed a method for computing modular inverses, derived from the
+        classical extended Euclidean algorithm (Algorithm 2.107) with multiple-precision division
+        replaced by an approximation to the quotient by an appropriate power of 2; no analysis of
+        the expected running time is given, but observed results on moduli of specific sizes are de-
+        scribed.
+        The Montgomery inverse of a mod m is defined to be a−1 2t mod m where t is the bitlength
+        of m. Kaliski [653] extended ideas of Guyot [534] on the right-shift binary extended Eu-
+        clidean algorithm, and presented an algorithm for computing the Montgomery inverse.
+§14.5
+        Let mi , 1 ≤ i ≤ t, be a set of pairwise
+                                              Qt relatively prime positive integers which define a
+        residue number system (RNS). If n = i=1 mi then this RNS provides an effective method
+        for computing the product of integers modulo n where the integers and the product are rep-
+        resented in the RNS. If n is a positive integer where the mi do not necessarily divide n,
+        then a method for performing arithmetic modulo n entirely within the RNS is not obvious.
+        Couveignes [284] and Montgomery and Silverman [895] propose an interesting method for
+        accomplishing this. Further research in the area is required to determine if this approach is
+        competitive with or better than the modular multiplication methods described in §14.3.
+        Algorithm 14.71 is due to Garner [443]. A detailed discussion of this algorithm and vari-
+        ants of it are given by Knuth [692]; see also Cohen [263]. Algorithm 2.121 for applying
+        the Chinese remainder theorem is due to Gauss; see Bach and Shallit [70]. Gauss’s algo-
+        rithm is a special case of the following result due to Nagasaka, Shiue, and Ho [918]. The
+        solution to the system of linear congruences x ≡ ai (mod mi ), 1 ≤ i ≤ t, for pair-
+        wise relative
+               Pt                 Pt mi , is equivalent to the solution to Q
+                       prime moduli                                        the single linear congru-
+                                                                             t
+        ence ( i=1 bi Mi )x ≡        i=1 a i b i M i (mod M ) where M  =     i=1 mi , Mi = M/mi
+
+
+        c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+§14.8 Notes and further references                                                                 633
+
+
+
+        Pt 1 ≤ i ≤ t, for any choice of integers
+        for
+                                              −1
+                                                   bi where gcd (bi , Mi ) = 1. Notice that if
+           i=1 bi Mi ≡ 1 (mod M ), then bi ≡ Mi   (mod mi ), giving the special case discussed
+        in Algorithm 2.121. Quisquater and Couvreur [1016] were the first to apply the Chinese
+        remainder theorem to RSA decryption and signature generation.
+§14.6
+        Knuth [692] and Bach and Shallit [70] describe the right-to-left binary exponentiation meth-
+        od (Algorithm 14.76). Cohen [263] provides a more comprehensive treatment of the right-
+        to-left and left-to-right (Algorithm 14.79) binary methods along with their generalizations
+        to the k-ary method. Koç [698] discusses these algorithms in the context of the RSA public-
+        key cryptosystem. Algorithm 14.92 is the basis for Blakley’s modular multiplication algo-
+        rithm (see Blakley [149] and Koç [698]). The generalization of Blakley’s method to process
+        more than one bit per iteration (Note 14.93(iii)) is due to Quisquater and Couvreur [1016].
+        Quisquater and Couvreur describe an algorithm for modular exponentiation which makes
+        use of the generalization and precomputed tables to accelerate multiplication in Zm .
+        For a comprehensive and detailed discussion of addition chains, see Knuth [692], where
+        various methods for constructing addition chains (such as the power tree and factor meth-
+        ods) are described. Computing the shortest addition chain for a positive integer was shown
+        to be an NP-hard problem by Downey, Leong, and Sethi [360]. The lower bound on the
+        length of a shortest addition chain (Fact 14.102) was proven by Schönhage [1101].
+        An addition sequence for positive integers a1 < a2 < · · · < ak is an addition chain for
+        ak in which a1 , a2 , . . . , ak−1 appear. Yao [1257] proved that there exists an addition se-
+        quence for a1 < a2 < · · · < ak of length less than lg ak + ck · lg ak / lg lg(ak + 2)
+        for some constant c. Olivos [955] established a 1-1 correspondence between addition se-
+        quences of length l for a1 < a2 < · · · < ak and vector-addition chains of length l + k − 1
+        where vl+k−1 = (a1 , a2 , . . . , ak ). These results are the basis for the inequality given in
+        Fact 14.107. Bos and Coster [173] described a heuristic method for computing vector-
+        addition chains. The special case of Algorithm 14.104 (Algorithm 14.88) is attributed by
+        ElGamal [368] to Shamir.
+        The fixed-base windowing method (Algorithm 14.109) for exponentiation is due to Brick-
+        ell et al. [204], who describe a number of variants of the basic algorithm. For b a positive
+        integer, let S be a set of integers with the property that any integer can be expressed in base
+        b using only coefficients from S. S is called a basic digit set for the base b. Brickell et al.
+        show how basic digit sets can be used to reduce the amount of work in Algorithm 14.109
+        without large increases in storage requirements. De Rooij [316] proposed the fixed-base
+        Euclidean method (Algorithm 14.113) for exponentiation; compares this algorithm to Algo-
+        rithm 14.109; and provides a table of values for numbers of practical importance. The fixed-
+        base comb method (Algorithm 14.117) for exponentiation is due to Lim and Lee [767]. For
+        a given exponent size, they discuss various possibilities for the choice of parameters h and
+        v, along with a comparison of their method to fixed-base windowing.
+§14.7
+        The signed-digit exponent recoding algorithm (Algorithm 14.121) is due to Reitwiesner
+        [1031]. A simpler description of the algorithm was given by Hwang [566]. Booth [171]
+        described another algorithm for producing a signed-digit representation, but not necessar-
+        ily one with the minimum possible non-zero components. It was originally given in terms of
+        the additive group of integers where exponentiation is referred to as multiplication. In this
+        case, −g is easily computed from g. The additive abelian group formed from the points on
+        an elliptic curve over a finite field is another example where signed-digit representation is
+        very useful (see Morain and Olivos [904]). Zhang [1267] described a modified signed-digit
+
+        Handbook of Applied Cryptography by A. Menezes, P. van Oorschot and S. Vanstone.
+634                                                                  Ch. 14 Efficient Implementation
+
+
+      representation which requires on average t/3 multiplications for a square-and-multiply al-
+      gorithm for t-bit exponents. A slightly more general version of Algorithm 14.121, given by
+      Jedwab and Mitchell [634], does not require as input a binary representation of the exponent
+      e but simply a signed-digit representation. For binary inputs, the algorithms of Reitwiesner
+      and Jedwab-Mitchell are the same. Fact 14.124 is due to Jedwab and Mitchell [634].
+      String-replacement representations were introduced by Gollmann, Han, and Mitchell [497],
+      who describe Algorithms 14.128 and 14.130. They also provide an analysis of the expected
+      number of non-zero entries in an SR(k) representation for a randomly selected t-bit expo-
+      nent (see Note 14.132), as well as a complexity analysis of Algorithm 14.130 for various
+      values of t and k. Lam and Hui [735] proposed an alternate string-replacement algorithm.
+                                                                         k
+      The idea is to precompute all odd powers g, g 3 , g 5 , . . . , g 2 −1 for some fixed positive in-
+      teger k. Given a t-bit exponent e, start at the most significant bit, and look for the longest
+      bitstring of bitlength at most k whose last digit is a 1 (i.e., this substring represents an odd
+      positive integer between 1 and 2k − 1). Applying a left-to-right square-and-multiply expo-
+      nentiation algorithm based on this scanning process results in an algorithm which requires,
+      at most, dt/ke multiplications. Lam and Hui proved that as t increases, the average number
+      of multiplications approaches dt/(k + 1)e.
+
+
+
+
+      c 1997 by CRC Press, Inc. — See accompanying notice at front of chapter.
+

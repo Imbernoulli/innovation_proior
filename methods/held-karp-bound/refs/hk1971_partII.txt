@@ -1,0 +1,760 @@
+Mathematical Programming 1 (1971) 6-25. North-Holland Publishing Company
+
+
+
+
+                THE TRAVELING-SALESMAN PROBLEM
+               AND MINIMUM SPANNING TREES: PART 1I *
+
+                                      Michael HELD
+                 IBM Systems Research Institute New York, New York, U.S.A.
+
+                                              and
+
+                                  Richard M. KARP **
+                      University of California, Berkeley, California, U.S.A.
+
+                                  Received 19 October 1970
+
+
+    The relationship between the symmetric traveling-salesman problem and the minimum
+spanning tree problem yields a sharp lower bound on the cost of an optimum tour. An effi-
+cient iterative method for approximating this bound closely from below is presented. A
+branch-and-bound procedure based upon these considerations has easily produced proven
+optimum solutions to all traveling-salesman problems presented to it, ranging in size up to
+sixty-four cities. The bounds used are so sharp that the search trees are minuscule compared to
+those normally encountered in combinatorial problems of this type.
+
+
+
+0. Introduction
+
+   In a previous paper [7], the authors explored the relationship be-
+tween the symmetric traveling-salesman problem and the minimum
+spanning tree problem. By means of this relationship a lower bound on
+the cost of an optimum tour was derived which is quite sharp, and hence
+of value in connection with branch-and-bound procedures. The methods
+proposed in [7] for computing this bound proved inadequate. The
+present paper gives an efficient method for approximating the bound
+closely from below, and reports on the use of this method in a highly
+successful algorithm for the e x a c t solution of symmetric traveling-
+salesman problems.
+ * This paper was presented at the 7th Mathematical Programming Symposium 1970, The
+   Hague, The Netherlands.
+** This research has been partially supported by the National Science Foundation under
+   Grant GP-25081 with the University of California. Reproduction in whole or in part is
+   permitted for any purpose of the United States Government.
+The traveling-salesmanproblem                                                     7
+
+   The bound derived in [7] is expressed as the m a x i m u m of a function
+describable as the minimum of a finite n u m b e r of linear functions. Two
+methods were proposed for maximizing this function: a linear program-
+ming m e t h o d using column generation, and an ascent m e t h o d which at
+each step increases the value of the function. A branch-and-bound pro-
+cedure using bounds derived from the ascent m e t h o d to aid in the
+search for an optimum tour was also suggested.
+   The m e t h o d presented here for approximating the bound is of a dif-
+ferent nature. It is an iterative m e t h o d related to the relaxation m e t h o d
+for the solution of systems of linear inequalities [ 1 ], [ 12]. The itera-
+tion does not necessarily improve the function value at each step, but
+instead reduces the Euclidean distance from a m a x i m u m point of the
+function.
+   An improved branch-and-bound procedure incorporating the new
+ascent m e t h o d has easily produced proven optimum solutions to all
+traveling-salesman problems presented to it, ranging in size up to 64
+cities. The bounds used are so sharp that the resulting search trees are
+minuscule compared to those normally encountered in combinatorial
+problems of this type.
+
+
+1. A lower bound on the cost o f an optimum tour
+
+   In this section we briefly review the approach taken in [7]. Let the
+n × n symmetric matrix (ci]) specify the weights assigned to the edges
+of the complete undirected graph K n with vertex set { 1, 2 .... , n}. Each
+subgraph of K n is assigned a weight equal to the sum of the weights of
+its edges. A tour is a cycle passing through each vertex exactly once.
+The traveling-salesman problem seeks a tour of minimum weight.
+   A tree is a connected graph without cycles. A 1-tree is a tree having
+vertex set {2, 3, ..., n}, together with two distinct edges at vertex 1.
+Our approach exploits the fact that a minimum-weight 1-tree is easy to
+compute, together with the following relationships between tours and
+1-trees:
+   (i) a tour is simply a 1-tree in which each vertex has degree 2;
+   (ii) if a minimum-weight 1-tree is a tour, then it is a tour of minimum
+        weight;
+8                                                                                     M. Held, R.M. Karl)
+
+    (iii) for any real n-vector 7r =       (7/'1,   71"2 . . . . .   7r n ), the   transformation on
+          edge weights
+
+            ci/-+ ci] + 7ri -I- 7rf
+
+        leaves the traveling-salesman problem invariant, but changes the
+        minimum 1-tree.
+   Clearly, with respect to the weights ci/+ 7ri + 7r/the weight of a min-
+imum tour is greater than or equal to the weight of a minimum-weight
+1-tree. Thus
+                           n                          n
+
+
+            C* + 2 ~           Tri >_ min [ck + ~               Tridik1                              (1)
+                       i=1            k             i=1
+
+where C* is the weight of a minimum tour with respect to the weights
+ci/, k indexes the 1-trees, c k is the weight of the k-th 1-tree with re-
+spect to the weights ci/, and dik is the degree of vertex i in the k-th
+1-tree. Let
+
+            w (Tr) = min [c k + rr- vlc 1,
+                           k
+where v k is the n-vector having dik-2 as its i-th component, and • de-
+notes inner product. Then (1) is equivalent to
+
+            C* >- w(rr).                                                                             (2)
+
+Thus we obtain an infinite family of lower bounds on the weight of
+an o p t i m u m tour, and the best such b o u n d is max w (rr).
+                                                                        7T
+
+
+
+
+2. An ascent method for the computation of max w (rr)
+                                                                       7r
+
+
+  In this section we present an iterative m e t h o d for computing or
+approximating max w(Tr). The iteration computes a sequence of n-
+                      7r
+
+vectors {Trm } according to the formula
+
+            7rrn+l   = 7Tm + t m Vk(nm )                                                             (3)
+The traveling-salesman problem                                                                 9
+
+where:
+                      for any rr, k(rr) is the index o f a m i n i m u m - w e i g h t 1-tree at
+                      the point ~r,
+and
+                      (t m } is a sequence o f scalars.
+     The following l e m m a establishes the rationale for this iteration.
+
+L e m m a 1:
+     Let ~- and rr be such that w (~-) >_ w (rr). Then
+(~- - ~r). v/c(~) >_ w (~-) - w (Tr) >_ 0.
+
+Pro o f ."
+   (i) c/c~) + ~_- v/c~) = w O O
+     (ii) c/c(~) + ~r • v/c(~) >- min [c/c + ~--v/c] = w(~-).
+                                                     k
+Substracting (i) from (ii)
+
+                      ~-. vk~.) - 7r- vk~) >_ w (~-) - w Or) > 0.
+
+   Thus the h y p e r p l a n e through rr having v_~(,O as its normal determines
+a closed half-space containing all points rr such that w(rr-)-w(rr) >_ O,
+and the iteration step moves into the half-space along the normal vk(~).
+In particular, this half-space includes any point where w ( - ) assumes its
+m a x i m u m value, and a sufficiently small step p r o d u c e s a p o i n t closer
+than rr to any such m a x i m u m point.
+   The next l e m m a indicates the limits on appropriate step sizes.
+
+L e m m a 2.
+     If
+                                         2 (w (~-) - w (~))
+                      0<t<
+                                                IIv/c(~) II2
+then                     m
+
+
+
+
+                       117r - (Tr + tvk(~))ll < IITr -- 7rll. *
+
+Proof."
+           I1~- -(Tr + tVk(~))ll2 = I1~---Trll 2 -- 2t(~- -- lr)'vk(.) + t 2 Ilvk(~)II 2 =
+
+                       II~---rrll 2 + t [ t Ilvk(~) 112 -- 2 ( ~ - -   70 • Vk(.)] <--
+
+                       I1~-- 7rll2 + t [ tllv/c(~) II2 -- 2(w(~-) - w(rr))] <: I1~-- 7rll2.
+
+* 11 II d e n o t e s E u c l i d e a n n o r m .
+10                                                                   M. Held, R.M. Karl)
+
+    Thus, it t is in the indicated range, then the point zr + tVx(~) is closer
+to ~- than zr is.
+    Iterations of the type (3) have been investigated previously in con-
+nection with the relaxation m e t h o d for the solution of linear inequal-
+ities [ 1 ] and [ 12]. Given a system of inequalities
+
+              g
+                   ai]xj >- b i,    i = 1,2,...,h
+             ]=1
+
+the relaxation m e t h o d constructs a sequence (xS}, where x s+l is ob-
+tained from x s by selecting an inequality violated by x s, and then
+taking a step toward the corresponding hyperplane along the normal
+to it through x s. The relation of the relaxation method to the present
+problem is seen by noting that max w(Tr) is the optimum value of the
+linear program
+
+             Maximize w
+                                                                                    (4)
+             Subject to w <_ c x + rr. vx for all k.
+
+Moreover, given a "target value" w, finding a point ~ such that w(~) >_ w
+is equivalent to solving the system of inequalities
+
+             w<c     k + r c . v x for allk.                                        (5)
+
+
+Indeed a version of the relaxation m e t h o d in which that violated in-
+equality at rr is selected which minimizes Cg + rr.Vg, and hence maxi-
+mizes the "residual" w - (cg + 7r.Vx), yields an iteration scheme of
+precisely the form (3). A geometric viewpoint will perhaps clarify this.
+   Let P denote the polyhedron of feasible solutions to (5). We note
+that     w
+     (i) W 1 < W 2 =*Pwl D P w 2 ;
+     (ii) if w > w(Tr) tlaen P         is contained in the half-space detennined
+                                   W
+
+           by the hyperplane through rr with normal vector Vx(,o ;
+     (iii) the ray ( r + tvk(~) I t" > 0} is perpendicular to the face of P
+                                                                                     W
+
+         whose equation is w = Cg(~) + rr-.Vg(,); the ray intersects the face
+                                                    w -   w (~)
+         at the point corresponding to t -
+                                                      IlVk(Tr) 112
+The situation is portrayed in fig. 1.
+The traveling-salesmanproblem                                          11
+
+
+
+
+                     tg
+
+
+
+
+    Certain results about the convergence properties o f various forms of
+the relaxation m e t h o d [1], [12] can be adapted to give insight into
+the proper choice of the parameters (tm } in (3). The following lemma
+is similar to theorem 1 in [ 12].
+
+Lemma 3."
+   We assume that w < max w(Tr). Let {Trm} be a sequence of points ob-
+                       7r
+tained b y the process
+                                (W -- W(Trm ).~
+            7/"m+x = 7rm + ~krn ~- -ii~k(~m)~- ] 1;korm )             (6)
+
+
+   There are two cases:
+
+Case 1:
+  If, for some e, 0 < e < Xm -< 2 for all m, then {~rm} either includes a
+point 7rl ~ P_ or converges to a point on the boundary o f P .
+              W                                             w
+12                                                                           M. HeM, R.M. Ka~
+
+Case 2.
+    If Xrn = 2 for all m, then the sequences (rr m ) always includes a point
+7fI ~ P _ .
+         W
+   This theorem differs from theorem ~ of [12] in two respects. First
+it d o e s . n o t require the relaxation parameter Xm to be constant, and
+second, it uses a " m a x i m u m residual," rather than " m a x i m u m distance"
+rule for selecting the violated inequality.
+
+Proof."
+    Case 2 is merely a specialization of Case 2 in theorem 1 o f [12]. To
+treat case 1 we need a concept from [ 12]. Let A be a point set and
+ {ym } a sequence of points. Then {ym} is F~fer-monotone relative t o A
+if, for every x ~ A, the sequence { Ilym - xll} is m o n o t o n e nonincreas-
+ing. It is shown in [12] that, i f A is of full dimension (i.e., contains a
+neighborhood) then any sequence which is F6jer-monotone relative to
+A converges. In the present case, assume that the sequence {/r m } does
+not contain a rd ~ P . Then, by lemma 2, the sequence {Tr m } is F6jer-
+                          W
+m o n o t o n e relative to the full-dimensional set P L , and thus converges.
+Hence, 117rm+l - 7rm II -+ 0. By (6)                   w
+
+             [[ffm+i _Tr m ]] = ~m W - - W(ff m )
+                                      []Vkorm r II '
+
+
+so that w - wor m ) ~ O. Hence w(lim               lrm) = N, and the limit pointis
+                                           \m-+~
+
+in P .   Clearly it is on the boundary, since no 7rm is in P .
+     W                                                                  W
+   Lemma 3 can be used to evolve various strategies for determining a
+point where w(rr) is close to its maximum value. In the present paper
+we forgo a general discussion of such strategies, and restrict ourselves
+to examining the strategy used in the traveling-salesman computations.
+There t m is simply taken to be a constant 7 for all m. In retrospect this
+seems naive, b u t the computations preceded (and, in large measure,
+prompted) the theoretical investigation of the ascent process.
+
+Theorem 1:
+  The iteration (3), with t m = T for all m, satisfies:
+
+             sup W(lr m ) ~-- m a x w ( r r ) -- ½t lim sup IIv             II2.
+             m                  lr                   m ~ =        k(~rm )
+The traveling salesman problem                                                                       13
+
+Proof."
+   We argue b y contradiction. Let L = l i m s u p                        Ilvk(~m ) II2 and assume
+that for all m,                            m
+
+              W(Tgm ) < W<~ max w(rr) -- ~TL                                                       (7)
+                                            /r
+
+
+Choose w = w + ½tL and consider l e m m a 3. The c o n d i t i o n ~km <~ 2 be-
+comes
+
+                   t-lip            I12
+                           k(nm )         <-- 2
+                   -- w(lgm )
+
+or   -tllvk(nm ) II2 ~ 2(W -               w(lrm)) + tZ. By (7) and the definition of L,
+this is true for all sufficiently large m.
+   To apply l e m m a 3, we m u s t also verify that
+
+                           F IlVkorm) II2
+              ~km - a
+                           W -- W(Tr m )
+
+
+is b o u n d e d a w a y from zero. It is necessary to check that
+   (a) vk(~m ) ~ 0 for all m,
+and
+  (b) w (rr m ) is u n i f o r m l y b o u n d e d below.
+     (a) by lemma 1, (Tr - 7rm ).Vk(rr m ) ~ W ( ~ )             -- W(Tr m ). H e n c e
+
+         vk(,m ) = O ~ 0 >-- w ( ~ ) -- w(rr m ) for all ~; i.e., w(rr m ) = m a x w(rr) >
+                                                                                              lr
+
+         w, a contradiction.
+     (b) b y l e m m a 2,
+
+                     f IlVkorm) II2
+              0<                            <2
+                     W -- W ( ~ m )
+
+
+         implies that          {Tr m )    is F 6 j e r - m o n o t o n e relative to P _ , and hence
+                                                                                          W
+
+         {zrm } lies in a b o u n d e d set, so that w(rc m ) i s                 b o u n d e d below.
+14                                                           M, HeM, R.M. Karp
+
+    Thus the hypotheses of lemma 3 are satisfied; but the conclusion of
+lemma 3 violates (7), and the desired contradiction is reached.
+    We have found that, when the iteration (3) is applied to the traveling-
+salesman problem with t m = ?-, the 1-trees produced tend to resemble
+tours very closely; i.e., a great many vertices have degree 2, so that
+IIvk II2 tends to be small. Thus it is reasonable to suppose that lim sup
+                                                                      m--~
+
+Ilvk(~m) II2 is a small integer. In any case, the iteration scheme (3) has
+proved very successful, as will be seen in section 4. In fact, this ex-
+perience with the traveling-salesman problem indicates that some form
+of the relaxation m e t h o d may be superior to the simplex m e t h o d for
+linear programs involving a very large number of inequalities.
+
+
+3. The branch-and-bound procedure
+
+  Since the ascent method does not necessarily compute a m a x i m u m
+point of wOO, and since, in any event, max w(Tr) may be less than C*,
+our algorithm for the traveling-salesman problem combines the ascent
+method with a branch-and-bound procedure.
+   Typically, a branch-and-bound procedure successively partitions the
+set of feasible solutions into subsets and calculates a lower bound on
+the cost of solutions in each subset. In the case of the traveling-salesman
+problem such partitioning is usually accomplished by including and
+excluding sets of edges [2]. The derived problem which results from
+including the set of edges X and excluding the set Y is of the same form
+as the original problem, and our m e t h o d of computing bounds applies
+to it. Following [7], let T(X, Y) be the set of all 1-trees which include
+the edges in X and exclude the edges in Y, and let
+
+          Wx, v(W) =     min       [c~ +~r.vx].
+                       k~T(X, Y)
+
+Then Wx, y(lr ) is a lower bound on the cost of any tour for the derived
+problem.
+   The state of the branch-and-bound procedure at any point is specified
+by a list of derived problems with their associated bounds. A typical
+entry is of the form (X, Y, 7r, Wx, yOr)). Initially the list consists of the
+single entry (q~, 4~, 0, w(0)), where 0 denotes the zero n-vector.
+The traveling salesman problem                                             15
+
+   At a general step, an entry (X, Y, rr, Wxy(rr)) of least b o u n d is
+selected and the iteration
+
+             71"m+l = 71"m + t-l~
+                                  k (rrm )
+is applied, where k(Trm ) is the index of a minimum-weight 1-tree in
+T(X, Y) relative to the weights (eli + Irm + rr~n ). Two outcomes are
+possible:
+   (a) for some m, Wx, r(rrm ) >_ C, where C is an upper b o u n d on the
+       cost of an optimum tour. In this case, the derived problem may
+       be discarded.
+   (b) for some h,     max     Wx,~(rd) =     max      lWX, y(rd); i.e., no
+                     O<l<ph- 1            O<l<p(h+ 1)-
+       improvement    occurs for a block of p iterations, where p is a
+       parameter of the program. Arr' is then chosen such that
+
+             Wx, y(rr') =          max     Wx, r(rd)
+                                 O<l<ph- 1
+       and branching is performed; i.e., new entries of the form
+       (Xi,, Yi, "IT', Wxi, Yi(Tr')) are created, where X i ~ X, Yi D-D-Y and
+       every tour in T(X, Y) is in one of the sets T(X i, Yi).
+   The following branching strategy was adopted. The edges which have
+not y e t been included or excluded are ordered according to the amount
+by which the b o u n d would increase if the edge were excluded. Then
+the resulting sequence is e l , e 2 .... , e r where
+
+            WX, YU{el} (Tr') 2 Wx, Yo{e2} (It') _~ ... ~ Wx, YU{er}(Ir')
+
+this ordering can easily be accomplished as a by-product of the "greedy"
+algorithm for the computation of minimum weight 1-trees [6], [ 10].
+Then
+
+            X 1 =X                                 Y1 = Y U {el}
+            X 2 = X u {el}                         Y2 = Y u (e2}
+            X 3 =Xw(el,e2}
+
+
+
+
+            Xq=XU{el,e             2 ..... eq_l}   Yq = Y U R i
+16                                                           M, Held, R.M. Karl)
+
+where q is the smallest index for which there exists a vertex i such that
+X does not contain two edges incident on i, b u t Xq does. R i consists
+of all edges incident on i not in Xq. It is legitimate to include R i in Yq,
+since any tour which includes two edges incident upon i excludes all
+the other edges incident on i. There may exist two such vertices i and j,
+in which case Yq = Y u R i u R].
+   The entries generated in the process are of three types: those which
+are never chosen as an entry o f least bound (type >), those which are
+chosen but eliminated in the ascent process because of a b o u n d exceed-
+ing C (type o) and those which are selected and lead to branching. The
+entire process can be viewed as a rooted tree whose nodes are all the en-
+tries generated. The type > and type o entries correspond to frontier
+nodes, and the other entries correspond to interior nodes with descen-
+dants corresponding to the entries created from them by branching.
+
+
+4. Computational results
+
+   In this section we report our computational experience with the
+algorithm given in the present paper. The problems tried, ranging in
+size from 20 cities to 64 cities, came from various sources. Several
+appear in the open literature, and are identified here by appropriate
+references. The problem designated "Mezei" was transmitted to us as a
+challenge b y J. Mezei. In problems designated "random (M)," where M
+is a positive integer, the distances cq are drawn independently from a
+discrete uniform distribution over {0, 1, ..., M} (with ci] = cji, of course).
+In problems designated "random Euclidean (M)," the n points were
+placed randomly in a square of side M, and ci] is the Euclidean distance
+between points i and j. The term "p X q knight's tour" refers to a prob-
+lem in which the cities are the squares of a p × q chessboard, with
+distance 0 between squares a knight's move apart, and oo otherwise.
+Three problems were specially constructed. In problem " T u t t e , " the
+matrix (cq) is determined from the " T u t t e graph" (cf. fig. 9) as follows:
+
+                    0 if i and j are adjacent
+           c,,= {
+                    oo otherwise.
+
+The object of the computation in this case was to verify the nonexis-
+tence o f a Hamilton circuit. In problem "Slant" (cij) is the sum of two
+The traveling salesman problem                                                             17
+
+
+matrices A and B; the first is of the form aij = t7i + tT], where the o i are
+drawn from the uniform distribution over [0, 2000], and B is a matrix
+whose elements are drawn from the uniform distribution over [0, 200],
+except for the "slant" positions corresponding to the tour 1,2, 3, ..., 64,
+which contain 0. Problem " J o i n " was obtained by combining the
+Dantzig problem and the 22-city random Euclidean problem in imita-
+tion of a construction due to Lin [ 11 ], p. 2258.
+     In addition to the cost matrix (cij), each run required three parame-
+ters to be specified: 7, which governs the step size in the ascent method;
+p , a parameter which determines when the ascent process is terminated
+and a branch created; and if, the upper bound on C* which is used to
+eliminate derived problems.
+     A n y heuristic procedure (see, for example, [3], [9] or [ 11 ] ) may be
+used to obtain C.
+     In the following tables, all computing times refer to the IBM 360/91.
+Table 1 lists those examples in which the bound resulting from applying
+the ascent m e t h o d to the initial entry ((o, ¢, O, w(0)) is equal to C*
+(and hence, clearly, no gap exists; i.e., max w(rr) = C*). In these exam-
+ples branching was necessary only to verify this fact and exhibit an op-
+timal tour.
+     Table 2 gives details o f the other runs. The value of w(~r) after the
+initial ascent is invariably a close lower bound on C*.
+     Some experience with ascent computations using a step size which
+is varied dynamically dUring the computation suggests that the bounds
+
+
+                                          Table 1
+                    Problems where solution was obtained in initial ascent
+
+      Problem                     n             t           p                Time (sees)
+
+      Croes [3]                   20                1        20                4
+      Random (400)                20                1        25                6
+      8 X 3 knight's tour *       24                1       25                 0
+      Held and Karp [8]           25                1        20               12
+      Mezei                       26                1        20               22
+      Random (1800)               30                1       25                19
+      Slant                       64            4,1 **       30              182
+
+ * There is no Closed knight's tour on a 8 X 3 board.
+** t was changed during the computation.
+18                                                                          M. HeM, R.M. Ka~
+
+                                        Table 2
+                            Problems which required branching
+
+Problem                n     t-     p           C*    wOO after   Type Type Inte-~ Time
+                                                      initial     >    o    rior (rain)
+                                                      ascent
+
+Random Euclidean       22    1      20         765       763      16         16    22    0.16
+(200)
+Random (700)           25    1      25        2025     2015       21         15    25    0.30
+10 X 3 knight's tour   30    1      25   ,     0         0        30         13    31    0.33
+Dantzig [4]            42    1      25         699      695       34         11    28    0.90
+Tutte                  46    1     100         > 0       0        33        284   112   15.00
+Held and Karp [8]      48    1      15       11,461   11,430      48         19   48     1.40
+8 × 6 Knight's tour    48    1      25         0         0        49         85    85    2.66
+Karg and Thompson
+[9]                    57    1      30       12,955   12,906      79        128   182   13.00
+Join                   64    1      30        1,335    1,321      93         57   115    8.40
+Random EuClidean
+(1500)                 64    2      30       9,937     9,924      56         26   57     5.50
+Random (1500)          64   1/3     30       9,971     9,970      57         12   44    4.30
+8 X 8 Knight's tour    64    1      50         0        0         64         31   72    6.93
+
+
+
+
+computed in the initial ascent are extremely close to max wOO, so that
+                                                                       Tr
+
+discrepancies between this bound and C* are due almost entirely to the
+"gap" C* - max/r
+                 w(rr).
+
+   The small numbers o f nodes in the search trees attest further to the
+tightness of the bound max7r
+                             w(rr) and the effectiveness of the ascent
+
+method in approximating it. In fact, it is possible for us to do some-
+thing which has never been done before - to present in their entirely
+the search trees for large combinatorial problems of this type (cf.
+figs. 2, 3, 4, 5, 6, 7, 8 and 10).
+
+Possible improvements in computing time
+
+   The computation times given in tables 1 and 2 appear high consider-
+ing the simplicity of the search trees. This may be to some extent in-
+trinsic, b u t considerable improvement can be expected through better
+The traveling salesman problem                                                                                         19
+                                                   6oo
+
+
+
+
+                                             (~denofeshfronfiernodes                                               O0>/0>>~>
+                                                                                                                         SOLUTION
+      >
+          >                                                                                                                 (699)
+                                                                        Fig. 2.    42 - city ( b a n t z i g ) .
+
+
+
+
+                                             O~
+                                              0
+
+
+
+
+                                                                                  SOLUTION
+                                                                                   (9937')
+              Fig. 3.   64 - city ( r a n d o m E u c l i d e a n ) .
+20                                               M. HeM, R.M. Karl)
+
+
+
+
+               oOO
+
+
+
+
+               o°
+
+               o
+
+               o     >
+
+
+
+
+                          >>      SOLUTION
+
+
+     Fig. 4.   (8 X 8) 64 - city knights tour.
+The traveling salesman problem                                                              21
+
+                                         \
+                                                  O\
+                                                       l
+
+
+
+
+                                                 11,461 ~//~ ~~
+                                                           \"
+                                                                        II i O.
+
+
+                                                                              i~l ~
+
+
+
+
+                                                                                           SOLUTION
+                                                                                            (I 1,461)
+
+                                                            d Karp) Type > and type 0 nodes omitted.
+
+
+
+
+                                          "o
+
+
+
+
+                                                                              SOLUTION
+                                                                                  (1335)
+            Fig. 6. 64 - city (join) Type > and type 0 nodes omitted.
+22                                                                   M. HeM, R.M. Karp
+
+
+
+
+                                                             SOLUTION
+                                                              (12,955)
+
+
+
+
+     Fig. 7. 57 - city (Karg and Thompson) Type > and type 0 nodes omitted.
+The traveling salesman problem                                                           23
+
+
+
+
+                                                            \
+                                                        m
+
+
+
+
+       Fig. 8. 64 - city (random) Type > and'type 0 nodes omitted.   "N~
+
+
+                                                                              SOLUTION
+                                                                               (99"tl)
+
+
+
+
+                                                       Fig. 9. Tutte graph.
+
+
+
+
+                                   yut        yp        t       0nosomit
+24                                                              M. Held, R.M. Karp
+
+engineering of the time-consuming ascent procedure. We sketch a few
+possibilities:
+a) A better starting point for the initial ascent can be obtained by
+   solving the assignment problem for the matrix (ci/) and setting
+   7r° = - ½ (u i + vi), where the u i and v / g i v e an optimal solution to the
+   dual of the assignment problem:
+
+           Maximize    ~ u i + ~ l~]
+
+           Subject to u i + vj <_ cij .
+
+   It is easily verified that, with this choice, w0r °) is greater than or
+   equal to the cost of an optimal solution to the assignment problem.
+b) Keeping t m , which governs the step size, constant in the ascent
+   method is very crude. Limited experience indicates that it may be
+   far preferable to use a variable step size based upon lemma 3. Simi-
+   larly, it has been observed that keeping constant the parameter p,
+   which governs the termination of the ascent process, leads to much
+   unnecessary computation. This could be avoided using a more flex-
+   ible rule.
+c) There are two competing ways to compute minimum spanning 1-
+   trees: the method [5] used in the program always requires O(n 2)
+   computation steps; a second method [10] is much faster on the
+   average, but presupposes that the cij are sorted into ascending nume-
+   rical order. This method may be significantly preferable, since the
+   ascent method requires a sequence of minimum spanning 1-tree
+   calculations, with the data only slightly changed between calcula-
+   tions, so that the necessary sorting would not need to be time
+   consuming.
+
+
+Acknowledgements
+   The authors wish to express their appreciation to Mrs. Linda Ibrahim
+who programmed the algorithm reported on in this paper. We also
+wish to thank Philip Wolfe for a number of illuminating observations
+concerning the ascent method. The existence of references [1] and
+[ 12] came to our attention through a serendipitous conversation with
+Alan Hoffman.
+The traveling-salesman problem                                                         25
+
+References
+
+ [1] S. Agmon, "The relaxation method for linear inequalities," Canadian Journal o f Mathe-
+      matics 6 (1954) 382-392.
+ [2] M. BeUmore and G.L. Nemhauser, "The traveling salesman problem: a survey," Opera-
+      tionsResearch 16 (1968) 538-558.
+ [3] G.A. Croes, "A method for solving traveling salesman problems," Operations Research
+      6 (1958) 791-812.
+ [4] G.B. Dantzig, D.R. Fulkerson and S.M. Johnson, "Solution of a large scale traveling
+      salesman problem," Operation Research 2 (1954) 393-410.
+ [5] E.W. Dijkstra, "A note on two problems in connexion with graphs," NumerischeMathe-
+      matik 1 (1959) 269-271.
+ [6] D. Gale, "Optimal assignments in an ordered set: an application of matroid theory,"
+      Journal of Combinatorial Theory 4 (1968) 176-180.
+ [7] M. Held and R.M. Karp, "The traveling-salesmanproblem and minimum spanning trees,"
+      Operations Research 18 (1970) 1138-1162.
+  [8] M. Held and R.M. Karp, "A dynamic programming approach to sequencing problems,"
+      Journal o f the Society for Industrial and Applied Mathematics 10 (1962) 196-210.
+ [9] L.L. Karg and G.L. Thompson, "A heuristic approach to solving traveling salesman prob-
+      lems," Management Science 10 (1964) 225-248.
+[10] J.B. Kruskal, "On the shortest spanning subtree of a graph and the traveling salesman
+      problem," Proceedings o f the American Mathematical Society 2 (1956) 48-5 0.
+[11] S. Lin, "Computer solution of the traveling salesman problem," Bell System Technical
+      Journal 44 (1965) 2245-2269.
+[12] T: Motzkin and I.J. Schoenberg, "The relaxation method for linear inequalities,"
+      Canadian Journal of Mathematics 6 (1954) 393-404.
+

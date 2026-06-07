@@ -1,0 +1,2096 @@
+         10.4   Implementation                                                                                 547
+
+
+             Here the objective is separable, so the Hessian at x is diagonal:
+
+                                              H = diag(x−2           −2
+                                                        1 , . . . , xn ).
+
+             If we compute the Newton direction using a generic method such as an LDLT factor-
+             ization of the KKT matrix, the cost is (1/3)(n + p)3 flops.
+             If we compute the Newton step using block elimination, the cost is np2 + (1/3)p3
+             flops. This is much smaller than the cost of the generic method.
+             In fact this cost is the same as that of computing the Newton step for the dual prob-
+             lem, described in example 10.2 on page 525. For the (unconstrained) dual problem,
+             the Hessian is
+                                                Hdual = −ADAT ,
+             where D is diagonal, with Dii = (AT ν)−2                                  2
+                                                    i . Forming this matrix costs np flops, and
+             solving for the Newton step by a Cholesky factorization of −Hdual costs (1/3)p3 flops.
+
+
+             Example 10.4 Minimum length piecewise-linear curve subject to equality constraints.
+             We consider a piecewise-linear curve in R2 with knot points (0, 0), (1, x1 ), . . . , (n, xn ).
+             To find the minimum length curve that satisfies the equality constraints Ax = b, we
+             form the problem
+                                                    1/2       Pn−1                       1/2
+                             minimize       1 + x21        +    i=1
+                                                                      1 + (xi+1 − xi )2
+                             subject to    Ax = b,
+
+             with variable x ∈ Rn , and A ∈ Rp×n . In this problem, the objective is a sum of
+             functions of pairs of adjacent variables, so the Hessian H is tridiagonal. Using block
+             elimination, we can compute the Newton step in around p2 n + (1/3)p3 flops.
+
+
+         Elimination with singular H
+         The block elimination method described above obviously does not work when H
+         is singular, but a simple variation on the method can be used in this more general
+         case. The more general method is based on the following result: The KKT matrix
+         is nonsingular if and only if H + AT QA ≻ 0 for some Q  0, in which case,
+         H + AT QA ≻ 0 for all Q ≻ 0. (See exercise 10.1.) We conclude, for example, that
+         if the KKT matrix is nonsingular, then H + AT A ≻ 0.
+             Let Q  0 be a matrix for which H +AT QA ≻ 0. Then the KKT system (10.33)
+         is equivalent to
+                                                                    
+                             H + AT QA AT          v         g + AT Qh
+                                                       =−                  ,
+                                 A          0      w              h
+
+         which can be solved using elimination since H + AT QA ≻ 0.
+
+
+10.4.3   Examples
+
+         In this section we describe some longer examples, showing how structure can be
+         exploited to efficiently compute the Newton step. We also include some numerical
+         results.
+548                                               10    Equality constrained minimization
+
+
+      Equality constrained analytic centering
+      We consider the equality constrained analytic centering problem
+                                                    Pn
+                              minimize f (x) = − i=1 log xi
+                              subject to Ax = b.
+
+      (See examples 10.2 and 10.3.) We compare three methods, for a problem of size
+      p = 100, n = 500.
+         The first method is Newton’s method with equality constraints (§10.2). The
+      Newton step ∆xnt is defined by the KKT system (10.11):
+                                                     
+                               H AT       ∆xnt        −g
+                                                  =         ,
+                               A    0      w           0
+
+      where H = diag(1/x21 , . . . , 1/x2n ), and g = −(1/x1 , . . . , 1/xn ). As explained in
+      example 10.3, page 546, the KKT system can be efficiently solved by elimination,
+      i.e., by solving
+                                      AH −1 AT w = −AH −1 g,
+      and setting ∆xnt = −H −1 (AT w + g). In other words,
+
+                                   ∆xnt = − diag(x)2 AT w + x,
+
+      where w is the solution of
+                                      A diag(x)2 AT w = b.                            (10.34)
+      Figure 10.6 shows the error versus iteration. The different curves correspond to
+      four different starting points. We use a backtracking line search with α = 0.1,
+      β = 0.5.
+         The second method is Newton’s method applied to the dual
+                                                  Pn
+                        maximize g(ν) = −bT ν + i=1 log(AT ν)i + n
+
+      (see example 10.2, page 525). Here the Newton step is obtained from solving
+
+                                 A diag(y)2 AT ∆νnt = −b + Ay                         (10.35)
+
+      where y = (1/(AT ν)1 , . . . , 1/(AT ν)n ). Comparing (10.35) and (10.34) we see that
+      both methods have the same complexity. In figure 10.7 we show the error for four
+      different starting points. We use a backtracking line search with α = 0.1, β = 0.5.
+
+         The third method is the infeasible start Newton method of §10.3, applied to
+      the optimality conditions
+
+                               ∇f (x⋆ ) + AT ν ⋆ = 0,     Ax⋆ = b.
+
+      The Newton step is obtained by solving
+                                                        
+                           H AT        ∆xnt         g + AT ν
+                                               =−              ,
+                           A    0      ∆νnt          Ax − b
+10.4   Implementation                                                                   549
+
+
+
+
+                      105
+
+
+
+
+                      100
+
+          f (x(k) ) − p⋆
+
+
+                       10−5
+
+
+
+
+                      10−10
+                           0       5         10           15           20
+                                             k
+       Figure 10.6 Error f (x(k) ) − p⋆ in Newton’s method, applied to an equality
+       constrained analytic centering problem of size p = 100, n = 500. The
+       different curves correspond to four different starting points. Final quadratic
+       convergence is clearly evident.
+
+
+
+
+                      105
+
+
+
+
+                      100
+
+          p⋆ − g(ν (k) )
+
+
+                       10−5
+
+
+
+
+                      10−10
+                           0   2         4         6           8       10
+                                              k
+       Figure 10.7 Error |g(ν (k) ) − p⋆ | in Newton’s method, applied to the dual of
+       the equality constrained analytic centering problem.
+550                                                            10    Equality constrained minimization
+
+
+                                 1010
+
+
+                                 105
+
+
+
+                kr(x(k) , ν (k) )k2
+                                 100
+
+
+                                 10−5
+
+
+                                 10−10
+
+
+                                 10−15
+                                      0          5       10         15      20      25
+                                                              k
+            Figure 10.8 Residual kr(x(k) , ν (k) )k2 in the infeasible start Newton method,
+            applied to the equality constrained analytic centering problem.
+
+
+
+
+      where H = diag(1/x21 , . . . , 1/x2n ), and g = −(1/x1 , . . . , 1/xn ). This KKT system
+      can be efficiently solved by elimination, at the same cost as (10.34) or (10.35). For
+      example, if we first solve
+                                                A diag(x)2 AT w = 2Ax − b,
+      then ∆νnt and ∆xnt follow from
+                                        ∆νnt = w − ν,     ∆xnt = x − diag(x)2 AT w.
+      Figure 10.8 shows the norm of the residual
+                                              r(x, ν) = (∇f (x) + AT ν, Ax − b)
+      versus iteration, for four different starting points. We use a backtracking line search
+      with α = 0.1, β = 0.5.
+          The figures show that for this problem, the dual method appears to be faster,
+      but only by a factor of two or three. It takes about six iterations to reach the
+      region of quadratic convergence, as opposed to 12–15 in the primal method and
+      10–20 in the infeasible start Newton method.
+          The methods also differ in the initialization they require. The primal method
+      requires knowledge of a primal feasible point, i.e., satisfying Ax(0) = b, x(0) ≻ 0.
+      The dual method requires a dual feasible point, i.e., AT ν (0) ≻ 0. Depending on
+      the problem, one or the other might be more readily available. The infeasible start
+      Newton method requires no initialization; the only requirement is that x(0) ≻ 0.
+
+      Optimal network flow
+      We consider a connected directed graph or network with n edges and p + 1 nodes.
+      We let xj denote the flow or traffic on arc j, with xj > 0 meaning flow in the
+10.4   Implementation                                                                     551
+
+
+direction of the arc, and xj < 0 meaning flow in the direction opposite the arc.
+There is also a given external source (or sink) flow si that enters (if si > 0) or
+leaves (if si < 0) node i. The flow must satisfy a conservation equation, which
+states that at each node, the total flow entering the node, including the external
+sources and sinks, is zero. This conservation equation can be expressed as Ãx = s
+where Ã ∈ R(p+1)×n is the node incidence matrix of the graph,
+                                
+                                 1 arc j leaves node i
+                         Ãij =   −1 arc j enters node i
+                                
+                                    0 otherwise.
+
+The flow conservation equation Ãx = s is inconsistent unless 1T s = 0, which we
+assume is the case. (In other words, the total of the source flows must equal the
+total of the sink flows.) The flow conservation equations Ãx = s are also redundant,
+since 1T Ã = 0. To obtain an independent set of equations we can delete any one
+equation, to obtain Ax = b, where A ∈ Rp×n is the reduced node incidence matrix
+of the graph (i.e., the node incidence matrix with one row removed) and b ∈ Rp is
+reduced source vector (i.e., s with the associated entry removed).
+    In summary, flow conservation is given by Ax = b, where A is the reduced node
+incidence matrix of the graph and b is the reduced source vector. The matrix A is
+very sparse, since each column has at most two nonzero entries (which can only be
++1 or −1).
+    We will take traffic flows x as the variables, and the sources as given. We
+introduce the objective function
+                                            n
+                                            X
+                                  f (x) =         φi (xi ),
+                                            i=1
+
+where φi : R → R is the flow cost function for arc i. We assume that the flow cost
+functions are strictly convex and twice differentiable.
+   The problem of choosing the best flow, that satisfies the flow conservation re-
+quirement, is                             Pn
+                              minimize       i=1 φi (xi )                  (10.36)
+                              subject to Ax = b.
+Here the Hessian H is diagonal, since the objective is separable.
+    We have several choices for computing the Newton step for the optimal network
+flow problem (10.36). The most straightforward is to solve the full KKT system,
+using a sparse LDLT factorization.
+    For this problem it is probably better to compute the Newton step using block
+elimination. We can characterize the sparsity pattern of the Schur complement
+S = −AH −1 AT in terms of the graph: We have Sij 6= 0 if and only if node i and
+node j are connected by an arc. It follows that if the network is sparse, i.e., if each
+node is connected by an arc to only a few other nodes, then the Schur complement
+S is sparse. In this case, we can exploit sparsity in forming S, and in the associated
+factorization and solve steps, as well. We can expect the computational complexity
+of computing the Newton step to grow approximately linearly with the number of
+arcs (which is the number of variables).
+552                                                      10    Equality constrained minimization
+
+
+      Optimal control
+      We consider the problem
+                                 PN                PN −1
+                   minimize        t=1 φt (z(t)) +   t=0 ψt (u(t))
+                   subject to    z(t + 1) = At z(t) + Bt u(t), t = 0, . . . , N − 1.
+
+      Here
+
+         • z(t) ∈ Rk is the system state at time t
+
+         • u(t) ∈ Rl is the input or control action at time t
+
+         • φt : Rk → R is the state cost function
+
+         • ψt : Rl → R is the input cost function
+
+         • N is called the time horizon for the problem.
+
+      We assume that the input and state cost functions are strictly convex and twice dif-
+      ferentiable. The variables in the problem are u(0), . . . , u(N −1), and z(1), . . . , z(N ).
+      The initial state z(0) is given. The linear equality constraints are called the state
+      equations or dynamic evolution equations. We define the overall optimization vari-
+      able x as
+                     x = (u(0), z(1), u(1), . . . , u(N − 1), z(N )) ∈ RN (k+l) .
+         Since the objective is block separable (i.e., a sum of functions of z(t) and u(t)),
+      the Hessian is block diagonal:
+
+                                H = diag(R0 , Q1 , . . . , RN −1 , QN ),
+
+      where
+
+          Rt = ∇2 ψt (u(t)),     t = 0, . . . , N − 1,        Qt = ∇2 φt (z(t)),   t = 1, . . . , N.
+
+      We can collect all the equality constraints (i.e., the state equations) and express
+      them as Ax = b where
+                                                                                   
+                    −B0      I      0      0      0      ···     0         0     0
+                  0        −A1 −B1        I      0      ···     0         0     0 
+                                                                                   
+                  0         0      0    −A   2 −B    2  · · ·   0         0     0 
+                                                                                   
+         A =  .              ..     ..    ..      ..            ..        ..    .. 
+                  ..          .      .     .       .             .         .     . 
+                                                                                   
+                  0         0      0      0      0      ···     I         0     0 
+                      0      0      0      0      0      · · · −AN −1 −BN −1 I
+                            
+                    A0 z(0)
+                       0    
+                            
+                       0    
+                            
+          b =          ..   .
+                        .   
+                            
+                       0    
+                        0
+10.4       Implementation                                                                                     553
+
+
+The number of rows of A (i.e., equality constraints) is N k.
+    Directly solving the KKT system for the Newton step, using a dense LDLT
+factorization, would cost
+                              (1/3)(2N k + N l)3 = (1/3)N 3 (2k + l)3
+flops. Using a sparse LDLT factorization would give a large improvement, since
+the method would exploit the many zero entries in A and H.
+    In fact we can do better by exploiting the special block structure of H and
+A, using block elimination to compute the Newton step. The Schur complement
+S = −AH −1 AT turns out to be block tridiagonal, with k × k blocks:
+       S    =     −AH −1 AT
+                                                                                                   
+                     S11     Q−1
+                              1 A1
+                                    T
+                                               0        ···          0                   0
+                   A1 Q1
+                  
+                          −1
+                               S22           Q−1
+                                              2 A2
+                                                  T
+                                                        ···          0                   0          
+                                                                                                    
+                      0     A2 Q2
+                                   −1
+                                              S33       ···          0                   0          
+                                                                                                   
+            =         ..       ..             ..       ..           ..                  ..         
+                       .        .              .          .          .                   .         
+                                                                                                   
+                      0        0                0      ···    SN −1,N −1        Q−1    T           
+                                                                                  N −1 AN −1
+                        0           0            0      ···    AN −1 Q−1
+                                                                      N −1          SN N
+where
+           S11    =   −B0 R0−1 B0T − Q−1
+                                      1 ,
+                                              −1          −1
+            Sii   =   −Ai−1 Q−1   T                T
+                             i−1 Ai−1 − Bi−1 Ri−1 Bi−1 − Qi ,                   i = 2, . . . , N.
+     In particular, S is banded, with bandwidth 2k − 1, so we can factor it in order
+k 3 N flops. Therefore we can compute the Newton step in order k 3 N flops, assuming
+k ≪ N . Note that this grows linearly with the time horizon N , whereas for a generic
+method, the flop count grows like N 3 .
+     For this problem we could go one step further and exploit the block tridiagonal
+structure of S. Applying a standard block tridiagonal factorization method would
+result in the classic Riccati recursion for solving a quadratic optimal control prob-
+lem. Still, using only the banded nature of S yields an algorithm that is the same
+order.
+
+Analytic center of a linear matrix inequality
+We consider the problem
+                            minimize        f (X) = − log det X
+                                                                                                    (10.37)
+                            subject to      tr(Ai X) = bi , i = 1, . . . , p,
+where X ∈ Sn is the variable, Ai ∈ Sn , bi ∈ R, and dom f = Sn++ . The KKT
+conditions for this problem are
+                        m
+                        X
+            −X ⋆ −1 +         νi⋆ Ai = 0,       tr(Ai X ⋆ ) = bi ,   i = 1, . . . , p.              (10.38)
+                        i=1
+
+   The dimension of the variable X is n(n + 1)/2. We could simply ignore the
+special matrix structure of X, and consider it as (vector) variable x ∈ Rn(n+1)/2 ,
+554                                               10   Equality constrained minimization
+
+
+      and solve the problem (10.37) using a generic method for a problem with n(n+1)/2
+      variables and p equality constraints. The cost for computing a Newton step would
+      then be at least
+                                    (1/3)(n(n + 1)/2 + p)3
+      flops, which is order n6 in n. We will see that there are a number of far more
+      attractive alternatives.
+          A first option is to solve the dual problem. The conjugate of f is
+
+                                  f ∗ (Y ) = log det(−Y )−1 − n
+
+      with dom f ∗ = −Sn++ (see example 3.23, page 92), so the dual problem is
+                                                        Pp
+                           maximize −bT ν + log det( i=1 νi Ai ) + n,              (10.39)
+                          Pp
+      with domain {ν |      i=1 νi Ai ≻ 0}. This is an unconstrained problem with variable
+      ν ∈ Rp . The optimal X ⋆ can be recovered from the optimal ν ⋆ by solving the first
+                                                           Pp           −1
+      (dual feasibility) equation in (10.38), i.e., X ⋆ = ( i=1 νi⋆ Ai ) .
+         Let us work out the cost of computing the Newton step for the dual prob-
+      lem (10.39). We have to form the gradient and Hessian of g, and then solve for the
+      Newton step. The gradient and Hessian are given by
+
+                     ∇2 g(ν)ij = − tr(A−1 Ai A−1 Aj ), i, j = 1, . . . , p,
+                        ∇g(ν)i = tr(A−1 Ai ) − bi , i = 1 . . . , p,
+                   Pp                       2
+      where A =       i=1 νi Ai . To form ∇ g(ν) and ∇g(ν) we proceed as follows. We
+      first form A (pn flops), and A Aj for each j (2pn3 flops). Then we form the
+                        2               −1
+
+      matrix ∇2 g(ν). Each of the p(p + 1)/2 entries of ∇2 g(ν) is the inner product of
+      two matrices in Sn , each of which costs n(n + 1) flops, so the total is (dropping
+      dominated terms) (1/2)p2 n2 flops. Forming ∇g(ν) is cheap since we already have
+      the matrices A−1 Ai . Finally, we solve for the Newton step −∇2 g(ν)−1 ∇g(ν), which
+      costs (1/3)p3 flops. All together, and keeping only the leading terms, the total cost
+      of computing the Newton step is 2pn3 + (1/2)p2 n2 + (1/3)p3 . Note that this is
+      order n3 in n, which is far better than the simple primal method described above,
+      which is order n6 .
+          We can also solve the primal problem more efficiently, by exploiting its special
+      matrix structure. To derive the KKT system for the Newton step ∆Xnt at a feasible
+      X, we replace X ⋆ in the KKT conditions by X + ∆Xnt and ν ⋆ by w, and linearize
+      the first equation using the first-order approximation
+
+                           (X + ∆Xnt )−1 ≈ X −1 − X −1 ∆Xnt X −1 .
+
+      This gives the KKT system
+                                    p
+                                    X
+         −X −1 + X −1 ∆Xnt X −1 +         wi Ai = 0,    tr(Ai ∆Xnt ) = 0,   i = 1, . . . , p.
+                                    i=1
+                                                                               (10.40)
+      This is a set of n(n + 1)/2 + p linear equations in the variables ∆Xnt ∈ Sn and
+      w ∈ Rp . If we solved these equations using a generic method, the cost would be
+      order n6 .
+10.4   Implementation                                                                  555
+
+
+    We can use block elimination to solve the KKT system (10.40) far more effi-
+ciently. We eliminate the variable ∆Xnt , by solving the first equation to get
+                                   p
+                                          !            p
+                                 X                    X
+               ∆Xnt = X − X          wi Ai X = X −         wi XAi X.         (10.41)
+                                  i=1                   i=1
+
+Substituting this expression for ∆Xnt into the other equation gives
+                                    p
+                                    X
+        tr(Aj ∆Xnt ) = tr(Aj X) −         wi tr(Aj XAi X) = 0,   j = 1, . . . , p.
+                                    i=1
+
+This is a set of p linear equations in w:
+
+                                        Cw = d
+
+where Cij = tr(Ai XAj X), di = tr(Ai X). The coefficient matrix C is symmetric
+and positive definite, so a Cholesky factorization can be used to find w. Once we
+have w, we can compute ∆Xnt from (10.41).
+    The cost of this method is as follows. We form the products Ai X (2pn3 flops),
+and then form the matrix C. Each of the p(p + 1)/2 entries of C is the inner
+product of two matrices in Rn×n , so forming C costs p2 n2 flops. Then we solve
+for w = C −1 d, which costs (1/3)p3 . Finally we compute ∆Xnt . If we use the
+first expression in (10.41), i.e., first compute the sum and then pre- and post-
+multiply with X, the cost is approximately pn2 + 3n3 . All together, the total cost
+is 2pn3 + p2 n2 + (1/3)p3 flops to form the Newton step for the primal problem,
+using block elimination. This is far better than the simple method, which is order
+n6 . Note also that the cost is the same as that of computing the Newton step for
+the dual problem.
+556                                                10    Equality constrained minimization
+
+
+      Bibliography
+      The two key assumptions in our analysis of the infeasible start Newton method (the
+      derivative Dr has a bounded inverse and satisfies a Lipschitz condition) are central to
+      most convergence proofs of Newton’s method; see Ortega and Rheinboldt [OR00] and
+      Dennis and Schnabel [DS96].
+      The relative merits of solving KKT systems via direct factorization of the full system, or
+      via elimination, have been extensively studied in the context of interior-point methods
+      for linear and quadratic programming; see, for example, Wright [Wri97, chapter 11] and
+      Nocedal and Wright [NW99, §16.1-2]. The Riccati recursion from optimal control can
+      be interpreted as a method for exploiting the block tridiagonal structure in the Schur
+      complement S of the example on page 552. This observation was made by Rao, Wright,
+      and Rawlings [RWR98, §3.3].
+     Exercises                                                                                    557
+
+
+     Exercises
+     Equality constrained minimization
+10.1 Nonsingularity of the KKT matrix. Consider the KKT matrix
+                                                           
+                                               P    AT
+                                                                ,
+                                               A     0
+
+     where P ∈ Sn
+                +, A ∈ R
+                         p×n
+                             , and rank A = p < n.
+      (a) Show that each of the following statements is equivalent to nonsingularity of the
+          KKT matrix.
+             • N (P ) ∩ N (A) = {0}.
+             • Ax = 0, x 6= 0 =⇒ xT P x > 0.
+             • F T P F ≻ 0, where F ∈ Rn×(n−p) is a matrix for which R(F ) = N (A).
+             • P + AT QA ≻ 0 for some Q  0.
+      (b) Show that if the KKT matrix is nonsingular, then it has exactly n positive and p
+          negative eigenvalues.
+10.2 Projected gradient method. In this problem we explore an extension of the gradient method
+     to equality constrained minimization problems. Suppose f is convex and differentiable,
+     and x ∈ dom f satisfies Ax = b, where A ∈ Rp×n with rank A = p < n. The Euclidean
+     projection of the negative gradient −∇f (x) on N (A) is given by
+
+                                  ∆xpg = argmin k−∇f (x) − uk2 .
+                                           Au=0
+
+
+      (a) Let (v, w) be the unique solution of
+                                                                             
+                                      I   AT        v                   −∇f (x)
+                                                            =                         .
+                                      A    0        w                     0
+
+           Show that v = ∆xpg and w = argminy k∇f (x) + AT yk2 .
+      (b) What is the relation between the projected negative gradient ∆xpg and the negative
+          gradient of the reduced problem (10.5), assuming F T F = I?
+       (c) The projected gradient method for solving an equality constrained minimization
+           problem uses the step ∆xpg , and a backtracking line search on f . Use the re-
+           sults of part (b) to give some conditions under which the projected gradient method
+           converges to the optimal solution, when started from a point x(0) ∈ dom f with
+           Ax(0) = b.
+
+     Newton’s method with equality constraints
+
+10.3 Dual Newton method. In this problem we explore Newton’s method for solving the dual
+     of the equality constrained minimization problem (10.1). We assume that f is twice
+     differentiable, ∇2 f (x) ≻ 0 for all x ∈ dom f , and that for each ν ∈ Rp , the Lagrangian
+     L(x, ν) = f (x) + ν T (Ax − b) has a unique minimizer, which we denote x(ν).
+      (a) Show that the dual function g is twice differentiable. Find an expression for the
+          Newton step for the dual function g, evaluated at ν, in terms of f , ∇f , and ∇2 f ,
+          evaluated at x = x(ν). You can use the results of exercise 3.40.
+558                                                            10   Equality constrained minimization
+
+
+             (b) Suppose there exists a K such that
+                                                                   −1
+                                                    ∇2 f (x)   AT
+                                                                                ≤K
+                                                      A         0
+                                                                            2
+
+                 for all x ∈ dom f . Show that g is strongly concave, with ∇2 g(ν)  −(1/K)I.
+      10.4 Strong convexity and Lipschitz constant of the reduced problem. Suppose f satisfies the
+           assumptions given on page 529. Show that the reduced objective function f˜(z) = f (F z+x̂)
+           is strongly convex, and that its Hessian is Lipschitz continuous (on the associated sublevel
+           set S̃). Express the strong convexity and Lipschitz constants of f˜ in terms of K, M , L,
+           and the maximum and minimum singular values of F .
+      10.5 Adding a quadratic term to the objective. Suppose Q  0. The problem
+                                      minimize      f (x) + (Ax − b)T Q(Ax − b)
+                                      subject to    Ax = b
+
+           is equivalent to the original equality constrained optimization problem (10.1). Is the
+           Newton step for this problem the same as the Newton step for the original problem?
+      10.6 The Newton decrement. Show that (10.13) holds, i.e.,
+
+                                  f (x) − inf{fb(x + v) | A(x + v) = b} = λ(x)2 /2.
+
+           Infeasible start Newton method
+      10.7 Assumptions for infeasible start Newton method. Consider the set of assumptions given
+           on page 536.
+             (a) Suppose that the function f is closed. Show that this implies that the norm of the
+                 residual, kr(x, ν)k2 , is closed.
+             (b) Show that Dr satisfies a Lipschitz condition if and only if ∇2 f does.
+      10.8 Infeasible start Newton method and initially satisfied equality constraints. Suppose we use
+           the infeasible start Newton method to minimize f (x) subject to aTi x = bi , i = 1, . . . , p.
+             (a) Suppose the initial point x(0) satisfies the linear equality aTi x = bi . Show that the
+                 linear equality will remain satisfied for future iterates, i.e., if aTi x(k) = bi for all k.
+             (b) Suppose that one of the equality constraints becomes satisfied at iteration k, i.e.,
+                 we have aTi x(k−1) 6= bi , aTi x(k) = bi . Show that at iteration k, all the equality
+                 constraints are satisfied.
+      10.9 Equality constrained entropy maximization. Consider the equality constrained entropy
+           maximization problem
+                                                                Pn
+                                         minimize      f (x) =      i=1
+                                                                          xi log xi
+                                                                                                     (10.42)
+                                         subject to    Ax = b,
+
+           with dom f = Rn
+                         ++ and A ∈ R
+                                      p×n
+                                          . We assume the problem is feasible and that rank A =
+           p < n.
+             (a) Show that the problem has a unique optimal solution x⋆ .
+             (b) Find A, b, and feasible x(0) for which the sublevel set
+
+                                           {x ∈ Rn
+                                                 ++ | Ax = b, f (x) ≤ f (x
+                                                                           (0)
+                                                                               )}
+                 is not closed. Thus, the assumptions listed in §10.2.4, page 529, are not satisfied for
+                 some feasible initial points.
+      Exercises                                                                                    559
+
+
+        (c) Show that the problem (10.42) satisfies the assumptions for the infeasible start
+            Newton method listed in §10.3.3, page 536, for any feasible starting point.
+       (d) Derive the Lagrange dual of (10.42), and explain how to find the optimal solution
+           of (10.42) from the optimal solution of the dual problem. Show that the dual problem
+           satisfies the assumptions listed in §10.2.4, page 529, for any starting point.
+
+      The results of part (b), (c), and (d) do not mean the standard Newton method will fail,
+      or that the infeasible start Newton method or dual method will work better in practice.
+      It only means our convergence analysis for the standard Newton method does not apply,
+      while our convergence analysis does apply to the infeasible start and dual methods. (See
+      exercise 10.15.)
+10.10 Bounded inverse derivative condition for strongly convex-concave game. Consider a convex-
+      concave game with payoff function f (see page 541). Suppose ∇2uu f (u, v)  mI and
+      ∇2vv f (u, v)  −mI, for all (u, v) ∈ dom f . Show that
+
+                              kDr(u, v)−1 k2 = k∇2 f (u, v)−1 k2 ≤ 1/m.
+
+      Implementation
+10.11 Consider the resource allocation problem described in example 10.1. You can assume the
+      fi are strongly convex, i.e., fi′′ (z) ≥ m > 0 for all z.
+        (a) Find the computational effort required to compute a Newton step for the reduced
+            problem. Be sure to exploit the special structure of the Newton equations.
+       (b) Explain how to solve the problem via the dual. You can assume that the conjugate
+           functions fi∗ , and their derivatives, are readily computable, and that the equation
+           fi′ (x) = ν is readily solved for x, given ν. What is the computational complexity of
+           finding a Newton step for the dual problem?
+        (c) What is the computational complexity of computing a Newton step for the resource
+            allocation problem? Be sure to exploit the special structure of the KKT equations.
+10.12 Describe an efficient way to compute the Newton step for the problem
+
+                              minimize     tr(X −1 )
+                              subject to   tr(Ai X) = bi ,   i = 1, . . . , p
+
+      with domain Sn++ , assuming p and n have the same order of magnitude. Also derive the
+      Lagrange dual problem and give the complexity of finding the Newton step for the dual
+      problem.
+10.13 Elimination method for computing Newton step for convex-concave game. Consider a
+      convex-concave game with payoff function f : Rp × Rq → R (see page 541). We assume
+      that f is strongly convex-concave, i.e., for all (u, v) ∈ dom f and some m > 0, we have
+      ∇2uu f (u, v)  mI and ∇2vv f (u, v)  −mI.
+
+        (a) Show how to compute the Newton step using Cholesky factorizations of ∇2uu f (u, v)
+            and −∇2 fvv (u, v). Compare the cost of this method with the cost of using an LDLT
+            factorization of ∇f (u, v), assuming ∇2 f (u, v) is dense.
+       (b) Show how you can exploit diagonal or block diagonal structure in ∇2uu f (u, v) and/or
+           ∇2vv f (u, v). How much do you save, if you assume ∇2uv f (u, v) is dense?
+
+      Numerical experiments
+10.14 Log-optimal investment. Consider the log-optimal investment problem described in exer-
+      cise 4.60, without the constraint x  0. Use Newton’s method to compute the solution,
+560                                                               10   Equality constrained minimization
+
+
+        with the following problem data: there are n = 3 assets, and m = 4 scenarios, with
+        returns
+                       "         #              "         #               "         #              "         #
+                            2                        2                        0.5                      0.5
+                p1 =       1.3       ,   p2 =       0.5       ,    p3 =       1.3       ,   p4 =       0.5       .
+                            1                        1                         1                        1
+
+        The probabilities of the four scenarios are given by π = (1/3, 1/6, 1/3, 1/6).
+  10.15 Equality constrained entropy maximization. Consider the equality constrained entropy
+        maximization problem
+                                                                   Pn
+                                         minimize         f (x) =      i=1
+                                                                             xi log xi
+                                         subject to       Ax = b,
+
+        with dom f = Rn     ++ and A ∈ R
+                                            p×n
+                                                , with p < n. (See exercise 10.9 for some relevant
+        analysis.)
+        Generate a problem instance with n = 100 and p = 30 by choosing A randomly (checking
+        that it has full rank), choosing x̂ as a random positive vector (e.g., with entries uniformly
+        distributed on [0, 1]) and then setting b = Ax̂. (Thus, x̂ is feasible.)
+        Compute the solution of the problem using the following methods.
+         (a) Standard Newton method. You can use initial point x(0) = x̂.
+         (b) Infeasible start Newton method. You can use initial point x(0) = x̂ (to compare with
+             the standard Newton method), and also the initial point x(0) = 1.
+          (c) Dual Newton method, i.e., the standard Newton method applied to the dual problem.
+        Verify that the three methods compute the same optimal point (and Lagrange multiplier).
+        Compare the computational effort per step for the three methods, assuming relevant
+        structure is exploited. (Your implementation, however, does not need to exploit structure
+        to compute the Newton step.)
+  10.16 Convex-concave game. Use the infeasible start Newton method to solve convex-concave
+        games of the form (10.32), with randomly generated data. Plot the norm of the residual
+        and step length versus iteration. Experiment with the line search parameters and initial
+        point (which must satisfy kuk2 < 1, kvk2 < 1, however).
+       Chapter 11
+
+       Interior-point methods
+
+11.1   Inequality constrained minimization problems
+       In this chapter we discuss interior-point methods for solving convex optimization
+       problems that include inequality constraints,
+
+                               minimize     f0 (x)
+                               subject to   fi (x) ≤ 0,   i = 1, . . . , m               (11.1)
+                                            Ax = b,
+
+       where f0 , . . . , fm : Rn → R are convex and twice continuously differentiable, and
+       A ∈ Rp×n with rank A = p < n. We assume that the problem is solvable, i.e., an
+       optimal x⋆ exists. We denote the optimal value f0 (x⋆ ) as p⋆ .
+           We also assume that the problem is strictly feasible, i.e., there exists x ∈ D that
+       satisfies Ax = b and fi (x) < 0 for i = 1, . . . , m. This means that Slater’s constraint
+       qualification holds, so there exist dual optimal λ⋆ ∈ Rm , ν ⋆ ∈ Rp , which together
+       with x⋆ satisfy the KKT conditions
+
+                                   Ax⋆ = b,   fi (x⋆ )    ≤   0,   i = 1, . . . , m
+                          Pm ⋆                     λ⋆        0
+                      ⋆                 ⋆        T ⋆                                     (11.2)
+                ∇f0 (x ) + i=1 λi ∇fi (x ) + A ν          =   0
+                                          λ⋆i fi (x⋆ )    =   0,   i = 1, . . . , m.
+
+           Interior-point methods solve the problem (11.1) (or the KKT conditions (11.2))
+       by applying Newton’s method to a sequence of equality constrained problems, or
+       to a sequence of modified versions of the KKT conditions. We will concentrate on
+       a particular interior-point algorithm, the barrier method, for which we give a proof
+       of convergence and a complexity analysis. We also describe a simple primal-dual
+       interior-point method (in §11.7), but do not give an analysis.
+           We can view interior-point methods as another level in the hierarchy of convex
+       optimization algorithms. Linear equality constrained quadratic problems are the
+       simplest. For these problems the KKT conditions are a set of linear equations,
+       which can be solved analytically. Newton’s method is the next level in the hierarchy.
+       We can think of Newton’s method as a technique for solving a linear equality
+562                                                              11      Interior-point methods
+
+
+       constrained optimization problem, with twice differentiable objective, by reducing
+       it to a sequence of linear equality constrained quadratic problems. Interior-point
+       methods form the next level in the hierarchy: They solve an optimization problem
+       with linear equality and inequality constraints by reducing it to a sequence of linear
+       equality constrained problems.
+
+       Examples
+       Many problems are already in the form (11.1), and satisfy the assumption that the
+       objective and constraint functions are twice differentiable. Obvious examples are
+       LPs, QPs, QCQPs, and GPs in convex form; another example is linear inequality
+       constrained entropy maximization,
+                                               Pn
+                                   minimize      i=1 xi log xi
+                                   subject to F x  g
+                                               Ax = b,
+       with domain D = Rn++ .
+           Many other problems do not have the required form (11.1), with twice differen-
+       tiable objective and constraint functions, but can be reformulated in the required
+       form. We have already seen many examples of this, such as the transformation of
+       an unconstrained convex piecewise-linear minimization problem
+                                minimize    maxi=1,...,m (aTi x + bi )
+       (with nondifferentiable objective), to the LP
+                             minimize     t
+                             subject to   aTi x + bi ≤ t,   i = 1, . . . , m
+       (which has twice differentiable objective and constraint functions).
+          Other convex optimization problems, such as SOCPs and SDPs, are not readily
+       recast in the required form, but can be handled by extensions of interior-point
+       methods to problems with generalized inequalities, which we describe in §11.6.
+
+
+
+
+11.2   Logarithmic barrier function and central path
+       Our goal is to approximately formulate the inequality constrained problem (11.1)
+       as an equality constrained problem to which Newton’s method can be applied.
+       Our first step is to rewrite the problem (11.1), making the inequality constraints
+       implicit in the objective:
+                                                   Pm
+                               minimize f0 (x) + i=1 I− (fi (x))
+                                                                                   (11.3)
+                               subject to Ax = b,
+       where I− : R → R is the indicator function for the nonpositive reals,
+                                            
+                                               0   u≤0
+                                   I− (u) =
+                                               ∞ u > 0.
+         11.2   Logarithmic barrier function and central path                                  563
+
+                             10
+
+
+
+                              5
+
+
+
+                              0
+
+
+
+                            −5
+                             −3          −2         −1           0          1
+                                                    u
+
+                Figure 11.1 The dashed lines show the function I− (u), and the solid curves
+                show Ib− (u) = −(1/t) log(−u), for t = 0.5, 1, 2. The curve for t = 2 gives
+                the best approximation.
+
+
+
+         The problem (11.3) has no inequality constraints, but its objective function is not
+         (in general) differentiable, so Newton’s method cannot be applied.
+
+
+11.2.1   Logarithmic barrier
+
+         The basic idea of the barrier method is to approximate the indicator function I−
+         by the function
+
+                           Ib− (u) = −(1/t) log(−u),       dom Ib− = −R++ ,
+
+         where t > 0 is a parameter that sets the accuracy of the approximation. Like
+         I− , the function Ib− is convex and nondecreasing, and (by our convention) takes
+         on the value ∞ for u > 0. Unlike I− , however, Ib− is differentiable and closed:
+         it increases to ∞ as u increases to 0. Figure 11.1 shows the function I− , and
+         the approximation Ib− , for several values of t. As t increases, the approximation
+         becomes more accurate.
+             Substituting Ib− for I− in (11.3) gives the approximation
+                                                  Pm
+                             minimize f0 (x) + i=1 −(1/t) log(−fi (x))
+                                                                                      (11.4)
+                             subject to Ax = b.
+
+         The objective here is convex, since −(1/t) log(−u) is convex and increasing in u,
+         and differentiable. Assuming an appropriate closedness condition holds, Newton’s
+         method can be used to solve it.
+            The function
+                                              Xm
+                                     φ(x) = −     log(−fi (x)),                     (11.5)
+                                                  i=1
+564                                                                    11     Interior-point methods
+
+
+         with dom φ = {x ∈ Rn | fi (x) < 0, i = 1, . . . , m}, is called the logarithmic barrier
+         or log barrier for the problem (11.1). Its domain is the set of points that satisfy
+         the inequality constraints of (11.1) strictly. No matter what value the positive
+         parameter t has, the logarithmic barrier grows without bound if fi (x) → 0, for
+         any i.
+             Of course, the problem (11.4) is only an approximation of the original prob-
+         lem (11.3), so one question that arises immediately is how well a solution of (11.4)
+         approximates a solution of the original problem (11.3). Intuition suggests, and we
+         will soon confirm, that the quality of the approximation improves as the parameter
+         t grows.
+             On the other hand, when the parameter t is large, the function f0 + (1/t)φ is
+         difficult to minimize by Newton’s method, since its Hessian varies rapidly near the
+         boundary of the feasible set. We will see that this problem can be circumvented
+         by solving a sequence of problems of the form (11.4), increasing the parameter t
+         (and therefore the accuracy of the approximation) at each step, and starting each
+         Newton minimization at the solution of the problem for the previous value of t.
+             For future reference, we note that the gradient and Hessian of the logarithmic
+         barrier function φ are given by
+                                    m
+                                    X     1
+                     ∇φ(x)     =                ∇fi (x),
+                                    i=1
+                                        −fi (x)
+                                    m
+                                    X                                  Xm
+                                             1                     T         1
+                    ∇2 φ(x)    =                2
+                                                  ∇f i (x)∇f i (x)   +              ∇2 fi (x)
+                                    i=1
+                                        f i (x)                        i=1
+                                                                           −f i (x)
+
+         (see §A.4.2 and §A.4.4).
+
+
+11.2.2   Central path
+
+         We now consider in more detail the minimization problem (11.4). It will simplify
+         notation later on if we multiply the objective by t, and consider the equivalent
+         problem
+                                    minimize tf0 (x) + φ(x)
+                                                                                   (11.6)
+                                    subject to Ax = b,
+         which has the same minimizers. We assume for now that the problem (11.6) can
+         be solved via Newton’s method, and, in particular, that it has a unique solution
+         for each t > 0. (We will discuss this assumption in more detail in §11.3.3.)
+             For t > 0 we define x⋆ (t) as the solution of (11.6). The central path associated
+         with problem (11.1) is defined as the set of points x⋆ (t), t > 0, which we call
+         the central points. Points on the central path are characterized by the following
+         necessary and sufficient conditions: x⋆ (t) is strictly feasible, i.e., satisfies
+
+                              Ax⋆ (t) = b,      fi (x⋆ (t)) < 0,    i = 1, . . . , m,
+
+         and there exists a ν̂ ∈ Rp such that
+
+                       0 =       t∇f0 (x⋆ (t)) + ∇φ(x⋆ (t)) + AT ν̂
+11.2     Logarithmic barrier function and central path                                                   565
+
+                                                 m
+                                                 X
+                                    ⋆                      1
+                    =    t∇f0 (x (t)) +                      ⋆ (t))
+                                                                    ∇fi (x⋆ (t)) + AT ν̂        (11.7)
+                                                 i=1
+                                                     −f i (x
+
+holds.
+
+    Example 11.1 Inequality form linear programming. The logarithmic barrier function
+    for an LP in inequality form,
+                                              minimize      cT x
+                                                                                                (11.8)
+                                              subject to    Ax  b,
+    is given by
+                                  m
+                                  X
+                     φ(x) = −           log(bi − aTi x),       dom φ = {x | Ax ≺ b},
+                                  i=1
+
+    where aT1 , . . . , aTm are the rows of A. The gradient and Hessian of the barrier function
+    are
+                              X m                              m
+                                                               X
+                                       1              2               1
+                  ∇φ(x) =                     a i , ∇   φ(x) =                 ai aTi ,
+                                   bi − aTi x                    (bi − aTi x)2
+                           i=1                                         i=1
+    or, more compactly,
+                          ∇φ(x) = AT d,               ∇2 φ(x) = AT diag(d)2 A,
+    where the elements of d ∈ Rm are given by di = 1/(bi − aTi x). Since x is strictly
+    feasible, we have d ≻ 0, so the Hessian of φ is nonsingular if and only if A has rank n.
+    The centrality condition (11.7) is
+                                        m
+                                        X         1
+                                 tc +                    ai = tc + AT d = 0.                    (11.9)
+                                              bi − aTi x
+                                        i=1
+
+    We can give a simple geometric interpretation of the centrality condition. At a point
+    x⋆ (t) on the central path the gradient ∇φ(x⋆ (t)), which is normal to the level set of φ
+    through x⋆ (t), must be parallel to −c. In other words, the hyperplane cT x = cT x⋆ (t)
+    is tangent to the level set of φ through x⋆ (t). Figure 11.2 shows an example with
+    m = 6 and n = 2.
+
+
+Dual points from central path
+From (11.7) we can derive an important property of the central path: Every central
+point yields a dual feasible point, and hence a lower bound on the optimal value
+p⋆ . More specifically, define
+                                     1
+                  λ⋆i (t) = −                ,     i = 1, . . . , m,         ν ⋆ (t) = ν̂/t.   (11.10)
+                                tfi (x⋆ (t))
+We claim that the pair λ⋆ (t), ν ⋆ (t) is dual feasible.
+   First, it is clear that λ⋆ (t) ≻ 0 because fi (x⋆ (t)) < 0, i = 1, . . . , m. By
+expressing the optimality conditions (11.7) as
+                                        m
+                                        X
+                    ∇f0 (x⋆ (t)) +            λ⋆i (t)∇fi (x⋆ (t)) + AT ν ⋆ (t) = 0,
+                                        i=1
+566                                                                          11     Interior-point methods
+
+
+
+                                        c
+
+
+
+
+                                                         x⋆ (10)
+                                            x⋆
+
+
+
+
+            Figure 11.2 Central path for an LP with n = 2 and m = 6. The dashed
+            curves show three contour lines of the logarithmic barrier function φ. The
+            central path converges to the optimal point x⋆ as t → ∞. Also shown is the
+            point on the central path with t = 10. The optimality condition (11.9) at
+            this point can be verified geometrically: The line cT x = cT x⋆ (10) is tangent
+            to the contour line of φ through x⋆ (10).
+
+
+
+
+      we see that x⋆ (t) minimizes the Lagrangian
+                                                         m
+                                                         X
+                            L(x, λ, ν) = f0 (x) +              λi fi (x) + ν T (Ax − b),
+                                                         i=1
+
+      for λ = λ⋆ (t) and ν = ν ⋆ (t), which means that λ⋆ (t), ν ⋆ (t) is a dual feasible pair.
+      Therefore the dual function g(λ⋆ (t), ν ⋆ (t)) is finite, and
+                                                       m
+                                                       X                                    T
+            g(λ⋆ (t), ν ⋆ (t))   =    f0 (x⋆ (t)) +           λ⋆i (t)fi (x⋆ (t)) + ν ⋆ (t) (Ax⋆ (t) − b)
+                                                        i=1
+                                 =    f0 (x⋆ (t)) − m/t.
+      In particular, the duality gap associated with x⋆ (t) and the dual feasible pair λ⋆ (t),
+      ν ⋆ (t) is simply m/t. As an important consequence, we have
+                                            f0 (x⋆ (t)) − p⋆ ≤ m/t,
+      i.e., x⋆ (t) is no more than m/t-suboptimal. This confirms the intuitive idea that
+      x⋆ (t) converges to an optimal point as t → ∞.
+
+          Example 11.2 Inequality form linear programming. The dual of the inequality form
+          LP (11.8) is
+                                     maximize −bT λ
+                                     subject to AT λ + c = 0
+                                                  λ  0.
+          From the optimality conditions (11.9), it is clear that
+                                                        1
+                                     λ⋆i (t) =                      ,   i = 1, . . . , m,
+                                                 t(bi − aTi x⋆ (t))
+11.2   Logarithmic barrier function and central path                                           567
+
+
+    is dual feasible, with dual objective value
+
+                 −bT λ⋆ (t) = cT x⋆ (t) + (Ax⋆ (t) − b)T λ⋆ (t) = cT x⋆ (t) − m/t.
+
+
+
+Interpretation via KKT conditions
+We can also interpret the central path conditions (11.7) as a continuous deformation
+of the KKT optimality conditions (11.2). A point x is equal to x⋆ (t) if and only if
+there exists λ, ν such that
+                            Ax = b,fi (x)         ≤     0, i = 1, . . . , m
+                  Pm                    λ              0
+                                                                                     (11.11)
+         ∇f0 (x) + i=1 λi ∇fi (x) + AT ν          =     0
+                               −λi fi (x)         =     1/t, i = 1, . . . , m.
+
+The only difference between the KKT conditions (11.2) and the centrality condi-
+tions (11.11) is that the complementarity condition −λi fi (x) = 0 is replaced by
+the condition −λi fi (x) = 1/t. In particular, for large t, x⋆ (t) and the associated
+dual point λ⋆ (t), ν ⋆ (t) ‘almost’ satisfy the KKT optimality conditions for (11.1).
+
+Force field interpretation
+We can give a simple mechanics interpretation of the central path in terms of
+potential forces acting on a particle in the strictly feasible set C. For simplicity we
+assume that there are no equality constraints.
+   We associate with each constraint the force
+                                                               1
+                     Fi (x) = −∇ (− log(−fi (x))) =                ∇fi (x)
+                                                            fi (x)
+acting on the particle when it is at position x. The potential associated with the
+total force field generated by the constraints is the logarithmic barrier φ. As the
+particle moves toward the boundary of the feasible set, it is strongly repelled by
+the forces generated by the constraints.
+    Now we imagine another force acting on the particle, given by
+
+                                   F0 (x) = −t∇f0 (x),
+
+when the particle is at position x. This objective force field acts to pull the particle
+in the negative gradient direction, i.e., toward smaller f0 . The parameter t scales
+the objective force, relative to the constraint forces.
+    The central point x⋆ (t) is the point where the constraint forces exactly balance
+the objective force felt by the particle. As the parameter t increases, the particle is
+more strongly pulled toward the optimal point, but it is always trapped in C by the
+barrier potential, which becomes infinite as the particle approaches the boundary.
+
+    Example 11.3 Force field interpretation for inequality form LP. The force field asso-
+    ciated with the ith constraint of the LP (11.8) is
+                                                     −ai
+                                       Fi (x) =              .
+                                                  bi − aTi x
+568                                                                11    Interior-point methods
+
+
+
+
+                           −c
+
+
+                                                            −3c
+             Figure 11.3 Force field interpretation of central path. The central path is
+             shown as the dashed curve. The two points x⋆ (1) and x⋆ (3) are shown as
+             dots in the left and right plots, respectively. The objective force, which is
+             equal to −c and −3c, respectively, is shown as a heavy arrow. The other
+             arrows represent the constraint forces, which are given by an inverse-distance
+             law. As the strength of the objective force varies, the equilibrium position
+             of the particle traces out the central path.
+
+
+
+           This force is in the direction of the inward pointing normal to the constraint plane
+           Hi = {x | aTi x = bi }, and has magnitude inversely proportional to the distance to
+           Hi , i.e.,
+                                                  kai k2          1
+                                    kFi (x)k2 =            =              .
+                                                bi − aTi x   dist(x, Hi )
+           In other words, each constraint hyperplane has an associated repulsive force, given
+           by the inverse distance to the hyperplane.
+           The term tcT x is the potential associated with a constant force −tc on the particle.
+           This ‘objective force’ pushes the particle in the direction of low cost. Thus, x⋆ (t)
+           is the equilibrium position of the particle when it is subject to the inverse-distance
+           constraint forces, and the objective force −tc. When t is very large, the particle is
+           pushed almost to the optimal point. The strong objective force is balanced by the
+           opposing constraint forces, which are large because we are near the feasible boundary.
+           Figure 11.3 illustrates this interpretation for a small LP with n = 2 and m = 5. The
+           lefthand plot shows x⋆ (t) for t = 1, as well as the constraint forces acting on it, which
+           balance the objective force. The righthand plot shows x⋆ (t) and the associated forces
+           for t = 3. The larger value of objective force moves the particle closer to the optimal
+           point.
+
+
+
+
+11.3   The barrier method
+       We have seen that the point x⋆ (t) is m/t-suboptimal, and that a certificate of this
+       accuracy is provided by the dual feasible pair λ⋆ (t), ν ⋆ (t). This suggests a very
+       straightforward method for solving the original problem (11.1) with a guaranteed
+       specified accuracy ǫ: We simply take t = m/ǫ and solve the equality constrained
+         11.3   The barrier method                                                                569
+
+
+         problem
+                                     minimize      (m/ǫ)f0 (x) + φ(x)
+                                     subject to    Ax = b
+         using Newton’s method. This method could be called the unconstrained minimiza-
+         tion method, since it allows us to solve the inequality constrained problem (11.1) to
+         a guaranteed accuracy by solving an unconstrained, or linearly constrained, prob-
+         lem. Although this method can work well for small problems, good starting points,
+         and moderate accuracy (i.e., ǫ not too small), it does not work well in other cases.
+         As a result it is rarely, if ever, used.
+
+
+11.3.1   The barrier method
+
+         A simple extension of the unconstrained minimization method does work well. It
+         is based on solving a sequence of unconstrained (or linearly constrained) mini-
+         mization problems, using the last point found as the starting point for the next
+         unconstrained minimization problem. In other words, we compute x⋆ (t) for a se-
+         quence of increasing values of t, until t ≥ m/ǫ, which guarantees that we have an
+         ǫ-suboptimal solution of the original problem. When the method was first proposed
+         by Fiacco and McCormick in the 1960s, it was called the sequential unconstrained
+         minimization technique (SUMT). Today the method is usually called the barrier
+         method or path-following method. A simple version of the method is as follows.
+
+             Algorithm 11.1 Barrier method.
+
+             given strictly feasible x, t := t(0) > 0, µ > 1, tolerance ǫ > 0.
+             repeat
+                 1. Centering step.
+                      Compute x⋆ (t) by minimizing tf0 + φ, subject to Ax = b, starting at x.
+                 2. Update. x := x⋆ (t).
+                 3. Stopping criterion. quit if m/t < ǫ.
+                 4. Increase t. t := µt.
+
+
+         At each iteration (except the first one) we compute the central point x⋆ (t) starting
+         from the previously computed central point, and then increase t by a factor µ > 1.
+         The algorithm can also return λ = λ⋆ (t), and ν = ν ⋆ (t), a dual ǫ-suboptimal point,
+         or certificate for x.
+             We refer to each execution of step 1 as a centering step (since a central point
+         is being computed) or an outer iteration, and to the first centering step (the com-
+         putation of x⋆ (t(0) )) as the initial centering step. (Thus the simple algorithm with
+         t(0) = m/ǫ consists of only the initial centering step.) Although any method for
+         linearly constrained minimization can be used in step 1, we will assume that New-
+         ton’s method is used. We refer to the Newton iterations or steps executed during
+         the centering step as inner iterations. At each inner step, we have a primal fea-
+         sible point; we have a dual feasible point, however, only at the end of each outer
+         (centering) step.
+570                                                             11    Interior-point methods
+
+
+      Accuracy of centering
+      We should make some comments on the accuracy to which we solve the centering
+      problems. Computing x⋆ (t) exactly is not necessary since the central path has no
+      significance beyond the fact that it leads to a solution of the original problem as
+      t → ∞; inexact centering will still yield a sequence of points x(k) that converges to
+      an optimal point. Inexact centering, however, means that the points λ⋆ (t), ν ⋆ (t),
+      computed from (11.10), are not exactly dual feasible. This can be corrected by
+      adding a correction term to the formula (11.10), which yields a dual feasible point
+      provided the computed x is near the central path, i.e., x⋆ (t) (see exercise 11.9).
+          On the other hand, the cost of computing an extremely accurate minimizer of
+      tf0 + φ, as compared to the cost of computing a good minimizer of tf0 + φ, is
+      only marginally more, i.e., a few Newton steps at most. For this reason it is not
+      unreasonable to assume exact centering.
+
+      Choice of µ
+      The choice of the parameter µ involves a trade-off in the number of inner and outer
+      iterations required. If µ is small (i.e., near 1) then at each outer iteration t increases
+      by a small factor. As a result the initial point for the Newton process, i.e., the
+      previous iterate x, is a very good starting point, and the number of Newton steps
+      needed to compute the next iterate is small. Thus for small µ we expect a small
+      number of Newton steps per outer iteration, but of course a large number of outer
+      iterations since each outer iteration reduces the gap by only a small amount. In
+      this case the iterates (and indeed, the iterates of the inner iterations as well) closely
+      follow the central path. This explains the alternate name path-following method.
+          On the other hand if µ is large we have the opposite situation. After each
+      outer iteration t increases a large amount, so the current iterate is probably not
+      a very good approximation of the next iterate. Thus we expect many more inner
+      iterations. This ‘aggressive’ updating of t results in fewer outer iterations, since the
+      duality gap is reduced by the large factor µ at each outer iteration, but more inner
+      iterations. With µ large, the iterates are widely separated on the central path; the
+      inner iterates veer way off the central path.
+          This trade-off in the choice of µ is confirmed both in practice and, as we will
+      see, in theory. In practice, small values of µ (i.e., near one) result in many outer
+      iterations, with just a few Newton steps for each outer iteration. For µ in a fairly
+      large range, from around 3 to 100 or so, the two effects nearly cancel, so the total
+      number of Newton steps remains approximately constant. This means that the
+      choice of µ is not particularly critical; values from around 10 to 20 or so seem to
+      work well. When the parameter µ is chosen to give the best worst-case bound on
+      the total number of Newton steps required, values of µ near one are used.
+
+      Choice of t(0)
+      Another important issue is the choice of initial value of t. Here the trade-off is
+      simple: If t(0) is chosen too large, the first outer iteration will require too many it-
+      erations. If t(0) is chosen too small, the algorithm will require extra outer iterations,
+      and possibly too many inner iterations in the first centering step.
+         Since m/t(0) is the duality gap that will result from the first centering step, one
+         11.3    The barrier method                                                                      571
+
+
+         reasonable choice is to choose t(0) so that m/t(0) is approximately of the same order
+         as f0 (x(0) ) − p⋆ , or µ times this amount. For example, if a dual feasible point λ,
+         ν is known, with duality gap η = f0 (x(0) ) − g(λ, ν), then we can take t(0) = m/η.
+         Thus, in the first outer iteration we simply compute a pair with the same duality
+         gap as the initial primal and dual feasible points.
+             Another possibility is suggested by the central path condition (11.7). We can
+         interpret
+                                    inf t∇f0 (x(0) ) + ∇φ(x(0) ) + AT ν                (11.12)
+                                    ν                                        2
+
+         as a measure for the deviation of x from the point x (t), and choose for t(0) the
+                                                  (0)                   ⋆
+
+         value that minimizes (11.12). (This value of t and ν can be found by solving a
+         least-squares problem.)
+             A variation on this approach uses an affine-invariant measure of deviation be-
+         tween x and x⋆ (t) in place of the Euclidean norm. We choose t and ν that minimize
+                                                 T                                  
+         α(t, ν) = t∇f0 (x(0) ) + ∇φ(x(0) ) + AT ν H0−1 t∇f0 (x(0) ) + ∇φ(x(0) ) + AT ν ,
+
+         where
+                                        H0 = t∇2 f0 (x(0) ) + ∇2 φ(x(0) ).
+         (It can be shown that inf ν α(t, ν) is the square of the Newton decrement of tf0 + φ
+         at x(0) .) Since α is a quadratic-over-linear function of ν and t, it is convex.
+
+         Infeasible start Newton method
+         In one variation on the barrier method, an infeasible start Newton method (de-
+         scribed in §10.3) is used for the centering steps. Thus, the barrier method is ini-
+         tialized with a point x(0) that satisfies x(0) ∈ dom f0 and fi (x(0) ) < 0, i = 1, . . . , m,
+         but not necessarily Ax(0) = b. Assuming the problem is strictly feasible, a full New-
+         ton step is taken at some point during the first centering step, and thereafter, the
+         iterates are all primal feasible, and the algorithm coincides with the (standard)
+         barrier method.
+
+
+11.3.2   Examples
+         Linear programming in inequality form
+         Our first example is a small LP in inequality form,
+
+                                              minimize     cT x
+                                              subject to   Ax  b
+
+         with A ∈ R100×50 . The data were generated randomly, in such a way that the
+         problem is strictly primal and dual feasible, with optimal value p⋆ = 1.
+             The initial point x(0) is on the central path, with a duality gap of 100. The
+         barrier method is used to solve the problem, and terminated when the duality gap
+         is less than 10−6 . The centering problems are solved by Newton’s method with
+         backtracking, using parameters α = 0.01, β = 0.5. The stopping criterion for
+572                                                               11   Interior-point methods
+
+
+
+                               102
+
+
+                               100
+
+
+
+                 duality gap
+                               10−2
+
+
+                               10−4
+
+
+                               10−6       µ = 50 µ = 150               µ=2
+
+                                     0   20       40         60        80
+                                              Newton iterations
+            Figure 11.4 Progress of barrier method for a small LP, showing duality
+            gap versus cumulative number of Newton steps. Three plots are shown,
+            corresponding to three values of the parameter µ: 2, 50, and 150. In each
+            case, we have approximately linear convergence of duality gap.
+
+
+
+      Newton’s method is λ(x)2 /2 ≤ 10−5 , where λ(x) is the Newton decrement of the
+      function tcT x + φ(x).
+          The progress of the barrier method, for three values of the parameter µ, is
+      shown in figure 11.4. The vertical axis shows the duality gap on a log scale. The
+      horizontal axis shows the cumulative total number of inner iterations, i.e., Newton
+      steps, which is the natural measure of computational effort. Each of the plots has
+      a staircase shape, with each stair associated with one outer iteration. The width of
+      each stair tread (i.e., horizontal portion) is the number of Newton steps required
+      for that outer iteration. The height of each stair riser (i.e., the vertical portion) is
+      exactly equal to (a factor of) µ, since the duality gap is reduced by the factor µ at
+      the end of each outer iteration.
+          The plots illustrate several typical features of the barrier method. First of all,
+      the method works very well, with approximately linear convergence of the duality
+      gap. This is a consequence of the approximately constant number of Newton steps
+      required to re-center, for each value of µ. For µ = 50 and µ = 150, the barrier
+      method solves the problem with a total number of Newton steps between 35 and 40.
+          The plots in figure 11.4 clearly show the trade-off in the choice of µ. For µ = 2,
+      the treads are short; the number of Newton steps required to re-center is around 2
+      or 3. But the risers are also short, since the duality gap reduction per outer iteration
+      is only a factor of 2. At the other extreme, when µ = 150, the treads are longer,
+      typically around 7 Newton steps, but the risers are also much larger, since the
+      duality gap is reduced by the factor 150 in each outer iteration.
+          The trade-off in choice of µ is further examined in figure 11.5. We use the
+      barrier method to solve the LP, terminating when the duality gap is smaller than
+      10−3 , for 25 values of µ between 1.2 and 200. The plot shows the total number
+      of Newton steps required to solve the problem, as a function of the parameter µ.
+11.3   The barrier method                                                                                 573
+
+
+                                  140
+
+                                  120
+
+
+
+
+              Newton iterations
+                                  100
+
+                                  80
+
+                                  60
+
+                                  40
+
+                                  20
+
+                                    0
+                                     0     40            80        120          160             200
+                                                              µ
+       Figure 11.5 Trade-off in the choice of the parameter µ, for a small LP. The
+       vertical axis shows the total number of Newton steps required to reduce the
+       duality gap from 100 to 10−3 , and the horizontal axis shows µ. The plot
+       shows the barrier method works well for values of µ larger than around 3,
+       but is otherwise not sensitive to the value of µ.
+
+
+
+This plot shows that the barrier method performs very well for a wide range of
+values of µ, from around 3 to 200. As our intuition suggests, the total number of
+Newton steps rises when µ is too small, due to the larger number of outer iterations
+required. One interesting observation is that the total number of Newton steps does
+not vary much for values of µ larger than around 3. Thus, as µ increases over this
+range, the decrease in the number of outer iterations is offset by an increase in
+the number of Newton steps per outer iteration. For even larger values of µ, the
+performance of the barrier method becomes less predictable (i.e., more dependent
+on the particular problem instance). Since the performance does not improve with
+larger values of µ, a good choice is in the range 10 – 100.
+
+Geometric programming
+We consider a geometric program in convex form,
+                         P                          
+                             K0        T
+          minimize log       k=1 exp(a0k x + b0k )
+                         P                          
+                             Ki        T
+          subject to log     k=1 exp(a ik x + b ik )   ≤ 0,                           i = 1, . . . , m,
+
+with variable x ∈ Rn , and associated logarithmic barrier
+                                               m                 Ki
+                                                                                            !
+                                               X                 X
+                                    φ(x) = −         log − log         exp(aTik x + bik )       .
+                                               i=1               k=1
+
+The problem instance we consider has n = 50 variables and m = 100 inequalities
+(like the small LP considered above). The objective and constraint functions all
+574                                                                    11   Interior-point methods
+
+
+
+                               102
+
+
+                               100
+
+
+
+                 duality gap
+                               10−2
+
+
+                               10−4
+
+
+                               10−6      µ = 150      µ = 50            µ=2
+
+                                     0   20        40    60       80    100     120
+                                                   Newton iterations
+            Figure 11.6 Progress of barrier method for a small GP, showing duality gap
+            versus cumulative number of Newton steps. Again we have approximately
+            linear convergence of duality gap.
+
+
+
+      have Ki = 5 terms. The problem instance was generated randomly, in such a way
+      that it is strictly primal and dual feasible, with optimal value one.
+          We start with a point x(0) on the central path, with a duality gap of 100. The
+      barrier method is used to solve the problem, with parameters µ = 2, µ = 50, and
+      µ = 150, and terminated when the duality gap is less than 10−6 . The centering
+      problems are solved using Newton’s method, with the same parameter values as in
+      the LP example, i.e., α = 0.01, β = 0.5, and stopping criterion λ(x)2 /2 ≤ 10−5 .
+          Figure 11.6 shows the duality gap versus cumulative number of Newton steps.
+      This plot is very similar to the plot for LP, shown in figure 11.4. In particular,
+      we see an approximately constant number of Newton steps required per centering
+      step, and therefore approximately linear convergence of the duality gap.
+          The variation of the total number of Newton steps required to solve the problem,
+      versus the parameter µ, is very similar to that in the LP example. For this GP,
+      the total number of Newton steps required to reduce the duality gap below 10−3
+      is around 30 (ranging from around 20 to 40 or so) for values of µ between 10 and
+      200. So here, too, a good choice of µ is in the range 10 – 100.
+
+      A family of standard form LPs
+      In the examples above we examined the progress of the barrier method, in terms of
+      duality gap versus cumulative number of Newton steps, for a randomly generated
+      instance of an LP and a GP, with similar dimensions. The results for the two
+      examples are remarkably similar; each shows approximately linear convergence of
+      duality gap with the number of Newton steps. We also examined the variation in
+      performance with the parameter µ, and found essentially the same results in the
+      two cases. For µ above around 10, the barrier method performs very well, requiring
+      around 30 Newton steps to bring the duality gap down from 102 to 10−6 . In both
+11.3   The barrier method                                                                 575
+
+
+cases, the choice of µ hardly affects the total number of Newton steps required
+(provided µ is larger than 10 or so).
+    In this section we examine the performance of the barrier method as a function
+of the problem dimensions. We consider LPs in standard form,
+
+                            minimize     cT x
+                            subject to   Ax = b,    x0
+
+with A ∈ Rm×n , and explore the total number of Newton steps required as a
+function of the number of variables n and number of equality constraints m, for a
+family of randomly generated problem instances. We take n = 2m, i.e., twice as
+many variables as constraints.
+    The problems were generated as follows. The elements of A are independent and
+identically distributed, with zero mean, unit variance normal distribution N (0, 1).
+We take b = Ax(0) where the elements of x(0) are independent, and uniformly
+distributed in [0, 1]. This ensures that the problem is strictly primal feasible, since
+x(0) ≻ 0 is feasible. To construct the cost vector c, we first compute a vector
+z ∈ Rm with elements distributed according to N (0, 1) and a vector s ∈ Rn with
+elements from a uniform distribution on [0, 1]. We then take c = AT z + s. This
+guarantees that the problem is strictly dual feasible, since AT z ≺ c.
+    The algorithm parameters we use are µ = 100, and the same parameters for the
+centering steps in the examples above: backtracking parameters α = 0.01, β = 0.5,
+and stopping criterion λ(x)2 /2 ≤ 10−5 . The initial point is on the central path
+with t(0) = 1 (i.e., gap n). The algorithm is terminated when the initial duality
+gap is reduced by a factor 104 , i.e., after completing two outer iterations.
+    Figure 11.7 shows the duality gap versus iteration number for three problem
+instances, with dimensions m = 50, m = 500, and m = 1000. The plots look very
+much like the others, with approximately linear convergence of the duality gap.
+The plots show a small increase in the number of Newton steps required as the
+problem size grows from 50 constraints (100 variables) to 1000 constraints (2000
+variables).
+    To examine the effect of problem size on the number of Newton steps required,
+we generate 100 problem instances for each of 20 values of m, ranging from m = 10
+to m = 1000. We solve each of these 2000 problems using the barrier method,
+noting the number of Newton steps required. The results are summarized in fig-
+ure 11.8, which shows the mean and standard deviation in the number of Newton
+steps, for each value of m. The first comment we make is that the standard de-
+viation is around 2 iterations, and appears to be approximately independent of
+problem size. Since the average number of steps required is near 25, this means
+that the number of Newton steps required varies only around ±10%.
+    The plot shows that the number of Newton steps required grows only slightly,
+from around 21 to around 27, as the problem dimensions increase by a factor of
+100. This behavior is typical for the barrier method in general: The number of
+Newton steps required grows very slowly with problem dimensions, and is almost
+always around a few tens. Of course, the computational effort to carry out one
+Newton step grows with the problem dimensions.
+576                                                                         11   Interior-point methods
+
+
+
+                        104
+
+
+                        102
+
+
+
+          duality gap
+                        100
+
+
+                        10−2
+                                                                                  m = 1000
+                                                              m = 50    m = 500
+                        10−4
+                            0                      10     20       30       40       50
+                                                        Newton iterations
+      Figure 11.7 Progress of barrier method for three randomly generated stan-
+      dard form LPs of different dimensions, showing duality gap versus cumula-
+      tive number of Newton steps. The number of variables in each problem is
+      n = 2m. Here too we see approximately linear convergence of the duality
+      gap, with a slight increase in the number of Newton steps required for the
+      larger problems.
+
+
+
+
+                                            35
+
+
+                                            30
+
+
+
+
+                        Newton iterations
+                                            25
+
+
+                                            20
+
+
+                                            15 1
+                                              10               102                 103
+                                                                m
+      Figure 11.8 Average number of Newton steps required to solve 100 randomly
+      generated LPs of different dimensions, with n = 2m. Error bars show stan-
+      dard deviation, around the average value, for each value of m. The growth
+      in the number of Newton steps required, as the problem dimensions range
+      over a 100 : 1 ratio, is very small.
+         11.3   The barrier method                                                                     577
+
+
+11.3.3   Convergence analysis
+         Convergence analysis for the barrier method is straightforward. Assuming that
+         tf0 + φ can be minimized by Newton’s method for t = t(0) , µt(0) , µ2 t(0) , . . ., the
+         duality gap after the initial centering step, and k additional centering steps, is
+         m/(µk t(0) ). Therefore the desired accuracy ǫ is achieved after exactly
+                                                            
+                                             log(m/(ǫt(0) ))
+                                                                                       (11.13)
+                                                 log µ
+         centering steps, plus the initial centering step.
+             It follows that the barrier method works provided the centering problem (11.6)
+         is solvable by Newton’s method, for t ≥ t(0) . For the standard Newton method, it
+         suffices that for t ≥ t(0) , the function tf0 +φ satisfies the conditions given in §10.2.4,
+         page 529: its initial sublevel set is closed, the associated inverse KKT matrix is
+         bounded, and the Hessian satisfies a Lipschitz condition. (Another set of sufficient
+         conditions, based on self-concordance, will be discussed in detail in §11.5.) If the
+         infeasible start Newton method is used for centering, then the conditions listed
+         in §10.3.3, page 536, are sufficient to guarantee convergence.
+             Assuming that f0 , . . . , fm are closed, a simple modification of the original
+         problem ensures that these conditions hold. By adding a constraint of the form
+         kxk22 ≤ R2 to the problem, it follows that tf0 + φ is strongly convex, for every
+         t ≥ 0; in particular convergence of Newton’s method, for the centering steps, is
+         guaranteed. (See exercise 11.4.)
+             While this analysis shows that the barrier method does converge, under reason-
+         able assumptions, it does not address a basic question: As the parameter t increases,
+         do the centering problems become more difficult (and therefore take more and more
+         iterations)? Numerical evidence suggests that for a wide variety of problems, this
+         is not the case; the centering problems appear to require a nearly constant number
+         of Newton steps to solve, even as t increases. We will see (in §11.5) that this issue
+         can be resolved, for problems that satisfy certain self-concordance conditions.
+
+
+11.3.4   Newton step for modified KKT equations
+
+         In the barrier method, the Newton step ∆xnt , and associated dual variable are
+         given by the linear equations
+                                                                     
+               t∇2 f0 (x) + ∇2 φ(x) AT     ∆xnt         t∇f0 (x) + ∇φ(x)
+                                                  =−                        .   (11.14)
+                         A            0     νnt                 0
+
+         In this section we show how these Newton steps for the centering problem can be
+         interpreted as Newton steps for directly solving the modified KKT equations
+                             Pm
+                   ∇f0 (x) + i=1 λi ∇fi (x) + AT ν = 0
+                                         −λi fi (x) = 1/t, i = 1, . . . , m       (11.15)
+                                                Ax = b
+
+         in a particular way.
+578                                                                 11     Interior-point methods
+
+
+         To solve the modified KKT equations (11.15), which is a set of n + p + m
+      nonlinear equations in the n + p + m variables x, ν, and λ, we first eliminate the
+      variables λi , using λi = −1/(tfi (x)). This yields
+                                   m
+                                   X      1
+                      ∇f0 (x) +                  ∇fi (x) + AT ν = 0,        Ax = b,          (11.16)
+                                   i=1
+                                       −tf i (x)
+      which is a set of n + p equations in the n + p variables x and ν.
+         To find the Newton step for solving the set of nonlinear equations (11.16),
+      we form the Taylor approximation for the nonlinear term occurring in the first
+      equation. For v small, we have the Taylor approximation
+                                   m
+                                   X          1
+                  ∇f0 (x + v) +                      ∇fi (x + v)
+                                   i=1
+                                       −tf i (x + v)
+                                      m
+                                      X      1
+                    ≈    ∇f0 (x) +                  ∇fi (x) + ∇2 f0 (x)v
+                                      i=1
+                                          −tf i (x)
+                              m
+                              X                          Xm
+                                     1                            1
+                          +                 ∇2 fi (x)v +              2
+                                                                        ∇fi (x)∇fi (x)T v.
+                              i=1
+                                  −tf i (x)              i=1
+                                                             tf i (x)
+
+      The Newton step is obtained by replacing the nonlinear term in equation (11.16)
+      by this Taylor approximation, which yields the linear equations
+                                     Hv + AT ν = −g,           Av = 0,                       (11.17)
+      where
+                                     m
+                                     X                      Xm
+                                          1                          1
+              H   =       2
+                        ∇ f0 (x) +                2
+                                                 ∇ fi (x) +              2
+                                                                           ∇fi (x)∇fi (x)T
+                                   i=1
+                                       −tf i (x)            i=1
+                                                                tf i (x)
+                                    m
+                                    X      1
+              g   =     ∇f0 (x) +                ∇fi (x).
+                                    i=1
+                                        −tfi (x)
+      Now we observe that
+                  H = ∇2 f0 (x) + (1/t)∇2 φ(x),             g = ∇f0 (x) + (1/t)∇φ(x),
+      so, from (11.14), the Newton steps ∆xnt and νnt in the barrier method centering
+      step satisfy
+                           tH∆xnt + AT νnt = −tg,     A∆xnt = 0.
+      Comparing this with (11.17) shows that
+                                      v = ∆xnt ,       ν = (1/t)νnt .
+      This shows that the Newton step for the centering problem (11.6) can be inter-
+      preted, after scaling the dual variable, as the Newton step for solving the modified
+      KKT equations (11.16).
+          In this approach, we first eliminated the variable λ from the modified KKT
+      equations, and then applied Newton’s method to solve the resulting set of equations.
+      Another variation on this approach is to directly apply Newton’s method to the
+      modified KKT equations, without first eliminating λ. This method yields the so-
+      called primal-dual search directions, discussed in §11.7.
+         11.4   Feasibility and phase I methods                                                      579
+
+
+11.4     Feasibility and phase I methods
+         The barrier method requires a strictly feasible starting point x(0) . When such a
+         point is not known, the barrier method is preceded by a preliminary stage, called
+         phase I, in which a strictly feasible point is computed (or the constraints are found
+         to be infeasible). The strictly feasible point found during phase I is then used as
+         the starting point for the barrier method, which is called the phase II stage. In
+         this section we describe several phase I methods.
+
+
+11.4.1   Basic phase I method
+         We consider a set of inequalities and equalities in the variables x ∈ Rn ,
+
+                                fi (x) ≤ 0,   i = 1, . . . , m,   Ax = b,                 (11.18)
+
+         where fi : Rn → R are convex, with continuous second derivatives. We assume
+         that we are given a point x(0) ∈ dom f1 ∩ · · · ∩ dom fm , with Ax(0) = b.
+            Our goal is to find a strictly feasible solution of these inequalities and equalities,
+         or determine that none exists. To do this we form the following optimization
+         problem:
+                                 minimize s
+                                 subject to fi (x) ≤ s, i = 1, . . . , m                  (11.19)
+                                               Ax = b
+         in the variables x ∈ Rn , s ∈ R. The variable s can be interpreted as a bound on
+         the maximum infeasibility of the inequalities; the goal is to drive the maximum
+         infeasibility below zero.
+             This problem is always strictly feasible, since we can choose x(0) as starting
+         point for x, and for s, we can choose any number larger than maxi=1,...,m fi (x(0) ).
+         We can therefore apply the barrier method to solve the problem (11.19), which is
+         called the phase I optimization problem associated with the inequality and equality
+         system (11.19).
+             We can distinguish three cases depending on the sign of the optimal value p̄⋆
+         of (11.19).
+            1. If p̄⋆ < 0, then (11.18) has a strictly feasible solution. Moreover if (x, s) is
+               feasible for (11.19) with s < 0, then x satisfies fi (x) < 0. This means we do
+               not need to solve the optimization problem (11.19) with high accuracy; we
+               can terminate when s < 0.
+            2. If p̄⋆ > 0, then (11.18) is infeasible. As in case 1, we do not need to solve
+               the phase I optimization problem (11.19) to high accuracy; we can terminate
+               when a dual feasible point is found with positive dual objective (which proves
+               that p̄⋆ > 0). In this case, we can construct the alternative that proves (11.18)
+               is infeasible from the dual feasible point.
+            3. If p̄⋆ = 0 and the minimum is attained at x⋆ and s⋆ = 0, then the set of
+               inequalities is feasible, but not strictly feasible. If p̄⋆ = 0 and the minimum
+               is not attained, then the inequalities are infeasible.
+580                                                                  11     Interior-point methods
+
+
+            In practice it is impossible to determine exactly that p̄⋆ = 0. Instead, an
+            optimization algorithm applied to (11.19) will terminate with the conclusion
+            that |p̄⋆ | < ǫ for some small, positive ǫ. This allows us to conclude that the
+            inequalities fi (x) ≤ −ǫ are infeasible, while the inequalities fi (x) ≤ ǫ are
+            feasible.
+
+      Sum of infeasibilities
+      There are many variations on the basic phase I method just described. One method
+      is based on minimizing the sum of the infeasibilities, instead of the maximum
+      infeasibility. We form the problem
+
+                               minimize       1T s
+                               subject to     fi (x) ≤ si ,   i = 1, . . . , m
+                                                                                           (11.20)
+                                              Ax = b
+                                              s  0.
+
+      For fixed x, the optimal value of si is max{fi (x), 0}, so in this problem we are
+      minimizing the sum of the infeasibilities. The optimal value of (11.20) is zero and
+      achieved if and only if the original set of equalities and inequalities is feasible.
+          This sum of infeasibilities phase I method has a very interesting property when
+      the system of equalities and inequalities (11.19) is infeasible. In this case, the op-
+      timal point for the phase I problem (11.20) often violates only a small number,
+      say r, of the inequalities. Therefore, we have computed a point that satisfies many
+      (m − r) of the inequalities, i.e., we have identified a large subset of inequalities
+      that is feasible. In this case, the dual variables associated with the strictly satisfied
+      inequalities are zero, so we have also proved infeasibility of a subset of the inequal-
+      ities. This is more informative than finding that the m inequalities, together, are
+      mutually infeasible. (This phenomenon is closely related to ℓ1 -norm regularization,
+      or basis pursuit, used to find sparse approximate solutions; see §6.1.2 and §6.5.4).
+
+          Example 11.4 Comparison of phase I methods. We apply two phase I methods to
+          an infeasible set of inequalities Ax  b with dimensions m = 100, n = 50. The first
+          method is the basic phase I method
+
+                                         minimize        s
+                                         subject to      Ax  b + 1s,
+
+          which minimizes the maximum infeasibility. The second method minimizes the sum
+          of the infeasibilities, i.e., solves the LP
+
+                                            minimize     1T s
+                                            subject to   Ax  b + s
+                                                         s  0.
+
+          Figure 11.9 shows the distributions of the infeasibilities bi − aTi x for these two values
+          of x, denoted xmax and xsum , respectively. The point xmax satisfies 39 of the 100
+          inequalities, whereas the point xsum satisfies 79 of the inequalities.
+replacemen
+
+
+                  11.4     Feasibility and phase I methods                                                            581
+
+                  60                                                      60
+
+                  50                                                      50
+
+                  40                                                      40
+
+         number                                                  number
+                  30                                                      30
+
+                  20                                                      20
+
+                  10                                                      10
+
+                  0                                                       0
+                  −1       −0.5      0       0.5      1       1.5         −1   −0.5     0       0.5     1       1.5
+                                   bi − aTi xmax                                      bi − aTi xsum
+                          Figure 11.9 Distributions of the infeasibilities bi − aTi x for an infeasible set
+                          of 100 inequalities aTi x ≤ bi , with 50 variables. The vector xmax used in
+                          the left plot was obtained by the basic phase I algorithm. It satisfies 39
+                          of the 100 inequalities. In the right plot the vector xsum was obtained by
+                          minimizing the sum of the infeasibilities. This vector satisfies 79 of the 100
+                          inequalities.
+
+
+
+                  Termination near the phase II central path
+                  A simple variation on the basic phase I method, using the barrier method, has
+                  the property that (when the equalities and inequalities are strictly feasible) the
+                  central path for the phase I problem intersects the central path for the original
+                  optimization problem (11.1).
+                      We assume a point x(0) ∈ D = dom f0 ∩ dom f1 ∩ · · · ∩ dom fm , with Ax(0) = b
+                  is given. We form the phase I optimization problem
+
+                                              minimize     s
+                                              subject to   fi (x) ≤ s, i = 1, . . . , m
+                                                                                                            (11.21)
+                                                           f0 (x) ≤ M
+                                                           Ax = b,
+
+                  where M is a constant chosen to be larger than max{f0 (x(0) ), p⋆ }.
+                     We assume now that the original problem (11.1) is strictly feasible, so the
+                  optimal value p̄⋆ of (11.21) is negative. The central path of (11.21) is characterized
+                  by
+                       m
+                       X                                              Xm
+                               1                    1                         1
+                                      = t̄,                 ∇f0 (x) +                 ∇fi (x) + AT ν = 0,
+                       i=1
+                           s − fi (x)            M − f0 (x)           i=1
+                                                                          s − f i (x)
+
+                  where t̄ is the parameter. If (x, s) is on the central path and s = 0, then x and ν
+                  satisfy
+                                                   Xm
+                                                           1
+                                       t∇f0 (x) +                ∇fi (x) + AT ν = 0
+                                                   i=1
+                                                        −f i (x)
+
+                  for t = 1/(M − f0 (x)). This means that x is on the central path for the original
+582                                                                11     Interior-point methods
+
+
+         optimization problem (11.1), with associated duality gap
+
+                                     m(M − f0 (x)) ≤ m(M − p⋆ ).                          (11.22)
+
+
+11.4.2   Phase I via infeasible start Newton method
+
+         We can also carry out the phase I stage using an infeasible start Newton method,
+         applied to a modified version of the original problem
+                                 minimize     f0 (x)
+                                 subject to   fi (x) ≤ 0,   i = 1, . . . , m
+                                              Ax = b.
+
+         We first express the problem in the (obviously equivalent) form
+
+                                 minimize     f0 (x)
+                                 subject to   fi (x) ≤ s, i = 1, . . . , m
+                                              Ax = b, s = 0,
+         with the additional variable s ∈ R. To start the barrier method, we use an infeasible
+         start Newton method to solve
+                                                      Pm
+                             minimize t(0) f0 (x) − i=1 log(s − fi (x))
+                             subject to Ax = b, s = 0.
+
+         This can be initialized with any x ∈ D, and any s > maxi fi (x). Provided the
+         problem is strictly feasible, the infeasible start Newton method will eventually
+         take an undamped step, and thereafter we will have s = 0, i.e., x strictly feasible.
+            The same trick can be applied if a point in D, the common domain of the
+         functions, is not known. We simply apply the infeasible start Newton method to
+         the problem
+                                                     Pm
+                        minimize t(0) f0 (x + z0 ) − i=1 log(s − fi (x + zi ))
+                        subject to Ax = b, s = 0, z0 = 0, . . . , zm = 0
+         with variables x, z0 , . . . , zm , and s ∈ R. We initialize zi so that x + zi ∈ dom fi .
+             The main disadvantage of this approach to the phase I problem is that there is
+         no good stopping criterion when the problem is infeasible; the residual simply fails
+         to converge to zero.
+
+
+11.4.3   Examples
+         We consider a family of linear feasibility problems,
+
+                                               Ax  b(γ)
+
+         where A ∈ R50×20 and b(γ) = b + γ∆b. The problem data are chosen so that the
+         inequalities are strictly feasible for γ > 0 and infeasible for γ < 0. For γ = 0 the
+         problem is feasible but not strictly feasible.
+11.4   Feasibility and phase I methods                                                     583
+
+
+    Figure 11.10 shows the total number of Newton steps required to find a strictly
+feasible point, or a certificate of infeasibility, for 40 values of γ in [−1, 1]. We use
+the basic phase I method of §11.4.1, i.e., for each value of γ, we form the LP
+                            minimize      s
+                            subject to    Ax  b(γ) + s1.
+
+The barrier method is used with µ = 10, and starting point x = 0, s = − mini bi (γ)+
+1. The method terminates when a point (x, s) with s < 0 is found, or a feasible
+solution z of the dual problem
+                                maximize      −b(γ)T z
+                                subject to    AT z = 0
+                                              1T z = 1
+                                              z0
+
+is found with −b(γ)T z > 0.
+    The plot shows that when the inequalities are feasible, with some margin, it
+takes around 25 Newton steps to produce a strictly feasible point. Conversely,
+when the inequalities are infeasible, again with some margin, it takes around 35
+steps to produce a certificate proving infeasibility. The phase I effort increases as
+the set of inequalities approaches the boundary between feasible and infeasible,
+i.e., γ near zero. When γ is very near zero, so the inequalities are very near the
+boundary between feasible and infeasible, the number of steps grows substantially.
+Figure 11.11 shows the total number of Newton steps required for values of γ
+near zero. The plots show an approximately logarithmic increase in the number
+of steps required to detect feasibility, or prove infeasibility, for problems very near
+the boundary between feasible and infeasible.
+    This example is typical: The cost of solving a set of convex inequalities and
+linear equalities using the barrier method is modest, and approximately constant,
+as long as the problem is not very close to the boundary between feasibility and
+infeasibility. When the problem is very close to the boundary, the number of
+Newton steps required to find a strictly feasible point or produce a certificate
+of infeasibility grows. When the problem is exactly on the boundary between
+strictly feasible and infeasible, for example, feasible but not strictly feasible, the
+cost becomes infinite.
+
+Feasibility using infeasible start Newton method
+We also solve the same set of feasibility problems using the infeasible start Newton
+method, applied to the problem
+                                            Pm
+                            minimize − i=1 log si
+                            subject to Ax + s = b(γ).
+
+We use backtracking parameters α = 0.01, β = 0.9, and initialize with x(0) = 0,
+s(0) = 1, ν (0) = 0. We consider only feasible problems (i.e., γ > 0) and terminate
+once a feasible point is found. (We do not consider infeasible problems, since in
+that case the residual simply converges to a positive number.) Figure 11.12 shows
+the number of Newton steps required to find a feasible point, as a function of γ.
+584                                                                                                                 11     Interior-point methods
+
+
+
+
+                                                            100
+
+                                                             80
+
+
+
+
+                                        Newton iterations
+                                                                        Infeasible                              Feasible
+
+                                                             60
+
+                                                             40
+
+                                                             20
+
+                                                              0
+                                                              −1          −0.5               0                    0.5              1
+                                                                                             γ
+                                 Figure 11.10 Number of Newton iterations required to detect feasibility or
+                                 infeasibility of a set of linear inequalities Ax  b + γ∆b parametrized by
+                                 γ ∈ R. The inequalities are strictly feasible for γ > 0, and infeasible for
+                                 γ < 0. For γ larger than around 0.2, about 30 steps are required to compute
+                                 a strictly feasible point; for γ less than −0.5 or so, it takes around 35 steps
+                                 to produce a certificate proving infeasibility. For values of γ in between, and
+                                 especially near zero, more Newton steps are required to determine feasibility.
+
+
+
+
+                    100                                                                            100
+
+
+
+
+      Newton iterations                                                              Newton iterations
+                          80                                                                             80
+
+                          60                                                                             60
+
+                          40                                                                             40
+
+                          20                                                                             20
+
+                           0                                                                              0
+                          −100        −10−2                           −10−4      −10−6                   10−6           10−4           10−2   100
+                                                                  γ                                                            γ
+                                 Figure 11.11 Left. Number of Newton iterations required to find a proof of
+                                 infeasibility versus γ, for γ small and negative. Right. Number of Newton
+                                 iterations required to find a strictly feasible point versus γ, for γ small and
+                                 positive.
+       11.5   Complexity analysis via self-concordance                                          585
+
+                                         104
+
+
+                                         103
+
+
+
+
+                     Newton iterations
+                                         102
+
+
+                                         101
+
+
+                                         100
+                                          10−2   10−1        100              101
+                                                        γ
+              Figure 11.12 Number of iterations required to find a feasible point for a set
+              of linear inequalities Ax  b + γ∆b parametrized by γ ∈ R. The infeasible
+              start Newton method is used, and terminated when a feasible point is found.
+              For γ = 10, the starting point x(0) = 0 happened to be feasible (0 iterations).
+
+
+
+
+           The plot shows that for γ larger than 0.3 or so, it takes fewer than 20 Newton
+       steps to find a feasible point. In these cases the method is more efficient than a
+       phase I method, which takes a total of around 30 Newton steps. For smaller values
+       of γ, the number of Newton steps required grows dramatically, approximately as
+       1/γ. For γ = 0.01, the infeasible start Newton method requires several thousand
+       iterations to produce a feasible point. In this region the phase I approach is far
+       more efficient, requiring only 40 iterations or so.
+           These results are quite typical. The infeasible start Newton method works
+       very well provided the inequalities are feasible, and not very close to the boundary
+       between feasible and infeasible. But when the feasible set is just barely nonempty
+       (as is the case in this example with small γ), a phase I method is far better. Another
+       advantage of the phase I method is that it gracefully handles the infeasible case;
+       the infeasible start Newton method, in contrast, simply fails to converge.
+
+
+
+
+11.5   Complexity analysis via self-concordance
+       Using the complexity analysis of Newton’s method for self-concordant functions
+       (§9.6.4, page 503, and §10.2.4, page 531), we can give a complexity analysis of
+       the barrier method. The analysis applies to many common problems, and leads
+       to several interesting conclusions: It gives a rigorous bound on the total number
+       of Newton steps required to solve a problem using the barrier method, and it
+       justifies our observation that the centering problems do not become more difficult
+       as t increases.
+586                                                                         11      Interior-point methods
+
+
+11.5.1   Self-concordance assumption
+
+         We make two assumptions.
+
+            • The function tf0 + φ is closed and self-concordant for all t ≥ t(0) .
+
+            • The sublevel sets of (11.1) are bounded.
+
+         The second assumption implies that the centering problem has bounded sublevel
+         sets (see exercise 11.3), and, therefore, the centering problem is solvable. The
+         bounded sublevel set assumption also implies that the Hessian of tf0 + φ is positive
+         definite everywhere (see exercise 11.14). While the self-concordance assumption
+         restricts the complexity analysis to a particular class of problems, it is important
+         to emphasize that the barrier method works well in general, whether or not the
+         self-concordance assumption holds.
+             The self-concordance assumption holds for a variety of problems, including all
+         linear and quadratic problems. If the functions fi are linear or quadratic, then
+                                                       m
+                                                       X
+                                               tf0 −         log(−fi )
+                                                       i=1
+
+         is self-concordant for all values of t ≥ 0 (see §9.6). The complexity analysis given
+         below therefore applies to LPs, QPs, and QCQPs.
+             In other cases, it is possible to reformulate the problem so the assumption of
+         self-concordance holds. As an example, consider the linear inequality constrained
+         entropy maximization problem
+                                                    Pn
+                                       minimize       i=1 xi log xi
+                                       subject to F x  g
+                                                    Ax = b.
+
+         The function
+                                                 n
+                                                 X                   m
+                                                                     X
+                          tf0 (x) + φ(x) = t           xi log xi −         log(gi − fiT x),
+                                                 i=1                 i=1
+
+                              T
+         where f1T , . . . , fm are the rows of F , is not closed (unless F x  g implies x  0), or
+         self-concordant. We can, however, add the redundant inequality constraints x  0
+         to obtain the equivalent problem
+                                                        Pn
+                                          minimize         i=1 xi log xi
+                                          subject to F x  g
+                                                                                            (11.23)
+                                                        Ax = b
+                                                        x  0.
+
+         For this problem we have
+                                         n
+                                         X                   n
+                                                             X                m
+                                                                              X
+                    tf0 (x) + φ(x) = t         xi log xi −         log xi −         log(gi − fiT x),
+                                         i=1                 i=1              i=1
+

@@ -9,10 +9,10 @@ connected even after up to `r(uv) - 1` edge failures.
 
 The problem is NP-hard and APX-hard even in special cases, so an exact polynomial-time algorithm is
 out of reach. The target is an approximation guarantee that does **not** degrade as the requirements
-grow: a polynomial-time algorithm returning a feasible subgraph whose cost is at most a fixed
-constant factor times the optimum `OPT`, for every instance and every requirement vector. The whole
-difficulty is the proof of the factor — producing *a* feasible subgraph is easy; producing one with a
-provable constant ratio is not.
+grow: for every feasible instance and every requirement vector, a polynomial-time algorithm returning a
+feasible subgraph whose cost is at most a fixed constant factor times the optimum `OPT`. The whole
+difficulty is the proof of the factor; when the input graph can meet the requirements, taking all
+edges proves feasibility, but gives no useful cost guarantee.
 
 The defining technical obstacle: the natural lower bound on `OPT` is a linear program with one
 constraint per cut of the graph — exponentially many constraints — and the gap between that LP and
@@ -33,14 +33,25 @@ where `delta_H(S)` is the set of edges of `H` with exactly one endpoint in `S`. 
 collapses to: choose a minimum-cost edge set whose cut-degree dominates the function `f`.
 
 **Weakly supermodular (skew-supermodular) requirement functions.** The function `f` above has a
-structural property that turns out to be the linchpin. Call `f : 2^V -> Z` *weakly supermodular* if
+structural property that supports uncrossing. Call `f : 2^V -> Z` *weakly supermodular* if
 `f(empty) = f(V) = 0` and for all `A, B subset V` at least one of
 `f(A) + f(B) <= f(A union B) + f(A intersect B)` or
 `f(A) + f(B) <= f(A \ B) + f(B \ A)`
-holds. The cut-maximum `f(S) = max_{u in S, v not in S} r(uv)` is weakly supermodular: a short case
-analysis on where the requirement-maximizing pair lies relative to `A` and `B` always validates one
-of the two inequalities. This class is broader than the SNDP cut function and is the right level of
-abstraction; the same machinery covers any weakly-supermodular `f`.
+holds. The cut-maximum `f(S) = max_{u in S, v not in S} r(uv)` is weakly supermodular. Partition
+`V` into `P=A intersect B`, `Q=A \ B`, `R=B \ A`, and `W=V \ (A union B)`. A pair witnessing `f(A)`
+lies in one of `P-R`, `P-W`, `Q-R`, or `Q-W`; these pairs are cut respectively by
+`(A intersect B, B \ A)`, `(A intersect B, A union B)`, `(A \ B, B \ A)`, or
+`(A \ B, A union B)`. A pair witnessing `f(B)` lies in one of `P-Q`, `P-W`, `R-Q`, or `R-W`; these
+are cut respectively by `(A intersect B, A \ B)`, `(A intersect B, A union B)`,
+`(B \ A, A \ B)`, or `(B \ A, A union B)`. Checking the four possible witness types for `f(A)`
+against the four for `f(B)`, every pair of witnesses can be assigned to distinct members of
+`{A intersect B, A union B}` or to distinct members of `{A \ B, B \ A}`. The only two exceptional
+type-pairs are `P-W` against `R-Q` and `Q-R` against `P-W`; in both, the witness for `f(A)` also
+crosses `B`, and the witness for `f(B)` also crosses `A`, so maximality gives
+`f(A) <= f(B) <= f(A)`. The two values are equal, and either the union/intersection pair or the two
+difference sets carries that common value twice. This proves one of the two
+weak-supermodular inequalities. This class is broader than the SNDP cut function, and the same
+uncrossing machinery applies to any weakly-supermodular `f`.
 
 **The cut function is symmetric and submodular.** For any fixed edge set `F`, the map
 `S -> |delta_F(S)|` is symmetric (`|delta_F(S)| = |delta_F(V \ S)|`) and submodular:
@@ -51,16 +62,18 @@ The fractional version `x(delta(S)) = sum_{e in delta(S)} x_e` inherits both ine
 inequalities, together with the characteristic-vector identities
 `chi(delta(S)) + chi(delta(T)) = chi(delta(S union T)) + chi(delta(S intersect T)) + 2 chi(E(S\T, T\S))`
 and
-`chi(delta(S)) + chi(delta(T)) = chi(delta(S\T)) + chi(delta(T\S)) + 2 chi(E(S intersect T, complement))`,
+`chi(delta(S)) + chi(delta(T)) = chi(delta(S\T)) + chi(delta(T\S)) + 2 chi(E(S intersect T, V \ (S union T)))`,
 are the raw material for reasoning about which cut constraints can be simultaneously tight at a vertex
 of the LP polytope.
 
 **Linear programming relaxations and extreme points.** Relaxing the integral choice `x_e in {0,1}` to
 `x_e in [0,1]` gives a covering LP. Its optimum lower-bounds `OPT`. A *basic feasible solution*
 (extreme point / vertex) of a polytope in `R^E` is the unique solution of some `|E|` linearly
-independent tight constraints drawn from the constraint system. Extreme points are the objects whose
-support structure can be controlled — a generic optimal point need not have any nice coordinate, but
-a vertex does, and LP solvers can be made to return a vertex. The governing prior fact is that for
+independent tight constraints, including active variable bounds if any. For the structural rounding
+argument, zero-valued variables are deleted from the support and a variable already at `1` is already
+a rounding edge, so the hard case is pinned by tight cut rows alone. Extreme points are the objects
+whose support structure can be controlled — a generic optimal point need not have any nice coordinate,
+but a vertex does, and LP solvers can be made to return a vertex. The governing prior fact is that for
 covering an exponentially-large family of cut constraints, the tight constraints at a vertex can be
 *uncrossed* into a laminar family (no two sets properly overlap), and a laminar family on `n`
 vertices has at most `2n - 1` sets — a strong combinatorial restriction.
@@ -73,8 +86,8 @@ counting argument over `L`.
 
 ## Baselines
 
-**Primal-dual / augmentation, with factor growing in the requirement.** The state-of-the-art constant
-before a requirement-independent bound was the primal-dual augmentation approach of Goemans, Goldberg,
+**Primal-dual / augmentation, with factor growing in the requirement.** The best available general
+approach toward this target was the primal-dual augmentation method of Goemans, Goldberg,
 Plotkin, Shmoys, Tardos, and Williamson (1994), building on the Goemans-Williamson primal-dual method
 for constrained forest problems. It raises the connectivity one unit at a time: at phase `k`, it has a
 subgraph that is `(k-1)`-connected where required and runs a primal-dual `0/1` cut-covering step to
@@ -96,15 +109,15 @@ constant independent of the requirements.
 `x_e >= tau` for a fixed threshold `tau`. If such an edge is *guaranteed to exist* in the solution
 and `tau = 1/2`, rounding it loses only a factor `2` on that edge. The open question this leaves —
 and the entire crux of a requirement-independent guarantee — is whether some coordinate of a vertex
-solution is always at least `1/2`, for the full weakly-supermodular cut LP. Naive instances show that
-an *arbitrary* optimal point can be `1/3`-ish everywhere; the question is specifically about extreme
-points.
+solution is always at least `1/2`, for every nonzero weakly-supermodular residual cut LP. Naive
+instances show that an *arbitrary* optimal point can be `1/3`-ish everywhere; the question is
+specifically about extreme points.
 
 ## Evaluation settings
 
 The natural yardstick is the integrality gap and the worst-case approximation ratio of the covering
 LP `min sum c_e x_e` s.t. `x(delta(S)) >= f(S)`, `0 <= x_e <= 1`, measured against the integer
-optimum `OPT` over all instances. Instances are undirected weighted graphs with arbitrary nonnegative
+optimum `OPT` over feasible instances. Instances are undirected weighted graphs with arbitrary nonnegative
 edge costs, arbitrary integer pairwise requirements `r(uv)` (including `0` for non-required pairs and
 Steiner vertices with all-zero requirements), and the maximum requirement `r_max` ranging from `1`
 (Steiner forest) to large. Feasibility is verified by checking, for every pair, that the chosen
@@ -116,16 +129,19 @@ all pairs handled together via a Gomory-Hu tree (`n - 1` max-flow computations).
 
 ## Code framework
 
-The pieces that already exist: a graph data structure with cuts and max-flow / min-cut, a Gomory-Hu
-tree routine for all-pairs min cuts, and a generic LP solver that can return a basic (vertex) optimal
-solution. The scaffold:
+The available pieces are a graph data structure with cuts and max-flow / min-cut, a Gomory-Hu tree
+routine for all-pairs min cuts, and a generic LP solver with a simplex/basic-solution interface for
+the currently generated cut relaxation. The residual LP has variables only on unfixed edges and
+constraints `x(delta_free(S)) >= f(S) - |delta_fixed(S)|`. The scaffold:
 
 ```python
+from itertools import combinations
+
 import networkx as nx
 import pulp
 
 def requirement_on_cut(S, r):
-    # f(S) = max_{u in S, v not in S} r(uv); the cut form of the demands
+    # f(S) = max r(uv) over demand pairs split by S
     best = 0
     for (u, v), req in r.items():
         if (u in S) ^ (v in S):
@@ -141,13 +157,12 @@ def add_capacity(H, e, cap):
 def edge_cost(costs, e):
     pass  # TODO
 
-def separation_oracle(x, free_edges, fixed_edges, V, r):
-    # find a cut S with x(delta(S)) + |delta_fixed(S)| < f(S), or None if feasible
-    # (Gomory-Hu / min-cut separation over capacities x_e plus fixed-edge capacity 1)
+def separation_oracle(x, free_edges, fixed_edges, V, r, tol=1e-7):
+    # find a cut S with x(delta_free(S)) + |delta_fixed(S)| < f(S), or None
     pass  # TODO
 
 def solve_covering_lp_to_vertex(edges, V, r, fixed_edges, costs):
-    # cutting-plane loop using separation_oracle; return a basic optimal solution x
+    # add violated residual cut constraints until the LP solution satisfies every cut
     pass  # TODO
 
 def all_satisfied(V, fixed_edges, r):
@@ -155,11 +170,22 @@ def all_satisfied(V, fixed_edges, r):
 
 def cover_cut_requirements(V, edges, costs, r):
     F = set()
-    while True:
-        if all_satisfied(V, F, r):
-            return F
+    while not all_satisfied(V, F, r):
         x = solve_covering_lp_to_vertex(edges, V, r, F, costs)
-        # TODO: choose coordinates to fix and continue on the cut residual
+        # TODO: choose which fractional coordinates become fixed edges
         pass
     return F
+
+def solution_cost(F, costs):
+    pass  # TODO
+
+def is_feasible(V, F, r):
+    pass  # TODO
+
+def brute_force_optimum(V, edges, costs, r):
+    pass  # TODO
+
+if __name__ == "__main__":
+    # TODO: instantiate a tiny graph, run the solver, and compare with brute force
+    pass
 ```

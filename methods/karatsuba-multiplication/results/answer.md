@@ -2,41 +2,53 @@
 
 ## Problem
 
-Multiply two `n`-digit integers exactly. Schoolbook long multiplication forms a separate product for each digit-pair and costs `Θ(n²)` single-digit multiplications. Karatsuba multiplication does it in `o(n²)` — specifically `Θ(n^{log₂ 3}) ≈ Θ(n^{1.585})` — by a divide-and-conquer split that needs only **three** half-size multiplications per level instead of four.
+Multiply two `n`-digit integers exactly. Schoolbook long multiplication forms a separate product for each digit-pair and costs `Θ(n²)` single-digit multiplications, and `n²` was widely conjectured to be a genuine lower bound. Karatsuba multiplication does it in `o(n²)` — specifically `Θ(n^{log₂ 3}) ≈ Θ(n^{1.585})` — by a divide-and-conquer split that needs only **three** half-size multiplications per level instead of four.
 
 ## Key idea
 
 Split each operand at a `Bᵐ` boundary (`m ≈ n/2`):
 ```
-x = x₁·Bᵐ + x₀ ,   y = y₁·Bᵐ + y₀ .
+a = a₁·Bᵐ + a₂ ,   b = b₁·Bᵐ + b₂ .
 ```
 The product expands as
 ```
-x·y = x₁y₁·B²ᵐ + (x₁y₀ + x₀y₁)·Bᵐ + x₀y₀ .
+a·b = a₁b₁·B²ᵐ + (a₁b₂ + a₂b₁)·Bᵐ + a₂b₂ .
 ```
-The naive reading needs four sub-multiplications (`x₁y₁`, `x₁y₀`, `x₀y₁`, `x₀y₀`), which gives `T(n) = 4T(n/2) + O(n) = Θ(n²)` — no gain over schoolbook.
+The naive reading needs four sub-multiplications (`a₁b₁`, `a₁b₂`, `a₂b₁`, `a₂b₂`), giving `T(n) = 4T(n/2) + O(n) = Θ(n²)` — no gain over schoolbook, because the exponent is `log₂ 4 = 2`.
 
-The leap: the middle coefficient needs only the **sum** `x₁y₀ + x₀y₁`, not the two cross products separately. That sum is hidden inside the single product of the half-sums:
+The leap: the middle coefficient needs only the **sum** `a₁b₂ + a₂b₁`, not the two cross products separately. That sum is hidden inside the single product of the half-sums,
 ```
-(x₁ + x₀)(y₁ + y₀) = x₁y₁ + (x₁y₀ + x₀y₁) + x₀y₀ ,
+(a₁ + a₂)(b₁ + b₂) = a₁b₁ + (a₁b₂ + a₂b₁) + a₂b₂ ,
 ```
 so the cross sum is recovered by subtracting the two corner products that are already being computed:
 ```
-x₁y₀ + x₀y₁ = (x₁ + x₀)(y₁ + y₀) − x₁y₁ − x₀y₀ .
+a₁b₂ + a₂b₁ = (a₁ + a₂)(b₁ + b₂) − a₁b₁ − a₂b₂ .
 ```
 
 ## Algorithm
 
 Three multiplications per split:
 ```
-z₀ = x₀·y₀
-z₂ = x₁·y₁
-z₃ = (x₁ + x₀)(y₁ + y₀)
-z₁ = z₃ − z₂ − z₀          (= x₁y₀ + x₀y₁)
+z₂ = a₁·b₁
+z₀ = a₂·b₂
+z₁ = (a₁ + a₂)(b₁ + b₂) − z₂ − z₀     (= a₁b₂ + a₂b₁)
 
-x·y = z₂·B²ᵐ + z₁·Bᵐ + z₀ .
+a·b = z₂·B²ᵐ + z₁·Bᵐ + z₀ .
 ```
 Everything except the three recursive multiplications (the additions, subtractions, and shifts by powers of `B`) is `O(n)`.
+
+## Squaring form
+
+Because `a·b = ¼[(a+b)² − (a−b)²]`, the method can equivalently be stated for squaring a single `n`-digit number `a = aₕ·Bᵐ + aₗ`, using `2aₕaₗ = (aₕ+aₗ)² − aₕ² − aₗ²`:
+```
+a² = aₕ²·B²ᵐ + [(aₕ+aₗ)² − aₕ² − aₗ²]·Bᵐ + aₗ² ,
+```
+three squarings of `m`-digit numbers — `aₕ²`, `aₗ²`, `(aₕ+aₗ)²`. The sum `aₕ+aₗ` can be `(m+1)`-digit; writing
+```
+aₕ+aₗ = 2a₃ + ε,    ε ∈ {0,1}
+(aₕ+aₗ)² = 4a₃² + 4a₃ε + ε²
+```
+reduces it back to an `m`-digit square plus shifts and adds, so the recursion halves cleanly.
 
 ## Complexity
 
@@ -51,27 +63,29 @@ strictly sub-quadratic. (In master-theorem terms, `a = 3`, `b = 2`, combine expo
 
 ## Worked example
 
-`1234 × 4321`, `B = 10`, `m = 2`: `x₁=12, x₀=34, y₁=43, y₀=21`.
+`1234 × 4321`, `B = 10`, `m = 2`: `a₁=12, a₂=34, b₁=43, b₂=21`.
 ```
 z₂ = 12·43 = 516
 z₀ = 34·21 = 714
-z₃ = (12+34)(43+21) = 46·64 = 2944
+(a₁+a₂)(b₁+b₂) = (12+34)(43+21) = 46·64 = 2944
 z₁ = 2944 − 516 − 714 = 1714
-x·y = 516·10⁴ + 1714·10² + 714 = 5 332 114.   ✓
+a·b = 516·10⁴ + 1714·10² + 714 = 5 332 114.   ✓
 ```
 
 ## Code
 
 ```python
+BASE = 10
+
 def karatsuba(x, y):
     # base case: a single-digit operand — multiply directly (O(1))
-    if x < 10 or y < 10:
+    if x < BASE or y < BASE:
         return x * y
 
     # split point: half the digit-length of the longer operand
     n = max(len(str(x)), len(str(y)))
     m = n // 2
-    split = 10 ** m
+    split = BASE ** m
 
     # cut each number into high/low halves at the B^m boundary.
     # integer floor-division + remainder (divmod) — true division would
@@ -80,16 +94,16 @@ def karatsuba(x, y):
     high2, low2 = divmod(y, split)   # y = high2 * 10^m + low2
 
     # the THREE recursive multiplications
-    z0 = karatsuba(low1, low2)                  # x0 * y0
-    z2 = karatsuba(high1, high2)                # x1 * y1
-    z3 = karatsuba(high1 + low1, high2 + low2)  # (x1+x0)(y1+y0)
+    z2 = karatsuba(high1, high2)                # a1 * b1
+    z0 = karatsuba(low1, low2)                  # a2 * b2
+    z3 = karatsuba(high1 + low1, high2 + low2)  # (a1+a2)(b1+b2)
 
     # middle coefficient: cross sum recovered from the product-of-sums
     # minus the two corner products already computed
-    z1 = z3 - z2 - z0                           # = x1*y0 + x0*y1
+    z1 = z3 - z2 - z0                           # = a1*b2 + a2*b1
 
     # recombine: x*y = z2 * B^(2m) + z1 * B^m + z0   (shifts + adds, O(n))
-    return z2 * 10 ** (2 * m) + z1 * 10 ** m + z0
+    return z2 * BASE ** (2 * m) + z1 * BASE ** m + z0
 ```
 
 Quick check:

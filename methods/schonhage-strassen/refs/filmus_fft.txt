@@ -1,0 +1,858 @@
+FFT and Schönhage–Strassen
+Yuval Filmus
+July 7, 2017
+
+1
+
+Polynomial multiplication and convolution
+
+Consider the following problem. Given two univariate polynomials
+P =
+
+n
+X
+
+p i xi ,
+
+Q=
+
+i=0
+
+n
+X
+
+qi xi ,
+
+i=0
+
+compute the product polynomial
+R=
+
+2n
+X
+
+ri xi ,
+
+ri =
+
+i=0
+
+X
+
+pj qk .
+
+j,k : j+k=i
+
+When we say “compute R”, we really mean “compute the coefficients of R”.
+Each ri is the sum of at most n products, so we can compute R using O(n2 ) operations. Surprisingly
+(or perhaps, at this state of the course, not so surprisingly), this can be significantly improved to O(n log n)
+using the fast Fourier transform (FFT).
+The Fourier transform is often approached from a physics perspective, but here we will take the point of
+view of representation theory1 . According to this point of view, we think of P and Q as linear combinations
+of the “formal monomials” x0 , . . . , xn . If we identify xi with the natural number i, then this views P, Q
+as members of the vector space C[N] (we will see later that it is advantageous to work over the complex
+numbers rather than the real numbers). We turn this vector space into an algebra by defining a multiplication
+operation. It is defined on basis elements as xi · xj = xi+j , and extended linearly for arbitrary vectors (this
+ensures that P (aQ + bR) = aP Q + bP R). The resulting algebraic structure is known as the monoid algebra
+of N (over C).
+Since we are looking for algorithmic solutions, it is probably not such a good idea to look at the infinitedimensional C[N]. Since deg R ≤ 2n, it suffices to work over a basic structure which has analogs of x0 , . . . , x2n .
+One possible choice is the group Zm for some m > 2n. We thus look at the vector space C[Zm ], and endow
+it with the multiplication operation defined on basis elements by xi · xj = xi+j mod m , and extended linearly
+(this operation is sometimes called convolution). We obtain the so-called group algebra of Zm (over C).
+The reader can check that if we consider P, Q to be elements of C[Zm ] then their product P Q in the group
+algebra encodes the polynomial P Q.
+We have thus reduced the problem of multiplying univariate polynomials to that of multiplying two
+elements in the group algebra C[Zm ]. Representation theory tells us2 that there is a basis χ0 , . . . , χm−1 of
+1 Our presentation will be somewhat unorthodox even from that perspective.
+2 Each element x of the group algebra corresponds to the linear operator T which maps y to xy. Since the group algebra
+x
+C[Zm ] is m-dimensional whereas the dimension of the space of m × m matrices is m2 , not every linear operator on the matrix
+
+algebra is realizable as Tx for some element Tx in the group algebra. Since Zm is abelian, representation theory tells us that
+there is a common basis of eigenvectors for the Tx . With respect to this basis, the Tx become diagonal operations. Since the
+dimension of the space of m × m diagonal matrices is m, this fixes the dimension issue: every diagonal matrix in this basis is
+realizable as Tx , and vice versa. The non-abelian case is more complicated, but well-understood.
+
+1
+
+the group algebra which satisfies the following identity:
+
+
+
+m−1
+m−1
+m−1
+X
+X
+X
+
+αj χj  
+βj χj  = m
+αj βj χj .
+j=0
+
+j=0
+
+It also tells us what the basis is:
+χj =
+
+j=0
+
+m−1
+X
+
+ω ij xi ,
+
+i=0
+
+where ω = e2πi/m is a primitive mth root of unity (that is, ω m = 1, and ω r 6= 1 for all 1 ≤ r < m). In a
+subsection below, we demystify this, and some subsequent, formulas.
+Given this explicit form, we can prove the identity directly:
+
+
+!
+m−1
+m−1
+X
+X
+
+
+αj χj
+βk χk
+
+=
+
+j=0
+
+k=0
+
+m−1
+X
+
+
+αj ω sj xs  
+
+j,s=0
+
+=
+
+m−1
+X
+
+=
+
+
+βk ω tk xt 
+
+k,t=0
+
+
+xi 
+
+m−1 X
+m−1
+X
+
+
+αj ω sj βk ω (i−s)k 
+
+j,k=0 s=0
+
+i=0
+m−1
+X
+
+m−1
+X
+
+
+xi 
+
+i=0
+
+m−1
+X
+
+αj βk ω ik
+
+m−1
+X
+
+
+ω s(j−k)  .
+
+s=0
+
+j,k=0
+
+Pm−1
+The point now is that when j = k, we have ω s(j−k) = 0, and so s=0 ω s(j−k) = m. When j 6= k, we have
+ω j−k 6= 1 (since ω is a primitive mth root), and so we can use the formula for the sum of a geometric series
+to deduce that
+m−1
+X
+ω m(j−k) − 1
+= 0,
+ω s(j−k) =
+ω j−k − 1
+s=0
+since ω m = 1. The sum above is thus equal to
+
+
+m−1
+m−1
+m−1
+m−1
+m−1
+X
+X
+X
+X
+X
+mαj βj χj .
+xi 
+mαj βj ω ij  =
+mαj βj
+ω ij xi =
+i=0
+
+j=0
+
+j=0
+
+j=0
+
+i=0
+
+If we have an element of C[Zm ] expressed in the basis χ0 , . . . , χm−1 , we can compute its expression in
+the usual basis using the definition of χj :
+
+
+m−1
+m−1
+m−1
+m−1
+m−1
+X
+X
+X
+X
+X
+αj χj =
+αj
+ω ij xi =
+xi 
+αj ω ij  .
+j=0
+
+j=0
+
+i=0
+
+i=0
+
+j=0
+
+(This is usually known as the Fourier inversion formula.) Going in the other way is known as the Fourier
+transform:
+" m−1
+#
+m−1
+m−1
+X
+X
+1 X
+i
+−ij
+ai x =
+χj
+αi ω
+.
+m i=0
+i=0
+j=0
+
+2
+
+We can check the validity of this formula by evaluating the right-hand side:
+# m−1 m−1
+#
+" m−1
+" m−1
+m−1
+X
+X X
+1 X
+1 X
+−ij
+−ij
+jk k
+αi ω
+αi ω
+χj
+=
+ω x
+m i=0
+m i=0
+j=0
+j=0 k=0
+
+
+m−1
+m−1
+X
+X
+1
+αi ω j(k−i) 
+=
+xk 
+m i,j=0
+k=0
+
+
+m−1
+m−1
+m−1
+X
+X
+X
+1
+=
+xk
+αi 
+ω j(k−i) 
+m
+i=0
+j=0
+k=0
+
+=
+
+m−1
+X
+
+xk αk ,
+
+k=0
+
+just as before.
+All of the above suggests the following algorithm for polynomial multiplication:
+Pm−1
+• Express P as a linear combination P = j=0 αj χj .
+Pm−1
+• Express Q as a linear combination Q = j=0 βj χj .
+Pm−1
+• Compute R = P Q = j=0 mαj βj χj .
+• Convert R to a linear combination of the basis xi .
+In the first two steps we are computing Fourier transforms, and the last step computes an inverse Fourier
+transform. The formulas for both are very similar (they differ by replacing ω with ω −1 , another primitive mth
+root of unity), so they have the same complexity. How fast can we compute the inverse Fourier transform?
+
+1.1
+
+A more traditional view
+
+Before turning to the Fast Fourier Transform, let us propose a different exposition of the foregoing. We can
+think of elements of C[Zm ] as functions from Zm to C. For example, the basis χ0 , . . . , χm−1 corresponds to
+the functions
+χj (i) = ω ij .
+These functions are homomorphisms from Zm to C× , that is, χj (i1 + i2 ) = χj (i1 )χj (i2 ). In fact, they are
+all such homomorphisms. Another important property they satisfy is χj (i) = χj (−i).
+We define an inner product on C[Zm ] by the formula
+m−1
+
+hf, gi =
+
+1 X
+f (i)g(i).
+m i=0
+
+Under this inner product, the basis χ0 , . . . , χm−1 is orthonormal:
+(
+m−1
+1 if j = k,
+1 X i(j−k)
+hχj , χk i =
+ω
+=
+m i=0
+0 otherwise,
+a calculation we have seen several
+Pm−1 times. This property allows us to deduce the Fourier transform formula
+almost immediately: if f = j=0 αj χj then
+hf, χj i =
+
+m−1
+X
+
+αi hχi , χj i = αj .
+
+i=0
+
+3
+
+We recover the formula
+αj = hf, χj i =
+
+m−1
+X
+
+f (i)χj (i) =
+
+m−1
+X
+
+i=0
+
+f (i)ω −ij .
+
+i=0
+
+In the literature, αj is often denoted fˆ(j).
+Pm−1
+Pm−1
+What about convolution? Suppose that f = j=0 αj χj , g = j=0 βj χj , and h = f ∗ g is given by
+h(i) =
+
+m−1
+X
+
+f (r)g(i − r),
+
+r=0
+
+which is the same as our polynomial multiplication. To find the Fourier expansion of h (its expansion in the
+basis χ0 , . . . , χm−1 ), we first consider the case in which f = χj and g = χk . In that case
+(χj ∗ χk )(i) =
+
+m−1
+X
+
+χj (r)χk (i − r) = χk (i)
+
+r=0
+
+m−1
+X
+
+χj (r)χk (r) = mχk (i)hχj , χk i.
+
+r=0
+
+We conclude that χj ∗ χk = 0 if j 6= k, and χj ∗ χj = m. Linearity then implies the convolution formula
+h=
+
+m−1
+X
+
+mαj βj χj .
+
+j=0
+
+2
+
+Fast Fourier Transform
+
+It turns out that when m = 2M , the Fourier transform and its inverse can be computed very quickly, in time
+O(m log m). The corresponding algorithm is known as the Fast Fourier Transform.
+Recall that the inverse Fourier transform asks us to compute the coefficients p0 , . . . , pm−1 given the
+coefficients α0 , . . . , αm−1 , using the formula
+pi =
+
+M
+2X
+−1
+
+αj ω ij .
+
+j=0
+
+The basic idea is to break the sum into two parts. There are two natural ways of doing it: according to LSB
+and according to MSB (these are known as decimation-in-time and decimation-in-frequency, respectively).
+We choose breaking according to the LSB:
+pi =
+
+−1
+2MX
+−1
+
+α2j ω
+
+2ij
+
++ α2j+1 ω
+
+2ij+i
+
+
+
+=
+
+−1
+2MX
+−1
+
+j=0
+
+2 ij
+
+α2j (ω ) + ω
+
+j=0
+
+i
+
+−1
+2MX
+−1
+
+α2j+1 (ω 2 )ij .
+
+j=0
+
+The expressions in the two sums are the same ones as the inverse Fourier transform for Zm/2 ! There is a
+slight complication: the inverse Fourier transform for Zm/2 has i < 2M −1 , but here the indices i could be as
+M −1
+M −1
+)j
+large as 2M − 1. This is no big deal, however, since (ω 2 )2
+= 1, and so (ω 2 )ij = (ω 2 )(i mod 2
+. With
+this correction in place, we can explain the FFT algorithm:
+• Compute (recursively) the inverse Fourier transform s0 , . . . , sm/2−1 of α0 , α2 , . . . , αm−2 .
+• Compute (recursively) the inverse Fourier transform t0 , . . . , tm/2−1 of α1 , α3 , . . . , αm−1 .
+• For i = 0, . . . , m − 1, compute
+pi = si mod (m/2) + ω i ti mod (m/2) .
+4
+
+The base of the recursion is when m = 1, in which case the formula is just p0 = α0 . The number of
+arithmetic operations performed, as a function of m, satisfies the recurrence
+T (m) = 2T (m/2) + Θ(m),
+whose solution is T (m) = Θ(m log m).
+The FFT in hand, we can calculate the running time of the polynomial multiplication algorithm described
+above. We take m = 2dlog2 (2n+1)e , which satisfies 2n + 1 ≤ m ≤ 4n + 2. Given polynomials P, Q, we compute
+their Fourier transforms in time O(m log m) = O(n log n). We then compute the Fourier transform of
+R = P Q in linear time O(m) by multiplying the Fourier coefficients (the coefficients of the characters
+χj ). Finally, we compute the inverse Fourier transform of R in time O(m log m) = O(n log n). The entire
+algorithm takes time O(n log n).
+We can multiply multivariate polynomials using multidimensional Fourier transforms. For example, we
+can multiply bivariate polynomials using the Fourier transform in the group Z2m . An extreme case is the Walsh
+transform, which is the Fourier transform in Zn2 , useful in theoretical computer science. Multidimensional
+Fourier transforms are computed essentially by computing the Fourier transform across each dimension in
+sequence. The generalization to arbitrary (non-abelian) groups is the subject of representation theory.
+
+2.1
+
+In-place algorithms
+
+What happens if we want to implement FFT in place? To see what happens, let us work out the algorithms
+for small m. We will use the notation ωm for e2πi/m , which is a primitive mth root of unity.
+When m = 2, the original algorithm is:
+• s0 ← α0 .
+• t0 ← α1 .
+• p0 ← s0 + ω20 t0 = α0 + α1 .
+• p1 ← s0 + ω21 t0 = α0 − α1 .
+If we want to implement this algorithm in-place, we need to execute the last two lines simultaneously:
+α0 , α1 ← α0 + α1 , α0 − α1 .
+We can also express this as a matrix-vector multiplication:
+ 
+
+ 
+α0
+1 1
+α0
+←
+.
+α1
+1 −1 α1
+This is known as a butterfly, due to its diagrammatic shape:
+α0
+α0 + α1
+α1
+α0 − α1
+When m = 4, the algorithm is:
+• s0 , s1 ← α0 + α2 , α0 − α2 .
+• t0 , t1 ← α1 + α3 , α1 − α3 .
+• p0 ← s0 + ω40 t0 .
+• p1 ← s1 + ω41 t1 .
+• p2 ← s0 + ω42 t0 .
+
+5
+
+• p3 ← s1 + ω43 t1 .
+If we want to implement this algorithm in-place, we first need to perform the first two lines in-place:
+• α0 , α2 ← α0 + α2 , α0 − α2 .
+• α1 , α3 ← α1 + α3 , α1 − α3 .
+• p0 ← α0 + ω40 α1 .
+• p1 ← α2 + ω41 α3 .
+• p2 ← α0 + ω42 α1 .
+• p3 ← α2 + ω43 α3 .
+To implement the second half in-place, we need to perform pairs of lines simultaneously:
+• α0 , α2 ← α0 + α2 , α0 − α2 .
+• α1 , α3 ← α1 + α3 , α1 − α3 .
+• α0 , α1 ← α0 + ω40 α1 , α0 − ω40 α1 .
+• α2 , α3 ← α2 + ω41 α3 , α2 − ω41 α3 .
+(We used ω42 = −1.) If we look at the correspondence between the entries of p and the entries of α, we see
+something strange:
+p0 , p1 , p2 , p3 = α0 , α2 , α1 , α3 .
+The two middle values got switched! This phenomenon is known as bit reversal.
+Let us take this one step further, and consider the case m = 8. The original algorithm is:
+• Compute the transform of α0 , α2 , α4 , α6 , and put the results in s0 , s1 , s2 , s3 .
+• Compute the transform of α1 , α3 , α5 , α7 , and put the results in t0 , t1 , t2 , t3 .
+• For i = 0, 1, 2, 3, compute pi , pi+4 = si + ω8i ti , si − ω8i ti .
+(We used ω84 = −1.) When performing the first part in-place, we get:
+• Compute the transform of α0 , α2 , α4 , α6 in-place, obtaining s0 , s2 , s1 , s3 .
+• Compute the transform of α1 , α3 , α5 , α7 in-place, obtaining t0 , t2 , t1 , t3 .
+• For i = 0, 1, 2, 3, compute pi , pi+4 = si + ω8i ti , si − ω8i ti .
+Implementing the second part in-place, we get:
+• Compute the transform of α0 , α2 , α4 , α6 in-place.
+• Compute the transform of α1 , α3 , α5 , α7 in-place.
+• α0 , α1 ← α0 + ω80 α1 , α0 − ω80 α1 .
+• α2 , α3 ← α2 + ω82 α3 , α2 − ω82 α3 .
+• α4 , α5 ← α4 + ω81 α5 , α4 − ω81 α5 .
+• α6 , α7 ← α6 + ω83 α7 , α6 − ω83 α7 .
+
+6
+
+The correspondence this time is:
+p0 , p1 , p2 , p3 , p4 , p5 , p6 , p7 = α0 , α4 , α2 , α6 , α1 , α5 , α3 , α7 .
+The bit-reversal phenomenon is more apparent if we use binary indices:
+p000
+α000
+
+p001
+α100
+
+p010
+α010
+
+p011
+α110
+
+p100
+α001
+
+p101
+α101
+
+p110
+α011
+
+p111
+α111 .
+
+Here is a diagram describing the entire algorithm:
+p0
+α0
+0
+ω8
+p4
+α1
+×
+0
+ω4
+p2
+α2
+× 0
+2
+ω4
+ω8
+p6
+α3
+×
+×
+p1
+α4
+1
+ω8
+p5
+α5
+×
+1
+ω4
+p3
+α6
+× 1
+3
+ω4
+ω8
+p7
+α7
+×
+×
+Multiplication nodes ⊗ multiply the wire by the stated constant.
+Each butterfly has the same semantics as before:
+a
+a+b
+a−b
+b
+We can now describe the general in-place FFT algorithm on m = 2M points, using the notation brM (x)
+for the bit reversal of the M -bit index x:
+• Compute the in-place FFT of the 2M −1 points α2i (where 0 ≤ i < 2M −1 ).
+• Compute the in-place FFT of the 2M −1 points α2i+1 (where 0 ≤ i < 2M −1 ).
+• For 0 ≤ i < 2M −1 , let I = brM (i), and compute
+
+ 
+α2i
+1
+=
+α2i+1
+1
+
+I
+ωm
+I
+.
+−ωm
+
+
+
+
+α2i
+.
+α2i+1
+
+• For 0 ≤ i < 2M , let I = brm (i), and if i < I then exchange αi and αI .
+The base case, m = 1 or M = 0, is the trivial “do-nothing” algorithm.
+i
+We can also insert the input bit-reversed, changing the twiddle factors (the factors ωm
+) accordingly, and
+then the output will be in the correct order.
+
+2.2
+
+Number-theoretic transform
+
+The Fast Fourier transform, as we have described it, requires floating point computations when implemented
+on a real computer. This invariably introduces calculation errors, and so the answer is not exact. We can
+avoid this by replacing C with another ring which contains mth roots of unity. The ring has to contain the
+coefficients of the polynomials P, Q. Assuming that these coefficients are small integers, we can choose the
+ring Z2m −1 , which contains a primitive mth root of unity, namely 2. This ring has to be large enough so
+that the coefficients of the product polynomial R are at most 2m−1 (or 2m − 1 if they are non-negative), as
+this will allow their decoding at the end of the process. To this end we might want to choose a ring Z2km −1
+for a large enough k, which also contains a primitive mth root of unity, namely 2k . In practice, 2km + 1 is
+better than 2km − 1, since it allows several optimizations. The primitive mth roots of unity are 4 and 4k ,
+respectively.
+7
+
+During the FFT algorithm, we have to multiply by powers of ω. Since for us ω is a power of 2 (both in
+the initial step and in the recursive steps), we can implement this by the fast operation of bit rotation (or
+using shifts). When counting only bit operations, bit rotations are for free. Therefore if we are using the
+ring 2km ± 1, computing the direct and inverse Fourier transforms takes Θ(km2 log m) bit operations (since
+each addition takes Θ(km) bit operations).
+
+3
+
+Schönhage–Strassen algorithm
+
+The idea of the Schönhage–Strassen algorithm is to express integer multiplication as polynomial multiplication. Suppose that a = an−1 . . . a0 and b = bn−1 . . . b0 are two n-bit non-negative integers. Then
+! n−1
+!
+n−1
+X
+X
+i
+i
+.
+ab =
+ai x
+bi x
+i=0
+
+i=0
+
+x=2
+
+dlog2 (2n+1)e
+
+Using the number theoretic transform with m = 2
+= Θ(n), we can multiply the polynomials in
+time Θ(m2 log m) = Θ(n2 log n), which is worse than the trivial algorithm. The point of difficulty is that
+FFT uses an mth root of unity, and so we need to work in a ring containing an mth root of unity with a
+simple form, and such rings are large. To contravene this difficulty, we will partition a, b into groups of `
+bits:
+
+
+
+n/`−1 `−1
+n/`−1 `−1
+X X
+X X
+2j a`i+j xi  
+2j b`i+j xi 
+.
+ab = 
+i=0 j=0
+
+i=0 j=0
+k(2n/`+1)
+
+x=2`
+`+1
+
+We need to work over a ring Z2k(2n/`+1) ±1 with 2
+> (n/` + 1)2 , so we choose the smallest k
+such that k(2n/` + 1) > log(n/` + 1) + ` + 1. Our choice of ` will be larger than log n, so we will have
+k(2n/` + 1) = Θ(`). The FFT algorithm thus takes time Θ(k(n/`) · (n/`) log(n/`)) = Θ(n log(n/`)). Having
+computed the Fourier transforms, we need to multiply the Fourier coefficients. These are n/` products of
+coefficients of length Θ(`) bits. After running FFT again to compute the inverse transform and converting
+the Fourier coefficients to integers, we are left with computing
+2n/`
+
+X
+
+ci 2`i ,
+
+i=0
+
+where each ci has length ` + log n bits. Each of these staggered additions takes time Θ(` + log n), for a total
+of Θ(n + (n/`) log n). The total running time thus satisfies the recurrence
+T (n) = (n/`)T (Θ(`)) + Θ(n log(n/`)).
+How should we choose `? Let us assume that Θ(`) = B` for some B > 1, and ignore the other Θ.
+Opening up the recursion, we obtain
+n
+B`1
+n B`1
+B`2
+n
+T (n) = n log
++
+· B`1 log
++
+·
+· B`2 log
++ ···
+`
+`1
+`2
+`1 `2
+`3
+ 1
+
+n
+B`1
+B`2
+= n log
++ B log
++ B 2 log
++ ··· .
+`1
+`2
+`3
+i
+
+Finding the best choice for `i is somewhat tiresome. A good choice is `i = n(1/B) , and substituting this we
+obtain
+
+
+2
+2
+3
+T (n) = n log n1−1/B + B log(Bn1/B−1/B ) + B 2 log(Bn1/B −1/B ) + · · ·
+
+= n (1 − 1/B) log n(1 + B/B + B 2 /B 2 + · · · ) + (log B)(1 + B + B 2 + · · · ) .
+The dots continue until `i becomes constant, which happens for B i ≈ log n, that is, at i = Θ(log log n). The
+overall complexity is thus Θ(n log n log log n).
+8
+
+

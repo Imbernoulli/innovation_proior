@@ -1,0 +1,208 @@
+Metric and Normed Spaces II, Bourgain’s Theorem
+Geometric Methods in Computer Science
+
+Instructor: Yury Makarychev
+
+1
+
+Notation
+
+Given a metric space (X, d) and S ⊂ X, the distance from x ∈ X to S equals
+d(x, S) = inf d(x, s).
+s∈S
+
+The distance between two sets S1 , S2 ⊂ X equals
+d(S1 , S2 ) =
+
+inf
+
+s1 ∈S1 ,s2 ∈S2
+
+d(s1 , s2 ).
+
+Exercise 1. Show that distances between sets do not necessarily satisfy the triangle inequality. That is, it is possible that d(S1 , S2 ) + d(S2 , S3 ) > d(S1 , S3 ) for some sets S1 , S2 and
+S3 .
+Exercise 2. Prove that d(x, y) ≥ d(S, x) − d(S, y) and thus d(x, y) ≥ |d(S, x) − d(S, y)|.
+Proof. Fix ε > 0. Let y ′ ∈ S be such that d(y ′ , y) ≤ d(S, y) + ε (if S is a finite set, there is
+y ′ ∈ S s.t. d(y, y ′ ) = d(S, y)). Then
+d(x, S) ≤ d(x, y ′ ) ≤ d(x, y) + d(y, y ′ ) ≤ d(x, y) + d(S, y) + ε.
+We proved that d(x, S) ≤ d(x, y) + d(S, y) + ε for every ε > 0. Therefore,
+d(x, S) ≤ d(x, y) + d(S, y).
+
+2
+
+Bourgain’s Theorem
+
+Definition 2.1. Let X be a finite metric space and p ≥ 1. Suppose that Z ̸= ∅ is a random
+subset of X (chosen according to some probability distribution). For every u ∈ X, define
+random variable ξu = d(u, Z) = minz∈Z d(u, z). Consider the map f from X to the space of
+random variables Lp (Ω, µ) that sends u to ξu (where Ω is the probability space and µ is the
+probability measure on Ω). We say that f is a Fréchet embedding.
+1
+
+Lemma 2.2. Every Fréchet embedding f is non-expanding. That is, ∥f ∥Lip ≤ 1.
+Proof. Consider a Fréchet embedding that sends u to ξu = d(u, Z). For every u, v ∈ X, we
+have
+∥ξu − ξv ∥p = (E [|d(u, Z) − d(v, Z)|p ])1/p
+
+by Exercise 2
+
+≤
+
+(E [|d(u, v)|p ])1/p = d(u, v).
+
+Remark 2.3. If X is infinite, then the random variable ξu = d(u, Z) does not necessarily
+belong to Lp (Ω, µ) (its p-norm might be infinite). However, we can define ξ˜u as ξ˜u = d(u, Z)−
+d(x0 , Z), where x0 is some point in X. Then the proof of Lemma 2.2 shows that ∥ξ˜u ∥p ≤
+d(u, x0 ) < ∞ and the map f : u 7→ ξ˜u is non-expanding.
+Theorem 2.4 (Bourgain’s Theorem). Every metric space X on n points embeds into Lp (X, µ)
+with distortion O(log n) (for every p ≥ 1). That is, cp (X) = O(log n).
+Proof. Let l = ⌈log2 n⌉ + 1. Construct a random set Z as follows.
+ Choose s uniformly at random from {1, . . . , l}.
+ Initially, let Z = ∅.
+ Add every point of X to Z with probability 1/2s , independently.
+
+Now let f be the Fréchet embedding that maps u ∈ X to random variable ξu = d(Z, u). By
+Lemma 2.2, f is non-expanding. We are going to prove that for every u and v,
+∥f (u) − f (v)∥p ≥
+
+c
+· d(u, v),
+l
+
+for some absolute constant c. Note that it is sufficient to prove this statement for p = 1,
+since by Lyapunov’s inequality ∥f (u) − f (v)∥p ≥ ∥f (u) − f (v)∥1 .
+Consider two points u and v. Let ∆ = d(u, v)/2. Define interval IZ as follows: IZ =
+[d(u, Z), d(v, Z)] if d(u, Z) ≤ d(v, Z), and IZ = [d(v, Z), d(u, Z)] if d(v, Z) < d(u, Z). That
+is, IZ is the interval between d(u, Z) and d(v, Z). Denote the length of IZ by |IZ |. Let 1IZ
+be the indicator function of IZ . Write,
+Z
+Z ∞
+|d(u, Z) − d(v, Z)| = |IZ | =
+1 dt =
+1IZ (t)dt.
+IZ
+
+0
+
+Then,
+Z ∞
+
+
+∥f (u) − f (v)∥1 = E [|d(u, Z) − d(v, Z)|] = E
+1IZ (t)dt
+0
+Z ∞
+Z ∞
+Z ∆
+by Fubini’s
+( theorem ) =
+E [1IZ (t)] dt =
+Pr (t ∈ IZ ) dt ≥
+Pr (t ∈ IZ ) dt.
+0
+
+0
+
+2
+
+0
+
+We now prove that Pr (t ∈ IZ ) ≥ Ω(1)
+if t ∈ (0, ∆). That will imply that ∥f (u) − f (v)∥1 ≥
+l
+Ω(1)
+Ω(1)
+· ∆ = l · d(u, v).
+l
+Fix t ∈ (0, ∆). Consider balls Bt (u) and Bt (v). They are disjoint since 2t < 2∆ =
+d(u, v). Assume without loss of generality that |Bt (u)| ≤ |Bt (v)|. Denote m = |Bt (u)|. Let
+s0 = ⌊log2 m⌋ + 1. Then m < 2s0 ≤ 2m. Let Eu be the event that d(u, Z) > t, and Ev be
+the event that d(v, Z) ≤ t. We have,
+Pr (t ∈ IZ ) = Pr (d(u, Z) ≤ t ≤ d(v, Z) or d(v, Z) ≤ t ≤ d(u, Z))
+≥ Pr (d(v, Z) ≤ t < d(u, Z)) = Pr (Eu and Ev ) .
+Event Ev occurs if and only if there is a point in Z at distance at most t from v; that is,
+when Bt (v) ∩ Z ̸= ∅. Event Eu occurs if and only if Bt (u) ∩ Z = ∅.
+Consider the event s = s0 . It happens with probability 1/l. Conditioned on this event,
+events Eu and Ev are independent (since Bt (u) and Bt (v) are disjoint) and
+ 
+m
+Y
+Y 
+1
+1
+1
+Pr(Eu |s = s0 ) =
+Pr (w ∈
+/ Z|s = s0 ) =
+1 − s0 = 1 − s0
+≥ .
+2
+2
+e
+w∈Bt (u)
+w∈Bt (u)
+
+
+
+m
+Y
+Y
+1
+1
+Pr(Ev |s = s0 ) = 1 −
+Pr (w ∈
+/ Z|s = s0 ) = 1 −
+1 − s0 ≥ 1 − 1 − s0
+2
+2
+w∈Bt (v)
+
+≥1−
+
+1
+e1/2
+
+w∈Bt (v)
+
+.
+
+We get
+Pr (t ∈ IZ ) ≥ Pr (Eu and Ev ) ≥ Pr (s = s0 ) Pr (Eu and Ev |s = s0 )
+ 
+1
+1
+.
+≥ Pr (Eu |s = s0 ) Pr (Ev |s = s0 ) ≥ Ω
+l
+l
+
+Exercise 3. The set Z might be equal to ∅ in our proof, then random variables ξu = d(u, Z)
+are not well defined. Show how to fix this problem.
+Proof. There are many ways to fix this problem. For instance, we can add an extra point x∞
+to the metric space X, and define d(u, x∞ ) = 2 diam(X), where diam(X) = maxu,v∈X d(u, v).
+Then construct the set Z as before, except that always add x∞ to Z. Thus we ensure that
+Z ̸= ∅. In other words, we can define ξu as before if Z ̸= ∅, and ξu = 2 diam(X) if Z = ∅.
+The rest of the proof goes through without any other changes.
+The proof of Bourgain’s theorem provides an efficient randomized procedure for generating set Z. As presented here, this procedure gives an embedding only in Lp (Ω, µ) and
+not in ℓN
+p . We already know that if a set of n points embeds in Lp (Ω, µ) with distortion D
+(n)
+then it embeds in ℓp 2 with distortion D. However, in fact, we need only N = O((log n)2 )
+3
+
+dimensions: for every value of s ∈ {1, . . . , l} we make Θ(log n) samples of the set Z. Then
+the total number of samples equals Θ((log n)2 ). Using the Chernoff bound, it is easy to show
+that the distortion of the obtained embedding is O(log n) w.h.p.
+Fact 2.5 (Matoušek). Let Dn,p be the smallest number D such that every metric space on n
+points embeds in ℓp with distortion at most Dn,p . Then
+
+
+log n
+.
+Dn,p = Θ
+p
+
+4
+
+

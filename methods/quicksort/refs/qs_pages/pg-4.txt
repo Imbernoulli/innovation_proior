@@ -1,0 +1,90 @@
+Quicksort
+
+A Comparison of Quicksort with Merge Sorting When it finds an item with key greater than the bound,
+
+The National-Elliott 405 computer has a delay-line this item is copied into the locations to which the upper
+working store of 512 locations, and a magnetic-disc pointer now refers. The upper pointer is stepped down,
+backing store of 16.384 words. The average access and proceeds on its downward scan of the data. When
+time for the working store is 0-8 msec and eeondce it finds an item with key lower than the bound, this item
+access time for a block of 64 words in the backing store is copied into the locations referred to by the lower
+is 32 msec. There are 19 words of immediate-access pointer. The lower pointer is then stepped up, and the
+storage, which are used to contain instructions and process is repeated until both the pointers are referring
+working space of the inner loops; the time taken by to the same item. Then the item which has supplied the
+such loops is about 0-15 msec per instruction. bound is copied from working space into the locations
+
+Table 1 gives a comparison of times taken by to which the pointers refer. Throughout the process,
+Quicksort and a merge sorting method, both pro- the stationary pointer refers to locations whose contents
+grammed by Mr. P. Shackleton for the 405. The times have been copied elsewhere, while the moving pointer
+were measured automatically by the computer in tests searches for the item to be copied into these locations.
+on random data conducted by Mr. D. J. Pentecost. The expected number of copying operations is obvicusly
+
+The figures relate to six-word items with a single-word twice the corresponding figure for exchanges.
+
+key.
+Table 1 Cyclic Exchange
+On a machine with single-address instructions, which
+NUMBER OF ITEMS MERGE SORT QUICKSORT has the facility of exchanging the contents of accumulator
+and store, it is more economical to perform long
+500 2min 8 sec 1 min 21 sec sequences of exchanges at one time. A single exchange
+1,000 ' 4min48sec | 3min 8sec operation involves reading to the accumulator, exchang-
+1,500 | 8 min I5 sec* | 5 min 6 sec ing with store, and writing to store, giving 3N instructions
+2,000 11 min Osec* | 6 min 47 sec to perform N exchanges. If these exchanges are
+
+performed cyclically all at the same time, one exchange
+
+|
+instruction can take the place of a read and a write
+
+* These figures were computed by formula, since they cannot
+
+be achieved on the 405 owing to limited store size. instruction in all the exchanges except the first and the
+last. Thus only one read instruction, one write instruc-
+Part Two: Implementation tion, and 2N — 1 exchange instructions are required.
+
+Further economy is achieved in the case of multi-word
+items by the fact that the count of words exchanged need
+be tested only once for each N-fold exchange of each
+word of the item.
+
+The method of Quicksort allows all exchanges to be
+saved up until the end of the partitioning process, when
+they may be executed together in a cyclic movement.
+In practice, the values of the pointers at the time when
+they come to a halt are stored in a list for later exchang-
+ing. The number of locations which can be spared to
+hold this list will be a limiting factor in the gain of
+efficiency.
+
+In the implementation of a sorting method on a given
+computer, it is often possible to make adaptations which
+will ensure optimization of the innermost loops. Quick-
+sort turns out to be exceptionally flexible; a number of
+possible variations are described below. The choice of
+which variation is adopted on any given computer will,
+of course, depend on the characteristics of the computer.
+In making the decision, the theoretical estimate of time
+taken for various values of a, 6, c, and M should be used
+to determine the optimal method; it will not be necessary
+to write and test a large number of different programs.
+
+Partition without Exchange
+
+On some computers the exchange operation would Optimization of the Key Comparison Loop
+
+involve copying one of the items into workspace while Most sorting methods require that a test be made
+the other item overwrites the locations which it occupied. every time that a pointer is stepped, to see whether it
+On such a computer it would be advantageous to avoid has gone outside its possible range. Quicksort is one
+exchanging altogether, and a method of achieving this of the methods which can avoid this requirement by the
+is described below. use of sentinels. Before embarking on the sort, sentinels
+
+The item chosen to yield the bound should always be in the form of items with impossibly large and small
+that which occupies the highest-addressed locations of key values are placed at each end of the data to be
+the segment which is to be partitioned. If it is feared sorted. Now it is possible to remove the pointer test
+that this will have a harmfully non-random result, a from the key comparison cycle: the test is made only
+randomly chosen item should be initially placed in the when both pointers are stopped and an exchange is just
+highest-addressed locations. The item which yielded about to be made. If, at this time, the pointers have
+the bound is copied into working space. Then the not crossed, the exchange is made and the partition
+upper and lower pointers are set to their initial values, process is continued. If they have crossed over, the
+and the lower pointer starts its upward scan of the store. partition process is ac an end.
+
+13

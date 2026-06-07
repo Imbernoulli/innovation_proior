@@ -1,0 +1,592 @@
+1962                                IRE    TRANSACTIONS             ON INFORMATION                 THEORY                                             21
+
+
+                            Low-Density                         Parity-Check                           Codes*
+                                                            R. G. GALLAGER?
+
+
+
+   Summary-A      low-density  parity-check    code is a code specified    equations. We call the set of digits contained in a parity-
+by a parity-check matrix with the following properties : each column
+                                                                           check equation a parity-check          set. For example, the
+contains a small fixed numberj       > 3 of I’s and each row contains
+a small fixed number k > j of 1’s. The typical minimum distance of         first parity-check set in Fig. 1 is the set of digits (1,2,3,5).
+these codes increases linearly with block length for a fixed rate and          The use of parity-check codes makes coding (as dis-
+fixed j. When used with maximum likelihood decoding on a snfh-             tinguished from decoding) relatively simple to implement.
+ciently quiet binary-input    symmetric     channel, the typical prob-     Also, as Elias [3] has shown, if a typical parity-check
+ability of decoding error decreases exponentially with block length
+                                                                           code of long block length is used on a binary symmetric
+for a fixed rate and fixedj.
+   A simple but nonoptimum decoding scheme operating directly              channel, and if the code rate is between critical rate and
+from the channel a posteriori probabilities      is described. Both the    channel capacity, then the probability of decoding error
+equipment complexity and the data-handling          capacity in bits per   will be almost as small as that for the best possible code
+second of this decoder increase approximately linearly with block          of that rate and block length.
+length.
+                                                                               Unfortunately,  the decoding of parity-check codes is
+   Forj > 3 and a sufficiently low rate, the probability of error using
+this decoder on a binary symmetric channel is shown to decrease            not inherently simple to implement, and thus we must
+at least exponentially with a root of the block length. Some experi-       look for special classes of parity-check codes, such as
+mental results show that the actual probability of decoding error is       described below, for which reasonable decoding procedures
+much smaller than this theoretical bound.                                  exist.
+
+         CODING FOR DIGITAL          DATA TRANSMISSION                                 LOW-DENSITY            PARITY-CHECK           CODES
+        ODING for error correction is one of the many                         Low-density parity-check codes are codes specified by
+         tools available for achieving reliable data trans-                a matrix containing mostly O’s and only a small number
+c        mission in communication     systems. For a wide                  of 1’s. In particular, an (n, j, k) low-density code is a code
+variety of channels, the Noisy Channel Coding Theorem                      of block length n with a matrix like that of Fig. 2 where
+[l, 61 of Information Theory proves that if properly coded                 each column contains a small fixed number, j, of l’s and
+information     is transmitted  at a rate below channel                    each row contains a small fixed number, /c, of 1’s. Note
+capacity, then the probability of decoding error can be                    that this type of matrix does not have the check digits
+made to approach zero exponentially          with the code                 appearing in diagonal form as in Fig. 1. However, for
+length. The theorem does not, however, relate the code
+length to the computation time or the equipment costs                         INFORMATION              ;$lgICI; Y
+necessary to achieve this low error probability.       This                        DIGITS
+paper describes a class of coding and decoding schemes                       /L-7-
+                                                                             x1 x2 x3 x4          x5    X6   Xl
+that can utilize the long block lengths necessary for low
+error probability without requiring excessive equipment
+or computation.
+    The codes to be discussed here are special examples of
+parity-check codes.’ The code words of a parity-check
+code are formed by combining a block of binary informa-                                     Fig. l-Example        of parity-check   matrix.
+tion digits with a block of check digits. Each check digit
+is the modulo 2 sum’ of a prespecified set of information
+                                                                            11110000000000                                            000000
+digits. These formation rules for the check digits can be                   00001111000000                                            000000
+conveniently represented by a parity-check matrix, as in                    00000000111100                                            000000
+                                                                            00000000000011                                            110000
+ Fig. 1. This matrix represents a set of linear homogeneous                 00000000000000                                            001111
+modulo 2 equations called parity-check equations, and
+                                                                            10001000100010                                            000000
+ the set of code words is the set of solutions of these                     01000100010000                                            001000
+                                                                            00100010000001                                            000100
+                                                                            00010000001000                                            100010
+    * Received by the PGIT, March 15, 1961. Supported in part by            00000001000100                                            010001
+the U. S. Army Signal Corps, the AF Office of Scientific Research,
+the Office of Naval Research, the Mass. Inst. Tech. Computation             10000100000100                                            000100
+Center, and the Applied Science Div., Melpar, Inc.                          01000010001000                                            010000
+    t Elec. Engrg. Dept,, Mass. Inst. Tech., Cambridge, Mass.               00100001000010                                            000010
+    r For a more detailed discussion of parity-check     codes, see         00010000100001                                            001000
+Slepian [a].                                                                00001000010000                                            100001
+    2 The modulo 2 sum is 1 if the ordinary sum is odd and 0 if the
+ordinary sum is even.                                                      Fig. 2-Example      of a low-density     code matrix;    N = 20, j = 3, k = 4.
+22                                 IRE    TRANSACTIONS              ON INFORMATION                   THEORY                                 January
+coding purposes, the equations represented by these                           The probability     of error using maximum likelihood
+matrices can always be solved to give the check digits as                  decoding for low-density codes clearly depends upon the
+explicit sums of information digits.                                       particular channel on which the code is being used. The
+    These codes are not optimum in the somewhat artificial                 results are particularly simple for the case of the BSC,
+sense of minimizing probability of decoding error for a                    or binary symmetric channel, which is a binary-input,
+given block length, and it can be shown that the maximum                   binary-output,   memoryless channel with a fixed prob-
+rate at which these codes can be used is bounded below                     ability of transition from either input to the opposite
+channel capacity. However, a very simple decoding                          output. Here it can be shown [4] that over a reasonable
+scheme exists for low-density codes, and this compensates                  range of channel transition probabilities, the low-density
+for their lack of opt’imality.                                             code has a probability of decoding error that decreases
+    The analysis of a low-density code of long block length                exponentially with block length and that the exponent
+is difficult because of the immense number of code words                   is the same as that for the optimum code of slightly higher
+involved. It is simpler to analyze a whole ensemble of                     rate as given in Fig. 5.
+such codes because the st,atist,ics of an ensemble permit
+one to average over quantities that are not tractable in
+individual codes. From the ensemble behavior, one can
+make statistical statements about the properties of the
+member codes. Furthermore, one can with high probability
+find a code with these properties by random selection from
+the ensemble.
+                                                                           Fig. 3-Sketch     of bound to minimum    distance distribution    function.
+    In order to define an ensemble of (n, j, k) low-density
+ codes, consider Fig. 2 again. Xote that the matrix is
+ divided into j submatrices, each containing a single 1 in                                                Rate             h                  6
+ each column. The first of these submatrices contains all
+                                                                                                          0.167          0.255              0.263
+ its l’s in descending order; i.e., the i’th row contains l’s
+ in columns (i - 1)/c + 1 to i7c. The other submatrices                                                   0.25           0.122
+                                                                                                                         0.210              0.214
+                                                                                                                                            0.241
+                                                                                                          0.333          0.129              0.173
+ are merely column permutations of the first. We define an
+ ensemble of (72,j, 1:) codes as the ensemble resulting from                                              0.4
+                                                                                                          0.5            0.023
+                                                                                                                         0.044              0.145
+                                                                                                                                            0.11
+ random permutation of the columns of each of the bottom
+ j - 1 submatrices of a matrix such as Pig. 2, with equal                  Fig. 4-Comparison      of Sjk, the ratio of typical minimum distance
+                                                                              to block length for an (n, j, k) code, to 6, the same ratio for an
+ probability assigned to each permutation.3 There are two                     ordinary parity-check code of the same rate.
+ interesting results that can be proven using this ensemble,
+ the first concerning the minimum distance of the member                                                             RATE FOR EQUIVALENT
+  codes, and the second concerning the probability           of                                 /c          Rate         OPTIMULM CODE
+  decoding error.
+     The minimum distance of a code is the number of                            3               6          0.5                   0.555
+                                                                                3               i          0.4                   0.43
+  positions in which the two nearest code words differ.
+  Over the ensemble, the minimum distance of a member                           ::              4          0.333
+                                                                                                           0.25                   0.343
+                                                                                                                                  0.266
+  code is a random variable, and it can be shown [4] that
+                                                                                     Fig. ~-LOSS of rate associated with low-density      codes.
+  the distribution function of this random variable can be
+  overbounded by a function such as sketched in Fig. 3.
+  As the block length increases, for fixed j 2 3 and 1; > j,                  Although this result for the BSC shows how closely
+  this function approaches a unit step at a fixed fraction                 low-density codes approach the optimum, the codes are
+  8ik of the block length. Thus, for large n, practically all              not designed primarily        for use on this channel. The
+  the codes in the ensemble have a minimum distance of at                  BSC is an approximation to physical channels only when
+  least nsj,. In Fig. 4 this ratio of typical minimum distance             there is a receiver that makes decisions on the incoming
+  to block length is compared to that for a parity-check                   signal on a bit-to-bit basis. Since t,he decoding procedure
+  code chosen at random, i.e., with a matrix filled in with                to be described later can actually use the channel a
+  equiprobable independent binary digits. It should be                     posteriori probabilities, and since a bit-by-bit      decision
+  noted that for all the specific nonrandom procedures                     throws away available information,           we are actually
+  known for constructing codes, the ratio of minimum                       int#erested in the probability of decoding error of a binary-
+  distance to block length appears to approach 0 with in-                  input, continuous-output        channel. If the noise affects
+  creasing block length.                                                   the input symbols symmetrically,         then this probability
+                                                                           can again be bounded by an exponentially decreasing
+     3 There is no guarantee that all the rows in such matrices will       fun&ion of the block length, but the exponent is a rather
+ be linearly independent, and, in fact, all the matrices to be discussed   complicated function of t.he channel and code. It is
+ here contain at least j-1 dependent rows. This simply means that
+ the codes have a slightly higher information     rate than the matrix     expected that the same type of result holds for a wide
+ indicates.                                                                class of channels with memory, but no analytical results
+1962                                        Gallager: Low-Density Parity-Check Codes                                                 23
+have yet been derived. For channels with memory, it is            in the first tier are transmission errors. Then on the first
+clearly advisable, however, to modify the ensemble some-          decoding attempt, the error-free digits in the second tier
+what, particularly by permuting the first submatrix and           and their parity-check constraints will allow correction
+possibly by changing the probability     measure on the           of the errors in the first tier. This in turn will allow correc-
+permutations.                                                     tion of digit d on the second decoding attempt. Thus
+                                                                  digits and parity-check equations can aid in decoding a
+                          DECODING                                digit seemingly unconnected with them. The probabilistic
+                                                                  decoding scheme to be described next utilizes these extra
+Introduction                                                      digits and extra parity-check        equations more system-
+    Two decoding schemes will be described here that appear       atically.
+to achieve a reasonable balance between complexity and
+                                                                  Probabilistic Decoding
+probability     of decoding error. The first is particularly
+simple but is applicable only to the BSC at rates far                 Assume that the code words from an (n, j, k) code are
+below channel capacity. The second scheme, which de-              used with equal probability on an arbitrary binary-input
+codes directly from the a posteriori probabilities at the         channel. For any digit d, using the notation of Fig. 6,
+channel output, is more promising but can be understood           an iteration process will be derived that on the m’th
+more easily after the first scheme is described.                  iteration computes the probability that the transmitted
+    In the first decoding scheme, the decoder computes all        digit in position d is a 1 conditional on the received symbols
+the parity checks and then changes any digit that is              out to and including the m’th tier. For the first iteration,
+contained in more than some fixed number of unsatisfied           we can consider digit d and the digits in the first tier to
+parity-check equations. Using these new values, the parity        form a subcode in which all sets of these digits that satisfy
+checks are recomputed, and the process is repeated until          the j parity-check       equations in the tree have equal
+the parity checks are all satisfied.                              probability of transmission.4
+    If the parity-check sets are small, this decoding pro-            Consider the ensemble of events in which the trans-
+cedure is reasonable, since most of the parity-check sets         mitted digits in the positions of d and the first tier are
+will contain either one transmission error or no trans-           independent equiprobable binary digits, and the prob-
+mission errors. Thus when most of the parity-check                abilities of the received symbols in these positions are
+equations checking on a digit are unsatisfied, there is a         determined by the channel transition probabilities Pz(y).
+ strong indication that that digit is in error. For example,      In this ensemble the probability of any event conditional
+ suppose a transmission error occurred in the first digit         on the event that the transmitted          digits satisfy the j
+ of the code in Fig. 2. Then parity checks 1, 6, and 11 would     parity-check equations is the same as the probability
+ be violated, and all three parity-check equations checking        of an event in the subcode described above. Thus, within
+ digit 1 would be violated. On the other hand, at most,            this ensemble we want to find the probability that the
+ one of the three equations checking on any other digit            transmitted digit in position d is a 1 conditional on the
+ in the block would be violated.                                   set of received symbols {y} and on the event X that the
+     To see how an arbitrary digit d can be corrected even         transmitted    digits satisfy the j parity-check equations
+ if its parity-check sets contain more than one transmission       on digit d. We write this as
+ error, consider the tree structure in Fig. 6. Digit d is
+ represented by the node at the base of the tree, and each
+ line rising from this node represents one of the parity-         Using this ensemble and notation, we can prove the
+ check sets containing digit d. The other digits in these         following theorem:
+ parity-check sets are represented by the nodes on the                Theorem I: Let P, be the probability that the trans-
+ first tier of the tree. The lines rising from tier 1 to tier 2   mitted digit in position d is a 1 conc$tional on the received
+ of the tree represent the other parity-check sets containing     digit in position d, and let Pi, be the same probability
+ the digits on tier 1, and the nodes on tier 2 represent the      for the l’th digit in the i’th parity-check set of the first
+ other digits in those parity-check sets. Notice that if          tier in Fig. 6. Let the digits be statistically independent
+ such a tree is extended to many tiers, the same digit will       of each other, and let X be the event that the transmitted
+ appear in more than one place, but this will be discussed.       digits satisfy the j parity-check constraints on digit d.
+     Assume now that both digit d and several of the digits       Then
+
+
+
+
+                                                                      4 An exception to this statement occurs if some linear combi-
+                                                                  nation of those parity-check equations not containing d produces a
+                                                                  parity-check set containing only digits in the first tier. This will be
+                  Fig. 6-Parity-check   set tree.                 discussed later but is not a serious restriction.
+24                             IRE   TRANSACTIONS          ON INFORMATION             THEORY                             January
+   In order to prove this theorem, we need the following              Consider first the 2-tier case. We can use Theorem 1
+lemma:                                                            to find the probability that each of the transmitted digits
+   Lemma 1: Consider a sequence of m independent binary           in the first tier of the tree is a 1 conditional on the received
+digits in which the l’th digit is 1 with probability   P,.        digits in the second tier. The only modification of the
+Then the probability that an even number of digits are            theorem is that the first product is taken over only j - 1
+1 is                                                              terms, since the parity-check set containing digit d is
+                                                                  not included. Now these probabilities can be used in (1)
+                    1 + fi (1 - 2Pd                               to find the probability        that the transmitted     digit in
+                         1=1                                      position d is 1. The validity of the procedure follows
+                             2
+                                                                  immediately from the independence of the new values of
+Proof of Lemma: Consider the fmlction                             Pi, in the ensemble used in Theorem 1. By induction,
+                                                                  this iteration process can be used to find the probability
+                  rJzn=I (1 - I’, + P,O.                          that the transmitted digit d is 1 given any number of tiers
+                                                                  of distinct digits in the tree.
+Observe that if this is expanded into a polynomial in t,
+                                                                      The general decoding procedure for the entire code
+the coeficient of ti is the probability of il’s. The function
+                                                                  may now be stated. For each digit and each combination
+rpLLl (1 - r2 - PA is identical except that all the odd           of j - 1 parity-check sets containing that digit, use (1)
+powers of t are negative. Adding these two functions, all
+                                                                  to calculate the probability of a transmitted 1 conditional
+the even powers of t are doubled, and the odd terms
+                                                                  on the received symbols in the j - 1 parity-check sets.
+cancel out. Finally, letting t = 1 and dividing by 2, the
+                                                                  Thus there are j different probabilities associated with each
+result is the probability of an even number of ones. But
+                                                                  digit, each one omitting 1 parity-check set. Next, these
+                                                                  probabilities are used in (1) to compute a second-order
+Q (1 - PI + PL) + Q (1 - P, - P,)                                 set of probabilities. The probability to be associated with
+____              .-~__~                                          one digit in the computation of another digit d is the
+                                                                  probability     found in the first iteration, omitting the
+                                          1 + fi (1 - 2P,)        parity-check set containing digit d. If the decoding is
+                                      =        1==1
+                                                           ,      successful, then the probabilities associated with each
+                                                  2
+                                                                  digit approach 0 or 1 (depending on the transmitted
+thus proving the lemma.                                           digit) as the number of iterations is increased. This
+   Proof of Theorem: By      the definition    of conditional     procedure is only valid for as many iterations as meet the
+probabilities,                                                    independence assumption in Theorem I. This assumption
+                                                                  breaks down when the tree closes upon itself. Since each
+                                                                  tier of the tree coutains (j - 1)(/c - 1) more nodes than
+                                                                  the previous tier, the independence assumption must
+Given that zd = 0, a parity check on d is satisfied if the        break down while m is quite small for any code of reason-
+other (k - 1) positions in the parity-check set contain an        able block length. This lack of independence can be
+even number of 1’s. Since all digits in the ensemble are          ignored, however, on the reasonable assumption that the
+statistically independent, the probability that all j parity      dependencies have a relatively minor effect and tend to
+                                                                  cancel each other out somewhat. Also, even if dependencies
+checks are satisfied is the product of the probabilities of the
+individual checks being satisfied. Using Lemma 1 this is          occur in the m’th iteration, the first m - 1 iterations have
+                                                                  reduced the equivocation in each digit. Then we can
+                                    k-l                           consider the probabilities after the m - I iterations to
+                                1 + n (1 - 2P,,)                  bc a 112’~received sequence that should be easier to decode
+                                    I=1
+Pr (X 1 x,1 = 0, IYI) = lj                                  (3)   than the original received sequence.
+                              I         2        1.
+                                                                      The most significant feature of this decoding scheme
+Similarly,                                                         is that the computation per digit per iteration is inde-
+                                     b-l                          pendent of block length. Furthermore it can be shown
+                               1 -   n (1 - 2Pi,)                 that the average number of iterations required to decode
+                                     1=1
+Pr (S 1 x,1 =                                               (4)   is bounded by a quantity proportional to the log of the
+                                         2
+                                                                   log of the block length.
+Substituting (3) and (4) into (2) we get the statement                For the actual computation          of the probabilities   in
+of the theorem; Q.E.D.                                            Theorem 1, it appears to be more convenient to USC (1) in
+   Judging from the complexity of this result, it would           terms of log-likelihood ratios. Let
+appear difficult to compute the probability       that the
+transmitted digit in position d is a 1 conditional on the
+received digits in two or more tiers of the tree in Fig. 6.
+Fortunately, however, the many-tier case can be solved
+from the l-tier case by a simple iterative technique.
+1962                                                 Gallager: Low-Density Parity-Check Codes                                            25
+where a is the sign and p the magnitude of the log-likeli-                 Probability   of Error   Using Probabilistic   Decoding
+hood ratio. After some manipulation, (1) becomes                               A mathematical analysis of probabilistic decoding is
+                                                                           difficult, but a very weak bound on the probability of error
+                                                                           can be derived easily.
+                                                                               Assume a BSC with crossover probability           pO and
+                                                                           assume first an (n, j, k) code with i = 3 parity-check sets
+where                                                                      containing each digit. Consider a parity-check set tree,
+                                                                           as in Fig. 6, containing m independent tiers, but let the
+                            f(P) = In *.                                   tiers be numbered from top to bottom so that the upper-
+                                                                           most tier is the 0 tier and the digit to be decoded is tier m.
+                                                                               Modify the decoding procedure as follows: if both
+   The calculat’ion of the log-likelihood ratios in (6) for
+                                                                           parity checks corresponding to the branches rising from
+each digit can be performed either serially in time or by
+                                                                           a digit in the first tier are unsatisfied, change the digit;
+parallel computations. The serial computation       can be
+                                                                           using these changed digits in the first tier, perform the
+programmed for a general-purpose computer, and the
+                                                                           same operation on the second tier, and continue this
+experimental data at the end of this paper was obtained
+                                                                           procedure down to digit d.
+in this manner. For fast decoding, parallel computing is
+                                                                               The probability of decoding error for digit d after this
+more promising, and Fig. 7 sketches a simplified block
+                                                                           procedure is an upper bound to that resulting from making
+diagram showing how this can be done.
+                                                                           a decision after the m’th iteration of the probabilistic
+                                                                           decoding scheme. Both procedures base their decision only
+                                                                           on the received symbols in the m-tier tree, but the
+                                                                           probabilistic scheme always makes the most likely de-
+       ” DIOITS                                                            cision from this information.
+                                                                               We now determine the probability that a digit in the
+                                                                           first tier is in error after applying the modified decoding
+                                                                           procedure described above. If the digit is received in
+          n(l-R)                                                           error (an event of probability p,) then a parity check
+        PARITY CHECKS
+                                                                           constraining that digit will be unsatisfied if, and only if,
+                                                                           an even number (including zero) of errors occur among
+                                                                           the other lc - 1 digits in the parity-check set. From
+                                                                           Lemma 1, the probability of an even number of errors
+                                                                           among k - 1 digits is
+                                          DECODED
+                                          OUTPUT
+                                                                                                    1 + (1 - 2pO)k-1*
+                        Fig. 7-Decoding      apparatus.                                                     2                            (7)
+
+                                                                           Since an error will be corrected only if both parity checks
+   If the input to the decoder is in the form of a log-
+                                                                           rising from the digit are unsatisfied, the following expres-
+likelihood ratio, the first row of boxes in Fig. 7 computes
+                                                                           sion gives the probability that a digit in the first tier is
+f(p) for each digit, corresponding to the right-most
+                                                                           received in error and then corrected.
+operation in (6). The output from the adders on the next
+row is ~ZI: f(Pi2), corresponding to the two right-most
+operations in (6). Likewise, successive rows in Fig. 7
+correspond to operations in (6) working to the left.
+                                                                                               po 1 + (1 - 2p(J-l
+                                                                                                 [       2                I.
+                                                                                                                          2
+                                                                                                                                         (8)
+Clearly, Fig. 7 omits some details, such as operations on the              By the same reasoning, (9) gives the probability that a
+signs of the log-likelihood ratios and the association of j                digit in the first tier is received correctly but then changed
+different, log-likelihood ratios with each digit, but these                because of unsatisfied parity checks.
+create no essential difficulty.
+   We see from Fig. 7 that a parallel computer can be
+simply instrumented        requiring principally   a number
+proportional to n of analogue adders, modulo 2 adders,
+                                                                                           (1 - PO) [
+                                                                                                        1 - (1 - 2pJ-l
+                                                                                                               2              I*
+                                                                                                                               2
+                                                                                                                                         (9)
+amplifiers, and nonlinear circuits to approximate the                      Combining (8) and (9), the probability of error of a digit
+function f(P). How closely this function must be approxi-                  in the first tier after applying this decoding process is
+mated is a subject for further study, but there are indica-
+tions that it is not critical.5
+                                                                           PI = PO -     po
+                                                                                          C  1 + (1 - 2p$-l
+                                                                                                    2             12
+
+
+
+                                                                                                                                   I- (10)
+    6 Some recent Lxperimental     work indicates that if computation
+is strictly digital, 6 significant bits are sufficient to represent j(p)                                        1 - (1 - 2p$-’       2
+without appreciable effect on the probability      of decoding error.                          + (1 - PO)[             2
+26                                     IRE          TRANfiACTIONS             ON INFORMATION                                      THEORY                                                      January
+  By induction it easily follows that if pi is the probability                         This same argument can be applied to codes with more
+of error after processing of a digit in the ith tier, then                          than 3 parity-check sets per digit. Stronger results will be
+                                                                                    achieved if for some integer b, to be determined later,
+pi+1 = PO - po
+                   [
+                       1 + (1 - 2p$-l
+                              2                    1 2
+                                                                                    a digit is changed whenever b or more of the parity-check
+                                                                                    constraints rising from the digit are violated. Using this
+
+                       + (1 - PO)
+                                [
+                                         1 - (1 - 2p,)“-’
+                                                2               I. (11)
+                                                                     2              criterion and following the reasoning leading to (11) we
+                                                                                    obtain
+
+We now show that for sufficiently small pO, the sequence
+                                                                                    p,+1        =    PO -      PO cl-b\
+                                                                                                                          j-l i - 1
+                                                                                                                                   c        I       )
+[p%] converges to 0. Consider Fig. 8 which is a sketch of                                                                                   ‘       I
+
+Pi+1 as a function of p,. Since the ordinate for one value
+of i is the abscissa for the next, the dotted zig-zag line
+illustrates a convenient graphical method of finding pi
+                                                                                           .[
+                                                                                                    1 + (1 -
+                                                                                                               2
+                                                                                                                      2pi)k-l
+                                                                                                                                           I[   z 1 -       (1 -
+                                                                                                                                                                 2
+                                                                                                                                                                     api)“-’
+                                                                                                                                                                                   1i-l-2
+
+
+for successive values of i. It can be seen from the figure                             + (1 - pa) g                        (j 1 ‘)
+that if                                                                                                            1-6,                ‘        /
+
+
+             0 < pi+1 < pi
+
+                  Pi+1 = pi
+                                       (for
+                                       (for
+                                                    0 < pi i
+                                                    pi = 0),
+                                                               po)
+                                                                             02)           .[
+                                                                                                    1 - (1 -
+                                                                                                           2 2pJk-’                        I[   1 1 + (1 - 2pJ-1
+                                                                                                                                                         2                         1 i-l-l*       (13)
+
+                                                                                    The integer b can now be chosen to minimize P~+~. The
+then the sequence [pi] -+ 0. It can be seen from (11) that                          solution to this minimization is the smallest integer b for
+for p0 sufficiently small, inequality (12) is satisfied. Fig. 9                     which
+gives the maximum p, for several values of k.                                                                                              1 +          (1 _ 2p,)“-l         ?b--i-t2
+                                                                                                            l--PO<
+                                                                                                              PO              -        [ 1 -            (1 - 2p,)“-l    1              .          (14)
+
+                                                                                    From this equation, it is seen that as pi decreases, b
+                                                                                    also decreases. Fig. 10 sketches P,+~ as a function of pi
+                                                                                    when b is changed according to (14). The break points in
+                                                                                    the figure represent changes in 6.
+
+
+
+                                         pi
+                                   Fig. 8.
+                                                                                                                p*+,
+
+
+         j             K                 Rate                    PO
+
+         i             6                 0.5
+                                         0.4                   0.061
+                                                               0.04
+
+         i             54                0.333
+                                         0.25                  0.106
+                                                               0.075                                 Fig. lo-Behavior                       of decoding iterations            for j > 3.
+
+     Fig. g--Maximum        po for weak bound decoding convergence.
+                                                                                      The proof that the probability of decoding error ap-
+                                                                                    proaches 0 with an increasing number of iterations for
+  The rate at which [pi] --+ 0 may be determined                              by    sufficiently small cross over probabilities is the same a:
+noting from (11) that for small pi                                                  before. The asymptotic approach of the sequence [pt.
+                        pi+1 =     p2@         -    l)p,.                           to 0 is different, however. From (14), if pi is sufficient’lg
+                                                                                    small, b takes the value j/2 for j even and j + l/2 for ,
+From this it is easy to show that for suficiently                        large i,   odd. Using these values of b and expanding (13) in :
+                                                                                    power series in pi,
+                            p% = $4~      -        ~)PJ,
+                                                                                                             ; 1      ;       (lc _             l)“-“/2p~~-1w2
+where C is a constant independent of i. Since the number                            pi+1        = PO
+of independent tiers in the tree increases logarithmically
+                                                                                                        (      2          1
+with block length, this bound to the probability of de-
+coding error approaches 0 with some small negative                                                                        + higher order terms                                (j     odd)         (1:
+power of block length. This slow approach to 0 appears
+to be a consequence of the modification of the decoding                             pi+1 = ( i -21 >(k - 1);/zp:/2
+scheme and of the strict independence requirement, rather
+than of probabilistic decoding as a whole.                                                                         + higher order terms                                 (j         even).
+1962                                       Gallager: Low-Density Parity-Check Codes                                                27
+Using this, it can be shown that for a suitably                 of interest on a computer. Unfortunately,
+                                                             chosen                                           the experiment
+positive constant Ci, and sufficiently large i                  must be repeated until there are many decoding failures if
+                                                                P(e) is to be evaluated with any accuracy, and thus many
+           pi 5 em [ -Cjk(y)i]                 (j odd)     (16) times l/P(e) trials are necessary. For block lengths of
+                                                                about 500, an IBM 7090 computer requires about 0.1
+                                                                seconds per iteration to decode by the probabilistic
+                                        (j even).
+                                                                decoding scheme. Consequently, many hours of computa-
+                                                                tion time are necessary to evaluate even a P(e) of the
+It is interesting to relat,e this result to the block length
+                                                                order of 10e4.
+of the code. Since there are (j - I)“@ - 1)” digits in the
+                                                                   Because of limitations     on available computer time,
+m’th tier of a tree, n must be at least this big, giving the
+                                                                all of the results presented will be for situations in which
+left side of (17). On the other hand, a specific procedure
+                                                                P(e) is large. Certa.inly it would be more interesting to
+can be described [4] for constructing codes satisfying the
+                                                                have results for small P(e). However, the data presented
+right side of (17).
+                                                                are at least sufficiently convincing to justify further
+                                                                experimental work.
+       ln (4                   In 2 -
+                                 (       2j(iin   1) >             The first two codes to be discussed were used on the
+                                                           (17) BSC and the last code on a Gaussian noise channel. The
+In (j - l)(lc - 1) ’ m ’ 2 In (k - l)(j -7’
+                                                                BSC was unduly emphasized for the following reasons:
+Combining (16) and (17), the probability           of decoding  first, the effect of channel variations on the BSC can be
+error for a code satisfying (17) is bounded by                  eliminated     by controlling   the number of crossovers
+                                                                rather than the crossover probability; next,, the BSC is
+P,<     exp-C,,
+                      n
+                     --
+                   [ 212 2j(kl     1)1                          convenient for comparison with other coding and de-
+                                                                coding schemes; and finally, it is likely that the operation
+              ln [(j - 1)/2]/[2 In (j - 1)(/c - l)] (j odd) of the decoding scheme on one channel is typical of its
+                                                                operation on other channels.
+
+Pm 5 exp -C,k [ 2 - 2j(knm l)        1                                A (504, 3, 6) Code on Binary Symmetric Channel
+                                                                         A code of block length 504 with each digit contained
+               In [(j/2)]/[2   In (j -   l)(k -   l)]   (j   even).   in three parity-check       sets and each parity-check       set
+                                                                      containing 6 digits was selected by t,he IBM 704 computer
+For i > 3, this probability of decoding error bound de-               using a pseudo-random .number routine. The only re-
+creases exponentially wit’h a root of n. Observe that if              striction on the code was that no two parity-check sets
+the number of iterat’ions m which can be made without                 should contain more than one digit in common. That
+dependencies were (2 ln(j - l)(k - l))/(ln j/2) times                 restriction   guaranteed the validity        of the first-order
+larger, then the probability      of decoding error would             iteration in the decoding process and also excluded the
+decrease exponentially with n. It is hypothesized that                remote possibility of choosing a code with minimum
+using the probabilistic decoding scheme and continuing                distance of 2.
+to iterate after dependencies occur will produce this                    Fig. 11 plots the fraction of times the decoder was unable
+exponential dependence.                                               to decode correctly as a function of the number of cross-
+   ,4 second way to evaluate the probabilistic decoding               overs. The number in parentheses beside each point is the
+scheme is to calculate the probability distributions of the           number of trials performed with that number of cross-
+log-likelihood ratios in (6) for a number of iterations.              overs. In all the trials on this code, the decoder never
+This approach makes it possible to find whether a code of             decoded to the wrong code word; it just failed to find a
+given j and Ic is capable of achieving arbitrarily      small         code word. If a feedback channel is available, this in-
+error probabilit,y on any given channel. With the aid of              ability to decode troublesome noise patterns is not a
+the IBM 709 computer, it was found that a code with                   serious limitation, since retransmission is possible.
+j = 3, Ic = 6 is capable of handling transition probabilities            Out of the error patterns correctly decoded, 86 per cent
+up to 0.07 and with j = 3, Ic = 4, transition probabilities           were decoded in between 9 and 19 iterations. The rest
+up to 0.144 can be handled. These figures are particularly            were spread out between 20 and 40 iterations. There
+interesting since they disprove the common conjecture                 appeared to be a slight increase in the number of iterations
+that the computational cutoff rate of sequential decoding             necessary to decode as the number of crossovers was
+[7] bounds the rate at which any simple decoding scheme               increased from 37 to 41, but not enough to be st,atistically
+can operate.                                                          significant. The other curve drawn in Fig. 11 is the theo-
+                                                                      retical bound using maximum              likelihood  decoding.
+                 EXPERIMENTAL        RESULTS                             In a later test made on an IBM 7090 computer, a
+   The probability of decoding an error P(e) associated                (504,3,6) code was generated and 1000 sequences of 32
+with a coding and decoding scheme can be directly                     errors each were decoded. The process failed to decode in
+measured by simulating both the scheme and the channel                26 cases and decoded the other 974 sequences correctly.
+28                                        IRE       TRANSACTIONS        ON INFORMATION             THEORY                                January
+   These results appear encouraging when we observe that                     error-correcting breakpoint       for the ensemble of all codes
+no other known coding and decoding scheme of this rate                       of rate 2 is 108 errors.
+is able to decode this many errors with a reasonable
+amount of computation. How well the decoding scheme                          A (500, 3, 5) Code on White Gaussian Noise Channel
+works with smaller numbers of errors is of greater interest,                    Assume a channel that accepts inputs of plus or minus
+though. The rate at which the experimental probability                       1 and adds a Gaussian random variable of mean 0 and
+of error decreases as the number of crossovers decreases                     variance 1 to the input to form the output. The log-
+is discouraging, but there is no justification   for extra-                  likelihood ratio of the input conditional on the output is
+polating this curve to much smaller numbers of crossovers.                   simply twice the received signal. The channel capacity of
+Either a great deal of additional experimental data or a                     this channel can be calculated [5] to be 0.5 bits per symbol.
+new theoretical approach will be necessary for evaluation                    However, if the receiver converts the channel into a
+of smaller numbers of cross overs.                                           BSC by making a decision on each symbol and throwing
+                                                                             away the probabilities,      the probability     of crossover
+       1.0
+             I   I   I      I    I    I         I    I   I   Ill             becomes 0.16, and the channel capacity is reduced to
+                                                                             0.37 bits per symbol.
+                                                                                 In this experiment a (500, 3, 5) code, which has a rate
+      0.8
+                                                                             of 0.4 bits per symbol, was simulated on the IBM 704
+                                                                             computer along with the channel just described. Proba-
+                                                                             bilistic decoding was performed using the log-likelihood
+                                                                             ratios at the output of the channel. Out of 13 trials, the
+                                                                             decoding scheme decoded correctly on 11 trials and
+                                                                             failed to decode twice.
+                                                                                 This experiment is interesting since it suggests that
+                                                                             the loss of rate necessitated by the nonnptimum coding
+                                                                             and decoding techniques proposed here is more than
+                                                                             compensated for by the opportunity of using the a pos-
+                                                                             teriori probabilities at the channel output.
+Fig. 11-Experimental         results for (504, 3, 6) code as function   of
+                         number of transition errors.
+                                                                                                       BIBLIOGRAPHY
+A (500, 3, 4) Code on the Binary. Symmetric Channel                          [II C. E. Shannon, “Certain        results in coding theory for noisy
+                                                                                 channels,” Information and Control, vol. 1, pp. 6-25; September,
+                                                                                 1957.
+   A (500, 3, 4) code, which has a rate of a, was chosen by                  121 D. Slepian, “A class of binary signalling alphabets,” Bell Sys.
+the IBM 704 computer in the same way as the (504,                                Tech. J., vol. 35? pp. 203-234; January, 1956.
+3, 6) code of the last section. Sequences containing from                    [31 P. Elias, “Coding for two noisy channels,” in “Information
+                                                                                 Theory,” C. Cherry, Ed., 3rd London Symp., September, 1955:
+20 to 77 crossovers were put in to be decoded. There were                        Butterworths   Scientific Publications, London, Eng., 1956.
+two sequences for each number of crossovers from 65 to 69                    [41 R. G. Gallager, “Low Density Parity Check Codes,” Sc.D.
+                                                                                 thesis, Mass. Inst. Tech., Cambridge; September, 1960.
+and from 72 to 77 and one sequence for all the other num-                    151 F. J. Bloom, et al., “Improvement        of binary transmission by
+                                                                                 null-zone reception,” PROC. IRE, vol. 45, pp. 963-975; July,
+bers. The decoding was successful for all sequences except                      -__.
+                                                                                lwi7.
+one 73-crossover case, one 75-crossover case, and both                       Kl R. M. Fano, “The Transmission      of Information,”     The Tech-
+                                                                                 nology Press, Cambridge, Mass.; 1961.
+77-crossover cases. The theoretical error-correcting break-                  [71 J. M. Wozencraft     and B. Reiffen, “Sequential      Decoding,”
+point for the (500, 3, 4) ensemble is 103 errors, and the                        The Technology Press, Cambridge, Mass.; 1961.
+

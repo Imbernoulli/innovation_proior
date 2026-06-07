@@ -22,9 +22,9 @@ Two diagnostic facts about *existing* approaches set up the problem. First, the 
 
 **Singular value decomposition / PCA projection.** Embed the $n\times d$ data matrix $A$ into $\mathbb{R}^k$ by projecting onto the span of the top-$k$ singular vectors, producing the rank-$k$ matrix $A_k$. Core guarantee: $\|A-A_k\|\le\|A-D\|$ for all rank-$k$ $D$ under any unitarily invariant norm, so under Frobenius the total squared displacement $\sum_i \|(\text{row }i)-(\text{projected row }i)\|^2$ is minimized. Gap: this is a global criterion with no local control — an individual pairwise distance can collapse arbitrarily; the method gives no all-pairs $(1\pm\varepsilon)$ guarantee, and the required $k$ is dictated by the data's spectrum, not by $n,\varepsilon$ alone.
 
-**Random projection onto a uniformly random $k$-dimensional subspace (Johnson–Lindenstrauss, original, 1984; sharpened by Frankl–Maehara, *J. Combin. Theory Ser. B* 1988).** Pick a uniformly random $k$-dimensional subspace and project. By rotational symmetry the squared length of a fixed unit vector's projection is sharply concentrated about $k/d$; preserving distances for all pairs then follows by a union bound over the $\binom{n}{2}$ events. Frankl–Maehara gave the explicit sufficiency $k \ge 9(\varepsilon^2 - 2\varepsilon^3/3)^{-1}\ln n + 1$. Gap: constructing and applying a uniformly random orthonormal $k$-frame requires orthogonalizing $k$ vectors in $\mathbb{R}^d$ — conceptually clean but heavier than necessary, and awkward to implement, especially in systems (e.g. databases) restricted to simple aggregate operations.
+**Random projection onto a uniformly random $k$-dimensional subspace (sharpened by Frankl–Maehara, *J. Combin. Theory Ser. B* 1988).** Pick a uniformly random $k$-dimensional subspace and project. By rotational symmetry the squared length of a fixed unit vector's projection is sharply concentrated about $k/d$; preserving distances for all pairs then follows by a union bound over the $\binom{n}{2}$ events. Frankl–Maehara gave the explicit sufficiency $k \ge 9(\varepsilon^2 - 2\varepsilon^3/3)^{-1}\ln n + 1$. Gap: constructing and applying a uniformly random orthonormal $k$-frame requires orthogonalizing $k$ vectors in $\mathbb{R}^d$ — conceptually clean but heavier than necessary, and awkward to implement, especially in systems (e.g. databases) restricted to simple aggregate operations.
 
-**Random Gaussian matrix without orthonormalization (Indyk–Motwani, STOC 1998).** Instead of a true random subspace, draw $k$ independent vectors $U_1,\dots,U_k$ with i.i.d. $N(0,1)$ coordinates and set the $i$-th coordinate of $f(x)$ to $\tfrac{1}{\sqrt d}\langle U_i,x\rangle$; equivalently, fill a $k\times d$ matrix with i.i.d. $N(0,1)$ entries and apply it (then rescale). The vectors are *almost* orthonormal with high probability, so the map behaves like a true random projection while skipping the orthogonalization. Gap: the simplest analyses pay a small price — the sufficient $k$ carries lower-order terms (an additive $O(\log\log n)$), slightly worse than the cleanest bound — and the entries are real Gaussians requiring floating-point sampling and dense multiplication.
+**Random Gaussian matrix without orthonormalization (Indyk–Motwani, STOC 1998).** Instead of a true random subspace, draw $k$ independent vectors $U_1,\dots,U_k$ with i.i.d. $N(0,1)$ coordinates and set the $i$-th coordinate of $f(x)$ to $\tfrac{1}{\sqrt k}\langle U_i,x\rangle$; equivalently, fill a $k\times d$ matrix with i.i.d. $N(0,1/k)$ entries and multiply by it. For a fixed $x$, each unscaled inner product is exactly $N(0,\|x\|^2)$, so the projected squared norm is a scaled $\chi^2_k$ variable without any orthogonalization. Gap: the entries are real Gaussians requiring floating-point sampling and dense multiplication, and the construction still leaves open whether simpler integer or sparse entries can give the same tail behavior.
 
 **Search/construction-only embeddings.** One can also hunt directly for a good projection matrix or a good low-dimensional placement by optimizing a distortion objective over many random or perturbed candidates. Such a search can return a matrix that happens to work on the given inputs, but it produces no distribution-level guarantee, no proof that an arbitrary point set is handled, no $d$-independent bound on $k$, and no certificate — it optimizes one instance rather than establishing the property for all inputs. It is the instance-tuned counterpart to the principled constructions above and closes none of their gaps.
 
@@ -43,7 +43,7 @@ from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.utils.random import sample_without_replacement
 
-def johnson_lindenstrauss_min_dim(n_samples, *, eps=0.1):
+def min_embedding_dim(n_samples, *, eps=0.1):
     # TODO: choose k from n_samples and eps.
     pass
 
@@ -54,7 +54,7 @@ def _check_density(density, n_features):
 def _check_input_size(n_components, n_features):
     pass
 
-def _gaussian_random_matrix(n_components, n_features, random_state=None):
+def _dense_random_matrix(n_components, n_features, random_state=None):
     # TODO: choose and scale a dense entry distribution.
     pass
 
@@ -76,20 +76,22 @@ class RandomProjection:
         n_samples, n_features = X.shape
         random_state = check_random_state(self.random_state)
         if self.n_components == "auto":
-            k = johnson_lindenstrauss_min_dim(n_samples=n_samples, eps=self.eps)
+            k = min_embedding_dim(n_samples=n_samples, eps=self.eps)
         else:
             k = self.n_components
         self.n_components_ = int(k)
         if self.kind == "gaussian":
-            self.components_ = _gaussian_random_matrix(
+            self.components_ = _dense_random_matrix(
                 self.n_components_, n_features, random_state=random_state
             )
-        else:
+        elif self.kind == "sparse":
             self.density_ = _check_density(self.density, n_features)
             self.components_ = _sparse_random_matrix(
                 self.n_components_, n_features, density=self.density_,
                 random_state=random_state
             )
+        else:
+            pass
         return self
 
     def transform(self, X):

@@ -22,7 +22,7 @@ But one minhash is a single coin flip — it tells me h(A)=h(B) or not, a Bernou
 
 Each indicator 𝟙[h_i(A)=h_i(B)] is Bernoulli(J), and the k permutations are independent, so Ĵ is an average of k i.i.d. Bernoulli(J): unbiased, E[Ĵ] = J, with variance Var(Ĵ) = J(1−J)/k. Standard error √(J(1−J)/k) = O(1/√k). To get error ε I need k = O(1/ε²) hashes — a couple hundred for a few percent. No bias constant to chase, no Mellin transforms: it's a plain Monte-Carlo mean of a Bernoulli, and averaging k of them shrinks the noise like 1/√k. The signature is k 32-bit numbers regardless of how big the sets are — the constant-size sketch I wanted.
 
-Now a practical wall. The derivation says "random permutation of the universe." The universe of shingles is enormous — to *literally* draw and store a permutation of billions of row-indices, and sort by it, is impossible; that's more memory and time than the original problem. I don't actually need a true permutation, though. I only need, per hash function, a map from element-id to a number such that the minimum behaves like the minimum under a random permutation — i.e. the map is approximately min-wise independent: for any set X and any x ∈ X, x is the minimizer with probability ≈ 1/|X|. A cheap pairwise-independent hash does this well enough: pick a large prime p (a Mersenne prime, 2⁶¹−1, so the mod is cheap), random a ∈ [1,p), b ∈ [0,p), and map an element's base hash value v to (a·v + b) mod p, then reduce into a 32-bit range. Different (a,b) give the different "permutations" h₁,…,h_k. Collisions in this map are harmless as long as the range (2³²) dwarfs the number of distinct elements, so ties at the minimum are vanishingly rare. So in practice: hash each shingle once to a 32-bit value v; for each of the k functions compute (a_i·v + b_i) mod p reduced to 32 bits; keep the running minimum per function.
+Now a practical wall. The derivation says "random permutation of the universe." The universe of shingles is enormous — to *literally* draw and store a permutation of billions of row-indices, and sort by it, is impossible; that's more memory and time than the original problem. I don't actually get the exact proof once I replace a true permutation by a small hash family, so I need to be honest about the approximation: I want, per hash function, a map from element-id to a number whose minimum behaves close to the minimum under a random permutation — approximately min-wise independent, meaning each x ∈ X is nearly equally likely to be the minimizer. A practical way to get there is cheap universal hashing: first hash the shingle bytes to a fixed 32-bit value v, then pick a large prime p (a Mersenne prime, 2⁶¹−1, so the mod is cheap), random a ∈ [1,p), b ∈ [0,p), and map v to (a·v + b) mod p, reduced into a 32-bit range. Different (a,b) give the different practical "permutations" h₁,…,h_k. A 2³² output range can still collide, but for the sketch this is ordinary implementation noise rather than a change in the intended estimator. So in practice: compute `sha1_hash32` on each shingle, transform that 32-bit value through each (a_i,b_i), mask with 2³²−1, and keep the running minimum per function.
 
 And this computes in one pass and composes beautifully. Initialize each of the k signature slots to +∞ (the max 32-bit value). Stream the set's elements; for each element update slot i to min(slot i, (a_i·v+b_i) mod p). One pass, O(k) work per element. Even better: the signature of A∪B is the elementwise minimum of A's signature and B's signature — because the minimum over a union is the smaller of the two minima. So sketches *merge* under set union by taking elementwise min, which means I can shard a giant set, sketch the pieces, and combine. The whole MinHash sketch is just "k running minima of cheap hashes," mergeable and one-pass.
 
@@ -36,11 +36,11 @@ Stare at what each extreme does to the collision-probability-vs-similarity curve
 
 Let me feel this function. The sʳ is the AND-sharpening: raising s to the r-th power slams moderate similarities toward zero — at r = 5, s = 0.5 gives sʳ ≈ 0.03, a moderate pair almost never matches a given band. Then 1 − (1−·)ᵇ is the OR-recovery: with b independent bands, a truly similar pair (high sʳ per band) gets b chances and almost surely matches somewhere, while a dissimilar pair (sʳ ≈ 0) still matches in essentially no band. The product of these two effects is an S-curve: nearly flat and low for small s, a steep rise through a threshold, saturating near 1 for high s. That's exactly the separator I wanted — close pairs become candidates with high probability, distant pairs almost never do.
 
-Where does the rise sit? The curve crosses probability ½ at roughly the s where (1−sʳ)ᵇ = ½. A quick handle: the threshold is approximately s* ≈ (1/b)^(1/r). Check it — with b = 16, r = 4, (1/16)^(1/4) = 1/2, threshold ≈ 0.5; the band has to all-agree, sʳ = s⁴, and 1/16 of that crossing lines up at s = ½. So I *tune the threshold by choosing b and r*: increasing b (more bands, more OR) lowers the threshold and catches more — fewer false negatives, more candidates to verify; increasing r (longer bands, more AND) raises the threshold and tightens — fewer false positives, faster, at the cost of missing borderline pairs. And the steepness — how cleanly it separates above-threshold from below — grows with b and r together. So for a target resemblance t (say 0.8 for near-duplicates), pick b, r with b·r = k and (1/b)^(1/r) ≈ t, leaning to more bands if recall matters, longer bands if precision and speed matter.
+Where does the rise sit? The exact halfway point solves 1 − (1 − sʳ)ᵇ = 1/2, so s = (1 − 2^(-1/b))^(1/r). For choosing parameters by hand, the constant inside that expression is less important than the dependence on b and r: 1 − 2^(-1/b) is about (ln 2)/b, and the usual quick threshold rule drops the constant factor and uses s* ≈ (1/b)^(1/r). Check the rule — with b = 16, r = 4, (1/16)^(1/4) = 1/2, so the rise sits around 0.5. So I *tune the threshold by choosing b and r*: increasing b (more bands, more OR) lowers the threshold and catches more — fewer false negatives, more candidates to verify; increasing r (longer bands, more AND) raises the threshold and tightens — fewer false positives, faster, at the cost of missing borderline pairs. And the steepness — how cleanly it separates above-threshold from below — grows with b and r together. So for a target resemblance t (say 0.8 for near-duplicates), pick b, r with b·r near k and (1/b)^(1/r) ≈ t, leaning to more bands if recall matters, longer bands if precision and speed matter.
 
 Let me put numbers on it to make sure it really separates. Take k = 100, b = 20 bands, r = 5 rows. Then Pr[candidate] = 1 − (1 − s⁵)²⁰. At s = 0.4 that's about 0.186; at s = 0.5, 0.470; at s = 0.6, 0.802; at s = 0.7, 0.975; at s = 0.8, 0.9996. So a 40%-similar pair is a candidate under 19% of the time, an 80%-similar pair over 99.96% of the time — the curve climbs by more than 0.6 between s = 0.4 and 0.6, a slope above 3 right through the middle. Concretely at s = 0.8: one band all-agrees with probability 0.8⁵ ≈ 0.328, so a single band misses 0.672 of the time, but over 20 bands the chance of missing *every* band is 0.672²⁰ ≈ 0.00035 — only about one in 3000 truly-80%-similar pairs slips through as a false negative. That's the false-negative rate I can read straight off the curve, and tune.
 
-How does this make retrieval cheap rather than just selective? Implement each band as a hash table: hash the r-tuple of a set's band to a bucket and drop the set's id there; do this for all b bands, b tables. Building all tables is one linear pass over the N sketches — N·b bucket insertions, not N². To find everything similar to a query set, hash its b bands, look only in those b buckets, and union the ids found: those are the candidates. Then verify each candidate by comparing full signatures (or, to be safe, the original sets). The candidate list is short because the S-curve let in almost only the genuinely-similar, so the expensive exact check runs on a tiny fraction of pairs. Similar items literally hash into the same buckets and find each other; I never enumerate the dissimilar pairs at all.
+How does this make retrieval cheap rather than just selective? Implement each band as a hash table: hash the r-tuple of a set's band to a bucket and drop the set's id there; do this for all b bands, b tables. Building all tables is one linear pass over the N sketches — N·b bucket insertions, not N². To find everything similar to a query set, hash its b bands, look only in those b buckets, and union the ids found: those are the candidates. Then verify each candidate by comparing full signatures (or, to be safe, the original sets). The candidate list is short when the threshold and banding match the data distribution, and false positives are exactly why the verification step remains. Similar items hash into the same buckets and find each other; I never enumerate the dissimilar pairs that miss every band.
 
 There's a cleaner way to see *why* the banding produces an S-curve, which also tells me I can sharpen it as much as I like. Abstract the minhash to a "locality-sensitive" family: a family of hash functions where, for distances d₁ < d₂, anything at distance ≤ d₁ collides with probability ≥ p₁ and anything at distance ≥ d₂ collides with probability ≤ p₂. The minhash family is exactly this for Jaccard distance d = 1 − J: a single minhash agrees with probability s = 1 − d, so it's (d₁, d₂, 1−d₁, 1−d₂)-sensitive — close pairs (small d) collide more. Now two composition operators. The r-way AND: require all r functions to agree; a probability p becomes pʳ — this pushes the *low* probability p₂ toward 0 hard while only modestly lowering the high p₁. The b-way OR: require any of b to agree; p becomes 1 − (1−p)ᵇ — this pulls the *high* probability p₁ toward 1 while leaving the low p₂ small. AND-then-OR is the banding, 1 − (1 − pʳ)ᵇ, and I can see now it's not special to minhash: any LSH family, cascaded AND/OR, gets an arbitrarily steep separation between p₁ and p₂, paying only in the number of base functions I have to evaluate. The S-curve is the generic signature of AND-then-OR amplification.
 
@@ -50,92 +50,144 @@ And that abstraction tells me how to make the *query itself* provably sublinear 
 
 and since p₁ > p₂ we have 0 < ρ < 1. To catch the near point across tables I need the probability of missing all L tables, (1 − N^{−ρ})^L, to be small — so L ≈ N^ρ tables makes (1 − N^{−ρ})^{N^ρ} ≈ e^{−1}, found with constant probability. Meanwhile the expected number of far-point collisions in the queried buckets is at most N · L · p₂ᵏ = L, so by Markov I examine O(L) = O(N^ρ) candidates. Query cost: O(N^ρ) hash evaluations and distance checks; space O(d·N + N^{1+ρ}). With ρ < 1 that's *sublinear query time* — for a bit-sampling family with approximation factor c one gets ρ ≤ 1/c, so a 2-approximate near-neighbor query costs about √N instead of N. That's the whole point: the curse of dimensionality, where exact high-dimensional NN degrades to a linear scan, is escaped by accepting an approximation and paying only N^ρ.
 
-So the two halves lock together: the same minhash that gives an unbiased Jaccard estimate *is* a locality-sensitive function for Jaccard distance, and banding/concatenation is the AND-then-OR amplification that both (in the b-bands form) generates a short candidate list for all-pairs near-duplicate detection and (in the L-tables form) answers single-queries in N^ρ sublinear time. Let me write it as a real program. The sketch keeps k running minima of pairwise-independent maps; similarity is the fraction of agreeing coordinates; the index slices the signature into b bands, hashes each band into its own table, and candidates are everything colliding in any band.
+So the two halves lock together: the same minhash that gives an unbiased Jaccard estimate *is* a locality-sensitive function for Jaccard distance, and banding/concatenation is the AND-then-OR amplification that both (in the b-bands form) generates a short candidate list for all-pairs near-duplicate detection and (in the L-tables form) answers single-queries in N^ρ sublinear time. Let me write it as a real program. The sketch keeps k running minima of the practical permutation maps; similarity is the fraction of agreeing coordinates. For the index I should not force b·r to equal k exactly: if I search over equal-size bands, the best weighted false-positive/false-negative tradeoff may use b·r ≤ k and leave a tail of unused signature values. The index stores those `hashranges`, turns each band into bytes by byteswapping the uint64 values, hashes each band into its own table, and returns everything colliding in any band.
 
 ```python
 import numpy as np
-import hashlib, struct
+import hashlib
+import struct
 from scipy.integrate import quad as integrate
 
 MERSENNE_PRIME = np.uint64((1 << 61) - 1)   # p for the a*x+b mod p maps
 MAX_HASH = np.uint64((1 << 32) - 1)         # reduce into a 32-bit range
 HASH_RANGE = 1 << 32
 
-def hash32(value):
+def sha1_hash32(data):
     # fixed pseudo-uniform hash: bytes -> {0,...,2^32-1}
-    return struct.unpack("<I", hashlib.sha1(value).digest()[:4])[0]
+    return struct.unpack("<I", hashlib.sha1(data).digest()[:4])[0]
 
 
 class MinHash:
-    def __init__(self, num_perm=128, seed=1):
+    def __init__(self, num_perm=128, seed=1, hashfunc=sha1_hash32):
+        if num_perm > HASH_RANGE:
+            raise ValueError("Cannot have more than 2^32 permutation functions")
+        self.seed = seed
         self.num_perm = num_perm
-        gen = np.random.RandomState(seed)
+        self.hashfunc = hashfunc
+        self.hashvalues = self._init_hashvalues(num_perm)
+        self.permutations = self._init_permutations(num_perm)
+
+    def _init_hashvalues(self, num_perm):
+        return np.ones(num_perm, dtype=np.uint64) * MAX_HASH
+
+    def _init_permutations(self, num_perm):
+        gen = np.random.RandomState(self.seed)
         # k cheap pairwise-independent maps standing in for random permutations
-        self.a = np.array([gen.randint(1, MERSENNE_PRIME, dtype=np.uint64)
-                           for _ in range(num_perm)], dtype=np.uint64)
-        self.b = np.array([gen.randint(0, MERSENNE_PRIME, dtype=np.uint64)
-                           for _ in range(num_perm)], dtype=np.uint64)
-        # each slot starts at +inf so the running min is well-defined
-        self.hashvalues = np.ones(num_perm, dtype=np.uint64) * MAX_HASH
+        return np.array(
+            [
+                (
+                    gen.randint(1, MERSENNE_PRIME, dtype=np.uint64),
+                    gen.randint(0, MERSENNE_PRIME, dtype=np.uint64),
+                )
+                for _ in range(num_perm)
+            ],
+            dtype=np.uint64,
+        ).T
 
     def update(self, value):
-        hv = np.uint64(hash32(value))
+        hv = self.hashfunc(value)
+        a, b = self.permutations
         # the k "permuted" images of this element, reduced to 32 bits
-        phv = np.bitwise_and((self.a * hv + self.b) % MERSENNE_PRIME, MAX_HASH)
+        phv = np.bitwise_and((a * hv + b) % MERSENNE_PRIME, MAX_HASH)
         # each slot records the MINIMUM image seen across the set's elements
         self.hashvalues = np.minimum(phv, self.hashvalues)
 
     def merge(self, other):
+        if self.seed != other.seed or len(self) != len(other):
+            raise ValueError("Cannot merge MinHash sketches with different parameters")
         # union of two sets == elementwise min of their minhash signatures
         self.hashvalues = np.minimum(self.hashvalues, other.hashvalues)
 
     def jaccard(self, other):
+        if self.seed != other.seed or len(self) != len(other):
+            raise ValueError("Cannot compare MinHash sketches with different parameters")
         # fraction of agreeing coordinates is an unbiased estimate of J(A,B)
-        return float(np.count_nonzero(self.hashvalues == other.hashvalues)) / self.num_perm
+        return float(np.count_nonzero(self.hashvalues == other.hashvalues)) / float(len(self))
+
+    def __len__(self):
+        return len(self.hashvalues)
 
 
-def _fp_prob(t, b, r):   # candidates below threshold (false positives), area under S-curve
-    return integrate(lambda s: 1 - (1 - s ** r) ** b, 0.0, t)[0]
+def _false_positive_probability(threshold, b, r):
+    # candidate mass below threshold: 1 - (1 - s^r)^b
+    return integrate(lambda s: 1 - (1 - s ** float(r)) ** float(b), 0.0, threshold)[0]
 
-def _fn_prob(t, b, r):   # missed above threshold (false negatives)
-    return integrate(lambda s: 1 - (1 - (1 - s ** r) ** b), t, 1.0)[0]
+def _false_negative_probability(threshold, b, r):
+    # miss mass above threshold: 1 - candidate = (1 - s^r)^b
+    return integrate(lambda s: 1 - (1 - (1 - s ** float(r)) ** float(b)), threshold, 1.0)[0]
 
-def optimal_bands(threshold, num_perm, fp_weight=0.5, fn_weight=0.5):
-    # pick b, r (b*r <= num_perm) placing the S-curve threshold ~ (1/b)^(1/r)
-    # by minimizing the weighted false-positive + false-negative area
-    best, opt = float("inf"), (0, 0)
+def _optimal_param(threshold, num_perm, false_positive_weight, false_negative_weight):
+    # grid-search b, r (b*r <= num_perm) by weighted FP/FN area
+    min_error = float("inf")
+    opt = (0, 0)
     for b in range(1, num_perm + 1):
-        for r in range(1, num_perm // b + 1):
-            err = fp_weight * _fp_prob(threshold, b, r) + fn_weight * _fn_prob(threshold, b, r)
-            if err < best:
-                best, opt = err, (b, r)
+        max_r = int(num_perm / b)
+        for r in range(1, max_r + 1):
+            fp = _false_positive_probability(threshold, b, r)
+            fn = _false_negative_probability(threshold, b, r)
+            error = fp * false_positive_weight + fn * false_negative_weight
+            if error < min_error:
+                min_error = error
+                opt = (b, r)
     return opt
 
 
 class MinHashLSH:
-    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5, 0.5)):
-        self.num_perm = num_perm
+    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5, 0.5), params=None, hashfunc=None):
+        if threshold > 1.0 or threshold < 0.0:
+            raise ValueError("threshold must be in [0.0, 1.0]")
+        if num_perm < 2:
+            raise ValueError("Too few permutation functions")
+        if any(w < 0.0 or w > 1.0 for w in weights) or sum(weights) != 1.0:
+            raise ValueError("weights must be nonnegative and sum to 1.0")
+        self.h = num_perm
         # AND within a band (r rows), OR across bands (b bands): 1-(1-s^r)^b S-curve
-        self.b, self.r = optimal_bands(threshold, num_perm, *weights)
-        self.ranges = [(i * self.r, (i + 1) * self.r) for i in range(self.b)]
-        self.tables = [dict() for _ in range(self.b)]
+        if params is None:
+            self.b, self.r = _optimal_param(threshold, num_perm, weights[0], weights[1])
+        else:
+            self.b, self.r = params
+            if self.b * self.r > num_perm:
+                raise ValueError("b * r must be less than or equal to num_perm")
+        if self.b < 2:
+            raise ValueError("The number of bands is too small")
+        self.hashranges = [(i * self.r, (i + 1) * self.r) for i in range(self.b)]
+        self.hashtables = [dict() for _ in range(self.b)]
         self.keys = {}
+        self.hashfunc = hashfunc
+        self._H = self._hashed_byteswap if hashfunc else self._byteswap
 
-    def _band_keys(self, m):
-        # each band is the r-tuple of minhashes in that slice, used as a bucket key
-        return [bytes(m.hashvalues[s:e].byteswap().data) for s, e in self.ranges]
+    def _byteswap(self, hs):
+        return bytes(hs.byteswap().data)
+
+    def _hashed_byteswap(self, hs):
+        return self.hashfunc(bytes(hs.byteswap().data))
 
     def insert(self, key, m):
-        hs = self._band_keys(m)
+        if len(m) != self.h:
+            raise ValueError("Expecting MinHash with the configured length")
+        # each band is the r-tuple of minhashes in that slice, serialized byteswapped
+        hs = [self._H(m.hashvalues[start:end]) for start, end in self.hashranges]
         self.keys[key] = hs
-        for h, table in zip(hs, self.tables):       # one linear pass: N*b insertions
+        for h, table in zip(hs, self.hashtables):       # one linear pass: N*b insertions
             table.setdefault(h, set()).add(key)
 
     def query(self, m):
+        if len(m) != self.h:
+            raise ValueError("Expecting MinHash with the configured length")
         # candidates = everything colliding in ANY band; caller verifies exactly
         candidates = set()
-        for h, table in zip(self._band_keys(m), self.tables):
-            candidates.update(table.get(h, ()))
+        for (start, end), table in zip(self.hashranges, self.hashtables):
+            candidates.update(table.get(self._H(m.hashvalues[start:end]), ()))
         return list(candidates)
 ```
 

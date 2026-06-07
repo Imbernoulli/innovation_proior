@@ -1,0 +1,1769 @@
+Random Sampling with a Reservoir
+JEFFREY SCOTT VITTER
+Brown University
+
+We introduce fast algorithms for selecting a random sample of n records without replacement from
+a pool of N records, where the value of N is unknown beforehand. The main result of the paper is
+the design and analysis of Algorithm Z; it does the sampling in one pass using constant space and in
+O(n(1 + log(N/n)))
+expected time, which is optimum, up to a constant factor. Several optimizations
+are studied that collectively improve the speed of the naive version of the algorithm by an order of
+magnitude. We give an efficient Pascal-like implementation
+that incorporates these modifications
+and that is suitable for general use. Theoretical
+and empirical results indicate that Algorithm Z
+outperforms current methods by a significant margin.
+CR Categories and Subject Descriptors: G.3 [Mathematics
+of Computing]:
+Probability and Statistics-probabilistic
+algorithms, random number generation, statistical software; G.4 [Mathematics
+of
+Computing]:
+Mathematical
+Software-algorithm
+analysis
+General Terms: Algorithms,
+
+Design, Performance,
+
+Theory
+
+Additional Key Words and Phrases: Analysis of algorithms,
+method, reservoir
+
+optimization,
+
+random sampling, rejection
+
+1. INTRODUCTION
+Random sampling is basic to many computer applications in computer science,
+statistics, and engineering. The problem is to select without replacement a
+random sample of size n from a set of size N. For example, we might want a
+random sample of n records out of a pool of N records, or perhaps we might need
+a random sample of n integers from the set {l, 2,. . . , NJ.
+Many algorithms have been developed for this problem when the value of N is
+known beforehand [ l-3,6-8, lo]. In this paper we study a very different problem:
+sampling when N is unknown and cannot be determined efficiently. The problem
+arises, for example, in sampling records that reside on a magnetic tape of
+indeterminate length. One solution is to determine the value of N in one pass
+and then to use one of the methods given in [lo] during a second pass. However,
+predetermining N may not always be practical or possible. In the tape analogy,
+the extra pass though the tape could be very expensive.
+Support for this research was provided in part by NSF research grants MCS-81-05324 and DCR-8403613, by an IBM research contract, by an IBM Faculty Development Award, and by ONR and
+DARPA under Contract N00014-83-K-0146
+and ARPA Order No. 4786. An extended abstract of this
+research appeared in [ 111.
+Author’s address: Department of Computer Science, Brown University, Providence, RI 02912.
+Permission to copy without fee all or part of this material is granted provided that the copies are not
+made or distributed for direct commercial advantage, the ACM copyright notice and the title of the
+publication and its date appear, and notice is given that copying is by permission of the Association
+for Computing Machinery.
+To copy otherwise, or to republish, requires a fee and/or specific
+permission.
+0 1985 ACM 009&3/85/0300-0037 $00.75
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, NO. 1, March 1985, Pages 37-57.
+
+38
+
+-
+
+Jeffrey Scott Vitter
+Table I.
+
+Performance
+
+of Algorithms
+
+R, X, Y, and Z
+
+Algorithm
+
+Average number
+of uniform
+random variates
+
+Average CPU time
+
+R
+
+N-n
+
+O(N)
+
+X
+
+=2n In N
+n
+
+O(N)
+
+Y
+
+-2n
+
+Z
+
+-3n In:
+
+In E
+
+n
+
+0 n2 1 + log t
+
+i(
+
+O(n(1
+
+log log t
+
++ log!))
+
+For that reason, we will restrict ourselves to processing the file of records in one
+sequential pass and without knowledge of N. The powerful techniques developed
+in [lo] can be applied to yield several fast new algorithms for this problem. The
+main result of this paper is the design and analysis of Algorithm Z, which does
+the sampling in optimum time and using a constant amount of space. Algorithm
+Z is significantly faster than the sampling methods in use today.
+The measure of performance we will use in this paper to compare algorithms
+is central processing unit (CPU) time. Input/output
+(I/O) time will be ignored
+for the following reason: Any algorithm for this problem can be implemented
+using the framework that we introduce in Section 3. This reduces the I/O time
+dramatically by taking advantage of the random access of disks and the fastforwarding capabilities of modern tape drives; the resulting I/O time is the same
+regardless of the algorithm. The remaining bottleneck is often the CPU time.
+The algorithms we introduce in this paper succeed in reducing the CPU time
+significantly, so that it is no longer a bottleneck.
+It turns out that all sampling methods that process the file in one pass can be
+characterized as reservoir algorithms. In the next section, we define what we
+mean by a reservoir algorithm and discuss Algorithm R, which was previously
+the method of choice for this problem. In Section 3, we present a new framework
+for describing reservoir algorithms and derive a lower bound on the CPU time
+required. Algorithms X and Y are introduced and analyzed in Section 4. The
+main result, Algorithm Z, is presented in Section 5. We give several optimizations
+in Section 6 that reduce the CPU time of the naive version of Algorithm Z by a
+factor of roughly 8. The theoretical analysis of the algorithm appears in Section
+7. An efficient implementation
+of Algorithm Z is given in Section 8 that incorporates the optimizations
+discussed in Section 6. The performance of these
+algorithms is summarized in Table I.
+The empirical timings given in Section 9 support the theoretical results and
+show that Algorithm Z outperforms the other methods by substantial margins.
+The CPU times (in microseconds) of optimized FORTRAN 77 implementations
+of Algorithms R, X, and Z on a VAX 11/780 computer are roughly 16ON, 4ON,
+and 950n In (N/n) - 1250n, respectively. Our results are summarized in Section
+10.
+ACM Transactions
+
+on Mathematical
+
+Software, Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+2. RESERVOIR
+
+ALGORITHMS
+
+AND ALGORITHM
+
+l
+
+39
+
+R
+
+All the algorithms we study in this paper are examples of reservoir algorithms.
+We shall see in the next section that every algorithm for this sampling problem
+must be a type of reservoir algorithm. The basic idea behind reservoir algorithms
+is to select a sample of size 2 n, from which a random sample of size n can be .
+generated. A reservoir algorithm is defined as follows:
+Definition 1. The first step of any reservoir algorithm is to put the first n
+records of the file into a “reservoir.” The rest of the records are processed
+sequentially; records can be selected for the reservoir only as they are processed.
+An algorithm is a reservoir algorithm if it maintains the invariant that after each
+record is processed a true random sample of size n can be extracted from the
+current state of the reservoir.
+
+At the end of the sequential pass through the file, the final random sample
+must be extracted from the reservoir. The reservoir might be rather large, and so
+this process could be expensive. The most efficient reservoir algorithms (including
+the ones we discuss in this paper) avoid this step by always maintaining a set of
+n designated candidates in the reservoir, which form a true random sample of the
+records processed so far. When a record is chosen for the reservoir, it becomes a
+candidate and replaces one of the former candidates; at the end of the sequential
+pass through the file, the current set of n candidates is output as the final sample.
+Algorithm R (which is is a reservoir algorithm due to Alan Waterman) works
+as follows: When the (t + 1)st record in the file is being processed, for t L n, the
+n candidates form a random sample of the first t records. The (t + 1)st record
+has a n/(t + 1) chance of being in a random sample of size n of the first t + 1
+records, and so it is made a candidate with probability n/(t + 1). The candidate
+it replaces is chosen randomly from the n candidates. It is easy to see that the
+resulting set of n candidates forms a random sample of the first t + 1 records.
+The complete algorithm is given below. The current set of n candidates is
+stored in the array C, in locations C[O], C[l], . . . , C[n - 11. Built-in Boolean
+function eof returns true if the end of file has been reached. The random number
+generator RANDOM returns a real number in the unit interval. The procedure
+reads the next record from the file and stores
+call READ-NEXT-RECORD(R)
+it in the record R. The procedure call SKIP-RECORDS(k)
+reads past (i.e., skips
+over) the next k records in the tile.
+{Make the first n records candidates for the sample)
+for j := 0 to n - 1 do READ-NEXT-RECORD(C[j]);
+t := n;
+{t is the number of records processed so far}
+while not eof do
+(Process the rest of the records1
+begin
+
+t := t + 1;
+d := TRUNC (t x RANDOM(
+));
+{A is random in the range 0 5 A 5 t - 11
+if.H<nthen
+{Make the next record a candidate, replacing one at random)
+READ-NEXT-RECORD(C[d])
+else
+(Skip over the next record)
+SKIP-RECORDS(l)
+end;
+
+When the end of file has been reached, the n candidates stored in the array C
+form a true random sample of the N records in the file.
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+40
+
+-
+
+Jeffrey Scott Vitter
+
+If the internal memory is not large enough to store the n candidates, the
+algorithm can be modified as follows: The reservoir is stored sequentially on
+secondary storage; pointers to the current candidates are stored in internal
+memory in an array, which we call I. (We assume that there is enough space to
+store n pointers.) Suppose during the algorithm that record R’ is chosen as a
+candidate to replace record R, which is pointed to by I[k]. Record R is written
+sequentially ont,o secondary storage, and I[k] is set to point to R. The above code
+can be modified by replacing the initial for loop with the following code:
+for j := 0 to n - 1 do
+begin
+Copy the jth record onto secondary storage;
+Set I[ j] to point to the jth record;
+
+end,
+
+Program statement “READ-NEXT-RECORD(C[&])”
+
+should be replaced by
+
+begin
+Copy the next record onto secondary storage;
+Set I[.H] to point to that record
+
+end
+
+Retrieval of the final sample from secondary storage can be sped up by retrieving
+the records in sequential order. This can be done by sorting the pointers 1[1],
+WI, . - *, I[n]. The sort should be very fast because it can be done in internal
+memory.
+The average number of records in the reservoir at the end of the algorithm is
+n+
+
+n
+
+c.
+
+-
+
+nst<N
+
+t +
+
+= n(1 + HN - H,) =. n
+
+(2.1)
+
+1
+
+The notation Hk denotes the “kth harmonic number,” defined by xisisk l/i. An
+easy modification of the derivation shows that the average number of records
+chosen for the reservoir after t records have been processed so far is
+n(HN
+
+- Ht) = n ln 7.
+
+(2.2)
+
+It is clear that Algorithm R runs in time O(N) because the entire file must. be
+scanned and since each record can be processed in constant time. This algorithm
+can be reformulated easily by using the framework that we develop in the next
+section, so that the I/O time is reduced from O(N) to O(n(1 + log(N/n))).
+3. OUR FRAMEWORK
+
+FOR RESERVOIR
+
+ALGORITHMS
+
+The limiting restrictions on algorithms for this sampling problem are that the
+records must be read sequentially and at most once. This means that any
+algorithm for this problem must maintain a reservoir that contains a random
+sample of size n of the records processed so far. This gives us the following
+generalization.
+THEOREM 1. Every algorithm
+
+for this sampling
+
+problem
+
+is a type of reservoir
+
+algorithm.
+
+Let us denote the number of records processed so far by t. If the file contains
+n/(t + 1) of being in a
+
+t + 1 records, each of the t + 1 records has probability
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, NO. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+l
+
+41
+
+true random sample of size n. This means that the (t + 1)st record should be
+chosen for the reservoir with probability L n/(t + 1). Thus the average size of
+the reservoir must be at least as big as that in Algorithm R, which is n(1 + HN
+- H,) = n (1 + ln(N/n)). This gives a lower bound on the time required to do
+the sampling.
+The framework we use in this paper to develop reservoir algorithms faster than
+Algorithm R revolves around the following random variate:
+Definition 2. The random variable 9(n, t) is defined to be the number of
+records in the file that are skipped over before the next record is chosen for the
+reservoir, where n is the size of the sample and where t is the number of records
+processed so far. For notational simplicity, we shall often write 9 for 9(n, t),
+in which case the parameters n and t will be implicit.
+The basic idea for our reservoir algorithms is to repeatedly generate 9, skip
+that number of records, and select the next record for the reservoir. As in
+Algorithm R, we maintain a set of n candidates in the reservoir. Initially, the
+first n records are chosen as candidates, and we set t := n. Our reservoir algorithms
+have the following basic outline:
+(Process the rest of the records)
+
+while not eof do
+begin
+
+Generate an independent random variate Y(n, t);
+(Skip over the next y records)
+SKZP-RECORDS(Y);
+if not eof then
+{Make the next record a candidate, replacing one at random)
+begin
+(AT is uniform in the range 0 I A 5 n - 1)
+A:= TRUNC (n X RANDOM( ));
+READ-NEXT-RECORD(C[J])
+end
+t := t + 9
+
++ 1;
+
+end,
+
+Our sampling algorithms differ from one another in the way that 9 is
+generated. Algorithm R can be cast in this framework: it generates 9 in O(y)
+time, using O(9) calls to RANDOM. The three new algorithms we introduce in
+this paper (Algorithms X, Y, and Z) generate 9 faster than does Algorithm R.
+Algorithm Z, which is covered in Sections 5-9, generates 9 in constant time, on
+the average, and thus by (2.1) it runs in average time O(n(l + log(N/n))). By
+the lower bound we derived above, this is optimum, up to a constant factor.
+The range of 9’(n, t) is the set of nonnegative integers. The distribution
+function F(s) = Prob(9 I s), for s L 0, can be expressed in two ways:
+P
+(t + 1 - n)”
+tt + +i
+F(s) = l - (t + s + 1)” = l -
+
+*
+
+(3.1)
+
+(The notation ub denotes the “falling power” a(a - 1) . . . (a - b + 1) =
+u!/(u - b)!, and the corresponding notation ub denotes the “rising power”
+a(u + 1) *. . (a + b - 1) = (a + b - l)!/(a - l)!.) The two corresponding
+expressions for the probability function f(s) = Prob(9 = s), for s z 0 are
+
+n (t - n)‘+’
+f(s)= t+s+n 1 L(t+s)”=-t-n(t+l)“+”
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+(3.2)
+Vol. 11, No. 1, March
+
+1985.
+
+42
+
+l
+
+Jeffrey Scott Vitter
+
+The expected value of 9 is equal to
+expected(Y)
+
+= nt” C
+
+(3.3)
+
+This can be derived using summation by parts:
+
+a$<b 4s) Au(s) = u(sh~(s)l: - .z<* u(s + 1) Au(s),
+where Au(s) = u(s + 1) - u(s). We use u = s, Au = l/(t + s + l)“+‘. The standard
+deviation of 9 is approximately equal to expected (9)) but slightly greater.
+A random variate 9 is generated for each candidate chosen. If the l.ast
+candidate chosen is not the Nth record in the file, then 9 is generated one extra
+time in order to move past the end of file; this happens with probability
+1
+- n/N. Combining this with (2.2), we find that the average number of times 9
+is generated, after t records have already been processed, is n(H, - Ht) + 1
+
+- n/N.
+4. ALGORITHMS
+
+X AND Y
+
+In this section we develop two new algorithms using the framework developed in
+the last section. We can generate an independent random variate Y with
+distribution F(s) by first generating an independent uniform random variate Y
+and then setting 9 to the smallest value s 2 0 such that Z! 5 F(s). Substituting
+(3.1) for F(s), the stopping condition is equivalent to
+
+(t+1-n)“+‘51-Y
+(t + l)=
+The quantity 1 - % is independent and uniformly distributed because ?Yis. Hence
+we can replace 1 - %! in this inequality by an independent uniform random
+variate, which we call V. The new stopping condition is
+(t+l-n)“+‘<v
+
+(t + l)*+l
+
+-
+
+(4.1)
+
+.
+
+Algorithm X. Algorithm X finds the minimum
+simple sequential search, as follows:
+
+value s 2 0 satisfying
+
+T := RANDOM( );
+
+{Y is uniform on the unit interval)
+
+Search sequentially
+9 := s;
+
+for the minimum
+
+s z 0 such that (t + 1 - n)““/(t
+
++ 1)x
+
+(4.1) by
+
+I Y;
+
+Let us denote the left-hand side of (4.1) by H(s). The speed of the method is
+due to the fact that H(s + 1) can be computed in constant time from H(s); the
+sequential search takes O(9 + 1) time. When n = 1, (3.3) shows that expected(9)
+is unbounded, and so Algorithm X should not be used. If n > 1, the
+total running time of Algorithm X is 0(x 9) = O(N), on the average. The
+execution times for Algorithms R and X are both O(N), but Algorithm X is
+several times faster, because it calls RANDOM only once per generation of 9,
+rather than O(9) times. The Pascal-like code for Algorithm X appears in the
+first part of the implementation
+of Algorithm Z in Section 8.
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+l
+
+43
+
+Algorithm Y. An alternate way to find the minimum s satisfying (4.1) is to use
+binary search, or better yet, a variant of Newton’s interpolation method. The
+latter approach is the basis for Algorithm Y.
+The value of s we want to find is the “approximate root” of the equation
+
+Here we apply the discrete version of Newton’s method. In place of the derivative
+of H(s), we use the difference function
+AH(s) = H(s + 1) - H(s) = -f(s + 1).
+We can show that Newton’s method converges to give the value of 9 in O(1 +
+log log 9) iterations. (By convention, we define log log 9 = 0 when 9 % b,
+where b is the base of the logarithm.) Each interation requires the computation
+of H(s) and AH(s), which takes O(n) time. The total running time is given in
+the following theorem:
+THEOREM
+
+2. The average running
+
+time of Algorithm
+
+Y used to do the sampling
+
+is
+0 n2 l+logFloglogX
+cc
+PROOF.
+
+.
+)J
+
+By the above remarks, the running time of Algorithm Y is
+0 n
+
+C
+
+(
+
+15iC.7
+
+(1 + log log pii)
+
+f
+)
+
+where yi denotes the ith value of 9 generated, and where 7 is the number of
+times 9 is generated before the algorithm terminates. In probability language,
+F is called a bounded stopping time, since it must be true that F 5 N - n. Let
+us denote the quantity 1 + log log Pi by Pi. The variates 9,) 22, 93, . . . are
+not independent of one another, because the distribution function F(s) of 9
+depends upon the current value of t. However, we can “bound” each random
+variate Pi by a random variate 9: = 1 + log log P(n, N - l), such that P;,
+.L?;,L?$, . . . are independent of one another. By “bound”, we mean that the
+distribution function for 9”( is everywhere greater than the distribution function
+for Pi. If we imagine that .Pi and 9; are both generated by first generating Pi
+and y(n, N - 1) via Algorithm X or Y using the same value of ?V, then this
+condition guarantees that Pi I P”( . Hence we can bound (4.2) by
+(4.3)
+
+lsiS7
+
+The random variates 9;) 9;) 94, . . . are independent and identically distributed. We can apply the classical form of Wald’s Lemma (see [5]) and bound the
+average value of (4.3) by
+O(expected(F) . (1 + expected(log log P(n, N - 1)))).
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+(4.4)
+1985.
+
+44
+
+’
+
+Jeffrey Scott Vitter
+
+We showed at the end of the last section that expected(Y) = n(HN - H,) + 1 n/N = O(n(1 + log(N/n))). By Jensen’s inequality (see [4]), when n > 1, we have
+expected(loglog9(n,
+
+N-
+
+1)) I loglog(expected(Y(n,
+
+N - 1)))
+
+N-n
+= log log n-l
+N
+=o loglog;
+.
+(
+)
+For the case n = 1, we can show that expected(log log 9(1, N - 1)) = O(1).
+Putting this together, we can bound (4.4) by O(n2(1 + log(N/n)log log(N/n))).
+Cl
+It is possible to obtain a higher-order convergence than with Newton’s method
+by using higher-order differences, defined by AkH(s) = AkmlH(s + 1) - Ak-‘H(s).
+For k > 1, each difference AkH(s) can be computed in constant time from a lower
+order difference using the formula
+AkH(s) = -
+
+n+k-1
+t+s+k+l)
+
+Ak-‘H(s).
+
+It may be possible to choose k so large that 9 can be generated in a constant
+number of iterations. The total running time would then be bounded by O((k +
+n)n(l + log(N/n))).
+The value of k would be at least log*(N/n), where log*x is
+defined to be the number of times the log function must be applied, initially to
+the argument X, until the result is 51. However, the overhead involved would
+probably be too large to make this practical. A much faster algorithm is given in
+the next section.
+5. ALGORITHM
+
+Z
+
+Algorithm Z follows our general format described in Section 3. The skip random
+variate P(n, t) is generated in constant time, on the average, by a modification
+of von Neumann’s rejection-acceptance
+method. The main idea is that we can
+generate Y quickly by generating a fast approximation
+and “correcting”
+it so
+that its resulting distribution
+is the desired distribution F(s).
+We assume that we have a continuous random variable 2’ that can be generated
+quickly and whose distribution approximates F(s) well. We denote the probability
+density function of 2? by g(x). We choose a constant c 2 1 such that
+
+for all x: 2 0.
+We generate 9’ ‘by generating an independent 2 and an independent uniform
+random variate % on the unit interval. If YL > f( L2YI)/cg(Z)
+(which occurs with
+low probability),
+we reject La”A and start over by generating a new 2? and %.
+When the condition %! 5 f( La”l)/cg(Z)
+is finally true, then we accept LPI and
+set 9 := LF’J. The following lemma, which is easy to prove and is left to the
+reader, shows that this procedure is valid.
+LEMMA 1. The random
+distribution given by (3.1).
+ACM Transactions
+
+on Mathematical
+
+variate 27 generated
+Software,
+
+Vol. 11, No. 1, March
+
+in the above manner
+1985.
+
+has the
+
+Random Sampling with a Reservoir
+
+l
+
+45
+
+The bottleneck in this process is computing f(LpJ)/cg($Y), which takes
+O(min{n, LYJ + 11) time using (3.2). We can avoid this computation most of the
+time by approximating f(s) by a more quickly computed function h(s), such that
+for all s I 0, we have
+h(s) = f(s).
+
+(5.2)
+
+If %! 5 h(LZJ)/cg(F),
+then by transitivity we have %! 5 f(LZYJ)/cg(Z),
+and so
+we can accept LFJ. The value of f(LS?J) must be computed only when % >
+h(LS?J)/cg(ZY),
+which happens with small probability. This technique is sometimes called the squeeze method, since we have h( Lx J ) I f (LxJ) 9 cg(x), for all 3~.
+Owing to the overhead in computing these functions, the rejection technique
+generates 9 more slowly than does the method used in Algorithm X when t I
+Tn, for some constant T > 1. Typical values of T can be expected to be in the
+range 10-40. For example, in the implementation described in Sections 8 and 9,
+we have T = 22. The outline for how Algorithm Z generates Y(n, t) appears
+below:
+if t 5 T x n then Use the inner loop of Algorithm X to generate Y
+else begin
+repeat
+Generate an independent random variable 2 with density function g(x);
+1~ is uniform on the unit interval)
+zz’ := RANDOM( );
+if Y/ 5 h( L%?“l)/cg(X) then break loop
+until w 5 f(LZJ)/cg@‘);
+Y := LXJ
+end,
+
+The tricky part in the development of Algorithm Z was finding appropriate
+choices for the parameters g(x) (the density function of p), c, and h(s) that gave
+fast running times. The following choices seem to work best:
+
+t It
+g(x)
+=-..Et+x(t+x) '
+
+x L 0;
+
+t+1
+
+(5.3)
+
+c=t-n+l;
+
+h(s)
+
+=
+
+--J!--
+
+t+l
+
+(
+
+n+l
+
+t-n+1
+
+t+s-n+l
+
+)
+
+’
+
+x 2 0.
+
+The random variable 2 is not a commonly encountered distribution, but it can
+be generated very quickly, in constant time. Let us denote the distribution
+function of r by G(x). We have
+x
+
+G(x) = Prob(a” I x) =
+
+(5.4)
+
+s 0
+
+It is easy to show that we can generate a random variable 2 with distribution
+G(x) by setting %Y= G-‘(M) or p = G-‘(e-y), where Y” is uniformly distributed
+on [0, l] and y is exponentially distributed. Substituting (5.4), we get
+G-‘(y) = t((1 - y)-“”
+ACM Transactions
+
+- t).
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+46
+
+l
+
+Jeffrey Scott Vitter
+
+Since 1 - %“‘is uniformly distributed when %” is, we can generate Y by setting
+x’ := t(T-l’”
+
+- 1)
+
+or
+
+2P := t(eey/ln - 1).
+
+(5.5)
+
+The following lemma shows that the choice of parameters in (5.3) satisfies
+requirements (5.1) and (5.2).
+LEMMA 2. The choices ofg(x),
+
+c, and h(s) in (5.3) satisfy the relation
+
+h(s) 5 f(s) 5 cg(s + 1).
+
+This satisfies condition (5.2). Since g(x) is a monotone decreasing function,
+this also implies (5.1).
+PROOF. First let us prove the first inequality. We have
+i(s) =
+The first quotient can be bounded by n/(t + s + l), since it is easy to show t.hat
+(t + s - n + 1) (t + 1) 2 (t + s + 1) (t - n + 1). Similarly, we can bound the
+second quotient by t”/(t + s) O,because we have (t - n + l)/(t + s - n + 1) 51
+(t - k)/(t + s - k), for 0 5 k : n - 1. By (3.2), this proves the first inequality..
+The second inequality in Lemma 2 can be proved in the same way:
+it”
+
+n
+
+f(s)=nt”=
+
+t+s+l(t+s)”
+
+t+s-n+l(t+s+l)O’
+
+The first quotient can be bounded by n(t + l)/((t + s + l)(t - n + l)), since
+(t + s - n + 1) (t + 1) 2 (t + s + 1) (t - n + 1). The second quotient is bounded
+by (t/(t + s + I.))“, since (t - k)/(t +,s + 1 - k) 5 t/(t + s + l), for 0 5 k s n -1. By (5.3), this proves the second inequality. 0
+6. OPTIMIZING
+
+ALGORITHM
+
+Z
+
+In this section we give three optimizations that dramatically improve the running
+time of the naive version of Algorithm Z. These modifications are incorporated
+into the implementation of Algorithm Z that appears in Section 8.
+Threshold Optimization.
+We have already seen this important optimization
+technique in the last section, where it was included as part of the basic algorithm.
+We used a constant parameter T to determine how 9 should be generated: If t
+% Tn, then the inner loop of Algorithm X is used to generate 9’; otherwise, the
+rejection-acceptance technique is used. The value of T is typically set in the
+range 10-40. The choice T = 22 worked best in the implementation described in
+Sections 8 and 9; the running time was cut by a factor of roughly 4. Some
+theoretical analysis is given in Section 7.3. However, there is an even more basic
+reason why this optimization is important (which is why we made it part of the
+basic algorithm): It guards against floating-point overflow! Numerical considerations are discussed further in Section 8.
+RANDOM Optimization.
+The rest of this section is devoted to more sophisticated techniques to eliminate costly calls to mathematical subroutines. The first
+optimization we shall consider allows us to cut the number of calls to RANDOh
+by more than one-third. Each generation of 2 via (5.5) requires the generation
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+-
+
+47
+
+of an independent uniform random variate (or else the generation of an exponential random variate, which usually involves the prior generation of a uniform
+variate). Let us call this random variate Y. Except for the first time S? is
+generated, we can can avoid a call to RANDOM and compute %rr(and thus 2”) in
+an independent way by making use of the values of Y and S? from the previous
+loop. The previous loop ended for one of three reasons: %! I ql, Q < % 5 qz, or
+q2 C FY, where q1 = h(LSYJ)/cg(iY)
+and q2 = f(LZ’J)/cg(P).
+We can compute 7
+for the next loop, as follows:
+-52
+
+1’
+y-= .
+
+.~ Q-Q
+
+I
+
+q2 -
+
+Ql’
+
+1
+
+q2
+
+Q-
+
+42
+
+-
+
+if
+
+%a ql;
+
+if
+
+q1 < %5q2;
+
+if
+
+q2 < 52.
+
+(6.1)
+
+’
+
+We leave it as an exercise for the reader to prove the following
+definitions of independence and of 7:
+
+lemma from the
+
+LEMMA 3. The value 57 computed via (6.1) is a uniform random variate that is
+independent of all previous values of 2 and of whether or not each 2 was accepted.
+Similar tricks can be employed in order to compute the value of &! without
+having to call RANDOM, but it does not seem to be worth the added effort. The
+big savings comes about in the next optimization.
+Subroutine Optimization. We can speed up Algorithm Z by a factor of almost
+2 by cutting in half the number of operations of the form xy, where x and y are
+either real (floating-point)
+numbers or large integers. The calculation of xy =
+exp(y In x) involves an implicit call to the two mathematical library subroutines
+EXP (exponential) and LOG (logarithm). The calculation takes constant time,
+but the constant is much larger than the time for a multiplication
+or division.
+Each loop in the naive implementation
+of Algorithm Z requires two operations
+of the form xy: one to compute SY from Y using (5.5) and the other to compute
+
+h(Lp”J) _
+cg(S?)
+
+(t-n+l)‘(t+P)
+(t+1)2(t+LPJ-n+1)
+
+(t-n+l)(t+P)
+(t+LPJ-n+l)t
+
+(6.2)
+
+(The computation off (LS?l)/cg(F)
+also requires an operation of the form xy, but
+as we shall see in the next section, the computation is seldom done.) Instead of
+doing the test “Is ?Y 5 h( L~J)/cg(~)?“,
+we use the equivalent test of finding
+whether
+%!(t+1)2(t+LPJ-n+1)
+(t - n + 1)2(t + P)
+
+(t-n+l)(t+F)
+S (t+LPJ-n+l)t’
+
+(6.3)
+
+If this test is true, which happens with high probability, we set w to the quotient
+of the right-hand side divided by the left-hand side. The resulting random variate
+W has the same distribution
+as y-i/“.
+Thus we can compute 3 without an
+operation of the form xy by setting
+P := t(w
+ACM Transactions
+
+- 1).
+on Mathematical
+
+(6.4)
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+48
+
+-
+
+Jeffrey Scott Vitter
+
+(The reader should compare this with (5.5).) Hence we usually need only one
+operation of the form xy per loop rather than two.
+An importa:nt side effect of using the test (6.3) instead of the naive “Is Z/ :5
+h(L~‘J)/cg(~)?”
+test is that it eliminates floating-point
+overflow, which can
+occur in (6.2). As a practical matter, the full RANDOM optimization should not
+be used when subroutine optimization is used. The Y I q1 case of the RANDOil
+optimization
+is subsumed by subroutine optimization;
+the remaining two cases
+of (6.1) happen rarely, and would be expensive to implement when the subroutine
+optimization is in effect.
+7. THEORETICAL
+
+ANALYSIS
+
+OF ALGORITHM
+
+Z
+
+In this section we show analytically that the average number of random variates
+generated and the expected running time for Algorithm Z are optimum, up to a
+constant factor. We conclude the section with a theoretical basis for why the
+parameter T should be set to a constant in the threshold optimization discussed
+in the last section.
+7.1 Average Number of Calls to Random
+We shall prove that the expected number of calls to the random number generator
+made by Algorithm Z is bounded by approximately
+3n(ln(N/n))
+and 2n(ln(N/
+n)), depending on whether the RANDOM optimization is used. This shows that
+the RANDOM optimization reduces the number of calls to RANDOM by a factor
+of one-third.
+We shall use the term “naive version of Algorithm Z” to refer to the pure
+rejection technique, in which not even the threshold optimization
+is used. We
+define RAND(n, t, N) to be the expected number of calls to RANDOM made b:y
+the na’ive version of Algorithm Z in order to finish the sampling when t 5 N
+records have already been processed. Similarly, we define OPT(n, t, N) to be the
+average number of times RANDOM is called when the RANDOM optimization
+is used, starting from the point at which t 5 N records have been processed.
+THEOREM 3. The expected number of calls to RANDOM during the n.aive
+version of Algorithm 2, after n + 2 I t I N records have already been processes!,
+is
+
+R.AND(n, t, N) 5 n
+
++ 3(HN - Ht) .
+
+PROOF. The basic idea of the proof is that 9
+
+(7.1)
+
+can be generated using ~3 -F
+
+2n/t calls to RANDOM, on the average. At the end of Section 3, we showed that
+the average number of times 9 must be generated is n(& - Ht) + 1 - n/N.
+Intuitively,
+the total number of calls to RANDOM is thus =3n(HN - II&). The
+major hurdle in the proof is to take into account the fact that t is increasing
+during the course of the algorithm.
+The naive version of Algorithm Z calls RANDOM once each time %, 2, or 1~
+must be generated. The average number of times J% is generated is n(HN - I-&)1,
+as shown at the end of Section 3. Let us define UV(n, t, N) to be the average
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+l
+
+49
+
+number of times z or Y is generated, where Y” is the implicit uniform random
+variate used to generate z?. To prove the theorem it suffices to show that
+UV(n,
+
+t, N) 5 2n t
+
+n+l
+-n-l
+
++ HN -
+
+(7.2)
+
+We use induction on t. For t = IV, we have UV(n, IV, N) = 0, and (7.2) is trivially
+true. Now let us suppose that (7.2) is true for t + 1, t + 2, . . . , N; we will show
+that it remains true for t.
+Both %! and Zr are generated once each time the body of the repeat loop is
+executed. The average number of iterations of the repeat loop required to
+generate 9(n, t) is l/(1 - r), where r is the probability of rejection. We have
+
+Combining the two formulas, we find that each generation of 9(n, t) requires
+an average of l/(1 - r) = c iterations of the repeat loop, thus accounting for 2c
+calls to RANDOM. By use of the induction hypothesis, we have
+
+~
+
+ntF
+at+11
+t- n+ 1OSs<~--t( t + s + l)“+’
+c.
+
+n+l
+t+s-n
+
++Hpf-
+
+~ at+11
+
+t-n+l++n2(n+l)t@
+
+()5--t
+c
+
+(
+
+All three summations can be computed in closed form by using summation by
+parts, as discussed at the end of Section 3. For the first summation, we use u =
+1, Au = l/(t + s + l)-;
+for the second, we use u = 1, Au = l/(t + s + l)“+‘; and
+for the third, we use u = Ht+,+I, Au = l/(t + s + l)M. Plugging in the values for
+the summations and bounding the sum of the smaller terms by 0, we get
+2(t+ 1)
+UV(n, t, N) 5 t-n+l+t-n
+2n
+=t-n+l+t-n
+
+2(t-n+
+2n2
++ 2nHN + 2 - 2nH,+, t+1
+
+1)
+
+2n2
+-+2n(HN-H,)+2
+
+This proves (7.2) and thus completes the proof of Theorem 3.
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+0
+
+Vol. 11, No. 1, March
+
+1985.
+
+50
+
+l
+
+Jeffrey Scott Vitter
+
+COROLLARY1. The average number of calls to RANDOM
+using the threshold optimization is bounded by
+Zn(Hn - II,)
+
+made by Algorith,m Z
+
+if Tn 2 N;
+
++ 1 - g,
++ 3HN - Hr,, - 2H,,
+
++ 3 - 1
+T’
+
+if
+
+t7.31
+
+Tn 5 N.
+
+PROOF. In the Tn I N case, the variate 9 is always generated using the
+method of Algorithm X. The number of times 9 is generated is n(HN - H,) + 1
+- n/N. Each generation of 9 requires two calls to RANDOM to generate ?/ and
+A, except possibly the last time Y is generated. If the Nth record is the last
+record chosen for the reservoir (which happens with probability n/N), then A
+must be generated; otherwise, the last time 9 is generated causes the remaining
+records in the file to be skipped over, and M does not have to be generated. The
+formula for the Tn I N case follows immediately.
+For the Tn 5 N case, the method of Algorithm X is used until the first Tn
+records have been processed. In the remainder of the algorithm, the rejection
+technique makes at most RAND(n, Tn, N) calls to RANDOM. We assume that
+T is large enough so that Tn z n + 2, which is always the case in actual
+implementations. Combining the Tn 2 N case with Theorem 3 gives the result. cl
+THEOREM 4. Let us consider the modified version of the naive Algorithm Z in
+which only the RANDOM optimization is used. The expected number of times
+RANDOM is called during the sampling, after t records have already been processed,
+for t I n + 2, is
+OPT (n, t, N) I n tfn+!1+2(HN-H,)
+
+(7.4)
+
+PROOF. With this modification, RANDOM is not called to generate 2, except
+for the first time 2 is generated. This reduces UV(n, t, N) to half its forme.r
+value, plus 1. The result follows immediately, from the proof of Theorem 3. Cl
+The following corollary follows from Theorem 4 in the same manner that
+Corollary 1 follows from Theorem 3:
+COROLLARY2. The average number of calls to RANDOM made by Algorithm
+using the threshold and RANDOM optimizations is bounded by
+2n&-H,)+l-G,
+F~~-‘~‘-~+~(H,-H,)
+
++3-i,
+
+if
+
+TnrN;
+
+if
+
+TnsN.
+
+Z
+
+(7.5:)
+
+7.2 Average Running Time
+
+We shall show that the average execution time of Algorithm Z is O(n(1 + log(N/
+n))), which by the remarks at the beginning of Section 3 is optimum, up to a
+constant factor. Let use define TIME (n, t, N) to be the expected execution time
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+l
+
+51
+
+of the naive version of Algorithm Z to finish the sampling when t records have
+been processed so far.
+THEOREM 5. The expected running time of the naive version of Algorithm
+after t I N records have already been processed is
+TIME(n,
+
+t, N) = O(n(1
+
+2
+
++ log:)).
+
+PROOF. Let us assume that n 2 2. The n = 1 case is discussed later. The only
+statement in Algorithm Z that takes more than constant time to execute once is
+in the repeat loop, because it requires the
+the test “Is %! I f (&‘J)/cg@‘)?”
+evaluation off (WJ), which takes O(min(n, 12’1 + 1)) time, using (5.1). Every
+statement in Algorithm X is executed at most c = (t + l)/(t - n + 1) times, on
+the average, each time 9 is generated. By the proof of Theorem 3, the total
+running time of Algorithm Z minus the time spent executing the repeat loop test
+is bounded by
+
+n+l
+
++*N-i?l~))=O(n(l+log~)).
+
+On
+cc t-n-l
+
+The difficult part of the proof is bounding the execution time spent evaluating
+throughout the course of the algorithm, as t increases. The time per
+evaluation is bounded by d.min{n, LZJ + 1) 5 d( LPJ + l), for some small
+constant d 2 0. The probability that the “Is 2 5 h(La”J)/cg(Z)?”
+test is false
+(which is the probability that f (LPJ) must be evaluated next) is 1 - h( LPJ)/
+cg(%). Thus for a single evaluation of 9, we can bound the time spent evaluating
+
+f (LZJ)
+
+f (LZ’J) by
+m
+C
+s 0
+
+d(x+l)g(x)(l-~)dx=~d~m~x+l)g(x)dx-d$m~~+l)h(x)d~.
+
+The first integral is equal to
+cd(expected(P) + 1) = t 4 l : 1 d
+
+t+n-1
+
+n-l
+
+’
+
+the second integral equals
+t(t - n + 1)
+d (n - l)(t + 1) ’
+
+By some algebraic simplification,
+second can be bounded by
+
+the difference of the first integral minus the
+3cd + s.
+
+By the derivation of (7.2), it follows that the total amount of time spent evaluating
+during the course of the algorithm is at most
+
+f (LPJ)
+
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+52
+
+l
+
+Jeffrey Scott Vitter
+
+This completes the proof for the n 2 2 case.
+We shall see in Section 8 that Algorithm Z should not be used as is when n ==
+1, primarily for numerical reasons. When n = 1, we instead run Algorithm Z fo:r
+a larger (but still small) value of n, say, no = 5, to get a random sample of size
+no. Once the sample of size no is generated, we can recover the random sample
+of size n from it with a simple O(no)-time procedure given in the next section.
+Thus we have TIME( 1, t, N) = TIME (no, t, N) + 0 (no). This completes the
+proof of Theorem 5. 0
+The following corollary shows that Algorithm Z achieves optimum time, up to
+a constant factor.
+COROLLARY 3. The average running
+optimization is
+O(n(l
+
+time of Algorithm
+
+Z using the threshold
+
++ log F)).
+
+The use of the RANDOM or subroutine optimizations would reduce the running
+time further by some constant factor.
+7.3 The Threshold Value
+
+In the threshold optimization discussed in Section 6, we generate 9 using the
+method of Algorithm X until t gets large enough, after which we use the rejection
+technique to generate 9. It was suggested that a constant be used, which we call
+T: The threshold point for switching from Algorithm X to the rejection technique
+is when t 2 Tn. In this section we shed some light on why the threshold point is
+approximately a linear function of n.
+The average time required to generate 9 using the method of Algorithm X is
+roughly
+t--n+l=@
+dl *expected(p) = d1 n _ 1
+n ’
+
+for some small constant d1 > 0. (The formula for expected(p) appears as (3.3).)
+We can bound the average time required to generate 9 using the rejection
+technique by applying the techniques of the proof of Theorem 5 as follows: The
+body of the repeat loop is generated c z 1 + n/t times, on the average, in order
+to generate 9. With probability 1 - h(L%‘J)/cg(,F) = n/t, we must evaluate
+f ( E?‘J), which takes at most O(expected( 9)) = O(t/n) time, on the average..
+Putting this all to&her, the average time to generate 9 using the rejection.
+technique is roughly
+(7.7)#
+
+for suitable small constants d2, ds, dd > 0. Thus, the value oft at which (7.6) and
+(7.7) are equal is 0(n).
+In the implementation discussed in the next two sections, the initialization 7
+= 22 seemed to work best. Typical values of T can be expected to be in the range
+10-40.
+ACM Transactions on Mathematical Software, Vol. 11, No. 1, March 1985.
+
+Random Sampling with a Reservoir
+8. IMPLEMENTATION
+
+OF ALGORITHM
+
+l
+
+53
+
+Z
+
+In this section we give an efficient Pascal-like implementation
+of Algorithm Z.
+This program incorporates the threshold, RANDOM, and subroutine optimizations discussed in Section 6. The method of Algorithm X is used until t > thresh,
+where thresh is equal to T x n. The constant T should be initialized to some
+integer in the range 10-40; in the timings described in the next section, performance is best when T is initialized to 22.
+A few nonstandard notations are used: Statements between the reserved words
+loop and end loop form the body of a loop; execution of the statement break
+loop causes flow of control to exit the loop. The X symbol is used for multiplication, x 7 y stands for xy, and parentheses enclosing a null argument are used
+for function calls with no parameters.
+Operations of the form xy, where y is either a real number or a large integer,
+are computed as EXP(y x LOG(x)) using the mathematical library subroutines
+EXP and LOG. The variables W, 2, 2, lhs, rhs, y, and quot have type real; all
+other variables have type integer.
+The random number generator RANDOM takes no arguments and returns a
+uniform random variate in the range (0, 1). We will let u denote the smallest
+number returned by RANDOM, max-int the largest number that can be stored
+in a integer variable, and max-real the largest number that can be stored in a
+real variable. In order to prevent integer and floating point overflow, we must
+have
+Nx-‘I”
+
+< max-int
+
+Nx-‘I”
+
+and
+
+< max-real.
+
+This guarantees, for example, that the random variates 9 and $Y will be able to
+be stored in their appropriate variables and that the computation of f( L%J) will
+not cause overflow in pathological situations.
+These conditions can be satisfied easily on most computers, in the following
+way: Some bound on N can be obtained, even if it is only a weak bound. The
+next step is to determine the minimum value of n that satisfies the two conditions,
+substituting
+for N the upper bound just obtained. Let us call that value n,,;
+typically, n,, should be a fairly small number. If the desired sample size n is less
+than no, the solution is to apply the basic philosophy of reservoir sampling
+recursively. First we run Algorithm Z to find a random sample of size no. Then
+we generate a random sample of size n from the random sample of size rzousing
+the simple procedure below:
+for j := 0 to no - 1 do already-selected := false;
+
+num-selected = 0;
+while num-selected < n do
+begin
+
+JZ := TRUNC(nO x RANDOM( ));
+if not already-selected[d] then
+begin
+
+OUTPUT(C[J?]);
+already-selected [A] := true;
+num-selected := num-selected + 1
+end
+end
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March 1985.
+
+54
+
+Jeffrey Scott Vitter
+
+l
+
+An alternative to this procedure is to use one of the sequential sampling methods
+given in [lo].
+The optimized code for Algorithm
+Z appears below. The first part of t;be
+program is essentially the code for Algorithm X, which does the sampling until t
+gets large enough.
+(Make the first n records candidates for the sample)
+for j := 0 to n - 1 do READ-NEXT-RECORD(C[j]);
+]t is the number of records processed so far)
+t := n;
+
+{Process records using the method of Algorithm X until
+
+t is large enough)
+
+thresh := T X n;
+num := 0;
+while not eof and (t 5 thresh) do
+begin
+Y” := RANDOM( );
+
+[num is equal to t - nl
+
+{Generate V)
+
+27 := 0;
+t := t + 1; num := nun + 1;
+quot := numjt;
+while quot > V do
+begin
+
+IFind min Sa satisfying (4.1))
+
+y .= a/” + 1.
+
+t := t + 1; n;m := num + 1;
+quot := (quot X num)/t
+end;
+(Skip over the next 9 records]
+SKIP-RECORDS(Y);
+if not eof then
+{Make the next record a candidate, replacing one at random)
+begin
+J+?:= TRUNC(n x RANDOM( )); {A is uniform in the range 0 s A I n - 1)
+READ-NEXT-RECORD(C[J])
+end
+end;
+(Process the rest of the records using the rejection technique)
+{Generate W]
+W := EXP(- LOG(RANDOM(
+))/n);
+(term is always equal to t - n + 11
+term := t - n + 1;
+while not eof do
+begin
+loop
+
+(Generate SYand 2)
+zl := RANDOM( );
+
+.
+2 := t x (W - 1.0);
+19 is tentatively set to WJ 1
+9?= TRUNC(Z);
+{Test if % 5 h(Y)/cg(a”)
+in the manner of (6.3))
+lhs := EXP(LOG((@
+x (((t + l)/term)
+T 2)) x (term + p))/(t
++ %?))/n);
+rhs := (((t + F)/(term
++ 9)) X term)/t;
+if lhs 5 rhs then
+begin ZV := rhs/lhs; break loop end;
+{Test if W 5 f (Y)/cg(Z)l
+y := ((@Y X (t + l))/term) X (t + 9 + l))/(t + 2);
+if n < .9 then begin denom := t; numer-lim := term + 50 end
+else begin denom := t - n + 9; numer-lim := t + 1 end;
+for numer := t + 9 downto numer-lim do
+begin y := (y X numer)/denom; denom := derwm - 1 end;
+W := EXP(- LOG(RANDOM(
+))/n);
+{Generate W in advance)
+if EXP(LOG(y)/n)
+zs (t + ?)/t
+then break loop
+end loop;
+(Skip over the next 9 records]
+SKIP-RECORDS(Y);
+ACM Transactions
+
+on Mathematical
+
+Software,
+
+Vol. 11, No. 1, March
+
+1985.
+
+Random Sampling with a Reservoir
+
+l
+
+55
+
+Table II. Timings for Algorithms R, X, and Z (in seconds)
+Algorithm R Algorithm X
+Algorithm Z
+N = lo6
+n = 10’
+n = lo2
+n= lo3
+n = 10’
+n = lo6
+
+171
+153
+155
+158
+176
+
+41
+35
+37
+47
+95
+
+0.1
+0.8
+5
+31
+96
+
+N= 10’
+n = 10’
+n= lo2
+n= 103
+n = 10’
+n= 106
+
+1595
+1590
+1553
+1560
+1604
+
+430
+356
+371
+387
+500
+
+0.1
+1
+8
+55
+303
+
+if not eof then
+(Make the next record a candidate, replacing one at random]
+begin
+d := TRUNC (n x RANDOM( )); (& is uniform in the range 0 5 L I n - 1)
+READ-NEXT-RECORD(C[L])
+end,
+t := t + s + 1;
+term := term + Y + 1
+end;
+9. EMPIRICAL
+
+COMPARISONS
+
+This section presents the results of empirical timings for Algorithms R, X, and
+Z run on a VAX 11/780 computer. The programs were written in FORTRAN 77,
+in order to get high speed. The random number generator used was a machineindependent version of the linear congruential method, similar to the one described in [9]. The programs for Algorithms X and Z were direct translations of
+those given in the last section. For Algorithm R we optimized the basic code by
+putting it into the framework discussed in Section 3.
+The running times of the algorithms (in microseconds) are as follows:
+= 160N
+
+(Algorithm R),
+
+.e 40N
+
+(Algorithm X),
+
+= 950n In N - 1250n
+n
+
+(Algorithm Z).
+
+for Algorithm R and X were much higher for very small and
+very large values of n. The formula for Algorithm Z was obtained using least
+squares curve fitting.
+The timings were done for a large range of values of n and N. The values given
+in Table II are representative of the results. All times are given in seconds. When
+N = 107, Algorithm R requires roughly 26 minutes of CPU time, Algorithm X
+requires about 6 minutes, but Algorithm Z uses only a few seconds.
+To put these CPU timings in perspective, let us consider the corresponding
+
+The actual timings
+
+I/O time required for the N = 107, n = 10’ example, assuming an average record
+ACM Transactions on Mathematical Software, Vol. 11, No. 1, March 1985.
+
+56
+
+l
+
+Jeffrey Scott Vitter
+
+size of 15-20 bytes. The total file size would be roughly 150-200 megabytes. IBM
+3380 disk drives can read/write information at the rate of 6 megabytes per second,
+and IBM 3420 model 8 tape drives can read/write at the rate of 1.25 megabytes
+per second. Roughly 800 megabytes can be stored in a 3360, whereas tapes for a
+3420 can store roughly 180 megabytes.
+In the disk case, the sequential read time for the file is roughly 30 seconds.
+However, the algorithms we have developed for this paper do not need to read
+all the records; several records can be skipped at once. If the record length is
+fixed, then I/O time is reduced to roughly n ln(N/$
+short seeks and reads; the
+corresponding I/O time is reduced to less than 2 seconds. Even if record lengths
+are varying, the number of records in each track can be stored in the track
+header; skipping is done by reading consecutive track headers until the desired
+track is found. The resulting I/O time is substantially less than 30 seconds. The
+corresponding CPU times for this example are 1590 seconds (Algorithm R), 356
+seconds (Algorithm X), and 1 second (Algorithm R).
+For the tape example, the time for a sequential read is about 150 seconds.
+However, tape drives can make use of their fast-forward capabilities to skip over
+unwanted records at a higher speed, and so the I/O time can be reduced, especially
+if the records are of fixed length. The CPU times are the same as above.
+In smaller examples, the CPU time used by Algorithm X might be roughly as
+small as the I/O time required; however, the internal processing and the I/O
+might not be able to be overlapped, and so the total running time could be double
+the I/O time. The advantage of Algorithm Z is that the CPU time is insignificant.
+The algorithm is fast enough so that it is useful even when the value of N is
+known.
+10. SUMMARY
+
+OF THE RESULTS
+
+In this paper we have considered algorithms for selecting a random sample of
+size n from a file containing N records, in which the value of N is not known to
+the algorithm. We have shown that any sampling algorithm for this problem that
+processes the file sequentially can be characterized as a reservoir algorithm. The
+distinguishing
+feature of reservoir algorithms is that a sample of size L n is taken
+during a sequential pass through the file; the final sample is obtained by selecting
+n records at random from this larger sample. All reservoir algorithms require
+Q(n(1 + log(N/t)))
+time.
+The main result of the paper is the design and analysis of Algorithm Z, which
+uses a rejection-acceptance
+technique to do the sampling in optimum time, up
+to a constant factor. Several optimizations
+are given that improve the running
+time of the naive version by a factor of roughly 8. Central processing unit timings
+done on a VAX 11/‘780 computer indicate that Algorithm Z is significantly faster
+than the reservoir-sampling
+algorithms in use today. An efficient Pascal-like
+implementation
+of Algorithm Z suitable for general use appears in Section 8.
+REFERENCES
+1. BENTLEY, J. L. Personal communication,
+Apr. 1983; see [ll].
+2. ERNVALL, J. AND NEVALAINEN, 0. An algorithm for unbiased random sampling. Cornput. J. 25,
+1 (Jan. 1982), 45-47.
+ACM Transactions on Mathematical Software, Vol. 11, No. 1, March 1985.
+
+Random Sampling with a Reservoir
+
+l
+
+57
+
+3. FAN, C. T., MULLER, M. E., AND REZUCHA, I. Development of sampling plans by using
+sequential (item by item) selection techniques and digital computers. Am. Stat. Assoc. J. 57 (June
+1962), 387-402.
+4. FELLER, W. An Introduction to Probability Theory and Its Applications, vol. I, 3rd ed. Wiley,
+1968.
+5. FELLER, W. An Introduction to Probability Theory and Its Applications, vol. II, 2nd ed. Wiley,
+1971.
+6. JONES, T. G. A note on sampling a tape file. Commun. ACM 5,6 (June 1962), 343.
+7. KAWARASAKI, J., AND BBUYA, M. Random numbers for simple random sampling without
+replacement. Keio Math. Sem. Rep. No. 7 (1982), l-9.
+8. KNUTH, D. E. The Art of Computer Programming. vol. 2: Seminumerical Algorithms, 2nd ed.
+Addison-Wesley, Reading, Mass., 1981.
+9. SEDGEWICK,R. Algorithms. Addison-Wesley, Reading, Mass., 1981.
+10. VITTER, J. S. Faster methods for random sampling. Commun. ACM 27, 7 (July 1984). 703-718.
+11. VI’ITER, J. S. Optimum algorithms for two random samplingproblems. In Proceedings of the 24th
+Annual IEEE Symposium on Foundations of Computer Science (Tucson, AZ., Nov. 7-9), IEEE,
+New York, 1983 pp. 65-75.
+Received February 1984 accepted October 1984.
+
+ACM Transactionson Mathematical Software,Vol. 11,No. 1, March 1985.
+
+

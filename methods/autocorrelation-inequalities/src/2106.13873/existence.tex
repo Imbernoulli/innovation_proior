@@ -1,0 +1,194 @@
+%!TEX root = main.tex
+	
+	Let $w(x) \in L^1(\mathbb{R})\cap L^{\infty}(\mathbb{R})$ be a symmetric decreasing weight with $\|w\|_{L^{1}(\mathbb R)} = \|w\|_{L^{\infty}(\mathbb R)} =1$. Examples to keep in mind are $w(x) = \chi_{[-1/2,1/2]}$, or $w(x) = e^{-\pi x^2}$. Let $C_{opt}$ be the smallest constant such that the inequality 
+	\begin{equation}\label{main ineq}
+			\int_{\mathbb R^2} f(x)f(y) w(x-y) dx dy \le C_{opt}(w) \|f\|_1\|f\|_2
+		\end{equation}
+	holds for all $f\in L^{1}(\R)\cap L^{2}(\R)$. After a change of variable, finding $C_{opt}$ for  $\frac{a^{1/2}}{\pi^{1/2}}e^{-a x^2}$ is equivalent to find the optimal constant for which \eqref{MR thm 1} holds. In particular, for $a=\pi$, \eqref{MR thm 1} is equivalent to $0.707107\approx  \frac{1}{2^{1/2}}\le C_{opt}(e^{-\pi x^2}) \le \left(\frac{2}{3}\right)^{3/4}\approx 0.737788$ (compare to Table 1).
+	
+	
+Our first theorem establishes the existence of extremizers with compact support for the inequality \eqref{main ineq}, as conjectured by the second author and Ramos (see \cite{MR}, Conjecture 1.4). 
+
+	\begin{thm}
+	\label{thm:main}
+		Let $w(x)$ be a symmetric decreasing weight in $L^1(\mathbb{R})$.  Then there exists a bounded, symmetrically decreasing function $\optf \in L^{1}(\R)\cap L^{2}(\R)$ (with $\optf$ depending on $w$), with compact support, such that
+		\begin{equation}
+			\int_{\mathbb R^2} f(x)f(y) w(x-y) dx dy = C_{opt}\|f\|_1\|f\|_2.
+		\end{equation}
+		
+		%Moreover, the support of all extremizers has measure at most $l \le 4 \frac  {\|w\|_1^2 }{C_{opt,R}}^2.$
+
+
+
+	%	Moreover there exists a compactly supported bounded symmetric decreasing extremizer. (I don't know if all of them are of this form, but I'd hope so)
+	\end{thm}
+
+	We start observing that 
+	\begin{align*}
+	C_{opt}
+	&=
+		\sup_{\substack{f\in L^{1}(\R)\cap L^{2}(\R) \\ 
+						\|f\|_1\|f\|_2\neq0}}
+		\frac{\int_{\mathbb R^2} f(x)f(y)w(x-y) dx dy }
+			 {\|f\|_1\|f\|_2}
+	\\&=
+		\sup_{\substack{f\in L^{1}(\R)\cap L^{2}(\R) \\ 
+						\|f\|_1\|f\|_2\neq0 ,f\geq0}}
+		\frac{\int_{\mathbb R^2} f(x)f(y)w(x-y) dx dy }
+			 {\|f\|_1\|f\|_2}
+	\\&= 	
+		\sup_{\substack{f\in L^{1}(\R)\cap L^{2}(\R) \\ 
+						\|f\|_1\|f\|_2\neq0 ,f\geq0\\ f \ \text{symmetric decreasing}}}
+		\frac{\int_{\mathbb R^2} f(x)f(y)w(x-y) dx dy }
+			 {\|f\|_1\|f\|_2}\\
+	\end{align*}
+	
+The last identity is a consequence of the well known Riesz rearangement inequality:
+
+
+	\begin{lemma}[Riesz rearrangement inequality]
+		Let $f:\R\to\R$ be a nonnegrative function, let $f^*$ be the symmetric decreasing rearrangement of $f$. That is:
+		$$f^*(x) := \int_{a\ge 0} \chi_{[-\mu(\{f\ge a\})/2, \mu(\{f\ge a\})/2]}(x) da $$ 
+		where $\mu$ is the usual Lebesgue measure. Then:
+
+		\begin{equation}
+			\int_{\mathbb R^2} f(x)f(y) w(x-y) dx dy \le 
+			\int_{\mathbb R^2} f^*(x)f^*(y) w(x-y) dx dy
+		\end{equation}
+		with equality only if $f^*$ is a translation of $f$.% in the sense of XXXX.
+	\end{lemma}
+
+%	\begin{proof}
+		%\newb{Aparece en wikipedia. Buscar mejor referencia! haha}
+		%All the symmetric rearrangement proofs are the same.
+	%\end{proof}
+For $R>0$, let 
+$$
+	C_{opt,R}:=\sup_{\substack{f\in L^{1}(\R)\cap L^{2}(\R)\\ \|f\|_1\|f\|_2\neq0\\ \operatorname{supp}(f)\subset [-R,R]}}
+				\frac{\int_{\mathbb R^2} f(x)f(y)w(x-y) dx dy }{\|f\|_1\|f\|_2}.
+$$
+
+A useful tool to establish Theorem \ref{thm:main} is the following local version of the theorem. 
+\begin{proposition}\label{restricted extremizers existence}
+There exists a function $\optf\in L^{1}(\R)\cap L^{2}(\R)$, supported in $[-R,R]$ such that
+$$
+C_{opt,R}:=\frac{\int_{\mathbb R^2} \optf(x)\optf(y)w(x-y) dx dy }{\|\optf\|_1\|\optf\|_2}
+$$
+\end{proposition}
+This follows directly from an adaptation of \cite[Theorem 1.6]{MR}.
+
+
+
+	\begin{proof}[Proof of Theorem \ref{thm:main}]
+	%Restrict the problem to functions supported on $[-R,R]$ (for large $R$). Now we know (by the result of Jose \& João) that extremizers of this subclass do exist. Extremizers are still symmetric decreasing, and we will show that the extremizers do not change as $R$ gets large.\\
+
+Let $R>0$, sufficiently large. By the Proposition \ref{restricted extremizers existence} we know that there exists a function $\optf\in L^{1}(\R)\cap L^{2}(\R)$ with support in $[-R,R]$ such that
+\begin{equation}\label{opt constant R}
+C_{opt,R}:=\frac{\int_{\mathbb R^2} \optf(x)\optf(y) w(x-y) dx dy }{\|\optf\|_1\|\optf\|_2}.
+\end{equation}
+We will show that the function $\optf$ do not depend on $R$ as soon as $R$ is large enough.
+
+
+	
+	The function $\optf$ maximizes the functional
+	\begin{equation}
+		\mathcal F (g) :=  \log \left[\int_{\mathbb R^2} g(x)g(y)w(x-y) dx dy \right]  -  \log \|g\|_1 - \frac 1 2 \log \|g\|_2^2
+	\end{equation}
+	over the set of functions $g\in L^{1}(\R)\cap L^{2}(\R)$ supported in $[-R,R]$. This leads to the following Euler-Lagrange equation inside the support of $\optf$:
+
+	\begin{equation}\label{euler-lagrange}
+		0 = \nabla_f \mathcal F (\optf) = \frac{2 \optf\ast w}{\int_{\mathbb R^2} \optf(x)\optf(y) w(x-y) dx dy}  - \frac 1 {\|\optf\|_1} - \frac{\optf}{\|\optf\|_2^2}.
+	\end{equation}
+	
+	Let $a>0$ such that the support of $\optf$ is equal to $[-a,a]$. Integrating \eqref{euler-lagrange} from $-a$ to $a$ and rearranging, we have
+	\begin{align*}
+	2 \frac{\int_{[-a,a]\times \mathbb R} \optf(x) w(x-y) dxdy}
+	{C_{opt,R}\|\optf\|_1\|\optf\|_2}
+	=&
+	\frac{1}{\|\optf\|_2^2}\int_{-a}^{a}\optf(x)dx+\frac{2a}{\|f\|_1} 
+	\\=&  
+	\frac{\|\optf\|_1}{\|\optf\|_2^2} + \frac{2a}{\|\optf\|_1}.
+	\end{align*}
+
+	On the other hand
+	$$
+	\int_{[-a,a]\times \mathbb R} \optf(x) w(y-x) dxdy = \|w\|_1\|\optf\|_1.
+	$$
+	Combining both equalities we obtain
+	\begin{equation}
+	\label{eq:support_bound_coarse}
+	a = \frac{\|\optf\|_1}{\|\optf\|_2} \left (\frac{\|w\|_1}{C_{opt,R}} - \frac 1 2 \frac{\|\optf\|_1}{\|\optf\|_2} \right ) \le \frac{\|\optf\|_1 \|w\|_1 }{\|\optf\|_2C_{opt,R}},
+	\end{equation}
+	moreover, from H\"older's inequality we know that ${\|\optf\|_1} \le \sqrt{2a} {\|\optf\|_2}$, and therefore
+
+	\begin{equation}
+		a \le 2 \frac  {\|w\|_1^2 }{C_{opt,R}^2}. 
+	\end{equation}
+	%\newpage
+	\textbf{Finishing the proof.}
+The last remaining step is showing that the non-conmpactly-supported problem has a solution as well. That will follow if we show that
+	\begin{equation}
+	    C_{opt} = \lim_{R\to\infty} C_{opt,R}
+	\end{equation}
+	as in that case, an extremizer witnessing $C_{opt,R}$ for $R$ large enough will witness $C_{opt}$ as well. Clearly $C_{opt} \ge \lim_{R\to\infty} C_{opt,R}$ so we must show the opposite. Let $\epsilon>0$. Let $g_0\in L^1(\mathbb{R})\cap L^2(\mathbb{R})$ be an almost-extremizer, such that:
+	\[
+	C_{opt}\le \frac{\int_{\mathbb R^2} g_0(x)g_0(y)w(x-y) dx dy }{\|g_0\|_1\|g_0\|_2} + \epsilon/2
+	\]
+	now take $g_1$ compactly supported with $\|g_1-g_0\|_{1}+\|g_1-g_0\|_{2} <\delta$. If $\delta$ is small enough, that implies that
+	
+	\[
+	\left|
+	\frac{\int_{\mathbb R^2} g_0(x)g_0(y)w(x-y) dx dy }{\|g_0\|_1\|g_0\|_2}
+	-
+	\frac{\int_{\mathbb R^2} g_1(x)g_1(y)w(x-y) dx dy }{\|g_1\|_1\|g_1\|_2}
+	\right| < \epsilon/2.
+	\]
+	
+	Let $[-R_1,R_1]$ be the support of $g_1$. Then $C_{opt} \le C_{opt,R_1}-\epsilon$.
+	\end{proof}
+
+\begin{remark}
+	%Using control of $\|w\|_2$, 
+	Finer bounds for $a$ can be found by squaring and integrating \eqref{euler-lagrange}, in the form of:
+	\[
+		\frac{4}
+			 {C_{opt,R}\|\optf\|_1^2\|\optf\|_2^2} 
+		\int_{-a}^a |w*\optf|^2  dx =
+				\int_{-a}^a \left |
+			\frac{1}{\|\optf\|_1}+\frac{\optf}{\|\optf\|_2^2}
+		\right |^2 dx,
+	\]
+%	Intermediate step:
+%		\frac{4 \|w\|_2^2}
+%			 {C_{opt,R}\|\optf\|_2^2} 
+%	\ge&
+%		\frac{2a}{\|\optf\|_1^2} + 3 \frac{1}{\|\optf\|_{2}^2}
+and using Young's inequality in the left hand side 
+\begin{align*}
+	{\|w\|^2_2\|\optf\|^2_1}
+		\geq  
+		\int_{-a}^a |w*\optf|^2  dx, 
+\end{align*}
+which leads to
+
+	\[
+	\frac{\|\optf\|_1}{\|\optf\|_2} 
+	\ge
+	\sqrt{2a} \left(\frac{4 \|w\|_2^2}{C_{opt,R}} - 3\right)^{- \frac 1 2}.
+	\]
+	This inequality gives a better bound for \eqref{eq:support_bound_coarse}, giving a lower bound for the substracted term, namely the bound:
+	\begin{equation}
+	\label{eq:support_bound_fine}
+	a \le  
+	2\left (
+		\frac{\|w\|_1}{C_{opt,R}}
+			- 
+		\sqrt{\frac{a}2} 
+		\left(
+			\frac{4 \|w\|_2^2}
+				 {C_{opt,R}} - 3
+		\right)^{- \frac 1 2} 
+	\right )^2
+	\end{equation}
+	The right hand side of \eqref{eq:support_bound_fine} is decreasing in $C_{opt,R}$. Therefore one can find bounds for $a$ by substituting $C_{opt,R}$ even when its exact value is not known.
+\end{remark}

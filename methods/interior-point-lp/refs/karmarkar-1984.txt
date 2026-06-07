@@ -1,0 +1,1121 @@
+                                                                  COMBINATOR1CA4 (4) (1984) 373--395
+
+
+              A N E W POLYNOMIAL-TIME ALGORITHM
+                     FOR LINEAR P R O G R A M M I N G
+
+
+                                        N. K A R M A R K A R
+
+                                       Received 20 August 1984
+                                       Revised 9 November 1984
+
+
+
+
+          We present a new polynomial-time algorithm for linear programming. In the worst case,
+the algorithm requires O(tf'SL) arithmetic operations on O(L) bit numbers, where n is the number of
+variables and L is the number of bits in the input. The running,time of this algorithm is better than
+the ellipsoid algorithm by a factor of O(n~'~). We prove that given a polytope P and a strictly in-
+terior point a E P, there is a projective transformation of the space that maps P, a to P', a' having
+the following property. The ratio of the radius of the smallest sphere with center a', containing
+P ' to the radius of the largest sphere with center a' contained in P ' is O(n). The algorithm consists
+of repeated application of such projective transformations each followed by optimization over an
+inscribed sphere to create a sequence of points which converges to the optimal solution in poly-
+nomial time.
+
+
+                                         1. Informal outline
+
+       In this Section we give an informal discussion of the main ideas involved in
+the algorithm. A more rigorous description will be given in the next Section.
+
+
+                                      1.1. Problem definition
+
+       We shall reduce the general linear programming                  problem over the rationals
+to the lollowing particular case:
+
+                                        minimize         crx
+                                                           Ax=O
+                                      subject to         ~ ~'xi = 1
+                                                         (x=>O.
+Here x = ( x l . . . . , x.)TER ", cEZ", A E Z " ~ ' .
+
+
+       This is a substantially revised version of the paper presented at the Symposium on Theory
+of Computing, Washington D. C., April 1984.
+       AMS subject classification (1980): 90 C 05
+374                                   N. KARMARKAR
+
+
+       Let 12 denote the subspace {xlAx=0}. Let A denote the simplex A =
+= {xlx >=O, .~xi = 1} and let H be the polytope defined by
+                                        1I = ONA.
+Thus the problem we consider is
+                                      minimize      crx
+                                     subject to     xE/7.
+
+
+                            1.2. Optimization over a sphere
+
+       If we replace the constraint xEA by a constraint of the form x~S, where S
+is a sphere, then it is trivial to see that the optimum can be found by solving a
+linear system of equations.
+       The intersection of a sphere and an affine space is a lower dimensional
+sphere inside that affine space. Hence the problem becomes:
+                       min c'rx,     subject to     xES" (a sphere)
+where c' was obtained by projecting c orthogonally onto t2.
+       But this problem is trivial: From the center of the sphere, take a step along
+the direction - c ' , of length equal to the radius of the sphere.
+
+
+                         1.3. Bounds on the objective function
+
+       Let a0 be strictly interior point in the polytope P. Suppose we draw an ellip-
+soid E with center a0, that is contained in the polyt ope and solve the optimization prob-
+lem over the restricted region E instead of P. How good a solution do we get as com-
+pared to the optimal solution? To derive a bound, we create another ellipsoid E'
+by magnifying E by a sufficiently large factor v so that E' contains P.
+                                   E c P c E', E" = rE.
+
+Let rE, A , fr, denote the minimum values of objective function f ( x ) on E, P, and
+E' respectively.
+                  f ( a o ) - f ~ <----f(ao)--fe ~--f(ao)-fw = vtf(ao)-fe].
+       The last equation follows from the linearity off(x).
+                                      f(a0) - f ~     1
+                                      f(ao)-fp-       v
+                                     ~-~       ~ (1_1).
+                                   f(ao) - f e
+Thus by going from a0 to the point, say a', that minimizesf(x) over E we come closer
+to the minimum value of the objective function by a factor I - v -1. We can repeat
+the same process with a' as the center. The rate of convergence of this method depends
+on v, the smaller the value of v, the faster the convergence.
+            A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR P R O G R A M M I N G                            375
+
+
+                             1.4. Projective transformations
+
+       Projective transformations of R" are described by formulas of the form
+                                                 Cx+d
+                                              x~ frx+g
+where C6R *X",       d, f6R", g~R and the matrix
+
+
+is non-singular.
+       We shall be interested in projective transformations of the hyperplane
+                                   2:= { IZx, = 1}.
+
+       It is easy to see that these transformations are described by
+                                                             Cx
+                                              X ~"        eTfx
+
+where e=(1, 1. . . . . 1)r and C is a non-singular n×n matrix.
+        For each interior point a of A there is a unique projective transformation
+T(a, ao) of the hyperplane 2: fixing all vertices of the simplex A and moving a =
+= (al .... , a,) r to the center a0=(1/n)e. This transformation is given by
+                                          t       _       x_i / a f        .
+                                        x~ = Z xJaj
+                                                      J
+
+          Observe that the corresponding matrix C is now diagonal: C =
+                  ,1
+= d i a g [ 1 .... 7,,)" The transformation C(a, a0) has the following properties :
+
+1. T is one-to-one and maps the simplex onto itself. Its inverse is given by
+                                        a i XPt
+                            Xi =   ,~     adxj            i= 1,2,...,n.
+                                   J
+
+2. Each facet of the simplex given by xi=0                                 is mapped onto the corresponding
+facet xi=0.
+                                                                              1
+3. Image of the point x = a is the center of the simplex given by X-'I ~ - - .
+                                                                                                n
+4. Let Ai denote the ith column of A. Then the system of equations
+                                              z~ Aixi = 0
+                                              i
+now becomes
+                                         .~ Aiaix~
+                                          t
+                                                                      =0
+                                              Z a,x;
+                                              i
+376                                    N. K A R M A R K A R
+
+
+
+or
+                                        Z A;x; = o
+                                         i
+where
+                                          A~ = aiAi.
+We denote the affine subspace      {x'lA'x'=0} by f2".
+5. If a~ f2 then the center of the simplex aoC f2'.
+       Let B(ao, r) be the largest ball with center a0, the same as the center of the
+simplex, and radius r that is contained in the simplex. Similarly let B(ao, R) be
+the smallest ball containing A. It is easy to show that R / r = n - 1 .
+                                 B(a0, r) ~ A ~ B(ao, R)
+                        B(a0, r)O~2' =c A (q (2" ~ B(a0, R)N f2'.
+But A fqf2' is the image 17' of the polytope H=Af~f2. The intersection of a ball
+and an affine subspace is a ball of lower dimension in that subspace and has the
+same radius if the center of the original ball lies in the affine subspace, which it
+does in our case. Hence we get
+                                                      R
+                       B'(ao, r ) ~ H ' ~ B ' ( a o , R),     -r- = n - 1
+which proves that v =dimension of the space can always be achieved by this method.
+(Note: A is an n - 1 dimensional simplex.)
+
+                             1.5. Invariant potential functions
+       The algorithm creates a sequence of points x (°), x (1), ..., x (k), ... having dec-
+reasing values of the objective function. In the k th step, the point x (k) is brought
+into the center by a projective transformation. Then we optimize the objective
+function over the intersection of the inscribed ball and the affine subspace to find
+the next point x (k+l). Based on the results of the previous Sections, we expect the
+objective function to be reduced by a factor of (1 - n - 0 at least, in each step, but
+there is one more technicality we have to deal with. The set of linear functions is
+not invariant under a projective transformation, but ratios of linear functions are
+transformed into ratios of linear functions. With every linear objective function
+/(x) we associate a "potential function" g(x) expressed in terms of logarithms of
+ratios of linear functions, in order to measure the progress of the algorithm.
+
+
+
+It has the following properties:
+1. Any desired amount of reduction in the value o f / ( x ) can be achieved by sufficient
+reduction in the value of g(x).
+2. g(x) is mapped into a function of the same.form by projective transformations
+T(a, a0) described in 1.4.
+3. Optimization of g(×) in each step can be done approximately by optimizing a
+linear function (but a different linear function in different steps).
+             A NEW POLYNOMIAL-TIME A L G O R I T H M FOR LINEAR P R O G R A M M I N G   377
+
+
+
+                              1.6. Complexity of the algorithm
+       The value of the objective function is reduced by a constant factor in O(n)
+steps. As in the ellipsoid algorithm we define
+                             L = log (1 + ID,..~!)+log (1 +~)
+where Dm=x = max {Idet(X)lIX is a square submatrix of constraint matrix A}
+                               : max {[c;I, Ib,[ i = l .... , n}.
+Clearly, L is not greater than the length of the input.
+        During the course of the algorithm, we periodically check for optimality by
+converting the interior point solution to an extreme point solution without degrading
+the objective function value, and testing the extreme point for optimality. The inter-
+val between two successive checks can be adjusted so that time spent between checks
+is comparable to tinae spent in checking for optimality. Any two distinct values of
+the objective function on the vertices of the polytope have to differ by at least 2 -kz
+for some constant k [3]. Therefore, in at most O(nL) steps we reach a situation in
+which any extreme point better than the current interior point has to be an exact
+optimal solution.
+         In each step, we have to solve a linear system of equations which takes O(n 3)
+arithmetic operations in the worst case. However, if we solve the equations at each
+step by modifying the solution to the previous step, we can s a v e a factor of 1/n.
+This method is described in Section 6.
+       For each arithmetic operation, we need a precision of O(L) bits. Note that this
+much precision is required for any method that solves the equations A x = b if
+det (A) :O(2L), e.g., the complexity of gaussian elimination is O(n3L In L lnln L),
+although it is normally stated as O(n~). This factor L must appear in the conlplexity
+of any algorithm for linear programming, since representing the output can require
+O(L) bits/variable in the worst case.
+      The overall complexity of our algorithm is O(n3-SL"~In L Inln L) as compared
+to O(n6L 2 In L lnln L) for the ellipsoid algorithm.
+
+                                     2. Main algorithm
+                                   2.1. Problem definition
+       In order to focus on the ideas which are new and the most important in our
+algorithm, we make several simplifying assumptions. In Section 5 we will remove
+all these restrictions by showing how a linear programming problem in standard
+form can be transformed into our canonical form.
+
+                              Canonical form of the problem
+Input: ACZ '~×', c~Z".
+       Let g2={xlAx=0}, A={xlx=>0, ~ ' x i = l } and ao=e/n.
+Assumptions: crx=>0 for every x~ ~2NA; ao is a feasible starting point, i.e. A a o - 0 ;
+crao#O.
+Output:either Xo~QNA such that crxo=0 or a proof that min{erxlxCflAA}>0,
+378                                    N. KARMARKAR
+
+                                       2.2. Comments
+
+       1. Note that the feasible region is the intersection of an affine space with a
+simplex rather than the positive orthant. Initially it takes one projective transfor-
+mation to bring a linear programming problem to this form.
+       2. The linear system of equations defining f2 is homogeneous i.e., the right
+hand side is zero. The projective transformation that transforms positive orthant
+into simplex also transforms inhomogeneous system of equations into an homo-
+geneous one.
+        3. The target minimum value of the objective function is zero. This will be
+justified by combining primal and dual into a single problem.
+
+
+                           2.3. Description of the Algorithm
+
+       The algorithm creates a sequence of points x (°), x (1), ..., x (~) by these steps:
+Step 0. Initialize
+                             x (°) : center of the simplex
+Step 1. Compute the next point in the sequence
+                                      x(k+ 1) .~_ ~D(x(k)).
+
+Step 2. Check for infeasibility
+Step 3. Check for optimality
+         go to Step 1.
+Now we describe the steps in more detail.
+Step 1. The function b=q~(a) is defined by the following sequence of operations.
+       Let D = d i a g {al, a2 . . . . . a,} be the diagonal matrix whose fh diagonal
+entry is a~.
+       1. Let B = ~
+i.e., augment the matrix AD with a row of all l's. This guarantees that Ker B ~ 2;.
+        2. Compute the orthogonal projection of Dc into the null space of B.
+                                  cp = [ I - BT (BBr)-IB] Dc.
+          ^     Cp
+       3. c - ~ 7 I , i.e. ~ is the unit vector in the direction of %.
+       4. b'=a0-~tr~, i.e. take a step of length ctr in the direction ~, where r is
+the radius of the largest inscribed sphere
+                                                   1
+                                       r=
+                                             t/n(n- 1)
+and ~E(O, l) is a parameter which can be set equal to 1/4.
+            A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                379
+
+
+       5. Apply inverse projective transformation to b"
+
+                                                    Db"
+                                      h~--~
+                                                erDb , •
+       Return b.
+Step 2. Check for infeasibility.
+       We define a "potential" function by
+                                                              cTx
+                                   f(x) = Z ln--
+                                                i                 Xt
+
+We expect certain improvement 6 in the potential function at each step. The value
+of 3 depends on the choice of parameter ~ in Step 1.4• For example if ~ - 1/4 then
+6=1/8. If we don't observe the expected improvement i.e. if f(x(k+l))>f(x(k))--3
+then we stop and conclude that the minimum value of the objective function must
+be strictly positive. When the canonical form of the problem was obtained by trans-
+formation on the standard linear program, then this situation corresponds to the
+case that the original problem does not have a finite optimum i.e. it is either infea-
+sible or unbounded•
+Step 3. Check for optimality.
+       This check is carried out periodically• It involves going from the current
+interior point to an extreme point without increasing the value of the objective
+function and testing the extreme point for optimality• This is done only when the
+time spent since the last check exceeds the time required for checking•
+
+
+                          3. Underlying conceptual algorithm
+
+        In this Section we show how the computations in step 2 represent an underlying
+conceptual sequence of operations. We will also introduce more notation and state
+theorems about the performance of the algorithm. All proofs will be given in Sec-
+tion 4. (A note on notation : In choosing variable names we use the same philosophy
+as in the design of a large program: Some variables are local to a theorem while
+others are global, some theorems are stated in terms of "formal" parameters and
+in order to apply them to the algorithm, one has to substitute actual values for the
+formal parameters e.g•, a result about one step of the algorilhm may be stated in
+terms of input point a and output point b, and can be applied to the k th step of the
+algorithm by    substituting a = x_ (k) and b : x ( k + I) •)
+                    •
+
+
+
+
+                                    3.1. The top level
+
+Theorem 1. In O(n(q+log n)) steps the algorithm finds a feasible point x such that
+                                          cTx
+                                      _    _        -: ~   2--q    •
+                                      e Ta 0
+
+       We associate the objective function c r x with a "potential function" f ( x )
+380                                        N. KARMARKAR
+
+
+given by
+
+                                   f(x)              y
+                                                     7          ~ x; J"
+Theorem 2. Either (i) f(xtk+l))~f(x(k))--6 or
+        (ii) the minimum value o f objective function is strictly positive, where 6 is a
+constant and depends on the choice o f the value o f the parameter ~ o f Step 1, Sub-
+step 4.
+       A particular choice that works: If ~ = 1/4, then 6~1/8.
+
+
+                                     3.2. The basic step
+
+       One step of the algorittun is of the form b=~0(a) which consists of a sequ-
+ence of three steps:
+       1. Perform the projective transformation T(a, a0) of the simplex A that
+maps input point a to thecenter a0.
+       2. Optimize (approximately) the transformed objective function over an
+inscribed sphere to find a point b'.
+       3. Apply the inverse of T to point b' to obtain output b.
+       We describe each of the steps in detail.
+
+
+                         3.3. Projective transformation T(a, ao)
+
+          Let a = (al, a2 . . . . , a,)
+          Let D = d i a g {at, a2 . . . . , a,} be the diagonal matrix with diagonal entries
+al, a2 . . . . . a,. Then T(a, ao) is given by
+                                D-1X
+                      x'-                       where            e=(1,1,..          1).
+                             eTD   -ix                                         "'
+
+
+       Its inverse is givenby
+                                                         Dx"
+                                            X   --       eTDx     .
+
+
+       L e t f ' be the transformed potential function defined by
+                                         f ( x ) = f ' (T(x)).
+       Then
+                                                          c'Ty
+                              f'(Y) = Z In ~ -                        ~ Inaj
+                                      J     Yj                         J
+where c ' = Dc. Let f2' be the transformed affine space f2.
+                                   A x = O ¢~, AD x" =0.
+
+       Thus 12' is the null-space of AD.
+             A NEW POLYNOMIAL-TIME A L G O R I T H M FOR LINEAR P R O G R A M M I N G                        381
+
+
+                                3.4. Optimization over a ball
+
+       Let r be the radius of the largest ball with center a0 that can be inscribed in
+the simplex A. Then
+                                                       1
+                                         t-
+                                                 en(n-i)
+
+       We optimize over a smaller ball B(ao, c~r) 0 < ~ < 1 for two reasons:
+       1. It allows optimization of f '(y) to be approximated very closely by opti-
+mization of a linear function.
+       2. If we wish to perform arithmetic operations approximately rather than
+by exact rational arithmetic, it gives us a margin to absorb round-off errors without
+going outside the simplex.
+       One choice of the value of ~ that works is ~ = 1/4 and corresponds to 3 > 1/8
+in Theorem 2. We restrict the affine space ~ ' = {Yl ADy=0} by the equation ~'y~=
+ = 1. Let O" be the resulting at'fine space. Let B be the matrix obtained by adding
+a row of all l's to AD. Then any displacement in ~ " is in the null space of B,
+                             i.e., for u E ~ " ~ ? ' = u + K e r B .
+       We are interested in optimizing f ' ( y ) over B(a0, ~r)NO". First, we prove
+the existence of a point that achieves a constant reduction in the potential function.
+Theorem3. There exists a point                b'EB(a0, c o ' ) n ~ "   such that f ' ( b ' ) = < f ' ( a 0 ) - 3 ,
+where 3 is a constant.
+       Then we prove that minimization of f '(x) can be approximated by minimi-
+zation of the linear function c'rx.
+ Theorem 4. Let b" be the point that minimizes c ' r x over B(ao, e r ) N f U .          Then
+f ' ( b ' ) ~ = f ' ( a o ) - 6 where 3 is a positive constant depending on ~. For c~=1/4 we
+ may take 6 = 1/8.
+
+        Finally we describe an algorithm to minimize c'rx, over B(a0, e'r).
+
+Algorithm A.
+1. Project c' orthogonally hIto the null space o f B:
+
+                                 c, = [ I - Br(BB r) -1B]c'.
+2. Normalize cv:
+                                                      Cp
+
+                                                  : lop---L
+3. Take a step o f length ~tr along the direction - c v
+
+                                         h p _~ a o - ~ r c p ,
+
+Theorem 5. The point b" returned by algorithm A minimizes c ' r x over B(a0, ~r)OfY'.
+382                                                  N. KARMARKAR
+
+
+                                           4. Analysis of the algorithm
+
+Proof of Theorem 5. Let z be any point such that zEB(ao, ~r)7) Q"
+
+                                       b', z E Q" ~ B (b" - z) = 0
+
+                                                      =~ B T ( B B r ) - a B ( b " - Z) = 0
+
+                                                      = (c' -- ce)T(b" -- Z) = 0
+
+                                                      =~ c ' T ( b ' - - Z ) : c ~ ( b ' - - z )
+
+                                       ceT(b' - Z) : IceTIcer[ao-- o~r~e - z]
+
+                                                       = [cpr[{~.er(ao-- z) -- ~r}
+
+                          ~-er(ao-z) --<--[~:pllao--Z[ --<--~r                  since   zEB(ao, ~r)
+
+                                              c~(b'-z)          <_- 0
+
+                                             c ' r ( b " - z) <= 0
+
+c ' T h ' ~ c tT z,     for all     zEB(ao, a r ) N Q " ,               l
+
+Proof of Theorem 3. Let x* be the point in ( 2 " N S where the m i n i m u m of c t T x
+is achieved. Clearly x* ~[B(ao, ~r).
+            Let b" be the point where the line segment aox* intersects the b o u n d a r y
+of the sphere B(ao,~r). h ' = ( 1 - 2 ) a o + 2 x * for some 2E[0, 1]. By definition,
+b ' E B ( a o , ~ r ) and ao, x*EQ" imply b'EgT'.
+            Hence h'EB(ao, ~r)Og2"
+
+                              c ' r b ' = (1 - 2 ) c ' r a o + A c ' r x        * = (1--2)c'Tao
+
+                                                       cPTao                ]
+                                                       c'rb '           1 -2
+and
+                                                b~ = (1 - 5~)aoj + 2x*.
+          Hence
+                                                        c ' r ao b~          (1 - )0 a. r + 2x,*-
+                      f'(ao)-f'(b')       = Z In                      = ~ In
+                                                        c ' r b ' aoj    i       (1 - 2)aoj
+
+
+                                              =Zln[14                2 x~.]
+                                                 j                 l --2 aojJ"
+               A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                                                                             383
+
+
+Now we use the following inequality: If P~_->O then /-/(1 +P3=>I + z ~ P t .                                                                   There-
+                                                                                                               i
+fore, z~ In (1 + P 3 =>ln (1 + z~ P~).
+        i
+
+
+                  f f ( a o ) - f ' ( b ' ) => In lq 1--2 aoi • x                                              = In 1+
+
+                                                             h" = ( 1 - 2 ) a o + 2 X *
+                                                              b'-ao       = 2(x*-ao)
+                                             c{r = ]b'-aol = 2[x*-aol -<- XR
+where R is the radius of the smallest circumscribing sphere and                                                                 R/r=n- 1.
+                                                                )~ -->_cx r -- - -c~
+                                                                         R     n--1
+                              2n                                                                           n~
+                     14     1~-2        >- 1 '                na/(n -1)                 =       12r -     -            >- 1 +
+                                        --            -I- 1 -      c ~ / ( n - 1)                    n-l--~
+                                                 f ' ( a o ) - f ' ( b ' ) ->_ ln(1 + c 0.
+Taking 6 = I n ( 1 +c0, f'(h')<=f'(ao)-3. I
+Proof of Theorem 4. First we prove a few lemmas.
+                                                                                                     X2
+Lemma 4.1. If Ix1-<__13<1 then [ l n ( l + x ) - x l ~ - -
+                                                                                                 2(1 - / ~ )
+Proof. A simple exercise in calculus.                                    I
+
+Lemma 4.2. Let            fl=ct                  n           Thenforany xEB(ao,~r),                                       In "'J ~       f12
+                                                         •                                                                      aoj   2 (1 - fl) "
+Proof. xEB(ao, ~r) implies ]x-ao/2_-<~2r~, Therefore
+
+                              y
+                              7" ~ aoj                        /         (l/n) 2                 n(n--1)
+                                         Xj -- aoj                                               =
+                                                                i-<13        for            j        1. . . . , n
+                                        I        aoj
+            Iln(iNxj--aoll
+                   ao.~ J
+                          xi--ao,]<
+                            aoj
+                                      I txi--ao,l'
+                                 = 2(1- 13) ~ aoi )' by Lemma 4.1
+
+                                            Zln   = Z l n [ l + xj-a°J]
+                                                             xj
+                                             j         j     aoj  aoj J
+                ~[lnXJ                  x,--aoy<= ------'-szl (xi--aoji' -                                                  fl~
+                 •         ao~.              aoj                    2(I--13__#~                         aoj.       /     2(1--13)
+but
+                           xy--aoj_                          1 [~xj--~aoj]=-~ol/[1--1]=O
+                      J           aoj            --     aoj         "               j
+
+
+                                                                         ~- 2(1-13)"                       I
+ 384                                              N. KARMARKAR
+
+
+         Now we prove Theorem 4.
+         Definef(x)=n In c'Tx                Let bm be the point in B (ao, czr)A f2" where f(x)
+                                 CpT ao •
+ achieves its minimum value.
+                           f(ao) - f ( b ' ) = f(ao) -fib.,) +f(h,,,) - f ( b ' )
+                                             = [f(a0)-f(b,~)]
+                                             + [f(b,.)-(f(ao) +f(b,.))]
+                                             -[f(b')-(f(ao) +f(b'))]
+                                             + [f(b,,) -f(b')]
+ By Theorem 3,
+(1)                                   f(ao)-f(b,,,) --> In (I +a).
+For xEB(ao, :¢r)(q f2",
+             f(x) - (f(ao) +f(x)) = Z In - - - -
+                                                            cPTx            In e ' r a ° - n ~ ' In    e'r--''~x
+                                                  j          Xj       J         ao j                   cp T ao
+
+                                         =-Z               In xj
+                                                      j       aoj
+
+                                                               I ~ In xj                f12
+(2~                    If(x)- (f(a°)+f(x))l =                             aoj <= 2(i= D
+by Lemwa 4.2.
+       Since f(x) depends on c'rx in a monotonically increasing manner, fix)
+aud e'rx achieve their minimum values over B(a0, ~r) (3 Q" at the same point, viz b',
+(3)                                               f(b,,,) ~ f(b').
+        By (1), (2) and (3),
+                                                  fl ~               ~2                       ~2 H 2
+       f(ao) - f ( b ' ) >= In (1 + 00
+                                            (l-fl) -                 2        n ( n _ 1) [1 _ ~/n__Z_~_]
+        Define
+                                            0¢2                      ~2//
+                                6=a
+                                            2             (n-l)
+                                                                    [ V ]
+                                                                    1--c~
+
+                                            f ( a o ) - f ( b ' ) => 6.
+        Observe that
+                      ~2
+                       cx~         l
+1. . .lira
+        . . 3(n)=~z-~-     • If ~=~-, then lira 6 (n) => I
+                     1-c¢
+                          >1
+2. If" n=>4, c~=1 then ~ = T o " |
+
+Proof of Theorem  2. By Theorem 4, f "(b' ) =
+                                            < f '(a o)-6. Applying the inverse trans-
+form    T-l(a, ao) and substituting x(aJ=T-l(ao), we obtain x(k+l)=T-l(b'),
+f(xC~+.)~f(x%-6.            |
+           A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                        385
+
+
+Proof of Theorem 1. For each k we have
+                                    f ( x (k+x)) ~_ f ( x ok))-- 6
+                                     f ( x (k)) _~ f ( x C°))-- k6
+                                     crx(k)             In era° -
+                             T         xF"         J         aoj
+
+                          In cr x(k)
+                      n                ~_ 2 In (x5 k)) -- ~ In a0j - k3.
+                             crao          j                  J
+
+                                          c r x tk)       k
+       But x~k)~l,    aoj= 1 ,       so lnc---~ao<-ln(n)--~'n         Therefore there exists
+a constant k" such that after m=k'(n(q+ln (n))) steps.
+                                       cTx
+                                       Crao =< 2 - L         II
+
+
+              5. Transformation of a linear program to canonical form
+
+       Consider a linear programming problem in the standard form:
+                                     minimize          cTx
+                                                ~Ax_~ b
+                                     subject to t x _-> O.
+      There are many ways by which this problem can be converted to our canonical
+form. We describe one such method.
+Step 1. Combine primal and dual problems.
+                                                Ax=>h
+                                               AZu =< c
+                                          eTx--bTu = 0
+
+                                         x_~O       u~O.
+By duality theory, this combined problem is feasible if and only the original problem
+has finite optimum solution.
+Step 2. bltroduee slack variables.
+                                               Ax-y =b
+                                           Aru+v = c
+                                          crx-bru        = 0
+                            x_~O        u~O        y=>O        v~O.
+386                                             N. KARMARKAR
+
+
+
+Step 3. Introduce an artificial variable to create an interior starthlg pohTt. Let Xo, Yo,
+uo, vo be m i c t l y interior points in the positive orthant
+                   minimize          ~.
+                                    Ax-y+(b-Axo+Yo)•                       = b
+                                  JAru+v+(c-Aruo)~ = c
+                   subject to ] e r x _ b r u + ( _ c r x o + b r v o ) X         = 0
+                                  Ix_-->0 y=>0, u=>0, v:>0, )~=>0.
+Note that x - x 0 , Y=Yo, u = u o , V=Vo, ;~=1 is a strictly interior feasible solution
+which we can take as a starting point. The minimum value of X is zero if and only
+if the problem in step 2 is feasible.
+Step 3. Change o f Notation. For convenience of description we rewrite the problem
+in Step 3 as
+                             minimize c r x , c, xER"
+                                     subject to Ax = b, x => 0
+x = a is a known strictly interior starting point, and the target value of the objective
+function we are interested in is zero.
+Step 4. A projective transformation o f the positive orthant into a simplex. Consider
+the transformation x ' = T ( x ) where xER", x ' E R "+1 are defined by
+
+                                               xl/ai            i = 1, 2, ..., n
+                             x" -- X (xflaj) + 1
+                                      J
+
+                                              Xn+ 1 ~- 1 -          X i.
+                                                              i=1
+
+        Let P+ denote the positive orthant
+                                          P+ = {xER"lx =~ 0}
+and A denote the simplex
+                                                                    n+I
+                             A={xER"+IIx->0, z~x,=l}-               i=l
+
+        The transformation T(x) has the following properties:
+        I. It maps P+ onto A.
+        2. It is one-to-one and the inverse transformation is given bv
+
+                                               a;x~       i = 1, 2 . . . . . n.
+                                   "k"i _ _    Xn+l
+
+        3. The inaage of point a is the center of the simplex.
+        4. Let Ai denote ith column of A. I f
+
+                                                  ~     Aix i = b
+                                                  i=1
+            A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                            387
+
+
+then
+                                       .~, Aialx; = b
+                                           Xn+l
+or
+
+
+                                       Aiaix; - b x , + t                      0.
+                                 i=l
+
+We define the columns o f a matrix A" by these equations:
+                                A ~ = a i A i,          i= 1,...,n
+                                          A~+I : - b .
+Then
+                                         n+l
+                                         Z A x; = O.
+                                        i=1
+
+       Let I2" denote this affine subspace, i.e. f2'={x'ER"+IIA'x'=0}.                    Thus we
+get a system of homogeneous equations in the transformed space.
+      5. Since we are interested in target value of zero, we define Z to be the afflne
+subspace corresponding to the zero set of the objective function in the original space
+                                  Z = {xER"IcTx = 0}.
+Substituting
+                                                            a i x~
+                                           Xi   =       .     ,
+
+                                                            Xn+ l
+we get
+                                        n+l
+                                               ciaixi•
+                                         Y          I
+                                                                  -     O.
+                                        l=l     Xn+l
+Define c'ER "+1 by
+                                 c;=aici            i=1,2 .... ,n
+                                          c L 1 = 0.
+       Then c T x = 0 implies c ' T x ' = 0 .
+       Therefore the image of Z is given by Z ' = {x'ER"+l[c'rx'=0}.
+The transformed problem is
+                              minimize         crTx ~
+
+                                               A'x' = 0
+                              subject to                              n+l
+                                               ×' >          0,       Z      x i' =   1
+                                                                      i=l
+
+        The center of the simplex is a feasible starting point. Thus we get a problem
+in the canonical form.
+        Application of our main algorithm to this problem either gives a solution
+x' such that c ' T x ' = 0 or we conclude that minimum value of c ' r x ' is strictly posi-
+tive. In the first case, the inverse image of x' gives an optimal solution to the original
+problem. In the latter case we conclude lhat the original problem does not have
+a finite optimum, i.e. it is either infeasible or unbounded.
+
+9*
+ 388                                       N. KARMARKAR
+
+
+                            6. Incremental computation of inverse
+
+                       6.1. A modification to the main algorithm
+
+       The computational effort in each step of the main algorithm is dominated
+by the computation of cv:
+                              cv = [I--Br(BBr)-~B]Dc.
+
+       We have to find the inverse of (BB r) or solve a linear system of equations
+of the form (BBr)u=v.
+
+
+
+(1)
+
+       The only quantity that changes from step to step is the diagonal matrix D,
+since D}k) =x} k). In order to take advantage of the computations done in previous
+steps, we exploit the following facts about matrix inserve:
+       Let D, D' be n × n diagonal matrices.
+        1. If D and D" are "close" in some suitable norm, the inverse of AD'2A r
+can be used in place of the inverse of AD2A r.
+        2. If D and D' differ in only one entry, the inverse of AD'2A r can be com-
+puted in O(n') arithmetic operations, given the inverse of AD2A r.
+        (Note: Instead of finding the inverse, one could also devise an algorithm
+based on other techniques such as LU decomposition. In practice, it may be better
+to update the LU decomposition directly, but this will not change the theoretical
+worst-case complexity of the algorithm.)
+       We define a diagonal matrix D "ok), a "working approximation" to D t*) in
+step k, such that
+                        1       [D','k']
+(2)                    ~I_D~)          I -<2    for   i-- 1,2,...,n.
+
+We use (A(D'(k))2Ar) -1 in place of (A(D(k))2Ar) -1.           Initially, D'(°)=D(°)= 1 I.
+                                                                                      n
+      We update D' by the following strategy:
+       1. D'(k+lJ=a(k)D "Ck), where a (k) is a scaling factor whose significance will
+be explained in Section 6.3. For the purpose of this section take a (k)= 1.
+       2. For i = l t o n d o
+if
+                                                          '
+
+
+
+
+then let D~[k+I)=D~(~+I); and update (A(D'(k+x))~Ar) -~ by rank-one modification.
+       Thus, this strategy maintains the property in equation (2). Now we describe
+the rank-one modification procedure. Suppose a symmetric square matrix M is
+           A N E W P O L Y N O M I A L - T I M E A L G O R I T H M FOR L I N E A R P R O G R A M M I N G   389
+
+
+modified by a rank-one matrix expressed as the outer product of two vectors u and
+v. Then its inverse can be modified by the equation
+(3)                        (M+uvr)-i             - - 1 (M-Xu)(M-Xv) r
+                                               =M     -- l + u r M - l v "
+Given M -x, computation of (M+uvr) -x can be done in O(n 2) steps. In order to
+apply equation (3), note that if D" and D" differ only in the ith entry then
+(4)                            AD'2Ar=AD"ZAr+[D~ -D~Z] alaT
+where a~ is the ith column of A. This is clearly a rank-one modification. If D' and
+D" differ in l entries we can perform I successive rank-one updates in O(n21) time
+to obtain the new inverse. All other operations required for computing cv, the
+orthogonal projection of c, involve either multiplication of a vector by a matrix,
+or linear combination of two vectors, hence can be performed in O(n 2) time.
+
+
+               6.2. Equivalence of the modified and original problems
+
+       In this Section we analyze the effect of the replacement of D (k) by D '(k).
+Consider the following generalization of the optimization problem over an inscribed
+sphere in the transformed space:
+       Problem P" :
+                             Minimize c'rx              }
+(5)                          subject to Bx = 0            .
+                                    and x r Q x --<_~'r
+(Taking Q = I and ~'=ct corresponds to the original problem.)
+       We are going to show that replacing D ~k) by D "tk~ corresponds to solving
+the problem P , for appropriate choice of Q. Let h(x)=xrQx. Its gradient is given
+by Vh(x)=2Qx.
+       At the optimal solution x to the problem P',
+(6)                                            c' = BTZ+# .2Qx
+where the vector 7, and the scalar # are undetermined Lagrange multipliers
+                        BQ-lc" = BQ-aBr~,+21~Bx = BQ-1BrZ
+(7)                                  k = (BQ-1BT)-IBQ-Xe ".
+Substituting for k in equation (6), x, which we now denote by cv, is given (up to
+a scale factor) by
+(8)                       x = cv = [I-Q-XBT(BQ-1Br)-IB]Q-lc ".
+
+This requires the inverse of BQ-IB r. Substituting B = 7                       [A° 1      we get
+
+                                       [ADQ-1DA r ADQ-le]
+(9)                          BQ-XB r = [ (ADO_Xe)r erQ_Xe | .
+390                                     N. KARMARKAR
+
+
+It is enough to know the inverse of the submatrix ADQ-aDA r, because then
+(BQ-~Br) -1 can be computed in O(n 2) additional steps by the formula
+(10)    [M ~]-~_     1              [(c-arM-xa)M-~+(M-~a)(M-la)              T -M-Xa]
+         aT      c-arM-la                       - (M-la) r                       1
+
+where M, a and c are m × m , m × l , 1)<I matrices, respectively. But we know
+(AD'2Ar) -~ where D ' = D .E, and E is a diagonal "error matrix" such that E~E
+E[1/2, 2]. Setting Q = E -2 we get
+
+                        AD,2A r = ADEeDAr = ADQ-1DA r.
+
+      In the modified algorithm we keep (AD'eAr) -~ around, update it whenever
+any entry in D' changes and use it in equation (8) to compute cp and thereby solve
+the modified problem P'.
+      Now we relate the solution of problem P' to the main optimization problem.
+Since Qu=Eff2E[]/2, 2]
+
+(11)                              L2x T x <
+                                          =   xrQx ~ 2xrx.
+Hence
+                       B ao, ~--r      ~ {xlxrQx ~ c~'r} ~ B(ao, 2~'r).
+
+Taking ~'=~/2, and taking intersection with f2"
+
+(12)       B(a0, ~r/4)0 f2" c= {xlxTQx ~ ~'r, Bx = O} c B(ao, ar)N g2".
+
+Because of the first inclusion,
+
+(13)                        rain {f'(x)[xrQx ~ c(r, Bx = 0}
+                  rain {f'(x)lxEB(a0, c~r/4)f-) f2"} ~f'(a,,) - l n (1 +c~/4).
+
+The last inequality follows from Theorem 3. Thus for the modified algorithm, the
+claim of Theorem 3 is modified as follows
+
+(]4)                          f ' ( b ' ) <=f'(a0)-ln (I +a/4).
+
+Because of the second inclusion, Lemma 4.2 continues to be valid and we can appro-
+ximate minimization of f "(x) by minimization of a linear function. The claim (as in
+Theorem 2) about one step of the algorithm f ( x (k+t))~f(x(k))-6 also remains
+valid where 6 is redefined as
+
+(15)                           6= In(l+e/4)         2(1--fl)"
+
+This affects the number of steps by only a constant factor and the algorithm still
+works correctly.
+                  A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                           391
+
+
+                                   6.3. Performance of the modified algorithm
+
+        In this Subsection we show that the total number of rank-one updating ope-
+rations in m steps of the modified algorithm is O(mJ/n). Since each rank-one modi-
+fication requires 0@21 arithmetic operations, the average work per step is O(n 2"5)
+as compared to O(n 3) in the simpler form of the algorithm.
+        In each step lh'-a0]_=c~r. Substituting h'=T(x(k+t)); a 0 = n - l e and T ( x ) =
+       D-1X                         I
+- -                   r   - -
+
+      eTD-lx     "              1/n(n - 1)
+                                             [ x}k+i)lx}k)                    1.] 2 <     ~_2
+                                                                              n] = n ( n - l ) '
+                                               j
+           Let
+                                                   a(k)           1 j ~ (k+l) .(k)
+(16)                                                          :   --   Xj    /Xj   ,
+                                                                  El
+           Then
+                                                          f                   i]2<=
+           Let
+                                                                        ..(k+l)
+(17/                                                          A!k) -    .tl
+                                                                       X!k) ~(k) •
+
+Therefore • [A~ k ) - 1]2_-<fla. Recall that D (k) = Diag {x(~'), x~ k). . . . . x(,k)}, D(k+l)=
+                  i
+      Diag {x}k+l), ,,(~,+11                 x,(k+l)}. D "(k) is updated in two stages.
+           First we scale D "(k) by a factor a (k) defined in equation (16)
+(18)                                                 D ' ( k + l ) _-- a(g)D'(k).
+
+Then for each entry i such that
+                                                      D,(k+ 11]~
+
+we r e s e t D ; I ( g + I ) = D ! / k + l ) .
+           Define discrepancy between D uo and D '(k) as
+
+(19)                                                  5}k) = In f D;i('' "l
+                                                                       t D}p 1"
+
+Just after an updating operation for index i,
+                                                                  6} k) = 0.
+
+Just before an updating operation for index i,
+392                                        N. KA.RMARKAR
+
+Between two successive updates, say at steps kx and k~,
+
+
+                          ~}~')-,~1 ~'> = " Z ' [z}~+'- ,~?>1.
+                                               k:k I
+
+
+Let A~ k) be the change in the discrepancy at step k.
+
+(20)                             z16}~) = 6}~+x)_ 6}~).
+
+Then
+
+(21)                                                           k•l
+                                                               k~k I
+
+
+
+Now we analyze the change in discrepancy in step k, assuming that no updating
+operation was performed for index i.
+
+                                 D{,(k+l> D}p>        a(~)x}k>
+         Af}k) = &}k+x)_6[~) = In --.ntk+l) D~ff) = In ~       = - l n A [ k)
+
+(22)                                  IzJ6}~)I = IlnzJ}~> 1.
+       Let nL= the number of updating operations corresponding to index i in m
+                                       n
+
+steps of the algorithm and N = Z nL, be the total number of updating operations
+                                      1=1
+in m steps.
+       By equations (20) and (21),
+
+
+                                                  k=l
+
+
+
+(23)                           In ~ N ~ Z ~ Iln Atk)[.
+                                               i=1 k=l
+
+
+We use equation (17) to bound the R.H.S. of equation (23)
+
+          Z [A?>- 1]' ~_ t~' =, IA? ) - 11 ~-
+          i
+
+
+
+                             =~ [In A}a - (A/k>- 1)] ~_ (A[k)-- 1)3
+                                                         2-0 ---~      by Lemma 4.1
+
+
+          Z [A[~)- 1]' _ p' =, Z [a~~>- if ~_ ¢n~.
+              l                   i
+            A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                  393
+
+
+Hence
+                          Iln A}~)I = Z ]lnA[ k) - (A}~)- 1)-4-(A!k)-- 1)1
+                   i=l               i=l
+
+
+                                  -~ ~ [lnA}~)-(A}*'-I)I÷ ~ [A}~)- ll
+                                     i=i                       i=1
+
+                                  < y [Aif)- 1]2
+
+
+
+                                     2 (l
+
+(24)                     ~ IlnA}k)] -< m "2(i-- B) ~-gn-/~ = O (m Vn-).
+                 i=I k:l
+
+From equations (22) and (24)
+(25)                                       N : O(ml/n).
+
+                                  7. Concluding remarks
+                   7.1. Global analysis of optimization algorithms
+        While theoretical methods for analyzing local convergence of non-linear
+programming and other geometric algorithms are well-developed the state-of-the-art
+of global convergence analysis is rather unsatisfactory. The algorithmic and analy-
+tical techniques introduced in this paper may turn out to be valuable in designing
+geometric algorithms with provably good global convergence properties. Our method
+can be thought of as a steepest descent method with respect to a particular metric
+space over a simplex defined in terms of "cross-ratio", a projective invariant. The
+global nature of our result was made possible because any (strictly interior) point in
+the feasible region can be mapped to any other such point by a transformation that
+preserves affine spaces as well as the metric. This metric can be easily generalized to
+arbitrary convex sets with "well-behaved" boundary and to intersections of such con-
+vex sets. This metric effectively transforms the feasible region so that the boundary of
+the region is at infinite distance from the interior points. Furthermore, this tians-
+formation is independent of the objective function being optimized. Contrast this
+with the penalty function methods which require an ad hoc mixture of objective
+function and penalty function. It is not clear a priori in what proportion the two
+functions should be mixed and the right proportion depends on both the objective
+function and the feasible region.
+
+                 7.2. Comments on the factor "L" in running time
+       Since representing the output of a linear programming problem requires
+O(L) bits per variable in the worst case, the factor L must appear in the worst-case
+complexity of any algorithm for linear programming. In practice L is much smaller
+than n. Therefore, whenever it is possible to replace a factor of n by L, one should
+always do so if one is interested in an algorithm which is efficient in practice.
+394                                 N. KARMARKAR
+
+
+                            7.3. Performance in practice
+
+         Each step of the algorithm requires optimization of a linear function over an
+ellipsoid or equivalently, solution of a system of linear equations of the type
+(ADAr)x=b, where A is a fixed matrix and D is a diagonal matrix with positive
+entries which changes by small amount from step to step. We devise a method based
+on successive rank-one modifications and prove a worst-case bound of O(n 2"5)
+arithmetic operations per step.
+         In practice, the matrices encountered are sparse, hence more efficient methods
+for solving the above problem are possible. Another feature of the algorithm which
+can lead to computational saving is that it is not necessary to find the exact solution
+to the optimization problem stated above. Here it is useful to distinguish between
+two types of approximate solutions. Let x0 be the exact solution and x an approxi-
+mate solution and let cTx be the objective function. A strong approximation (or
+approximation in the solution space) requires that x be close to x0 in some suitable
+norm. A weak approximation (or approximation in objective function space)requires
+that c r x be close to crx0. A weak approximation is sufficient for our method, and
+is easier to achieve numerically. The optimization problem in each step is a good
+candidate for applying iterative methods to obtain approximate solutions. The
+worst-case bound is based on finding an exact solution.
+        The number of steps of the algorithm depends on the "R/r" ratio, i.e. the
+ratio of radius of the sphere circumscribing the polytope to the radius of the inscribed
+sphere. We prove an O(n) upper bound on this ratio. However it is likely to be smaller
+than n in typical problems of praclieal interest and also in the worst-case if the cir-
+cumscribing sphere is chosen to include only that portion of the polytope having
+values of objective function better than the current value, and after computing lhe
+direction of one step (as described in section 2) its length is chosen to be ~r" ralher
+than ar where r' is the largest possible step length without going outside the feasible
+region. The possibility of improvement in R/r ratio gives rise to a number of research
+problems for further investigation, such as probabilistic analysis of the problem,
+experimental measurements on problems arising in practical applications, analysis
+of special cases of practical interest such as "box" type of constraints and finally,
+the most difficult oi all, obtaining a better worst-case bound.
+
+
+                    7.4. Numerical stability and round-off errors
+
+       In the ellipsoid algorithm, the round-off errors in numerical computation
+accumulate from step to step. The amount of precision required in arithmetic ope-
+rations grows with the number of steps. In our algorithm, errors do not accumulate.
+On the contrary, the algorithm is self-correcting in the sense that the round-off
+error made in one step gets compensated for by future steps. If we allow 1% error
+in computation of the vector x (~ in each step, we can compensate for the errors
+by running the algorithm 2 % more steps.
+              A NEW POLYNOMIAL-TIME ALGORITHM FOR LINEAR PROGRAMMING                          395
+
+
+                      7.5. Multiple columns and parallel computation
+
+       In the simplex method, the current solution is modified by introducing a non-
+zero coefficient for one of the columns in the constraint matrix. Our method allows
+the current solution to be modified by introducing several columns at once. In the
+algorithm described in this paper, all columns are "active", but a variation in which
+a suitably chosen subset of columns is active at one time is possible. It seems that
+on a highly parallel architecture a method that uses many columns at once may be
+preferable to the simplex method.
+
+
+                            7.6, Other areas for further research
+
+       Since many polynomial-time solvable combinatorial problems are special
+cases o f linear programming, this work raises the possibility o f applying the new
+techniques to such special cases. Problems solved by the column generation method
+require a special variant of the algorithm.
+Acknowledgement. The author wishes to thank Arjen K. Lenstra, Mark Manasse,
+Joan Plumstead, Alon ltai, L~iszl6 Babai, Mike Garey and Ron Graham for pointing
+out errors and making suggestions for improvement.
+
+
+                                          References
+
+[1] H. S, M. COXETER,Introduction to Geometry, Wiley (1961).
+[2] G. B. DANTZIG, Linear Programming and Extensions, Princeton University Press, Princeton,
+      NJ (t963).
+[3] M. GR6rSCHEL, L. LOVASZand A. ScHmJvzg, The Ellipsoid Method and its Consequences in
+       Combinatorial Optimization, Combinatorica 1 (1981), 169--197.
+[4] L. G. KHACHIVAr~,A polynomial Algorithm in Linear Programming, Doklady Akademii Nauk
+       SSSR 244:S (1979), 1093--1096, translated in Sov&t Mathematics Doklady 20:1 (1979),
+        191--194.
+[5] V. KLEEand G. L. MINTV,How good is the simplex algorithm? in Inequalities 111, (ed. O. Shisha)
+       Academic Press, New York, 1972, 159-179.
+[6] O. VEBLENand J. W. YOUNG,Projective Geomeo:v, I--2, Blaisdell, New York, (1938).
+[7] R. J. WAL~Ea, Algebraic Curves, Princeton University Press (1950).
+
+N. Karmarkar
+A T & T Bell Laboratories
+Murray Hill, N J 07974
+U.S.A.
+

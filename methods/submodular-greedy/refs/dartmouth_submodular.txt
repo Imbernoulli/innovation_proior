@@ -1,0 +1,219 @@
+Greedy Algorithms and Submodularity1
+In this note we generalize the set cover (and related) problems using the abstraction of submodular
+functions. Submodularity is a fundamental concept in discrete optimization, and arises in many surprising
+domains. Therefore, these generalizations have many applications.
+Let V be a finite universe. A set function f : 2V → R assigns values to every subset of V . We call a
+set function non-negative if its range is non-negative reals. We call a set function monotone if for any two
+A ⊆ B, we have f (A) ≤ f (B). We call a set function submodular if it satifies the following
+For any two subsets A and B, f (A) + f (B) ≥ f (A ∩ B) + f (A ∪ B)
+
+(Submodularity)
+
+There is an equivalent definition. Function f is submodular if
+For any A ⊆ B and i ∈ V \ B, f (A ∪ i) − f (A) ≥ f (B ∪ i) − f (B)
+
+(1)
+
+This latter definition captures the “diminishing marginal utilities” dictum. If f (S) indicates once happiness
+on obtaining a subset S, then the above states that the marginal increase in happiness upon receiving an item
+i only goes down as one has more.
+Exercise: K Prove that two notions are equivalent.
+
+Submodular Set Cover
+• There are many examples of submodular functions, but the one that connects to set cover is the following. Suppose the universe V =
+S [m] the indices of the sets in a set cover instance. Given any
+subset I ⊆ [m], define f (I) := | j∈I Sj |. It is not too hard to show f is a non-negative, monotone submodular function. And, the set cover problem asks : find I ⊆ [m] with the minimum cost
+such that f (I) = f ([m]). The submodular set cover problem generalizes this for any non-negative
+monotone submodular function. More precisely, given oracle access to a non-negative, monotone
+submodular
+P function over a universe V , costs c(i) for i ∈ V , find I ⊆ V such that f (I) ≥ f (V ) and
+c(I) := j∈I c(j) is minimized.
+• Greedy Algorithm. The following greedy algorithm and its analysis generalizes the Set Cover greedy
+algorithm and analysis. We assume the range of the function is non-negative integers.
+1: procedure S UBMODULAR S ET C OVER(f : 2V → Z≥0 , c(i) : i ∈ V ):
+2:
+3:
+4:
+5:
+6:
+
+Initialize X ← ∅.
+while f (X) < f (V ) do:
+c(j)
+Pick j ∈ V which minimizes f (X∪j)−f
+(X) .
+X ← X ∪ j.
+return X.
+
+• Analysis. The analysis is very similar to the set-cover analysis we did.
+1
+
+Lecture notes by Deeparnab Chakrabarty. Last modified : 14th Dec, 2021
+These have not gone through scrutiny and may contain errors. If you find any, or have any other comments, please email me at
+deeparnab@dartmouth.edu. Highly appreciated!
+
+1
+
+Theorem 1. When the range of f is integer valued, S UBMODULAR S ET C OVER is a HN approximation, where N = f (V ).
+Proof. Let us rename the elements such that we pick {1, 2, . . . , r} in that order into the set X. For
+simplicity, we let Zi := {1, 2, . . . , i − 1} be the set just before the ith loop. The greedy rule tells us
+that for all 1 ≤ i ≤ r,
+∀j ∈ V,
+
+c(i)
+c(j)
+≤
+f (Zi−1 ∪ {i}) − f (Zi−1 )
+f (Zi−1 ∪ {j}) − f (Zi−1 )
+
+(2)
+
+If we let O be the optimal solution, we get by an “averaging argument”
+opt
+j∈O f (Zi−1 ∪ {j}) − f (Zi−1 )
+
+c(i) ≤ (f (Zi ) − f (Zi−1 )) · P
+
+(3)
+
+Now we use submodularity of f to argue
+X
+f (Zi−1 ∪ {j}) − f (Zi−1 ) ≥ f (Zi−1 ∪ O) − f (Zi−1 )
+
+(4)
+
+j∈O
+
+Indeed, the right hand side is the sum of |O| different marginals by adding the elements of O to Zi−1
+in any order you want. Submodularity implies that the LHS term-wise dominates this sum.
+Monotonicity of f then implies
+X
+f (Zi−1 ∪ {j}) − f (Zi−1 ) ≥ f (O) − f (Zi−1 ) ≥ f (V ) − f (Zi−1 )
+j∈O
+
+since O is a valid solution. Substituting in (3), we get that for all i ∈ I,
+r
+
+X
+f (Zi ) − f (Zi−1 )
+c(i) ≤ opt ·
+⇒ alg ≤ opt ·
+f (V ) − f (Zi−1 )
+i=1
+
+
+
+f (Zi ) − f (Zi−1 )
+f (V ) − f (Zi−1 )
+
+
+
+Now we use the integrality of f to argue that the summation is maximized when the marginals in the
+numerator are exactly 1, and in that case the summation becomes HN , where N = f (V ).
+Exercise: KK Generalize the charging argument for set-cover to prove that S UBMODULAR
+S ET C OVER is in fact an Hd approximation where d = maxi∈V f ({i}).
+
+Constrained Submodular Maximization
+• We want to solve the following problem: given an integer k, a non-negative, monotone submodular
+function f : 2V → R≥0 , find a set I ⊆ V with |S| = k which maximizes f (S). Here is the natural
+greedy algorithm.
+
+2
+
+1: procedure G REEDY S UBMODULAR M AXIMIZATION(f : 2V → R≥0 , k ∈ Z):
+2:
+3:
+4:
+5:
+6:
+
+Initialize X ← ∅.
+for i = 1 to k do:
+Find element i maximizing f (X ∪ i) − f (X).
+X ← X ∪ i.
+return X.
+
+• Analysis Sketch. Let Xi be the set the algorithm maintains at the beginning i. So X1 = ∅ and the
+algorithm returns Xk+1 . Let the optimal set be O. By the greedy property, we have that for any
+1 ≤ i ≤ k and any element e ∈ V
+f (Xi+1 ) − f (Xi ) ≥ f (Xi ∪ o) − f (Xi )
+If we average over all o ∈ O, we get
+f (Xi+1 ) − f (Xi ) ≥
+
+1X
+(f (Xi ∪ o) − f (Xi ))
+k
+
+(5)
+
+o∈O
+
+1
+(f (Xi ∪ O) − f (Xi ))
+k
+1
+≥ (f (OP T ) − f (Xi ))
+k
+≥
+
+because of submodularity.
+
+(6)
+
+because of monotonicity.
+
+(7)
+
+(6) is a result of submodularity, as in (4). Now, with a little bit of arithmetic, one can get the following
+theorem. To rewrite (7), we get
+
+
+1
+1
+f (Xi+1 ) ≥ f (OP T ) + 1 −
+f (Xi )
+k
+k
+The rest is arithmetic
+
+
+ ! 
+
+
+1 k−1
+1
+1
+1 k
++ ··· + 1 −
+f (∅)
+f (Xk ) ≥ f (OP T )
+1+ 1−
++ 1−
+k
+k
+k
+k
+
+
+≥ f (OP T ) 1 − (1 − 1/k)k
+since f (∅) ≥ 0. Using the fact that (1 − 1/k)k < 1/e where e = 2.71..., we get that the greedy
+algorithm is a (1 − 1/e)-factor approximation algorithm.
+Theorem 2. G REEDY S UBMODULAR M AXIMIZATION gives an (1 − 1/e)-approximation.
+
+Notes
+The result on submodular set cover is from the paper [3] by Wolsey. The result on constrained submodular
+maximization is from the paper [2] by Fisher, Nemhauser, and Wolsey. Both these are extremely influential
+papers, and started off research on submodular optimization which has really flourished in the last 20 years.
+An excellent survey can be found in the paper [1] by Buchbinder and Feldman.
+3
+
+References
+[1] Niv Buchbinder and Moran Feldman. Submodular functions maximization problems. In Handbook of
+Approximation Algorithms and Metaheuristics, Second Edition, pages 753–788. 2018.
+[2] M. L. Fisher, G. L. Nemhauser, and L. A. Wolsey. An analysis of approximations for finding a maximum
+weight Hamiltonian circuit. Oper. Res., 27(4):799–809, 1979.
+[3] L. Wolsey. An Analysis of the Greedy Algorithm for the Submodular Set Covering Problem. Combinatorica, 2(4):385–393, 1982.
+
+4
+
+

@@ -1,0 +1,1852 @@
+Database-friendly Random Projections
+Dimitris Achlioptas
+
+
+
+Microsoft
+
+ABSTRACT
+
+A lassi result of Johnson and Lindenstrauss asserts that
+any set of n points in d-dimensional Eu lidean spa e an be
+embedded into k-dimensional Eu lidean spa e | where k is
+logarithmi in n and independent of d | so that all pairwise
+distan es are maintained within an arbitrarily small fa tor.
+All known onstru tions of su h embeddings involve proje ting the n points onto a random k-dimensional hyperplane.
+We give a novel onstru tion of the embedding, suitable for
+database appli ations, whi h amounts to omputing a simple aggregate over k random attribute partitions.
+
+1.
+
+INTRODUCTION
+
+Consider proje ting the points of your favorite s ulpture rst
+onto a plane and then onto a single line. The result amply
+demonstrates the power of dimensionality.
+Conversely, given a high-dimensional pointset it is natural
+to ask whether it exploits its full allotment of dimensionality
+or, rather, it ould be embedded into a lower dimensional
+spa e without su ering great distortion.
+In general, su h questions involve a, perhaps in nite, olle tion of points endowed with some distan e fun tion (metri ).
+In this paper, we will only deal with nite sets of points in
+Eu lidean spa e (so the Eu lidean distan e is the metri ).
+In parti ular, it will be onvenient to think of n points in
+Rd as an n  d table (matrix) A with ea h point represented
+as a row (ve tor) with d attributes ( oordinates).
+Given su h a matrix A, one of the most ommon embeddings
+is the one suggested by its Singular Value De omposition.
+In parti ular, to embed the n points into Rk we proje t
+them onto the k-dimensional spa e spanned by the singular
+ve tors orresponding to the k largest singular values of A.
+If one rewrites the result of this proje tion as a (rank k)
+
+Address: Mi rosoft Corporation, One Mi rosoft Way, Redmond WA, 98052, U.S.A. Email: optasmi rosoft. om
+
+n  d matrix Ak , we are guaranteed that for every rank k
+matrix D
+jA Ak j  jA Dj ;
+
+for any unitarily invariant norm, su h as the Frobenius or
+the L2 norm. Thus, distortion here amounts to a ertain distan e (norm) between the set of proje ted points, Ak , and
+the original set of points A. If we asso iate with ea h row
+(point) a ve tor orresponding to the di eren e between its
+original and its new position then, for example, under the
+Frobenius norm the distortion equals the sum of the squared
+lengths of these ve tors. It is lear that su h a notion of distortion aptures a signi ant global property. At the same
+time, though, it does not o er any lo al guarantees. For
+example, the distan e between a pair of points an be arbitrarily smaller than what it was in the original spa e, if that
+is advantageous to minimizing the total distortion.
+The study of embeddings that respe t lo al properties is a
+ri h area of mathemati s with deep and beautiful results.
+Su h embeddings an guarantee, for example, that all distan es between pairs of points are approximately maintained
+or, more generally, that for a given q  2, a ertain notion of \volume" is maintained for all olle tions of up to
+q points (thus apturing higher order lo al stru ture). The
+algorithmi uses of su h embeddings were rst onsidered in
+the seminal paper of Linial, London and Rabinovi h [9℄ and
+have by now be ome an important part of modern algorithmi design. A real gem in this area has been the following
+result of Johnson and Lindenstrauss [7℄.
+Lemma 1 ([7℄). Given  > 0 and an integer n, let k
+be a positive integer su h that k  k0 = O( 2 log n). For
+every set P of n points in Rd there exists f : Rd ! Rk su h
+that for all u; v 2 P
+
+(1
+
+)jju v jj2  jjf (u) f (v )jj2  (1 + )jju v jj2 :
+
+We will refer to embeddings providing a guarantee akin to
+that of Lemma 1 as JL-embeddings. In the last few years,
+JL-embeddings have been useful in solving a variety of problems. The rough idea is the following. By providing a low dimensional representation of the data, JL-embeddings speed
+up ertain algorithms dramati ally, in parti ular algorithms
+whose run-time depends exponentially in the dimension of
+the working spa e (there are a number of pra ti al problems
+for whi h the best known algorithms have su h behaviour).
+At the same time, the provided guarantee regarding pairwise distan es is often enough to establish that the solution
+
+found by working in the low dimensional spa e is a good
+approximation to the optimal solution in the original spa e.
+We give a few examples below.
+Papadimitriou, Raghavan, Tamaki and Vempala [10℄, proved
+that embedding the points of A in a low-dimensional spa e
+an signi antly speed up the omputation of a low rank approximation to A, without signi antly a e ting its quality.
+In [6℄, Indyk and Motwani showed that JL-embeddings are
+useful in solving the "-approximate nearest neighbor problem, where (after some prepro essing of the pointset P ) one
+is to answer queries of the following type: \Given an arbitrary point x, nd a point y 2 P , su h that for every
+point z 2 P , jjx z jj  (1 ")jjx y jj." In a di erent vein,
+S hulman [11℄ used JL-embeddings as part of an approximation algorithm for the version of lustering where we seek to
+minimize the sum of the squares of intra luster distan es.
+Re ently, Indyk [5℄ showed that JL-embeddings an also be
+used in the ontext of \data-stream" omputation, where
+one has limited memory and is allowed only a single pass
+over the data (stream).
+
+For integer k  k0 , let R be a d  k random matrix with
+R(i; j ) = rij , where frij g are independent random variables
+from either one of the following two probability distributions:
+
+rij =
+rij =
+
+p
+
+3
+
+
+
++1
+1
+
+8
+< +1
+:
+
+0
+1
+
+with probability
+
+1=2
+1=2 ;
+
+with probability
+
+1=6
+2=3
+1=6 :
+
+
+
+
+
+
+Let
+
+E = p1 A R :
+k
+d
+k
+th
+Let f : R ! R map the i row of A to the ith row of E .
+n , for all u; v 2 P
+(1 )jju v jj  jjf (u) f (v )jj2  (1 + )jju v jj2 :
+
+With probability at least 1
+2
+
+Over the years, the probabilisti method has allowed for the
+original proof of Johnson and Lindenstrauss to be greatly
+simpli ed and sharpened [4, 6, 3℄, while at the same time
+giving on eptually simple randomized algorithms for onstru ting the embedding. Roughly speaking, all su h algorithms proje t the input points onto a spheri ally random
+hyperplane through the origin.
+
+In a database system, all operations needed to ompute A R
+are very eÆ ient and easy to implement. For example, with
+the se ond distribution above, the embedding amounts to
+generating k new attributes, ea h one formed by applying the same pro ess: throw away 2=3 of all attributes at
+random; partition the remaining attributes randomly into
+two equal parts; for ea h partition, produ e a new attribute
+equal to the sum of all attributes; take the di eren e of the
+two sum-attributes.
+
+Performing su h a proje tion, while on eptually simple, is
+non-trivial, espe ially in a database environment. Moreover,
+its omputational ost an be prohibitive for ertain appliations. At the same time, JL-embeddings have be ome an
+important algorithmi design tool and in ertain domains
+they are a desirable standard data pro essing step. With
+this in mind, it is natural to ask if we an ompute su h
+embeddings in a manner that is simpler and more eÆ ient
+than the one suggested by the urrent methods.
+
+All in all, using Theorem 2, one needs very simple probability distributions, no oating point arithmeti , and all omputation amounts to highly optimized database operations
+(aggregation). By using the se ond probability distribution,
+where rij = 0 with probability 2=3, we also get a threefold
+speedup as we only need to pro ess a third of all attributes
+for ea h of the k oordinates. On the other hand, when
+rij 2 f 1; +1g, on eptually the onstru tion seems to be
+about as simple as one ould hope for.
+
+Our main result, below, is a rst step in this dire tion, asserting that one an repla e proje tions onto random hyperplanes with mu h simpler and faster operations, requiring
+extremely simple probability distributions. In parti ular,
+these operations an be implemented readily using standard
+SQL primitives without any additional fun tionality. Moreover, somewhat surprisingly, this omes without any sa rie in the quality of the embedding. In fa t, we will see that
+for every xed value of d we an get slightly better bounds
+than all urrent methods.
+
+Looking a bit more losely into the matrix E we see that
+ea h row (ve tor) of A is proje ted onto k random ve tors
+whose oordinates frij g are independent random variables
+with mean 0 and varian e 1. If the frij g were independent
+Normal random variables with mean 0 and varian e 1, it is
+well-known that the resulting ve tors would point to uniformly random dire tions in spa e. Proje tions onto su h
+random lines through the origin have been onsidered in a
+number of settings, in luding the work of Kleinberg on approximate nearest neighbors [8℄ and of Vempala on learning
+interse tions of halfspa es [12℄. More re ently, su h proje tions have also been used in learning mixture of Gaussians
+models, starting with the work of Dasgupta [2℄ and later
+with the work of Arora and Kannan [1℄.
+
+1.1 Our contribution
+
+We des ribe the main result below in standard mathemati al
+terminology. Following that, we give an example of how to
+ompute the embedding using database operations. As in
+Lemma 1, the parameter  ontrols the a ura y in distan e
+preservation, while now ontrols the probability of su ess.
+Theorem 2. Let P be an arbitrary set of n points in Rd ,
+
+represented as an n  d matrix A. Given ; > 0 let
+k0 = 2 4 + 2 3 log n :
+ =2  =3
+
+Our proof will suggest that for any xed ve tor , the behavior of its proje tion onto a random ve tor is mandated
+by the even moments of jj  jj. In fa t, our result follows by
+showing that for every ve tor , under our distributions for
+frij g, these moments are dominated by the orresponding
+moments for the ase where is spheri ally symmetri . As a
+result, proje ting onto ve tors whose entries are distributed
+
+like the olumns of matrix R ould repla e proje tion onto
+random lines; it is omputationally simpler and results in
+proje tions that are at least as ni ely behaved.
+Finally, we note that Theorem 2 allows one to use signi antly fewer random bits than all previous methods for onstru ting JL-embeddings. While the amount of randomness
+needed is still quite large, su h attempts for randomness redu tion are of independent interest and our result an be
+viewed as a rst step in that dire tion.
+
+2.
+
+PREVIOUS WORK
+
+D
+Let us write X =
+Y to denote that X is distributed as Y
+and re all that N (0; 1) denotes the standard Normal random
+variable having mean 0 and varian e 1.
+
+As we will see, in all methods for produ ing JL-embeddings,
+in luding ours, the heart of the matter is showing that for
+any ve tor, the squared length of its proje tion is sharply
+on entrated around its expe ted value. Armed with a sufiently strong su h on entration bound, one then proves
+d
+the assertion of Lemma 1 for a olle tion
+ of n points in R by
+n
+applying the union bound for the 2 events orresponding
+to ea h distan e-ve tor being distorted by more than (1  ).
+The original proof of Johnson and Lindenstrauss [7℄ uses
+quite heavy geometri approximation ma hinery to yield
+su h a on entration bound when the proje tion is onto
+a uniformly random hyperplane through the origin. That
+proof was greatly simpli ed and sharpened by Frankl and
+Meahara [4℄ who onsidered a dire t proje tion onto k random orthonormal ve tors, yielding the following result.
+Theorem 3 ([4℄). For any  2 (0; 1=2), any suÆ iently
+large set P 2 Rd , and k  k0 = d9(2 23 =3) 1 log jP je +1,
+there exists a map f : P ! Rk su h that for all u; v 2 P ,
+
+(1
+
+)jju v jj2  jjf (u) f (v )jj2  (1 + )jju v jj2 :
+
+The next great simpli ation of the proof of Lemma 1 was
+given, independently, by Indyk and Motwani [6℄ and Dasgupta and Gupta [3℄, the latter also giving a slight sharpening of the bound for k0 . Below we state our rendition of
+how this simpli ation was a hieved.
+Assume that we try to implement the s heme of Frankl and
+Maehara [4℄ but we are lazy about enfor ing either normality
+(unit length) or orthogonality among our k ve tors. Instead,
+we just pi k our k ve tors independently, in a spheri ally
+symmetri manner. As we saw earlier, we an a hieve this by
+taking as the oordinates of ea h ve tor independent N (0p
+; 1)
+random variables. We then merely s ale ea h ve tor by 1= d
+so that its expe ted length is 1.
+An immediate gain of this approa h is that now, for any xed
+ve tor , the length of its proje tion onto ea h of our ve tors
+is also a Normal random variable. This is due to a powerful
+and deep fa t, namely the 2-stability of the Gaussian distribution: for any real numbers 1 ; 2 ; : : : ; d , if fZi gdi=1 is
+a family of independent Normal random variables and X =
+Pd
+D
+2
+2 1=2
+i=1 i Zi , then X = N (0; 1), where = ( 1 +    + d ) .
+
+As a result, if we interpret ea h of the k proje tion lengths as
+a oordinate in Rk , then the squared length of the resulting
+ve tor follows the Chi-square distribution for whi h strong
+on entration bounds are readily available.
+And what have we lost? Surprisingly little. While we did
+not insist upon either orthogonality, or normality, with high
+probability, the resulting k ve tors ome very lose to having
+both these properties. In parti ular, the length of ea h of
+the k ve tors is sharply on entrated (around 1) as the sum
+of d independent random variables. Moreover, sin e the k
+ve tors point in uniformly random dire tions in Rd , they get
+rapidly loser to being orthogonal as d grows.
+Unlike Indyk and Motwani [6℄, Dasgupta and Gupta [3℄ exploited spheri al symmetry without appealing dire tly to
+the 2-stability of the Gaussian distribution. Instead they
+observe that, by symmetry, the proje tion of any unit ve tor on a random hyperplane through the origin is distributed exa tly like the proje tion of a random point from
+the surfa e of the d-dimensional sphere onto a xed subspa e
+of dimension k. Su h a proje tion an be studied readily,
+though, as now ea h oordinate is a s aled Normal random
+variable. Their analysis gave the strongest known bound,
+namely k  k0 = 4(2 =2 3 =3) 1 . Note that this is exa tly
+the same as our bound in Theorem 2 as tends to 0.
+
+3. SOME INTUITION
+
+By ombining the analysis of [3℄ with the viewpoint of [6℄
+it is in fa t Dnot hard to show that Theorem 2 holds if for
+all i; j , rij = N (0; 1). Thus, our ontribution essentially
+begins with the realization that spheri al symmetry, while
+making life extremely omfortable, is not essential. What
+is essential is on entration. So, at least in prin iple, one is
+free to onsider other andidate distributions for the frij g,
+if perhaps at the expense of omfort.
+As we saw earlier, ea h olumn of our matrix R will give us
+a oordinate of the proje tion in Rk . Moreover, the squared
+length of the proje tion is merely the sum of the squares
+of these oordinates. So, e e tively, ea h olumn a ts as
+an estimator of the original ve tor's length (by taking its
+inner produ t with it), while in the end we take the onsensus estimate (sum) over our k estimators. From this
+point of view, requiring our k ve tors to be orthonormal
+has the pleasant statisti al interpretation of \greatest eÆien y". In any ase, though, as long as ea h olumn is
+an unbiased, bounded varian e estimator the Central Limit
+Theorem asserts that by taking enough olumns we an get
+an arbitrarily good estimate of the original length. Naturally, how many estimators are \enough" depends solely on
+the varian e of the estimators.
+So, already we see that the key issue is the on entration of
+the proje tion of an arbitrary xed ve tor onto a single
+random ve tor. The main te hni al diÆ ulty that results
+from giving up spheri al symmetry is that this on entration an now depend on . Our main te hni al ontribution lies in determining probability distributions for frij g
+for whi h this on entration, for all ve tors, is as good as
+D
+N (0; 1). In fa t, it will turn out that for evwhen rij =
+ery xed value of d, we an get a (minus ule) improvement
+
+over the on entration for that ase. Thus, for every xed
+d, we an a tually get a stri tly better bound for k, albeit
+marginally, than by taking spheri ally random ve tors.
+The reader might be wondering \how an it be that perfe t
+spheri al symmetry does not buy us anything?" (and is in
+fa t slightly worse for ea h xed d). At a high level, an answer to this question might go as follows. Given that we do
+not have spheri al symmetry anymore, an adversary ould
+try to pi k a ve tor so that the length of its proje tion
+is as variable as possible. It is lear that not all ve tors
+are equal with respe t to this variability. What then does a
+worst- ase ve tor w look like? How mu h are we exposing
+to the adversary by ommitting to pi k our olumn ve tors
+among latti e points rather than arbitrary points in Rd ?
+
+p
+
+As we will see, the worst- ase ve tor is w = (1= d) (1; : : : ; 1)
+(and all 2d ve tors resulting by sign- ipping w's oordinates). So, the worst- ase ve tor turns out to be a more
+or less \typi al" ve tor, at least in terms of the u tuations
+in its oordinates, unlike say (1; 0; : : : ; 0). As a result it is
+not hard to believe that the adversary would not fare mu h
+worse by pi king a random ve tor. But in that ase the
+adversary does not bene t at all from our ommitment.
+To get a more satisfa tory answer, it seems like one has to
+delve into the proof. In parti ular, both for the spheri ally
+random ase and for our distributions, the bound on k is
+mandated by the probability of overestimating the proje ted
+length. Thus, the \bad events" amount to the spanning
+ve tors being too \well-aligned" with . As a result, for
+any xed d one has to onsider the tradeo between the
+probability and the extent of alignment.
+For example, let us onsider the proje tion onto a single
+random ve tor when d = 2 and rij 2 f 1p
+; +1g. As we
+said above, the worst ase ve tor is w = (1= 2)(1; 1). So,
+it's easy to see that with probability 1=2 we have perfe t
+alignment (when our random ve tor is w) and with probability 1=2 we have orthogonality. On the other hand, for the
+spheri ally symmetri ase, we have to onsider the integral
+over all points on the plane, weighted by their probability
+under the two-dimensional Gaussian distribution. By a onvexity argument it turns out that for every xed d, the even
+moments of the proje ted length are (marginally) greater in
+the spheri ally symmetri ase. This leads to a (marginally)
+weaker probability bound for that ase. As one might guess,
+the two bounds oin ide as d tends to in nity.
+
+4.
+
+PRELIMINARIES
+
+Let x  y denote the inner produ t of ve tors x; y . To simplify notation in
+p the al ulations, we will work with matrix
+R s aled by 1p
+= d. Thus, R is a random d  k matrix with
+TheoR(i; j ) = rij = d, where the frij g are distributed as in p
+rem 2. As a result,
+to
+get
+E
+we
+need
+to
+s
+ale
+A
+
+R
+by
+d=k
+p
+rather than 1= k. Therefore, if j denotes the j th olumn
+of R, then f j gkj=1 is a family of kpi.i.d. random unit ve tors
+in Rd and for all 2 Rd , f ( ) = d=k (  1 ; : : : ;  d ).
+In pra ti e, of ourse, su h s aling an be postponed until
+after the matrix multipli ation (proje tion) has been performed, so that we maintain the advantage of only having
+
+f 1; 0; +1g in the proje tion matrix.
+
+Let us start by omputing E jjf ( )jj for an arbitrary ve tor 2 Rd . Let fQj gkj be de ned as
+Qj =  j :
+2
+
+=1
+
+Then
+E
+
+(Qj ) = E
+
+and
+E
+
+p
+0
+
+
+
+=
+
+1
+
+d
+
+E
+
+d
+
+d
+X
+i=1
+
+1X 2
+
+=
+
+d i=1 i
+
+=
+
+d
+
+1
+
+i rij
+
+d i=1
+
+d
+1 X
+
+p
+
+Qj = E 
+2
+
+!
+
+d
+
+1 X
+
+d i=1
+
+( i rij ) +
+2
+
+ jj jj :
+
+d i=1
+
+!2 1
+i rij
+
+A
+
+d
+X d
+X
+l=1 m=1
+d X
+d
+X
+
+!
+
+2 l m rlj rmj
+
+rij2 + 1
+2
+E (r ) E (rmj )
+d l=1 m=1 l m lj
+
+
+E
+
+d
+
+1 X
+=p
+i E (rij ) = 0 ; (1)
+
+(2)
+
+2
+
+Note that to get (1) and (2) we only used that frij g are
+independent, E(rij ) = 0 and Var(rij ) = 1. Using (2) we get
+E
+
+jjf ( )jj  = kd 
+2
+
+
+2
+
+k
+X
+j =1
+
+E
+
+
+
+Q2j = jj jj2 :
+
+That is, E jjf ( )jj = jj jj for any independent family of
+frij g with E(rij ) = 0 and Var(rij ) = 1.
+2
+
+From the above we see that any distribution where E(rij ) =
+0 and Var(rij ) = 1 is, in prin iple, a andidate for the entries
+of R. In fa t, in [13℄, Arriaga and Vempala independently
+suggested the possibility of getting JL-embeddings by proje ting onto a matrix where rij 2 f 1; +1g but did not give
+any bounds on the ne essary value of k.
+As we mentioned earlier, havinga JL-embedding amounts to
+the following: for ea h of the n2 pairs u; v 2 P , the squared
+norm of the ve tor u v , is maintained within a fa tor of
+1  . Therefore, if we an prove that for some > 0 and
+every ve tor 2 Rd ,
+2
+Pr[(1 )jj jj2  jjf ( )jj2  (1+ )jj jj2 ℄  1 2+ ; (3)
+
+n
+
+then the probability that our proje
+tion does not yield a
+
+JL-embedding is bounded by n2  2=n2+ < 1=n .
+Let us note that sin e for a xed proje tion matrix, jjf ( )jj2
+is proportional to jj jj, it suÆ es to onsider probability
+bounds for arbitrary unit ve tors. Moreover, note that when
+2
+2
+E(jjf ( )jj ) = jj jj , inequality (3) merely asserts that the
+random variable jjf ( )jj2 is on entrated around its expe tation. Before onsidering this point for our distributions
+for frij g, let us rst wrap up the spheri ally random ase.
+D
+Getting a on entration inequality for jjf ( )jj2 when rij =
+N (0; 1) is straightforward. Due to the 2-stability of the NorD
+mal distribution, for every unit ve tor , we have jjf ( )jj2 =
+
+2 (k)=k, where 2 (k) denotes the Chi-square distribution
+with k degrees of freedom. The fa t that we get the same
+
+distribution for every ve tor
+orresponds to the intuition
+that \all ve tors are the same" with respe t to proje tion
+onto a spheri ally random ve tor. Standard tail-bounds for
+the Chi-square distribution readily yield the following.
+D
+
+Lemma 4. Let rij = N (0; 1) for all i; j . Then, for any
+ > 0 and any unit-ve tor 2 Rd ,
+
+
+
+
+k (2 =2 3 =3) ;
+Pr jjf ( )jj2  (1 + )k=d < exp
+
+
+
+Pr jjf ( )jj2  (1
+
+)k=d
+
+
+
+< exp
+
+
+
+2
+
+k (2 =2 3 =3)
+
+
+
+2
+
+j =1
+
+2
+
+k
+X
+j =1
+
+Q2j ( ) ;
+
+Lemma 5. Let rij have any of the two distributions in
+Theorem 2. Then, for any  > 0 and any unit ve tor 2 Rd ,
+
+Pr [S > (1 + )k=d℄ < exp
+Pr [S < (1
+
+)k=d℄ < exp
+
+
+
+k (2 =2 3 =3)
+
+
+
+k (2 =2 3 =3)
+
+
+
+2
+2
+
+k
+Y
+
+E
+
+j =1
+k
+Y
+
+=
+
+<
+
+where j is the j th olumn of R, so that jjf ( )jj2 = S  d=k.
+
+
+
+
+
+
+
+k
+d
+
+
+k
+< E (exp (hS )) exp h(1 + )
+:
+d
+
+(exp (hS )) =
+
+E
+
+
+
+PROBABILITY BOUNDS
+
+ j) =
+
+
+
+= Pr exp(hS ) > exp h(1 + )
+
+Sin e fQj gkj=1 are i.i.d. we get
+
+Pr S > (1 + )
+
+To simplify notation let us de ne for an arbitrary ve tor ,
+(
+
+
+
+exp hQj
+
+exp hQ2j
+
+E
+
+j =1
+E
+
+!
+
+2
+
+exp hQ21
+
+
+
+(4)
+
+
+
+k
+
+(5)
+
+;
+
+(6)
+
+where passing from (4) to (5) uses that the fQj gkj=1 are
+independent, while passing from (5) to (6) uses that they
+are identi ally distributed. Thus, for any  > 0
+
+To prove our result we use the exa t same approa h, arguing
+that for every unit ve tor 2 Rd , the random variable jj jj2
+is sharply on entrated around its expe tation, where is a
+olumn of our proje tion matrix R. In the next se tion we
+state a lemma analogous to Lemma 4 above and show how
+it follows from bounds on ertain moments of jj jj2 . We
+prove those bounds in Se tion 6.
+
+k
+X
+
+k
+d
+
+=
+
+Let us note that the bound on the upper tail of jjf ( )jj2
+above is tight (up to lower order terms). As a result, as long
+as the union bound is used, one annot hope for a better
+bound on k while using spheri ally random ve tors.
+
+S = S( ) =
+
+
+
+Pr S > (1 + )
+
+:
+
+Thus, to get a JL-embedding we need only require
+
+
+2
+k
+2
+3
+( =2  =3)  2+ ;
+2  exp
+2
+n
+whi h holds for
+k  2 4 + 2 3 log n :
+ =2  =3
+
+5.
+
+ti ular, for arbitrary h > 0 we write
+
+;
+:
+
+In proving Lemma 5 we will generally omit the dependen e
+of probabilities on , making it expli it only when it a e ts
+our al ulations.
+We will use the standard te hnique of applying Markov's
+inequality to the moment generating fun tion of S . In par-
+
+E
+
+k
+d
+
+
+
+2 k
+1
+
+exp hQ
+
+exp
+
+
+
+h(1 + ) k
+d
+
+We will get a tight bound on E exp hQ21
+below.
+
+
+
+
+
+:
+
+(7)
+
+from Lemma 6
+
+Similarly, but this time onsidering exp( hS ) for arbitrary
+h > 0, we get that for any  > 0
+
+
+Pr S < (1
+
+) k
+d
+
+
+
+
+
+
+
+k :
+(8)
+< E exp hQ
+exp h(1 )
+d
+
+Rather than bounding E exp hQ21 dire tly, this time
+2
+we will expand exp(hQ1 ) to get
+
+
+k
+(9)
+Pr S < (1 )
+d
+ !!k
+
+
+hQ21 2
+k
+2
+exp h(1 )
+< E 1 hQ1 +
+2!
+d
+2
+1
+
+=
+
+
+
+1
+
+k
+
+
+
+
+
+h + h2 E Q4  k exp h(1 ) k
+1
+d 2
+d
+
+
+
+;
+
+(10)
+
+where E(Q21 ) was given by (2).
+
+
+We will get a tight bound on E Q41 from Lemma 6 below.
+
+2 [0; d=2) and all d  1,
+
+;
+E exp hQ
+ p 1
+
+Lemma 6. For all h
+
+2
+1
+
+E
+
+Q41
+
+
+
+1
+
+ d3 :
+2
+
+2h=d
+
+(11)
+(12)
+
+The proof of Lemma 6 will omprise Se tion 6. Below we
+show how it implies Lemma 5 and thus Theorem 2.
+
+. Substituting (11) in (7) we get (13).
+To optimize the bound we set the derivative in (13) with
+respe t to h to 0. This gives h = d2 1+  < d2 . Substituting
+this value of h we get (14) and series expansion yields (15).
+
+Proof of Lemma 5
+
+
+
+
+
+k
+Pr S > (1 + )
+d
+
+
+
+p
+
+1
+
+1
+
+!k
+
+exp
+
+2h=d
+
+= ((1 + ) exp( ))k=2
+
+
+< exp
+
+
+
+k (2 =2 3 =3)
+
+h(1 + ) k
+d
+
+
+
+
+
+
+
+) k
+d
+
+
+=
+
+
+
+
+
+1
+
+< exp
+
+6.
+
+  !k
+
+
+
+2(1 + )
+
++
+
+
+
+k
+
+32
+8(1 + )2
+
+k (2 =2 3 =3)
+
+
+
+2
+
+exp
+
+
+
+
+
+(1 )k
+2(1 + )
+
+:
+
+(17)
+
+E
+
+exp hU
+
+E
+
+exp hT 2
+
+It should be lear that the distribution of Q depends on ,
+i.e., Q = Q( ). This is pre isely what we give up by not
+proje ting onto spheri ally symmetri ve tors. Our strategy
+for giving bounds on the moments of Q will be to determine
+a \worst ase" unit ve tor w and onsider Q(w). Our pre ise
+laim is the following.
+
+w = p1 (1; : : : ; 1) :
+d
+For every unit ve tor 2 Rd , and for all k = 0; 1; : : :
+Q( )2k
+
+ E Q(w) k :
+2
+
+(19)
+
+Moreover, we will prove that the even moments of Q(w) are
+dominated by the even moments of an appropriately s aled
+Normal random variable, i.e., the orresponding moments
+from the spheri ally symmetri ase.
+Lemma 8. Let
+
+D
+T=
+N (0; 1=d) :
+For all d  1 and all k = 0; 1; : : :
+
+
+E
+
+Q(w)2k
+
+
+
+
+
+1 (hU 2 )k
+X
+
+=E
+
+!
+
+=
+
+k!
+
+k=0
+
+
+2
+
+1 hk
+X
+k=0
+
+k!
+
+
+E
+
+U 2k
+
+
+
+is bounded.
+
+=
+=
+=
+
+
+=
+
+Z +1
+
+1
+
+1
+
+p
+
+1
+
+1
+X hk
+
+k=0
+E
+
+2
+
+k!
+k!
+
+E
+
+
+
+
+
+
+
+
+
+T 2k
+Q2k
+
+exp hQ2
+p
+
+
+2
+
+2
+
+
+
+(21)
+
+2h=d
+E
+
+k=0
+1 hk
+X
+
+
+
+p1 exp(  =2) exp h d d
+2
+
+
+
+(22)
+(23)
+
+:
+
+(24)
+
+2h=d for h 2 [0; d=2), whi h
+
+Thus, E exp hQ  1= 1
+is pre isely inequality (11).
+
+2
+
+To prove Lemma 7 we need the following lemma. It's proof
+appears in the Appendix.
+
+For real numbers a; b let =
+and all k = 0; 1; : : :
+
+
+E
+
+(T + ar1 + br2 )2k
+
+
+
+p
+
+(a2 + b2 )=2. Then, for all T
+
+
+
+
+ E (T + r + r ) k :
+1
+
+2
+
+2
+
+. Re all that for any ve tor , Q( ) =
+where
+1
+1 = p (r11 ; : : : ; rd1 ) :
+
+Proof of Lemma 7
+
+Q1 ( ) =
+
+
+
+1
+
+d
+
+
+
+E T k :
+2
+
+
+
+Lemma 9. Let r1 ; r2 be i.i.d. r.v. having one of the following two probability distributions: ri p2 f 1;p+1g, ea h
+value having probability 1/2, p
+or, ri 2 f 3; 0; + 3g with 0
+having probability 2/3 and  3 being equiprobable.
+
+Lemma 7. Let
+
+E
+
+2
+
+
+
+Here we prove bounds on ertain moments of Q1 . To simplify notation, we drop the subs ript, writing it as Q.
+
+
+
+2
+
+
+
+(18)
+
+
+
+
+
+For E exp hT 2 , below, taking h 2 [0; d=2) makes the
+integral onverge, giving (21). Thus, for su h h we an apply
+the MCT to get (22). Now, applying (19) and (20) to (22)
+gives (23). Applying the MCT on e more gives (24).
+
+MOMENT BOUNDS
+
+
+
+4
+
+2
+
+for all h su h that E exp hU
+
+2
+
+
+
+2
+
+For any real-valued random variable U , the Monotone Convergen e Theorem (MCT) implies
+
+(16)
+
+
+
+
+p1 exp(  =2) d d = d3 :
+1 2
+
+(14)
+(15)
+
+) k
+d
+
+exp h(1
+
+We start by observing that
+
+Along with (19) and (20) this readily implies (12).
+
+
+
+h+3 h 2
+d 2 d
+
+1
+
+
+
+T4 =
+
+Z +1
+
+(13)
+
+Similarly, substituting (12) in (8) we get (16). This time
+taking h = d2 1+  is not optimal but it is \good enough",
+giving (17). Again, series expansion yields (18).
+Pr S < (1
+
+Proof of Lemma 6.
+
+E
+
+:
+
+2
+
+Postponing the proof of Lemmata 7 and 8 for a moment, let
+us use them to prove Lemma 6.
+
+(20)
+
+If = ( 1 ; : : : ; d ) is su h that 2i = 2j for all i; j , then
+by symmetry, Q( ) and Q(w) are identi ally distributed
+and the lemma holds trivially. Otherwise, we an assume
+without loss of generality, that 21 6= 22 and onsider the
+
+\more
+p balan ed" unit ve tor  = ( ; ; 3 ; : : : ; d ), where
+= ( 21 + 22 )=2. We will prove that
+
+
+E
+
+Q( )2k
+
+
+
+
+
+
+
+ E Q() k :
+2
+
+
+
+To prove (25), below we rst express E Q( )2k as a sum
+of averages over r11 ; r21 . We then apply Lemma 9 to get
+that ea h term (average) in the sum, is bounded by the
+orresponding average for ve tor . More pre isely,
+
+
+=
+
+Q( )2k
+
+1 X
+
+dk
+
+ d1k
+
+
+
+
+
+R
+X
+
+1 11
+
+
+E
+
+R
+
+
+
+
+
+r + 2 r21 )2k Pr
+
+(R +
+
+E
+
+= E Q()
+
+2k
+
+(R + r11 +
+
+
+
+" d
+X
+
+i ri1 =
+
+i=3
+" d
+
+X
+r21 )2k Pr
+i ri1 =
+i=3
+
+pR
+
+pR
+#
+
+d
+
+d
+
+:
+
+D
+. Re all that T =
+N (0; 1=d). We will
+rst express T as the s aled sum of d independent standard
+Normal random variables. This will allow for a dire t omparison of the terms in ea h of the two expe tations.
+Proof of Lemma 8
+
+Spe i ally, let fTi gdi=1 be a family
+of i.i.d. standard NorP
+mal random variables. Then di=1 Ti is a Normal random
+variable with varian e d. Therefore,
+d
+D 1X
+
+T :
+d i=1 i
+
+Re all also that Q(w) = Q1 (w) = w  1 where
+= p (r11 ; : : : ; rd1 ) :
+
+d
+
+To simplify notation let us write ri1 = Yi and let us also
+drop the dependen e of Q on w. Thus,
+
+Q=
+
+d
+
+1X
+
+Y ;
+d i=1 i
+
+where fYi gdi=1 are i.i.d. r.v. having one of the following two
+distributions: Yip2 f 1; p
++1g, ea h value having probability
+1=2, orpYi 2 f 3; 0; + 3g with 0 having probability 2/3
+and  3 being equiprobable.
+
+2k
+
+We are now ready to ompare E Q with E T
+rst observe that for every k = 0; 1; : : :
+
+
+T 2k
+
+
+E
+
+Q2k
+
+
+
+
+
+=
+=
+
+1
+
+d
+X
+
+1
+
+i1 =1
+d
+X
+
+d
+
+2k
+
+d
+
+2k
+
+i1 =1
+
+
+
+
+d
+X
+i2k =1
+d
+X
+i2k =1
+
+
+
+E
+
+(Yi1    Yi2k ) =
+
+E
+
+E
+
+(Ti1    Ti2k ) =
+
+E
+
+
+
+
+
+Yj21`1 Yj22`2    Yj2p`p ; and
+Tj21`1 Tj22`2    Tj2p`p
+
+
+
+(Yi1    Yi2k ) =
+
+
+2k
+
+. We
+
+E
+
+(Ti1    Ti2k ) ; and
+
+E
+
+(Yi1    Yi2k ) :
+
+
+
+:
+
+
+
+
+
+
+
+     E Yjp`p ; and
+
+
+
+
+`1
+     E Tjp`p :
+E (Ti1    Ti2k ) = E Tj
+1
+E
+
+Yj21`1
+
+2
+
+2
+
+2
+
+So, without loss of generality, in order to prove (26) it suÆ es
+to prove that for every ` = 0; 1; : : :
+
+
+E
+
+Y12`
+
+
+
+
+
+
+
+E T ` :
+2
+1
+
+(27)
+
+This, though, is ompletely trivial. Moreover, along with
+Lemma 9, it is the only point were we need to use properties
+of the distribution for the rij (here alled Yi ).
+Let us rst re all the well-known fa t that the (2`)th moment of N (0; 1) is (2` 1)!! = (2`)!=(`!2` )  1. Furthermore:
+2`
+{ If Y1 2 f p
+1; +1g then
+p E Y1 =21.` ` 1
+{ If Y1 2 f 3; 0; + 3g then E(Y1 ) = 3  (2`)!=(`!2` ),
+where the last inequality follows by an easy indu tion. 2
+
+
+1
+
+1
+
+(26)
+
+Note now that sin e the indi es j1 ; j2 ; : : : ; jp are distin t,
+fYjt gpt=1 and fTjt gpt=1 are families of i.i.d. r.v. Therefore,
+E
+
+T =
+
+(Yi1    Yi2k )  E (Ti1    Ti2k ) :
+
+Let V = hv1 ; v2 ; : : : ; v2k i be the value assignment onsidered. For i 2 f1; : : : ; dg, let CV (i) be the number of times
+that i appears in V . Observe that if for some i, V (i) is odd
+then both expe tations appearing in (26) are 0, sin e both
+fYi gdi=1 and fTi gdi=1 are independent families and E(Yi) =
+E(Ti ) = 0 for all i. Thus, we an assume that there exists a set fj1 ; j2 ; : : : ; jp g of indi es and orresponding values
+`1 ; `2 ; : : : ; `p su h that
+
+#
+
+2
+
+E
+
+E
+
+(25)
+
+Applying this argument repeatedly yields the lemma, as 
+eventually be omes w.
+
+E
+
+To prove the lemma we will show that for every value assignment to the indi es i1 ; : : : ; i2k ,
+
+
+
+Let us note that sin e E Y12` < E T12` for ertain l, one
+an get that for ea h xed d, both inequalities in Lemma 6
+are a tually stri t, yielding slightly better tails bounds for
+S and a orrespondingly better bound for k0 .
+As a last remark we note that by using Jensen's inequality
+one an get a dire t bound for E(Q2k ) when Yi 2 f 1; +1g,
+i.e., without omparing it to E(T 2k ). That simpli es the
+proof for that ase and showsthat taking Yi 2 f 1; +1g is
+the minimizer of E exp hQ2 for all h.
+
+Acknowledgments
+
+I am grateful to Marek Biskup for his help with the proof of
+Lemma 8 and to Jeong Han Kim for suggesting the approa h
+of equation (10). Many thanks also to Paul Bradley, Anna
+Karlin, Elias Koutsoupias and Piotr Indyk for omments on
+earlier versions of the paper and useful dis ussions.
+
+7. REFERENCES
+
+[1℄ S. Arora and R. Kannan. Learning mixtures of
+arbitrary Gaussians. Submitted, 2000.
+
+[2℄ S. Dasgupta. Learning mixtures of Gaussians. In 40th
+Annual Symposium on Foundations of Computer
+S ien e (New York, NY, 1999), pages 634{644. IEEE
+Comput. So . Press, Los Alamitos, CA, 1999.
+[3℄ S. Dasgupta and A. Gupta. An elementary proof of
+the Johnson-Lindenstrauss lemma. Te hni al report
+99-006, UC Berkeley, Mar h 1999.
+[4℄ P. Frankl and H. Maehara. The Johnson-Lindenstrauss
+lemma and the spheri ity of some graphs. J. Combin.
+Theory Ser. B, 44(3):355{362, 1988.
+[5℄ P. Indyk. Stable distributions, pseudorandom
+generators, embeddings and data stream omputation.
+In 41st Annual Symposium on Foundations of
+Computer S ien e (Redondo Bea h, CA, 2000), pages
+189{197. IEEE Comput. So . Press, Los Alamitos,
+CA, 2000.
+[6℄ P. Indyk and R. Motwani. Approximate nearest
+neighbors: towards removing the urse of
+dimensionality. In 30th Annual ACM Symposium on
+Theory of Computing (Dallas, TX), pages 604{613.
+ACM, New York, 1998.
+[7℄ W. B. Johnson and J. Lindenstrauss. Extensions of
+Lips hitz mappings into a Hilbert spa e. In
+Conferen e in modern analysis and probability (New
+Haven, Conn., 1982), pages 189{206. Amer. Math.
+So ., Providen e, R.I., 1984.
+
+APPENDIX
+
+Let us rst onsider the ase where
+
+Proof of Lemma 9.
+
+ri 2 f 1; +1g, ea h value having probability 1=2.
+
+If a2 = b2 then a = and the lemma holds with equality.
+Otherwise, let us write
+
+
+E
+
+(T + r1 + r2 )2k
+
+
+
+
+
+E
+
+where
+
+2k
+
+Sk = 2T +
+
+2
+k
+X
+
+i=0
+
+i
+
+!
+
+T 2k i Di ;
+
+Di = (2 )i+( 2 )i (a + b)i (a b)i ( a + b)i ( a b)i :
+Observe now that for odd i, Di = 0. Moreover, we laim
+that D2j  0 for all j  1. To see this laim observe that
+(2a2 + 2b2 ) = (a + b)2 + (a b)2 and that for all j  1 and
+x; y  0, (x + y )j  xj + y j . Thus,
+2k
+
+ 0:
+
+[13℄ S. Vempala and R. I. Arriaga. An algorithmi theory
+of learning: robust on epts and random proje tion. In
+40th Annual Symposium on Foundations of Computer
+S ien e (New York, NY, 1999), pages 616{623. IEEE
+Comput. So . Press, Los Alamitos, CA, 1999.
+
+2k
+
+where
+
+[9℄ N. Linial, E. London, and Y. Rabinovi h. The
+geometry of graphs and some of its algorithmi
+appli ations. Combinatori a, 15(2):215{245, 1995.
+
+[12℄ S. Vempala. A random sampling based algorithm for
+learning the interse tion of half-spa es. In 38th Annual
+Symposium on Foundations of Computer S ien e
+(Miami, FL, 1997), pages 508{513. IEEE Comput.
+So . Press, Los Alamitos, CA, 1997.
+
+4
+
+Sin e a2 6= b2 we an use the binomial theorem to expand
+every term other than 2T 2k in Sk and get
+
+Sk = 2T +
+
+[11℄ L. J. S hulman. Clustering for edge- ost minimization.
+In 32nd Annual ACM Symposium on Theory of
+Computing (Portland, OR, 2000), pages 547{555.
+ACM, New York, 2000.
+
+Sk
+
+Sk = (T + 2 )2k + 2T 2k + (T 2 )2k (T + a + b)2k
+(T + a b)2k (T a + b)2k (T a b)2k :
+We will show that Sk  0 for all k  0.
+
+[8℄ J. Kleinberg. Two algorithms for nearest-neighbor
+sear h in high dimensions. In 29th Annual ACM
+Symposium on Theory of Computing (El Paso, TX,
+1997), pages 599{608. ACM, New York, 1997.
+
+[10℄ C. H. Papadimitriou, P. Raghavan, H. Tamaki, and
+S. Vempala. Latent semanti indexing: A probabilisti
+analysis. In 17th Annual Symposium on Prin iples of
+Database Systems (Seattle, WA, 1998), pages 159{168,
+1998.
+
+
+
+(T + ar1 + br2 )2k =
+
+=
+
+k
+X
+j =1
+
+k
+X
+j =0
+!
+
+!
+
+2k 2(k j )
+T
+D2j
+2j
+
+2k 2(k j )
+T
+D2j
+2j
+
+p
+
+p
+
+The proof for the ase where ri 2 f 3; 0; + 3g is merely
+a more umbersome version of the proof above, so we omit
+it. That proof, though, brings forward an interesting point.
+If one tries to take ri = 0 with probability greater than
+2=3, while maintaining a range of size 3 and varian e 1, the
+lemma fails. In other words, 2/3 is tight in terms of how
+mu h probability mass we an put to ri = 0 and still have
+the all-ones ve tor be the worst- ase one.
+2
+
+

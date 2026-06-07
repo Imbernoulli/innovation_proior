@@ -1,0 +1,327 @@
+                         The Weighted Majority Algorithm
+
+                           Nick Littlestone *                         Manfred K. Warmuth t
+                  Aiken Computation Laboratory                        Dept. of Computer Sci.
+                            Harvard Univ.                                U. C. Santa Cruz
+
+
+
+ Abstract                                                                      +
+                                                                most c(1og Id1 m) mistakes on that sequence,
+                                                                where c is fixed constant.
+ We study the construction of prediction algo-
+ rithms in a situation in which a learner faces
+ a sequence of trials, with a prediction to be                  1    Introduction
+ made in each, and the goal of the learner is
+ t o make few mistakes. We are interested in the                We study on-line prediction algorithms that
+ case that the learner has reason to believe that               learn according t o the following protocol.
+ one of some pool of known algorithms will per-                 Learning proceeds in a sequence of trials. In
+ form well, but the learner does not know which                 each trial the algorithm receives an instance
+ one. A simple and effective method, based on                   from some fixed domain and is to produce a
+ weighted voting, is introduced for constructing                binary prediction. At the end of the trial the al-
+ a compound algorithm in such a circumstance.                   gorithm receives a binary reinforcement, which
+ We call this method the Weighted Majority Al-                  can be viewed as the correct prediction for the
+ gorithm. We show that this algorithm is ro-                    instance. We evaluate such algorithms accord-
+ bust w.r.t. errors in the data. We discuss var-                ing t o how many mistakes they make as in
+ ious versions of the Weighted Majority Algo-                   [Lit88,Lit89]. (A mistake occurs if the predic-
+ rithm and prove mistake bounds for them that                   tion and the reinforcement disagree.)
+ are closely related to the mistake bounds of the                  In this paper we investigate the situation
+ best algorithms of the pool. For example, given                where we are given a pool of prediction algo-
+ a sequence of trials, if there is an algorithm in              rithms that make varying numbers of mistakes.
+ the pool A that makes at most m mistakes then                  We aim to design a master algorithm that uses
+ the Weighted Majority Algorithm will make at                   the predictions of the pool t o make its own pre-
+                                                                diction. Ideally the master algorithm should
+                                                                make not many more mistakes than the best
+     *Supported by ONR grant N00014-85-K-0445.Part
+ of this research was done while this author was at the         algorithm of the pool, even though it does not
+ University of Calif. at Santa Cruz with support from           have any a priori knowledge as to which of the
+ O N R grant N00014-86-K-0454                                   algorithms of the pool make few mistakes for a
+     'Supported by O N R grant N00014-86-K-0454.Part            given sequence of trials.
+ of this research was done while this author was on
+ sabbatical at Aiken Computation Laboratory, Harvard,
+                                                                   The overall protocol proceeds as follows in
+ with partial support from the ONR grants N00014-85-            each trial: The same instance is fed to all al-
+ K-0445 and N00014-86-K-0454                                    gorithms of the pool. Each algorithm makes
+
+
+
+
+CH2806-8/89/0000/0256/$01.OO0 1989 IEEE                   256
+a prediction and these predictions are grouped              rithm W M forms its prediction by comparing
+together to form the instance that is fed t o the           the total weight 90 of the algorithms of the pool
+master algorithm. The master algorithm then                 that predict 0 to the total weight q1 of the al-
+makes its prediction and receives a reinforce-              gorithms predicting l . W M predicts according
+ment, which it passes t o the whole pool. We                to the larger total (arbitrarily in case of a tie).
+make no probabilistic assumptions about the                  When W M makes a mistake', then the weights
+choice of the instances and the reinforcements.             of those algorithms of the pool that agreed with
+   A special case considered in the paper occurs            the master algorithm are each multiplied by a
+when each algorithm of the pool behaves like                jixed /3 such that 0 5 < 1.
+a function over the domain: its prediction on                  In the case that p = 0 and the initial weights
+each point of the domain does not change over               are equal, W M is identical to the Halving Algo-
+time. In this case the Halving Algorithm [Lit881            rithm. If /3 > 0, then W M gradually decreases
+can be interpreted as a master algorithm. For               the influence of functions that make a large
+each instance this algorithm predicts according             number of mistakes and gives the functions that
+to the majority of all consistent functions of the          make few mistakes high relative weights. No
+pool. (A function is consistent if its values agree         single inconsistency can eliminate a function.
+with the reinforcements on all instances seen in            Suppose that WM is applied to a pool F of
+the previous trials.) Note that the functions               functions and that the sequence of trials has m
+that are not consistent have been eliminated                anomalies with respect t o F. In this case WM
+from the decision process. Each time the mas-               makes no more than a constant times log IFl+m
+ter algorithm makes a mistake a majority of the             mistakes, where the constant depends on the
+consistent functions are eliminated. If the se-             fixed parameter p. In the case that the Vapnik-
+quence of trials is such that there is a consistent         Chervonenkis dimension [VC71,BEHW88] of F
+function in the pool F then the Halving Algo-               is R(log n) our lower bounds imply that WM is
+rithm makes at most log, IF1 mistakes. This                 optimal (except for a multiplicative constant).
+type of bound goes back t o [BF72].                            For the general case where WM is applied to
+   We would like an algorithm that will still               a pool A of algorithms we show the following
+function well for sequences with which no func-             upper bounds on the number of mistakes made
+tion of the pool is consistent. This may happen,            in a given sequence of trials:
+for example, if errors occur in some of the trials.
+We refer to the least number of inconsistent tri-                1. O(1og Idl+m), if one algorithm of A makes
+als of any function in the pool as the number                       at most m mistakes.
+of anomalies of the sequence of trials with re-
+spect t o that pool. If the number o€ anomalies                              +
+                                                                 2. O ( l o g y m), if each of a subpool of k
+is non-zero, the Halving Algorithm will even-                       algorithms of A makes at most m mistakes.
+tually eliminate all functions of the pool, and
+there will be no functions left to base the fu-                  3. O(1og  9+   f), if the total number of mis-
+ture predictions on. The new master algorithm                       takes of a subpool of k algorithms of A is
+we develop here, called the Weighted Majority                       at most m.
+Algorithm ( W M )is more robust.                            ~~         ~
+
+
+
+
+Weighted Majority Algorithm ( W M ) : A                         'The mistake bounds that we prove in this paper will
+                                                            actually hold for two versions of WM, one that modifies
+non-negative weight is associated with each al-
+                                                            weights only when a mistake is made (this version is
+gorithm (function) of the pool. (All weights are            given here) and one that modifies the weights at every
+initially one unless specified otherwise.) Algo-            trial by the multiplicative changes described.
+
+
+
+
+                                                      257
+In some sense these bounds show that WM se-                         where there are several types of prediction algo-
+lects the predictions of algorithms that are per-                   rithms available, or there is a choice of param-
+forming well on a given sequence.                                   eters for a learning algorithm, and the learner
+   Note that if the subpool size k is Q( Id[)then                   is unsixe as t o which choice is the best. The
+the bounds for cases 2 and 3 are O ( m ) and                        second category of use involves applying the
+O(?),respectively. We give an example of how                        Weighted Majority Algorithm t o pools of func-
+Case 1 can be applied. Suppose that the in-                         tions. This use gives mistake bounds that grow
+stance domain is (0, l}n. Boolean functions of                      at close to the optimal rate as the number of
+the following form are called r-of-k threshold                      anomalies grows and establishes the best that
+functions: f ( ~ 1 , . ..,zn)= 1 iff              zi, 2 T ,         can be achieved in this respect for deterministic
+where k, r and the distinct ij are integers in                      algorithms. Many function classes of interest
+the range from 1 to n. Assume we are given a                        will, however, be too large to make this use of
+sequence of trials that is consistent with such                     W M computationally practical.
+a threshold function. The goal is to design a                          In the next section, we prove mistake bounds
+prediction algorithm that makes a small num-                        for the Weighted Majority algorithm W M . We
+ber of mistakes for such sequences. The algo-                       conclude the present section by outlining ad-
+rithm Winnow [Lit881 (the Fixed Threshold al-                       ditional results presented in the full paper
+gorithm of [Lit89]) can be used t o predict such                    [LW89]. There, in addition t o the basic algo-
+sequences with a bound of O(kn1ogn) mis-                            rithm, we discuss two variants. For one vari-
+takes. If we know an upper bound on r , the                         ant, which we call W M L , we modify WM so
+mistake bound of Winnow can be improved to                          that it never decreases its weights below a cer-
+b, = O(krlogn), which grows only logarith-                          tain lower threshold. Algorithm W M L has even
+mically in the domain dimension n when k re-                        stronger selective capabilities than W M . Sup-
+mains small. The improvement of the mistake                         pose that we are given a sequence of trials such
+bound to br requires choosing parameters for                        that there is one algorithm in the pool that
+Winnow that depend on r (Let A, denote Win-                         makes few mistakes (say m l ) for an initial seg-
+now when tuned to r ) . If A, receives a sequence                   ment of the sequence and a second algorithm
+that is not consistent with any r'-of-k threshold                   that makes m2 mistakes for a second segment
+function such that r' 5 r , then the number of                      of sequence, and so forth. Assume the original
+mistakes that it makes might greatly exceed b,.                     sequence is partitioned into s segments. W M L
+   We can overcome not knowing r by applying                        has no a priori knowledge as to how many seg-
+ W M to the pool { A 2 i } O ~ i i P o g z n l . From the           ments there are, when the different segments
+results presented in this paper, it follows that                    begin, and which algorithms perform well in
+the number of mistakes made in this manner for                      each segment. We can show that the number
+a sequence consistent with an r-of-k threshold                      of mistakes made by WMZ is bounded by a
+function will be bounded by a constant times                        constant times (slog Id1 +        mi), where the
+          +
+log log ~t b r , which is O(krlog n).                               constant depends on the parameters of the al-
+   The applications of the Weighted Majority                        gorithm. For example, suppose that the algo-
+Algorithm that we consider fall into two cate-                      rithms of the pool are functions and each seg-
+gories. The first category is illustrated by the                    ment of the sequence is consistent with some
+previous example. Examples such as this one                         function of the pool. Intuitively this means
+show that the Weighted Majority Algorithm is                        that the sequence is labeled according to some
+a powerful tool for constructing new efficient                      target function of the pool but at the end of
+learning algorithms. It can be used in cases                        each segment the target function changes. Each
+
+
+
+
+                                                              258
+time the target changes to a new function, there            rapidly with i.
+is a cost of O(logld1) mistakes in the mistake                 A portion of the full paper is devoted to the
+bound for W M L .                                           special case in which the basic algorithm WM
+   We investigate a second variant of W M                   is applied to pools of functions. We first as-
+which deals with countably infinite pools of                sume that the pool contains a function consis-
+algorithms, indexed by the positive integers.               tent with all of the trials. Let m; be a bound
+Barzdin and F'reivald [BF72], considering pools             on the number of mistakes made by W M if the
+of (recursive) functions, show that there is an             ith function in the pool is consistent. Chang-
+                                        +
+algorithm that makes at most logz n o(1og n )               ing the initial weights can be used to decrease
+mistakes when given any sequence of trials con-             some of the m; at the expense of increasing oth-
+sistent with the n-th function. We give a similar           ers. For certain classes of functions we char-
+result that applies t o pools of algorithms even in         acterize what sets of m; are possible mistake
+the case that no algorithm in the pool is consis-           bounds for the Weighted Majority Algorithm,
+tent with the sequence of trials (i.e. every algo-          and present results from [Lit891 showing that
+rithm makes mistakes). We describe a variant                for these classes of functions no other algorithm
+ W M I of the Weighted Majority Algorithm that              can do better. We then consider the case in
+has the property that for any countably infinite            which no function in the pool is consistent with
+pool, any sequence of trials, and every index               all of the trials, and prove a lower bound on the
+i, the number of mistakes it makes is bounded               rate at which the mistake bounds must grow as
+                             +
+by a constant times (logi m;), where m; is                  the number of anomalous trials grows.
+the number of mistakes made by the i-th algo-                  We have begun exploring the properties of
+rithm of the pool on the given sequence of tri-             a randomized version of the Weighted Major-
+als. More generally, the algorithms of the pool             ity Algorithm. In the full paper, we give an
+can be assigned any sequence of initial weights             expected mistake bound for the randomized al-
+w1, w2,. .. with a finite sum, and the number of            gorithm. As described above, the determinis-
+mistakes will be bounded by a constant times                tic Weighted Majority Algorithm predicts 1 if
+Zog(l/w;)+m; for every i. The algorithm works                       23.    The randomized algorithm W M R
+by ignoring all but a finite active subpool of the
+algorithms, consisting of algorithms AI,. .. ,AI
+                                                            instead predicts 1 with probability   A.      The
+                                                            randomized version of the algorithm has the
+of the pool, for some cutoff 1. The active pool             property that the weights can be updated so
+gradually grows. The cutoff 1 is chosen at each             that the rate at which W M R is expected to
+trial so that the sum of the weights of the in-             make mistakes in the long run can be made ar-
+active algorithms is small compared to the sum              bitrarily close to the rate at which the best pre-
+of the current weights of the active algorithms.            diction algorithm in the underlying pool makes
+   In the case where m; grows rapidly with i, the           mistakes. This represents an improvement by
+active pool size can be kept small at the cost of           a factor of two over the limiting bound we give
+at most a constant factor increase in the mis-              on the learning rate for the deterministic algo-
+take bound that we obtain. One chooses the ini-             rithm.
+tial weights w; so that log(l/w;) is comparable                An alternate way t o obtain similar perfor-
+to m;. In the full version of the paper, we dis-            mance bounds to those obtainable by the ran-
+cuss initial weight sequences w; = l/(i(i t l)),            domized algorithm is to use a deterministic al-
+w; = 1/2', and w; = 1/22i-1. The active pool                gorithm that is allowed to hedge in its predic-
+size is smaller when the weights decrease more              tions. For this case, we allow the predictions
+
+
+
+
+                                                      259
+of the Weighted Majority Algorithm and of the                Proof. The weight of the i-th algorithm of
+algorithms in the pool t o be chosen from the             the pool can only be updated (multiplied by p )
+closed interval [0,1]. We derive comparable               during a trial if the algorithm makes a mistake
+bounds for this modification of the Weighted              in that trial. Thus after WM has processed
+Majority Algorithm.                                       the whole sequence S , the weight of the i-th
+                                                          algorithm is at least w;pmi and the total current
+                                                          weight is at least wfin.
+2    Proving Mistake Bounds                                                        +
+                                                             During each trial qo q1 is the current total
+     for the Weighted Majority                            weight. Consider a trial in which a mistake is
+     Algorithm                                            made. Suppose, without loss of generality, that
+                                                          in this trial the learner's prediction was 0, and
+In this section we prove the bounds on the num-           thus qo 2 q1. In this case the total weight after
+ber of mistakes for the basic Weighted Majority                                +           + +
+                                                          this trial will be pqo q1 5 pqo q1 q ( q 0 -
+Algorithm WM. Recall the description of WM                               +
+                                                          41) = Y(q0 q1). Thus the ratio of the total
+given in the introduction. For a given trial, we          weight after the trial to the total weight before
+use qo and q1 t o denote the total weight of the          the trial will be at most    9   < 1. The bound
+algorithms in the pool that predict 0 and 1, re-          on m follows from the discussion preceding the
+spectively. The parameter p is the factor by              theorem.                                        U
+which weights are multiplied in case of a mis-               As discussed in the introduction, if p = 0 and
+take and is always in the range 0 5 p < 1.                the initial weights are equal, then WM is the
+Suppose that we run WM with a pool A of                   Halving algorithm. In that case, if all m; are
+prediction algorithms, indexed with the inte-             positive then w j ; , = 0 and the bound of the
+gers from 1 through IAI. We denote the initial            theorem becomes vacuous.
+non-negative weight corresponding to the i-th                For the following corollaries we assume that
+algorithm of the pool (1 5 i 5 [AI)by w;.                 all initial weights are one. Otherwise we assume
+  All proofs are surprisingly simple. We show             the same notation as in the theorem.
+that after each trial in which a mistake occurs
+                                                          Corollary 2.2 Assume that A is a pool of n
+the sum of the weights is at most U times the
+                                                          prediction algorithms and that there is a subpool
+sum of the weights before the trial, for some
+                                                          of A of size k such that each of the algorithms
+U < 1. If the total initial weight is wjn;t and
+                                                          of the subpool makes at most m mistakes on
+
+                                                                 "
+wj;, is a lower bound for the total final weight,
+                                                          S . Then WM when applied to pool A makes at
+then w;,itum 2 w j ; , must hold, where m is the                 log n+mlog
+number of mistakes. This implies that m is at             most                mistakes on the sequence S.
+      log
+most -+.
+         =                                                         106 1+B
+
+         1% "
+                                                            Proof. This follows from the above theorem
+                                                          and the fact that w;,;t = n and W j j n 2 kPm. Cl
+Theorem 2.1 Let S be any sequence of in-                  Corollary 2.3 Assume that A is a pool of n
+stances and reinforcements and let mi be the              prediction algorithms and that there is a subpool
+number of mistakes made by the i-th algorithm             of A of size k such that all algorithms of the
+of a pool A on the sequence S. Let kz be the
+
+
+            -
+                                                          subpool together make at most m mistakes in
+number of mistakes made b y WM on the se-                 total on S. Then WM when applied to pool
+quence S when applied to the pool d . Then
+     log                                                  A makes at most     q,
+                                                                               mistakes on the
+                                                                                log 1+8
+m 5 *,          where W j j n = Cr=1W ; p m i .           sequence S.
+      log 1+@
+
+
+
+
+                                                    260
+   Proof. Without loss of generality, let the               [LW89]   Nick Littlestone and Manfred K.
+first k algorithms of A be the subpool. Thus                            Warmut h.
+cf=,ml I m and wfin >_ &/?"1.            Since the                   The Weighted Majority Algorithm.
+latter sum is at least k p t it easy to derive the                   Technical Report U CSC-C RL-89-
+bound of the corollary using the previous theo-                         16, Univ. of Calif., Santa Cruz,
+rem.                                             0                      CA 95064,1989.
+                                                            [VC71]   V. N. Vapnik and A. Ya. Chervo-
+                                                                        nenkis.
+3    Acknowledgements                                                On the uniform convergence of rel-
+                                                                        ative frequencies of events to
+We thank David Helmbold for valuable discus-
+                                                                        their probabilities.
+sions.
+                                                                     Th. Prob. and its Appl., 16(2):264-
+                                                                        80, 1971.
+References
+[BEHW88] Anselm Blumer, Andrzej Ehren-
+            feucht, David Haussler, and
+            Manfred K. Warmuth.
+         Learnability and the Vapnik-
+            Chervonenkis Dimension.
+         Technical Report U C SC-C RL-87-
+            20, University of California
+            Computer Research Labora-
+            tory, Santa Cruz, CA, 1987, re-
+            vised 1988.
+         To appear in JACM.
+[BF72]       J. M. Barzdin and R. V. Freivald.
+             On the prediction of general recur-
+                sive functions.
+             Sou. Math. Dokl., 13:1224-1228,
+                1972.
+[Lit881      Nick Littlestone.
+             Learning quickly when irrelevant
+                attributes abound:       a new
+                linear-threshold algorithm.
+             Machine Learning, 2:285-318,
+                1988.
+[Lit891      Nick Littlestone.
+             Mistake Bounds and Logarithmic
+                Linear-threshold Learning Algo-
+                rithms.
+             PhD thesis, University of Calif.,
+                Santa Cruz, 1989.
+
+
+
+
+                                                     26 I
+

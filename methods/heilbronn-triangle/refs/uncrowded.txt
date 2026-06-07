@@ -1,0 +1,2066 @@
+THE INDEPENDENCE NUMBER OF NON-UNIFORM UNCROWDED
+HYPERGRAPHS AND AN ANTI-RAMSEY TYPE RESULT
+
+arXiv:1602.03569v1 [math.CO] 10 Feb 2016
+
+SANG JUNE LEE AND HANNO LEFMANN
+Abstract. We prove the following: Fix an integer k ≥ 2, and let T be a real number with T ≥ 1.5.
+Let H = (V, E2 ∪ E3 ∪ · · · ∪ Ek ) be a non-uniform hypergraph with the vertex set V and the set Ei of
+edges of size i = 2, . . . , k. Suppose that H has no 2-cycles (regardless of sizes of edges), and neither
+contains 3-cycles nor 4-cycles consisting of 2-element edges. If the average degrees ti−1
+:= i|Ei |/|V |
+i
+k−i
+
+≤ T i−1 (ln T ) k−1 for i = 2, . . . , k, then there exists a constant Ck > 0, depending
+satisfy that ti−1
+i
+1
+only on k, such that α(H) ≥ Ck |VT | (ln T ) k−1 , where α(H) denotes the independence number of
+H. This extends results of Ajtai, Komlós, Pintz, Spencer and Szemerédi [J. Comb. Theory Ser. A
+32, 1982, 321–335] and Duke, Rödl and the second author [Random Struct. Algorithms 6, 1995,
+209–212] for uniform hypergraphs.
+As an application, we consider an anti-Ramsey type problem on non-uniform hypergraphs. Let
+H = H(n; 2, . . . , ℓ) be the hypergraph on the n-vertex set V in which, for s = 2, . . . , ℓ, each s-subset
+of V is a hyperedge of H. Let ∆ be an edge-coloring of H satisfying the following: (a) two hyperedges
+sharing a vertex have different colors; (b) two hyperedges with distinct size have different colors;
+(c) a color used for a hyperedge of size s appears at most us times. For such a coloring ∆, let
+f∆ (n; u2 , . . . , uℓ ) be the maximum size of a subset U of V such that each hyperedge of H[U ] has a
+distinct color, and let f (n; u2 , . . . , uℓ ) := min∆ f∆ (n; u2 , . . . , uℓ ). We determine f (n; u2 , . . . , uℓ ) up
+to a multiplicative logarithm factor, which is a non-uniform version of a result for edge-colorings of
+graphs by Babai [Graphs Comb. 1, 1985, 23–28], and for uniform hypergraphs by Alon, Rödl and
+the second author [Coll. Math. Soc. János Bolyai, 60. Sets, Graphs and Numbers, 1991, 9–22] and
+by Rödl, Wysocka and the second author [J. Comb. Theory Ser. A 74, 1996, 209–248].
+
+1. Introduction
+Let H = (V, E) be a hypergraph with its vertex set V and its edge set E. Let Ei ⊂ E be the set
+of all i-element edges in H. For a vertex v ∈ V , let di (v) denote the number of i-element edges
+E ∈ Ei containing v. A hypergraph H = (V, E) is called k-uniform if E = Ek . A subset V ′ ⊆ V is
+called independent if for no edge E ∈ E it is E ⊆ V ′ . The independence number α(H) of H is the
+maximum size of an independent set of H. For a subset V ∗ ⊂ V of the vertex set, let H[V ∗ ] be the
+subhypergraph of H induced on V ∗ .
+The independence number has been well-studied for uniform hypergraphs, however, for nonuniform hypergraphs it was not that studied correspondingly. The goal of this paper is to extend
+known results on the independence number of a uniform hypergraph to a non-uniform hypergraph.
+Turán’s theorems by Turán [8] and Spencer [9] imply the following theorem about the independence number of a k-uniform hypergraph H.
+Theorem 1 (Turán [8] and Spencer [9]). Let k ≥ 2 be an integer. Let H = (V, Ek ) be a k-uniform
+hypergraph with N vertices and average degree tk−1 := k|Ek |/N , where t ≥ 1. Then,
+α(H) ≥
+
+k−1N
+.
+k t
+
+Date: Wed 26th May, 2021, 8:44am.
+1
+
+(1)
+
+Later, a better lower bound on the independence number of a k-uniform hypergraph was obtained
+if the hypergraph does not contain cycles of small lengths. We introduce the definition of cycles of
+a given length.
+Definition 2. Let H = (V, E) be a hypergraph. A j-cycle in H is a family of pairwise distinct
+edges E1 , . . . , Ej ∈ E such that the following hold:
+• Ei ∩ Ei+1 6= ∅ for i = 1, . . . , j − 1 and Ej ∩ E1 6= ∅.
+• There are pairwise distinct vertices v1 , . . . , vj such that vi ∈ Ei ∩ Ei+1 for i = 1, . . . , j − 1
+and vj ∈ Ej ∩ E1 .
+Definition 3. A hypergraph H is called uncrowded if it does not contain any 2-, 3- or 4-cycles. A
+hypergraph H is called linear if it does not contain any 2-cycles.
+
+Ajtai, Komlós, Pintz, Spencer and Szemerédi [1] obtained a lower bound on the independence
+number of a k-uniform uncrowded hypergraph as follows. Later, Bertram-Kretzberg and Lefmann [4] and Fundia [6] provided a deterministic polynomial time algorithm.
+Theorem 4 (Ajtai, Komlós, Pintz, Spencer and Szemerédi [1]). Let k ≥ 2 be a fixed integer. Let t
+and N satisfy t > t0 (k) and N > N0 (k, t). Let H = (V, Ek ) be an uncrowded k-uniform hypergraph
+on N vertices with average degree tk−1 := k|Ek |/N . Then, there exists a constant Ck > 0 such that
+α(H) ≥ Ck
+
+1
+N
+(ln t) k−1 .
+t
+
+(2)
+5
+
+− k−1
+.
+We remark that in [1] the constant Ck is bounded from below by Ck ≥ 0.98
+e 10
+Duke, Lefmann, and Rödl in [5] weakened the assumption in Theorem 4 for k ≥ 3 as follows:
+
+Theorem 5 (Duke, Lefmann, and Rödl [5]). Let k ≥ 3 be a fixed integer. Let t and N satisfy
+t > t0 (k) and N > N0 (k, t). Let H = (V, Ek ) be a linear k-uniform hypergraph on N vertices with
+average degree tk−1 := k|Ek |/N . Then, there exists a constant Ck′ > 0 such that
+1
+N
+(ln t) k−1 .
+t
+In this paper we extend Theorems 4 and 5 to non-uniform hypergraphs as follows.
+
+α(H) ≥ Ck′
+
+(3)
+
+Theorem 6. Let k ≥ 2 be a fixed integer. Let T be a real number with T ≥ 1.5 and N be a positive
+integer. Let H = (V, E2 ∪ · · · ∪ Ek ) be a linear hypergraph on N vertices such that there are no
+3-cycles and 4-cycles consisting of 2-element edges. Let the average degrees ti−1
+:= i|Ei |/N satisfy
+i
+that for i = 2, . . . , k
+k−i
+
+ti−1
+≤ T i−1 (ln T ) k−1 .
+i
+
+(4)
+
+Then, there exists a constant Ck > 0 such that
+1
+N
+α(H) ≥ Ck (ln T ) k−1 .
+(5)
+T
+Remark 7. For the range of 0 < T < 1.5 in Theorem 6, a simple greedy algorithm gives that there
+exists a constant Ck′ > 0, depending only on k, such that α(H) ≥ Ck′ N.
+
+As an application of the main theorem (Theorem 6), we consider a anti-Ramsey type problem
+of a non-uniform hypergraph. Let H = H(n; 2, . . . , ℓ) be the hypergraph on the vertex set V ,
+|V | = n, in which, for s = 2, . . . , ℓ, each s-subset of V is a hyperedge of H. Suppose that ∆ is an
+edge-coloring of H satisfying the following conditions:
+(a) Two hyperedges sharing a vertex have different colors. In other words, each color class is a
+matching.
+(b) Two hyperedges with distinct size have different colors.
+2
+
+(c) The coloring is (u2 , . . . , uℓ )-bounded, that is, a color used for a hyperedge of size s appears
+at most us times.
+For such a coloring ∆, let f∆ (n; u2 , . . . , uℓ ) be the maximum size of a vertex set U in V such
+that the subhypergraph H[U ] of H induced on U is totally multicolored, which means that each
+hyperedge of H[U ] has a distinct color. Let
+f (n; u2 , . . . , uℓ ) := min f∆ (n; u2 , . . . , uℓ ),
+∆
+
+where we minimize it over all edge-colorings ∆ of H satisfying (a)–(c).
+We will show the following which is a non-uniform version of a result for edge-colorings of graphs
+in [7].
+Theorem 8.
+(a) Suppose that
+
+
+
+
+ 1
+ 1
+ni−1 ui 2i−1 = ns−1 us 2s−1 .
+
+"
+
+ni−1 ui
+ln n
+
+max
+
+2≤i≤ℓ
+
+(6)
+
+Then, there exist positive constants c1 and c2 , depending only on ℓ, such that for every
+sufficiently large n,
+ 1
+ s 1
+ s
+2s−1
+n 2s−1
+n
+ln n
+c1
+≤ f (n; u2 , ..., uℓ ) ≤ c2
+.
+(7)
+us
+us
+
+(b) Suppose that
+
+max
+
+2≤i≤ℓ
+
+and
+
+1 #
+ 2i−1
+
+=
+
+
+
+ns−1 us
+ln n
+
+1
+ 2s−1
+
+(8)
+
+us ≥ n1/2+ε
+for some absolute constant ε > 0.
+(9)
+Then, there exist positive constants c3 = c3 (ℓ, ε) and c4 = c4 (ℓ) such that for every sufficiently large n,
+ s
+ 1
+ 1
+ s
+2s−1
+2s−1
+n
+n
+≤ f (n; u2 , ..., uℓ ) ≤ c4
+.
+(10)
+ln n
+ln n
+c3
+us
+us
+Remark 9. Statements (a) and (b) in Theorem 8 have different assumptions. We remark that
+under asumption (8), our argument for the lower bound in (7) gives
+ s 1
+1
+1
+n 2s−1
+′
+c3
+(ln n) 2s−1 − 2ℓ−1 ≤ f (n; u2 , ..., uℓ ),
+us
+
+which is less than the lower bound in (10), while under assumption (6), our argument for the lower
+bound in (10) gives
+" 
+ s 1
+ 1 #
+2s−1
+u2s 2ℓ−1
+′′ n
+≤ f (n; u2 , ..., uℓ ),
+c3
+max 1, ln
+us
+n
+√
+which is bigger than the lower bound in (7) if us ≫ n.
+If we assume u2 = . . . = uℓ = n, Theorem 8 (b) immediately implies the following corollary:
+
+Corollary 10. There exist positive constants c3 and c4 , depending only on ℓ, such that for every
+sufficiently large n,
+1
+
+c3 (n ln n) 3
+
+1
+
+≤ f (n; n, ..., n) ≤ c4 (n ln n) 3 .
+| {z }
+ℓ−1
+
+3
+
+(11)
+
+For the special case of ℓ = 2, i.e., edge-coloings of graphs, the upper bound in (11) was shown in
+1985 by Babai [3], and the lower bound was proved in 1991 by Alon, Rödl and the second author [2].
+The organization of this paper is as follows. Section 2 contains an extension of Theorem 1 to nonuniform hypergraphs. In Section 3, we show an extension of Theorem 4 to non-uniform hypergraphs.
+Section 4 contains our proof of an extension of Theorem 5 to non-uniform hypergraphs. In Section 5,
+we show Theorem 6 in full. Section 6 contains the proof of Theorem 8.
+2. Arbitrary non-uniform hypergraphs
+The next theorem by Spencer [9] provides a lower bound on the independence number α(H) of
+a non-uniform hypergraph H.
+Theorem 11 (Spencer [9]). Let H = (V, E2 ∪ · · · ∪ Ek ) be a hypergraph with N vertices and average
+degree ti−1
+:= i|Ei |/N for the i-element edges, where i = 2, . . . , k. Let T := max {ti | 2 ≤ i ≤ k} ≥
+i
+1/2. Then,
+1N
+α(H) ≥
+.
+4T
+Proof. For convenience we provide the sketch of a proof. Choose each vertex uniformly at random
+and independently with probability p := 1/(2T ) ≤ 1. Let V ∗ be the random set of chosen vertices
+and let Ei∗ , i = 2, . . . , k, be the sets of i-element edges in the induced random subhypergraph H[V ∗ ].
+Then we have in expectation
+#
+"
+k
+k
+k
+X
+X
+X
+pi N ti−1
+∗
+∗
+i
+E[|Ei∗ |] = pN −
+|Ei |
+= E[|V ∗ |] −
+E |V | −
+i
+≥ pN −
+Thus there exists a subset V ∗ ⊆ V
+
+i=2
+
+i=2
+
+i=2
+
+such that
+∗
+
+|V | −
+
+k
+X
+
+pi N T i−1
+i
+
+i=2
+
+k
+X
+
+|Ei∗ | ≥
+
+=
+
+N
+−
+2T
+
+k
+X
+i=2
+
+1 N
+N
+≥
+.
+i
+i2 T
+4T
+
+N
+.
+4T
+
+i=2
+By deleting one vertex from each edge E ∈ Ei∗ , i = 2, . . . , k, we destroy all edges in H[V ∗ ], and
+hence we obtain an independent set V ∗∗ of H with |V ∗∗ | ≥ N/(4T ).
+
+
+3. Uncrowded non-uniform hypergraphs
+In this section we show the following lemma which gives a lower bound on the independence
+number of an uncrowded non-uniform hypergraph.
+Lemma 12. Let k ≥ 2 be a fixed integer. Let T and N satisfy T > T0 (k) and N > N0 (k, T ). Let
+H = (V, E2 ∪· · ·∪Ek ) be an uncrowded hypergraph on N vertices with average degrees ti−1
+:= i|Ei |/N
+i
+such that for i = 2, . . . , k
+k−i
+≤ ci T i−1 (ln T ) k−1 ,
+ti−1
+i
+(k−i)
+k−1 −3 k−1
+1
+. Then, there exists a constant Ck > 0
+where ci are constants satisfying 0 < ci < 16k
+2 i−1 10
+such that
+1
+N
+α(H) ≥ Ck (ln T ) k−1 .
+(12)
+T
+In order to prove Lemma 12, we will use the following lemma which was used to show Theorem 4
+in Ajtai, Komlós, Pintz, Spencer and Szemerédi [1]. Since the lemma in [1] has been written densely
+(with several typos), we provide a slightly modified statement, based on Lemma 6 in Fundia [6].
+4
+
+Lemma 13 (Ajtai, Komlós, Pintz, Spencer and Szemerédi [1]). Let k ≥ 2 be a fixed integer. Let
+T , N , and s be such that
+T ≥ T0 (k), N ≥ N0 (k, T ), 0 ≤ s ≤ 0.01 ln T.
+
+(13)
+
+Let n and t be integers satisfying
+1N
+N
+T
+T
+≤ n ≤ s and
+≤ t ≤ 2 s.
+(14)
+s
+s
+2e
+e
+e
+e
+Let H = (V, E2 ∪ · · · ∪ Ek ) be an uncrowded hypergraph with n vertices satisfying the following: for
+each vertex v ∈ V and 2 ≤ i ≤ k, the numbers di (v) of i-element edges E ∈ Ei containing vertex v
+fulfill
+
+
+k−i
+k − 1 k−1
+ti−1 .
+di (v) ≤
+s
+i−1
+Then, there exists an independent set I ⊆ V and a vertex set V ∗ ⊂ V with I ∩ V ∗ = ∅ satisfying
+the following:
+(i) α(H) ≥ |I| + α(H∗ )
+where H∗ = H[V ∗ ]
+1
+1
+0.99 n
+(ii) |I| ≥
+ws
+where ws := (s + 1) k−1 − s k−1
+e
+t
+n
+n
+where ε = 1/(106 ln T )
+(iii) (1 − ε) ≤ |V ∗ | ≤
+e
+e ∗
+(iv) for every vertex v ∈ V and i = 2, . . . , k it is
+i−1
+
+
+
+k−i
+t
+k−1
+,
+(1 + ε)
+d∗i (v) ≤
+(s + 1) k−1
+e
+i−1
+where d∗i (v) is the number of i-element edges in H∗ containing v.
+
+In order to apply Lemma 13, we are going to obtain an induced subhypergraph of H in Lemma 12
+that satisfies the assumptions of Lemma 13.
+Lemma 14. Let k ≥ 2 be a fixed integer. Let T , N and s be positive integers satisfying
+T ≥ T0 (k), N ≥ N0 (k, T ), s = 0.001 ln T.
+
+Let H = (V, E2 ∪ · · · ∪ Ek ) be a hypergraph with N vertices and average degrees ti−1
+:= i|Ei |/N
+i
+satisfying that
+k−i
+
+ti−1
+≤ ci T i−1 (ln T ) k−1 ,
+i
+k−i
+k−1 −3 k−1
+1
+where the constants ci > 0 are such that ci < 16k
+.
+2 i−1 10
+∗
+∗
+∗
+∗
+Then, H contains a subhypergraph H = (V , E2 ∪ · · · ∪ Ek ) induced on V ∗ with |V ∗ | = n such
+that the following hold.
+3N
+N
+(a)
+≤ n ≤ s , and
+s
+4e
+e
+(b) for each vertex v ∈ V ∗ ,
+ i−1
+
+
+k−i
+T
+k − 1 k−1
+∗
+,
+(15)
+di (v) ≤
+s
+es
+i−1
+where d∗i (v) is the number of i-element edges in H∗ containing v.
+
+Proof. Let V ′ be a random set obtained by choosing each vertex in H independently with probability
+p := 1/es . For its expected size we have E[|V ′ |] = N p = N/es , thus by Chernoff’s inequality it is
+
+2
+Pr |V ′ | ≤ E[|V ′ |] − u ≤ e−u /N
+5
+
+for every real u ≥ 0. Then, with s = 10−3 ln T and a sufficiently large N ≥ N0 (k, T ) we have
+
+
+2
+2s )
+1N
+1
+2s
+′
+′
+− N /(64e
+N
+Pr |V | ≤ E[|V |] −
+(16)
+≤
+e
+= e−N/(64e ) < .
+s
+8e
+k
+Let H′ = (V ′ , E2′ ∪ · · · ∪ Ek′ ) be the subhypergraph of H induced on V ′ . For i = 2, . . . , k, we have
+k−i
+
+−si
+E[|Ei′ |] = pi |Ei | = pi ti−1
+ci T i−1 (ln T ) k−1 N/i.
+i N/i ≤ e
+
+By Markov’s inequality we infer
+
+
+Pr |Ei′ | > kE[|Ei′ |] ≤ 1/k .
+
+(17)
+
+By (16) and (17), there exists an induced subhypergraph H′ = (V ′ , E2′ ∪ · · · ∪ Ek′ ) of H such that
+|V ′ | ≥
+
+7N
+,
+8 es
+
+(18)
+k−i
+
+|Ei′ | ≤ kci e−si T i−1 (ln T ) k−1 N/i
+
+for i = 2, . . . , k.
+
+(19)
+
+From now on, we are going to obtain an induced subhypergraph H∗ of H′ such that the maximum
+degree is bounded. From (19), we infer
+k−i
+
+E[d′i (v)] ≤ kci e−si T i−1 (ln T ) k−1 N/|V ′ |.
+
+Let Yi be the number of vertices v ∈ V ′ of high degree, i.e., such that
+k−i
+
+Since
+
+d′i (v) > 7k · kci e−si T i−1 (ln T ) k−1 N/|V ′ |.
+k−i
+
+k−i
+
+Yi · 7k2 ci e−si T i−1 (ln T ) k−1 N/|V ′ | ≤ i|Ei′ | ≤ kci e−si T i−1 (ln T ) k−1 N,
+
+we infer Yi ≤ |V ′ |/(7k). Thus, the total number of vertices of high degree is bounded as
+k
+X
+i=2
+
+Yi ≤
+
+k
+X
+|V ′ |
+i=2
+
+7k
+
+≤
+
+|V ′ |
+.
+7
+
+(20)
+
+By deleting these vertices of high degree from V ′ , we obtain an induced subhypergraph H∗ =
+(V ∗ , E2∗ ∪ · · · ∪ Ek∗ ) of H∗ with |V ∗ | ≥ (6/7)|V ′ | such that with (18) we infer
+|V ∗ |
+d∗i (v)
+
+(20)
+
+≥
+
+≤
+
+(18)
+
+≤
+
+6 ′ (18) 3 N
+|V | ≥
+7
+4 es
+
+(21)
+k−i
+
+7k2 ci e−si T i−1 (ln T ) k−1 N/|V ′ |
+ i−1
+k−i
+T
+k−1 ,
+8k2 ci
+(ln
+T
+)
+es
+
+where d∗i (v) is the number of i-element edges in H∗ containing v. Recalling s := 10−3 ln T and the
+upper bound on ci , we have
+
+
+ i−1
+k−i
+k − 1 k−1
+T
+d∗i (v) ≤
+s
+,
+i−1
+es
+which proves condition (b) in (15). We can obtain the condition |V ∗ | ≤ N/es by possibly deleting
+some more vertices from V ∗ . This together with (21) implies condition (a).
+
+Now we are ready to prove Lemma 12.
+Proof of Lemma 12. We apply Lemma 14 with s = 10−3 ln T to H on N vertices. Then we obtain
+a subhypergraph H∗ = (V ∗ , E2∗ ∪ · · · ∪ Ek∗ ) induced on V ∗ with |V ∗ | = n such that the following
+hold:
+6
+
+3N
+N
+≤ n ≤ s , and
+s
+4e
+e
+(b) for each vertex v ∈ V ∗ , it is
+(a)
+
+d∗i (v) ≤
+
+
+
+
+ i−1
+k−i
+k − 1 k−1
+T
+,
+s
+i−1
+es
+
+where d∗i (v) is the number of i-element edges in H∗ containing v.
+
+Set ns = n and ts = T /es and Hs = H∗ = (Vs , E2;s ∪ · · · ∪ Ek;s ). We apply Lemma 13 with
+ε = 1/(106 ln T ) to Hs , iteratively. Let nr and tr be such that
+3N
+N
+(1 − ε)r−s ≤ nr ≤ r
+r
+4e
+e
+
+(22)
+
+and
+tr =
+
+T
+(1 + ε)r−s .
+er
+
+(23)
+
+For each r = s, . . . , 10−2 ln T , we obtain an independent set Ir ⊆ Vr and a vertex set Vr+1 ⊂ Vr
+with Ir ∩ Vr+1 = ∅ satisfying the following:
+(i) α(Hr ) ≥ |Ir | + α(Hr+1 )
+where Hr+1 = Hr [Vr+1 ]
+1
+1
+0.99 nr
+wr
+where wr := (r + 1) k−1 − r k−1
+(ii) |Ir | ≥
+e
+tr
+nr
+nr
+(1 − ε) ≤ |Vr+1 | ≤
+recalling ε = 1/(106 ln T )
+(iii)
+e
+e
+(iv) for every vertex v ∈ Vr+1 and 2 ≤ i ≤ k,
+di;r+1 (v) ≤
+
+
+
+
+k−i
+k−1
+(s + 1) k−1 (tr+1 )i−1 ,
+i−1
+
+where di;r+1 (v) is the number of i-element edges in Hr+1 containing v.
+We first check how many times we can iteratively apply Lemma 13 to Hr . Observe that we can
+apply Lemma 13 as far as inequalities (13) and (14) are satisfied.
+• The inequality (13) is s + r ≤ 0.01(ln T ).
+
+1
+3
+≤ (1−ε)r−s . Using 1−p ≥ e−2p
+2
+4
+for 0 ≤ p ≤ 0.5, one can check that it suffices to have r ≤ 105 ln T.
+• From (23), the inequalities about t in (14) are satisfied if (1 + ε)r−s ≤ 2. One can check
+that it suffices to have r ≤ 105 ln T.
+• From (22), the inequalities about n in (14) are satisfied if
+
+Therefore, we can apply Lemma 13 for r + s ≤ 0.01 ln T .
+Now we estimate the size of an independent set in H obtained by the above procedure. Notice
+that by using (1 + ε)n ≥ 1 + εn and 1 + ε ≤ eε and r ≤ 10−2 ln T and ε = 10−6 / ln T we have
+nr
+tr
+
+≥
+≥
+
+(3/4)N (1 − ε)r−s /er
+3 N (1 − ε)r
+≥
+T (1 + ε)r−s /er
+4 T (1 + ε)r
+3 N 1 − 10−8
+N
+3 N 1 − εr
+≥
+≥ 0.74 .
+4 T eεr
+4 T e10−8
+T
+7
+
+1
+
+1
+
+Hence, recalling that wr = (r + 1) k−1 − r k−1 , we obtain an independent set I = Is ∪ · · · ∪ I0.01 ln T
+in H with
+α(H) ≥ |I| =
+≥
+
+0.01
+ln T
+X
+
+0.73 N
+e T
+
+r=s
+
+N
+0.99
+0.74
+|Ir | ≥
+e
+T
+
+0.01
+ln T 
+X
+
+1
+
+0.01
+ln T
+X
+1
+
+(r + 1) k−1 − r k−1
+
+r=s
+
+wr
+
+r=s
+
+
+
+
+
+1
+1
+1
+0.73 N
+(ln T ) k−1 0.01 k−1 − 0.001 k−1 ,
+e T
+which gives the lower bound (12) in Lemma 12.
+≥
+
+
+
+4. A weak version of Theorem 6
+Now we show a (seemingly) weaker version of Theorem 6 in which T and N are large and the
+assumptions of the upper bounds on tii−1 are a bit different.
+Lemma 15. Let k ≥ 2 be a fixed integer. Let T and N satisfy T > T0 (k) and N > N0 (k, T ).
+Let H = (V, E2 ∪ · · · ∪ Ek ) be a linear hypergraph on N vertices such that there are no 3-cycles and
+:= i|Ei |/N satisfy for i = 2, . . . , k
+4-cycles consisting of 2-element edges. Let the average degrees ti−1
+i
+k−i
+
+(24)
+ti−1
+≤ ci T i−1 (ln T ) k−1 ,
+i
+ −3 k−i
+k−1 . Then, there exists a constant C > 0
+where ci are constants satisfying 0 < ci < 291k6 k−1
+k
+i−1 10
+such that
+1
+N
+(25)
+α(H) ≥ Ck (ln T ) k−1 .
+T
+Proof. Let di (v) denote the number of i-element edges in H containing vertex v ∈ V . We delete all
+k−i
+
+vertices v ∈ V with di (v) > kci T i−1 (ln T ) k−1 for some i = 2, . . . , k. Let V ∗ be the set of remaining
+vertices, hence we have |V ∗ | ≥ N/k. Then, the subhypergraph H∗ = (V ∗ , E2∗ ∪ · · · ∪ Ek∗ ) of H
+induced on V ∗ satisfies that for each vertex v ∈ V ∗
+k−i
+
+d∗i (v) ≤ kci T i−1 (ln T ) k−1 ,
+
+(26)
+
+where d∗i (v) is the number of i-element edges in H∗ containing vertex v.
+
+Now we estimate the numbers of 3-cycles and of 4-cycles not containing a 3-cycle in H∗ . First we
+consider the number of 3-cycles in H∗ . Let C ∗ (g, h, i) denote the number of 3-cycles {E1 , E2 , E3 }
+in H∗ such that |E1 | = g, |E2 | = h, and |E3 | = i. To estimate C ∗ (g, h, i), we fix a vertex v ∈ V ∗
+k−g
+
+and regard it as a vertex in E1 ∩ E2 . There are at most kcg T g−1 (ln T ) k−1 edges in Eg∗ containing
+k−h
+
+vertex v. Let E1 be one of these edges. Similarly, there are at most kch T h−1 (ln T ) k−1 edges in Eh∗
+containing v. Let E2 be one of these edges. Moreover, we fix one vertex w ∈ E1 with w 6= v and
+another vertex x ∈ E2 with x 6= v in at most (k − 1)2 ways, and consider v, x ∈ E3 . Since H∗ is
+linear, there is at most one i-element edge E3 ∈ Ei∗ containing both vertices w and x. Hence, for
+each 2 ≤ g ≤ h ≤ i ≤ k,
+k−g
+
+k−h
+
+C ∗ (g, h, i) ≤ N · kcg T g−1 (ln T ) k−1 · kch T h−1 (ln T ) k−1 · (k − 1)2
+< N k4 cg ch T g+h−2 (ln T )2 .
+
+Next, we consider the number of 4-cycles in H∗ .
+
+(27)
+
+Let C ∗ (g, h, i, j) be the number of 4-cycles
+
+{E1 , E2 , E3 , E4 } in H∗ such that |E1 | = g, |E2 | = h, |E3 | = i, and |E4 | = j and any three of
+8
+
+{E1 , E2 , E3 , E4 } do not form a 3-cycle. With an argument similar to the argument to obtain (27),
+one can show that for each 2 ≤ g ≤ h ≤ i ≤ j ≤ k,
+C ∗ (g, h, i, j) < 3N k 6 cg ch ci T g+h+i−3 (ln T )3 .
+
+(28)
+
+Note that the factor 3 in (28) arises due to the possible arrangements of the edges of possibly
+different sizes.
+Now we choose each vertex in V ∗ independently with probability p = T −1+ε for some constant
+ε > 0. Let V ∗∗ ⊆ V ∗ be the set of chosen vertices, and let H∗∗ = (V ∗∗ , E3∗∗ ∪ · · · ∪ Ek∗∗ ) be the
+subhypergraph of H induced on V ∗∗ . Note that
+N −1+ε
+T
+.
+(29)
+k
+Let C ∗∗ (g, i, j) and C ∗∗ (g, h, i, j) be the numbers of 3-cycles and 4-cycles (not containing a 3cycle) in H∗∗ , respectively. Since a 3-cycle covers exactly (g + h + i − 3) vertices in a linear
+hypergraph, inequality (27) yields that for i ≥ 3,
+E [|V ∗∗ |] = p|V ∗ | ≥
+
+E[C ∗∗ (g, h, i)] < pg+h+i−3 N k 4 cg ch T g+h−2 (ln T )2 ≤ k4 cg ch N T −(i−1)+ε(g+h+i−3) (ln T )2
+< k4 cg ch N T −2+3kε (ln T )2 .
+
+Moreover, since there are no 3-cycles with 3 edges, each of size 2, in H, we have E[C ∗∗ (2, 2, 2)] = 0.
+Hence, we infer
+X
+E[C ∗∗ (g, h, i)] < k7 max {c2g } · N T −2+3kε (ln T )2 .
+(30)
+2≤g≤k
+
+2≤g≤h≤i≤k
+
+Similarly, inequality (28) implies that for j ≥ 3,
+
+E[C ∗∗ (g, h, i, j)] < pg+h+i+j−4 3N k6 cg ch ci T g+h+i−3 (ln T )3
+= 3k6 cg ch ci N T −(j−1)+ε(g+h+i+j−4) (ln T )3
+≤ 3k6 max {c3g } · N T −2+4kε (ln T )3 .
+2≤g≤k
+
+Also since there are no 4-cycles with 4 edges, each of size 2, in H, we have E[C ∗∗ (2, 2, 2, 2)] = 0.
+Thus, we infer
+X
+E[C ∗∗ (g, h, i, j)] ≤ 3k10 max {c3g } · N T −2+4kε (ln T )3 .
+(31)
+2≤g≤k
+
+2≤g≤h≤i≤j≤k
+
+By (26), we have for i = 2, . . . , k that
+k−i |V ∗ |
+|V ∗ |
+= kci T −1+εi (ln T ) k−1
+.
+(32)
+i
+i
+Chernoff’s and Markov’s inequalities with (29)–(32) imply that there exists a subhypergraph H∗∗ =
+(V ∗∗ , E2∗∗ ∪ · · · ∪ Ek∗∗ ) induced on V ∗∗ such that
+k−i
+
+E[|Ei∗∗ |] = pi |Ei∗ | ≤ pi kci T i−1 (ln T ) k−1
+
+|V ∗∗ | ≥
+
+1
+N T −1+ε
+2k
+
+k−i
+
+X
+
+|Ei∗∗ | ≤ (k + 2)kci T −1+εi (ln T ) k−1
+
+2≤g≤h≤i≤k
+
+X
+
+2≤g≤h≤i≤j≤k
+
+|V ∗ |
+i
+
+C ∗∗ (g, h, i) ≤ (k + 2)k7 max {c2g } · N T −2+3kε (ln T )2
+2≤g≤k
+
+C ∗∗ (g, h, i, j) ≤ (k + 2)3k10 max {c3g } · N T −2+4kε (ln T )3 .
+2≤g≤k
+
+9
+
+(33)
+
+For 0 < ε < 1/(4k − 1) and T > T0 (k), the number of 3-cycles and the number of 4-cycles (not
+containing a 3-cycle) are much less than |V ∗∗ |.
+Let H∗∗∗ = (V ∗∗∗ , E2∗∗∗ ∪ · · · ∪ Ek∗∗∗ ) be the subhypergraph obtained from H∗∗ by removing one
+vertex from each 3-cycle and 4-cycle (not containing a 3-cycle). With ε := 1/(4k), we have
+1
+|V ∗∗∗ | ≥
+N T −1+ε .
+(34)
+4k
+i−1 of H∗∗∗ satisfy for i = 2, . . . , k:
+We infer that the average degrees (t∗∗∗
+i )
+i−1
+(t∗∗∗
+i )
+
+=
+≤
+(34)
+
+≤
+
+=
+
+k−i |V ∗ |
+i|Ei∗∗ | (33)
+i|Ei∗∗∗ |
+−1+εi
+k−1
+≤
+≤
+(k
++
+2)kc
+T
+(ln
+T
+)
+i
+|V ∗∗∗ |
+|V ∗∗∗ |
+|V ∗∗∗ |
+k−i
+N
+(k + 2)kci T −1+εi (ln T ) k−1 ∗∗∗
+|V |
+k−i
+
+4k2 (k + 2)ci T ε(i−1) (ln T ) k−1
+k−i
+4k2 (k + 2)
+ci (T ε )i−1 (ln(T ε )) k−1
+k−i
+ε k−1
+k−i
+
+32k4 ci (T ε )i−1 (ln(T ε )) k−1 .
+k−i
+k−1 −3 k−1
+1
+of Lemma 12 is satisfied, this implies that there
+Since the assumption 32k4 ci < 16k
+2 i−1 10
+exists a constant Ck > 0 such that
+≤
+
+(34)
+1
+1
+|V ∗∗∗ |
+N T −1+ε /(4k)
+ε k−1
+(ln(T
+))
+(ln(T ε )) k−1
+≥
+C
+k
+ε
+ε
+T
+T
+1
+′ N
+≥ Ck (ln T ) k−1 ,
+T
+which completes our proof of Lemma 15.
+
+α(H∗∗∗ ) ≥ Ck
+
+
+
+5. Proof of Theorem 6
+We are going to show Theorem 6 from Lemma 15 that is a weaker version of Theorem 6. We
+need to modify two assumptions of Lemma 15: the first assumption is about the upper bounds on
+tii−1 , and the second assumption is about the ranges of T and N .
+We first change the assumptions on the upper bounds on ti−1
+i , and show the following.
+Lemma 16. Let k ≥ 2 be a fixed integer. Let T and N satisfy T > T0 (k) and N > N0 (k, T ).
+Let H = (V, E2 ∪ · · · ∪ Ek ) be a linear hypergraph on N vertices such that there are no 3-cycles
+:= i|Ei |/N satisfy that for
+and 4-cycles consisting of 2-element edges. Let the average degrees ti−1
+i
+i = 2, . . . , k
+k−i
+ti−1
+≤ T i−1 (ln T ) k−1 .
+(35)
+i
+Then, there exists a constant Ck > 0 such that
+1
+N
+α(H) ≥ Ck (ln T ) k−1 .
+T
+Proof. We are going to use Lemma 15. To this end, we need to change the assumption (35) to the
+shape of the assumption (24) in Lemma 15. We have
+k−i
+k−i
+1
+2
+tii−1 ≤ T i−1 (ln T ) k−1 = ci · T i−1 · (ln T ) k−1
+ci
+2
+ k−i
+ k−i
+ i−1 
+ i−1 
+k−1
+1
+T k−1
+T
+T
+ln T
+ln ∗
+≤ ci ∗
+,
+≤ ci ∗
+ci
+2
+ci
+ci
+10
+
+1
+
+where c∗i := (ci /2) i−1 and the last inequality holds because T is sufficiently large depending on k.
+Now we apply Lemma 15, and we infer
+
+ 1
+1
+T k−1
+N
+N 1
+ln ∗
+· (ln T ) k−1
+α(H) ≥ Ck
+≥ Ck c∗i
+∗
+T /ci
+ci
+T 2
+1
+N
+≥ Ck′ (ln T ) k−1 ,
+T
+where Ck′ := Ck c∗i /2 and the second inequality holds since T is sufficiently large depending on k.
+This completes the proof of Lemma 16.
+
+In order to show Theorem 6, it only remains to enlarge the ranges of T and N in Lemma 16 as
+T ≥ 1.5 and every N .
+First, we enlarge the range of T from T > T0 (k) to T ≥ 1.5. If 1.5 ≤ T ≤ T0 (k), then
+T ln T ≥ 1/2, and hence, Theorem 11 with ti−1
+≤ (T ln T )i−1 implies that
+i
+!
+1
+1 N
+1
+1 N
+N
+≥
+(ln T0 ) k−1
+=
+α(H) ≥
+1
+1+
+4 T ln T
+4 T ln T0
+4(ln T0 ) k−1 T
+!
+1
+1
+1
+N
+N
+≥
+(ln T ) k−1 = Ck (ln T ) k−1 .
+1
+T
+4(ln T0 )1+ k−1 T
+Next, we enlarge the range of N from N > N0 (k, T ) to be every N . Let H = (V, E) be a
+hypergraph satisfying the assumption in Lemma 16 except for T > T0 (k) and N > N0 (k, T ), and
+suppose that N ≤ N0 (k, T ) and T ≥ 1.5.
+Let L > N0 (k, T )/N , and consider the hypergraph H′ obtained by L vertex-disjoint copies of H.
+Observe that H′ has LN vertices and its average degree is the same as the average degree of H.
+Hence H′ satisfies the assumption of Lemma 16, thus
+α(H′ ) ≥ Ck
+
+1
+LN
+(ln T ) k−1 .
+T
+
+Since α(H) = α(H′ )/L, we infer
+α(H) ≥ Ck
+
+1
+N
+(ln T ) k−1 ,
+T
+
+which completes the proof of Theorem 6.
+
+
+
+6. Proof of Theorem 8
+It will be convenient here to work with the O-notation. For functions f, g : N −→ N and a fixed
+integer ℓ > 0, let f = Oℓ (g) mean that there exists a constant c > 0, depending only on ℓ, such
+that f (n) ≤ cg(n) for every sufficiently large n ∈ N.
+Proof of the lower bound of Theorem 8. We will use in our arguments some ideas from [2] (compare
+also [7]). Recall that H = H(n; 2, . . . , ℓ) is the hypergraph on the vertex set V , |V | = n, in which,
+for s = 2, . . . , ℓ, each s-subset of V is a hyperedge of H, and let a (u2 , . . . uℓ )-bounded edge-coloring
+∆ of H be given. We define another hypergraph G = (V, E) as follows: If e1 and e2 are hyperedges
+in H with the same color in c, then e1 ∪ e2 ∈ E(G). Let E2i be the set of hyperedges of G of size
+S
+2i, hence E = ℓi=2 E2i . Observe that if I ⊂ V is an independent set of G, then the subhypergraph
+H[I] of H induced on I is totally multicolored. Hence, a lower bound on f∆ (n; u2 , . . . , uℓ ) can be
+obtained by finding an independent set in G. Therefore, it suffices to show the following:
+11
+
+(i) Under assumption (6), we have
+α(G) ≥ c1
+
+
+
+ns
+us
+
+
+
+1
+2s−1
+
+.
+
+(ii) Under assumptions (8) and (9), we have
+ s
+ 1
+2s−1
+n
+α(G) ≥ c3
+.
+ln n
+us
+We first prove (i). Let assumption (6) hold. Set
+
+ 1
+2s−1
+1
+p=
+.
+ns−1 us
+
+Let R be a random subset of V obtained by choosing each vertex independently with probability
+p. Note that with high probability |R| = np(1 + o(1)).
+R be the set of all 2i-element hyperedges in the subhypergraph G[R] induced
+For i = 2, . . . , ℓ, let E2i
+R
+on R. To estimate
+ the expected numbers E(|E2i |) of 2i-element hyperedges, choose an i-element
+n
+hyperedge e in i ways. Less than ui other hyperedges have the same color as e, thus
+|E2i | ≤
+
+n i ui
+2(i!)
+
+R
+E(|E2i
+|) ≤
+
+hence,
+
+ni ui p2i
+.
+2(i!)
+
+Consequently, Markov’s inequality gives for i = 2, . . . , ℓ that
+
+
+ni ui p2i
+1
+R
+Pr |E2i
+|>ℓ·
+≤ .
+2(i!)
+ℓ
+Therefore, there exists a vertex set R ⊂ V such that
+• |R| ≥ np/2,
+ni ui p2i
+R
+for i = 2, . . . , ℓ.
+• |E2i
+|≤ℓ·
+2(i!)
+
+2i−1
+for the 2i-element hyperedges in the subhypergraph G[R] satisfies
+The average degree t2i
+
+
+ni ui p2i .
+2ℓ
+2i−1
+t2i ≤ 2iℓ ·
+(np/2) =
+ni−1 ui p2i−1 ,
+2(i!)
+(i − 1)!
+
+and hence, for i = 2, . . . , ℓ, and some constant cℓ > 0, it is
+t2i ≤ cℓ ni−1 ui
+
+By Theorem 11 we infer that
+
+1/(2i−1)
+
+(6)
+
+p ≤ cℓ ns−1 us
+
+1
+np/2
+α(G) ≥
+= c′1
+4 cℓ (ns−1 us )1/(2s−1) p
+
+
+
+1/(2s−1)
+
+ns
+us
+
+p.
+
+1/(2s−1)
+
+,
+
+for some constant c′1 > 0, depending only on ℓ, which completes the proof of (i).
+Next we show (ii). Suppose that (8) and (9) hold. Set
+ 1
+
+2s−1
+1
+
+1
+ω,
+where ω := u2s /n 2(2s−1)(2ℓ+1) .
+p=
+s−1
+n us
+
+(36)
+
+As above, let R be a random subset of V obtained by choosing each vertex independently with
+probability p. We again have that
+• |R| = np(1 + o(1)) with high probability,
+12
+
+• For i = 2, . . . , ℓ,
+
+
+
+ni ui p2i
+R
+|E2i
+| > 3ℓ ·
+
+
+
+1
+.
+2(i!)
+3ℓ
+Next, we consider 2-cycles in G. For integers 2 ≤ i, j, k ≤ ℓ, let C(2i, 2j, k) be the family of
+all 2-cycles which consist of two distinct hyperedges in G with one of size 2i and the other of size
+2j sharing exactly k vertices. Note that the condition on k is either 2 ≤ k ≤ 2i − 1 for i = j or
+2 ≤ k ≤ 2i for i < j. We estimate |C(2i, 2j, k)| as follows. Fix the first hyperedge e ∈ E2i as an
+arbitrary one in at most ni ui ways. Let e1 ∪ e2 ∈ E2j (e1 , e2 ∈ Ej (H)) be the second hyperedge in
+G and let k1 = |e1 ∩ e| and k2 = |e2 ∩ e|. Without loss of generality, we assume k1 ≥ k2 .
+• Suppose k1 = k and k2 = 0. The number of choices of e1 is at most Oℓ (nj−k ). Since the
+color of e1 is determined, the number of choices of e2 is at most uj ≤ n because of the
+assumption that each color class is a matching. Hence, the number of choices of (e1 , e2 ) is
+at most Oℓ (nj−k+1 ).
+• Otherwise, we have k2 6= 0. The number of choices of e1 is at most Oℓ (nj−k1 ). Then, the
+number of choices of e2 is at most Oℓ (1). Hence, the number of choices
+ of (e1 , e2 ) is at most
+Oℓ (nj−k1 ). By minimizing k1 , we have the upper bound Oℓ nj−⌈k/2⌉ .
+Consequently, we have that for all k ≥ 2,
+
+
+
+
+|C(2i, 2j, k)| = Oℓ |E2i | · nj−⌈k/2⌉ = Oℓ ui ni+j−⌈k/2⌉ .
+Pr
+
+≤
+
+Let C R (2i, 2j, k) be the random set of all 2-cycles in C(2i, 2j, k) that are contained in R. Let
+R
+
+C (2i, 2i) =
+C R (2i, 2j) =
+
+2i−1
+[
+k=2
+2i
+[
+
+C R (2i, 2i, k)
+
+for 2 ≤ i ≤ ℓ,
+
+C R (2i, 2j, k)
+
+for 2 ≤ i < j ≤ ℓ.
+
+k=2
+
+Since E
+
+
+
+
+
+
+
+|C R (2i, 2j, k)|
+
+
+E |C (2i, 2i)|
+R
+
+= |C(2i, 2j, k)|p2i+2j−k , we infer that for 2 ≤ i ≤ ℓ,
+=
+
+and that for 2 ≤ i < j ≤ ℓ,
+
+E |C (2i, 2j)|
+R
+
+2i−1
+X
+k=2
+
+(np2 ≪1)
+
+=
+
+
+
+and
+
+=
+
+
+
+ (np≫1)
+E |C R (2i, 2i, k)|
+= Oℓ ui n2i−1 p4i−2 + ui ni+1 p2i+2
+
+
+Oℓ ui ni+1 p2i+2 ,
+
+2i
+X
+
+
+ (np≫1)
+E |C R (2i, 2j, k)|
+= Oℓ ui nj+i−1 p2j+2i−2 + ui nj p2j
+k=2
+
+(np2 ≪1)
+
+=
+
+
+Oℓ ui nj p2j .
+
+Using Markov’s inequality, it simultaneously holds with probability bigger than 2/3 that
+
+for 2 ≤ i ≤ ℓ,
+and
+|C R (2i, 2i)| = Oℓ ui ni+1 p2i+2
+
+j 2j
+R
+for 2 ≤ i < j ≤ ℓ.
+|C (2i, 2j)| = Oℓ ui n p
+
+Therefore, there exists a subset R ⊂ V such that for some constant c > 0, depending only on ℓ, we
+have that
+• |R| ≥ np/2
+R | ≤ cu ni p2i
+• |E2i
+for 2 ≤ i ≤ ℓ
+i
+13
+
+• |C R (2i, 2i)| ≤ cui ni+1 p2i+2
+for 2 ≤ i ≤ ℓ,
+and
+|C R (2i, 2j)| ≤ cui nj p2j
+for 2 ≤ i < j ≤ ℓ.
+P
+P
+We claim that ℓi=2 |C R (2i, 2i)| ≪ np and 2≤i<j≤ℓ |C R (2i, 2j)| ≪ np. For the first inequality, it
+suffices to check that for 2 ≤ i ≤ ℓ,
+ui ni+1 p2i+2 ≪ np,
+
+indeed, we have that
+
+i−1
+ 2  2s−1
+2(s−i)
+us
+ui p ≤
+ω(ln n) 2s−1
+n
+
+(8)
+
+Hence,
+
+2 i
+
+ui p(np ) ≤
+
+
+
+n
+u2s
+
+ui p(np2 )i ≪ 1,
+
+that is,
+
+ 1
+
+2s−1
+
+and
+
+2
+
+np =
+
+
+
+n
+u2s
+
+
+
+1
+2s−1
+
+ω2.
+
+(37)
+
+2(s−i)
+
+ω 2i+1 (ln n) 2s−1 ≪ 1,
+
+1
+
+1
+where the last inequality follows from us ≥ n 2 +ε and ω = u2s /n 2(2s−1)(2ℓ+1) . Next, for the second
+inequality, similarly it follows that ui nj p2j ≪ np for 2 ≤ i < j ≤ ℓ.
+After deleting a vertex from each member of C R (2i, 2i) or C R (2i, 2j), there exists a vertex set
+U ⊂ R such that
+np
+• |U | ≥
+4
+U
+• |E2i
+| ≤ cui ni p2i for 2 ≤ i ≤ ℓ.
+• There is no 2-cycle in the subhypergraph G[U ] induced on U .
+Set
+
+T
+
+2s−2ℓ
+
+1
+
+:= c∗ p(ns−1 us ) 2s−1 (ln n) (2s−1)(2ℓ−1) ,
+
+where c∗ > 0 is a suitable large constant to be fixed later.
+
+(38)
+
+We now check that the average degree
+
+2i−1
+t2i
+of the subhypergraph G[U ] with hyperedges of size 2i satisfies (4), that is,
+2ℓ−2i
+
+First, observe that
+
+2i−1
+t2i
+≤ T 2i−1 · (ln T ) 2ℓ−1 .
+
+(39)
+2(s−i)
+
+(37)
+
+2i−1
+t2i
+≤ 8ℓcui ni−1 p2i−1 = 8ℓc(ui p)(np2 )i−1 = 8ℓcω 2i−1 (ln n) 2s−1 .
+
+On the other hand, since us ≥ n1/2+ε , we have ln T ≥ c′ ln n for some constant c′ = c′ (ℓ, ε) > 0,
+and hence,
+2ℓ−2i
+
+2ℓ−2i
+
+2(s−i)
+
+T 2i−1 · (ln T ) 2ℓ−1 ≥ (c∗ )2i−1 (c′ ) 2ℓ−1 ω 2i−1 (ln n) 2s−1 .
+With a suitable large choice of c∗ = c∗ (ℓ, ε) > 0, depending on c and c′ , we infer (39).
+Theorem 6 implies that there exist positive constant cℓ , depending only on ℓ, such that
+ 1
+ s
+2s−1
+1
+np
+n
+ln n
+α(G) ≥ cℓ (ln T ) 2ℓ−1 = c3
+,
+T
+us
+
+where c3 > 0 is a constant, depending only on ℓ and ε, which completes the proof of (ii).
+
+
+
+Proof of the upper bound of Theorem 8. We will show the following using some ideas from [2] and [3]:
+For each integer k with 2 ≤ k ≤ ℓ, there exists a positive constant C = C(k) such that for every
+sufficiently large n,
+1
+ 2k−1
+ k
+n
+.
+(40)
+ln n
+f (n; u2 , ..., uℓ ) ≤ C
+uk
+This with k = s implies the upper bound in Theorem 8.
+14
+
+For a proof of (40), let Hk be the subhypergraph of H on the vertex set V only with all k-element
+hyperedges. We define a random edge-coloring of Hk as follows. Set
+m = c0
+
+nk
+,
+uk
+
+where c0 is a constant with 0 ≤ c0 ≤ 1/(8e2 (k!)). (We ignore divisibility constraints in our
+arguments, as there is enough room in the calculations.) Let M1 , . . . , Mm be random matchings
+chosen uniformly
+and independently from the set of all matchings of size uk on V , and let U0 = ∅
+S
+and Ui = j≤i Mj for i = 1, . . . , m. We color all hyperedges in Mi \ Ui−1 by color i, and color the
+remaining ones with distinct new colors.
+ k
+ 1
+2k−1
+In order to prove (40), it suffices to show that, for x = C nuk ln n
+, where C > 0 is a suitable
+constant to be fixed later, we have
+h
+i
+Pr ∃X ⊂ V such that |X| = x and X is totally multicolored = o(1).
+
+For its proof, let X ⊆ V be an arbitrarily fixed subset of V of size x. We will show that X is
+totally multicolored with very small probability. For i = 1, . . . , m, let Yi be the number of pairs
+{S, T } of hyperedges in Mi \ Ui−1 contained in X. Observe that X is totally multicolored if and
+only if simultaneously Yi = 0 for i = 1, . . . , m. We can show that Yi = 0, i = 0, . . . , m, hold with
+very small probability under the condition that the intersection size |Um ∩ [X]k | is small, where
+[X]k denotes the family of all k-element hyperedges in X. To this end, let A be the event that
+|Um ∩ [X]k | ≤ c1 xk where c1 = 1/(4(k!)). We have the following:
+Pr [X is totally multicolored ] = Pr [Y1 = 0, . . . , Ym = 0]
+≤ Pr[Ac ] + Pr [Y1 = 0, . . . , Ym = 0, A]
+≤ Pr[Ac ] + Pr [Y1 = 0, . . . , Ym = 0 | A] .
+
+(41)
+
+We will use the following two claims:
+Claim 17. For every sufficiently large n,
+
+
+Pr [Ac ] ≤ exp −c1 xk .
+
+(42)
+
+
+
+c0 c2 uk x2k
+Pr [Y1 = 0, . . . , Ym = 0 | A] ≤ exp − 1
+.
+4
+nk
+
+(43)
+
+Claim 18. For every sufficiently large n,
+
+The union bound and Claims 17 and 18 together with (41) yield that
+h
+i
+Pr ∃X ⊂ V such that |X| = x and X totally multicolored
+
+ 
+
+
+
+n
+c0 c21 uk x2k
+k
++ exp −c1 x
+≤
+exp −
+4
+nk
+x
+
+
+
+
+
+c0 c21 uk x2k
+k
++ exp −c1 x
+.
+≤ exp (x ln n) · exp −
+4
+nk
+1
+
+(44)
+
+By choosing the constant C > (4/(c0 c21 )) 2k−1 , the term (44) goes to 0 as n tends to ∞, which
+completes our proof of (6). It remains to prove Claims 17 and 18.
+15
+
+P
+k
+k
+First, we prove Claim 17. Since |Um ∩ [X]k | ≤ m
+i=1 |Mi ∩ [X] | and the events |Mi ∩ [X] | ≥ ti ,
+i = 1, . . . , m, are independent, we infer that
+#
+"m
+m
+i
+h
+h
+i
+Y
+X
+X
+k
+k
+Pr |Mi ∩ [X]k | ≥ ti .
+|Mi ∩ [X] | ≥ t ≤
+Pr |Um ∩ [X] | > t ≤ Pr
+(ti )m
+s.t.
+i=1
+i=1
+P
+ti ≥0, m ti =t
+i=1
+
+i=1
+
+
+
+
+Now we estimate Pr |Mi ∩ [X]k | ≥ ti for integers 1 ≤ i ≤ m and ti ≥ 0. There are utik choices
+for selecting
+ ti hyperedges in Mi . Then the ti hyperedges are contained in X with probability
+x
+n
+/
+kti
+kti , hence
+ 
+t
+i u  x
+h
+uk x k i
+k
+kti
+k
+Pr |Mi ∩ [X] | ≥ ti ≤
+.
+(45)
+n ≤
+ti
+nk
+kt
+i
+
+Thus, we infer that
+
+h
+i
+Pr |Um ∩ [X]k | > t ≤
+≤
+
+t
+m 
+Y
+uk xk i
+
+X
+
+(ti )m
+s.t.
+i=1
+i=1
+P
+ti ≥0, m ti =t
+i=1
+
+
+
+e(t + m)
+t
+
+t 
+
+nk
+
+uk x k
+nk
+
+t
+
+≤
+
+t
+
+t+m−1
+uk xk
+t
+nk
+
+≤
+
+
+
+
+
+e(t + m)uk xk
+tnk
+
+t
+
+.
+
+Take t = c1 xk and note that t = o(m). Consequently,
+i  2emu xk c1 xk  2ec c1 xk
+h
+k
+0
+k
+k
+k
+≤ e−c1 x ,
+=
+Pr |Um ∩ [X] | > c1 x ≤
+c1 xk nk
+c1
+
+where the last inequality follows from 0 ≤ c0 ≤ 1/(8e2 (k!)) and c1 = 1/(4(k!)). This completes our
+proof of Claim 17.
+Next, we prove Claim 18. First, we have that
+m
+i
+h
+i Y
+h
+(46)
+Pr Yi = 0 A, Yj = 0 for 1 ≤ j ≤ i − 1 .
+Pr Y1 = 0, . . . , Ym = 0 A =
+i=1
+
+For simplification, let Bi denote the event that A happens and Yj = 0 for 1 ≤ j ≤ i. Next we upper
+bound Pr[Yi = 0 | Bi−1 ], or equivalently, we lower bound Pr[Yi ≥ 1 | Bi−1 ].
+To this end, it is useful to consider E[Yi | Bi−1 ]. The condition that A holds implies |Ui−1 ∩[X]k | ≤
+c1 xk , that is,
+ 
+
+
+x
+1
+k
+k
+|[X] \ Ui−1 | ≥
+− c1 x ≥
+− c1 xk = c1 xk .
+k
+2(k!)
+
+For each hyperedge S ∈ [X]k there are at most k x−1
+k−1 hyperedges in X which are not disjoint from
+S. Hence, the number of pairs {S, T } ∈ [[X]k \ Ui−1 ]2 of hyperedges with S ∩ T = ∅ is, for every
+sufficiently large n, at least
+
+
+
+x−1
+c2 x2k
+1
+k
+k
+c1 x c1 x − k
+.
+> 1
+2
+3
+k−1
+
+For disjoint hyperedges S and T ,
+
+Pr [S, T ∈ Mi ] =
+16
+
+u2k
+uk (uk − 1)
+≥
+,
+
+
+n n−k
+n2k
+k
+k
+
+and therefore
+c21  uk xk 2
+.
+3
+nk
+Now we estimate Pr[Yi ≥ 1 | Bi−1 ] by using E[Yi | Bi−1 ]. We have that
+X
+Pr[Yi ≥ 1 | Bi−1 ] = E[Yi | Bi−1 ] −
+(j − 1) Pr[Yi = j | Bi−1 ]
+E[Yi | Bi−1 ] >
+
+(47)
+
+j≥2
+
+= E[Yi | Bi−1 ] −
+
+X
+j≥2
+
+Pr[Yi ≥ j | Bi−1 ].
+
+(48)
+
+Observe
+that for j pairwise distinct two-element sets, the underlying set has cardinality at least
+√
+⌈ 2j + 1 ⌉. Hence,
+√
+i (45)  u xk ⌈ 2j+1 ⌉
+h
+p
+k
+.
+(49)
+Pr[Yi ≥ j | Bi−1 ] ≤ Pr |Mi ∩ [X]k | ≥ ⌈ 2j + 1 ⌉ ≤
+nk
+
+Consequently, it follows from (47)–(49) and xk = o nk /uk that
+2
+
+c21 uk xk
+Pr[Yi ≥ 1 | Bi−1 ] ≥
+,
+4
+nk
+that is,
+2
+
+c21 uk xk
+Pr[Yi = 0 | Bi−1 ] ≤ 1 −
+.
+4
+nk
+Therefore, (46) gives that
+ 2 2 2k 
+m
+
+
+
+i
+h
+c1 uk x m
+c0 c21 uk x2k
+c21 u2k x2k
+≤ exp −
+≤ exp −
+,
+1−
+Pr Y1 = 0, . . . , Ym = 0 A ≤
+4 n2k
+4 n2k
+4
+nk
+which completes our proof of Claim 18.
+
+References
+[1] M. Ajtai, J. Komlós, J. Pintz, J. Spencer and E. Szemerédi, Extremal Uncrowded Hypergraphs, Journal of
+Combinatorial Theory Ser. A 32, 1982, 321–335. 1, 4, 1, 3, 13
+[2] N. Alon, H. Lefmann and V. Rödl, On an Anti-Ramsey Type Result, Coll. Math. Soc. János Bolyai, 60. Sets,
+Graphs and Numbers, 1991, 9–22. 1, 6, 6
+[3] L. Babai, An Anti-Ramsey Theorem, Graphs and Combinatorics 1, 1985, 23–28. 1, 6
+[4] C. Bertram-Kretzberg and H. Lefmann, The Algorithmic Aspects of Uncrowded Hypergraphs, SIAM Journal on
+Computing 29, 1999, 201–230. 1
+[5] R. A. Duke, H. Lefmann and V. Rödl, On Uncrowded Hypergraphs, Random Structures & Algorithms 6, 1995,
+209–212. 1, 5
+[6] A. Fundia, Derandomizing Chebychev’s Inequality to Find Independent Sets in Uncrowded Hypergraphs, Random
+Structures & Algorithms 8, 1996, 131–147. 1, 3
+[7] H. Lefmann, V. Rödl and B. Wysocka, Multicolored Subsets in Colored Hypergraphs, Journal of Combinatorial
+Theory Series A 74, 1996, 209–248. 1, 6
+[8] P. Turán, On an Extremal Problem in Graph Theory, Mat. Fiz. Lapok 48, 1941, 436–452. 1, 1
+[9] J. Spencer, Turán’s Theorem for k-Graphs, Discrete Mathematics 2, 1972, 183–186. 1, 1, 2, 11
+Department of Mathematics, Duksung Women’s University, Seoul 01369, South Korea
+E-mail address: sanglee242@duksung.ac.kr, sjlee242@gmail.com
+Fakultät für Informatik, TU Chemnitz, D-09107 Chemnitz, Germany
+E-mail address: lefmann@informatik.tu-chemnitz.de
+
+17
+
+

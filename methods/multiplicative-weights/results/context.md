@@ -44,9 +44,9 @@ factor of one). Randomization, plus the linearity of expected cost in the played
 `p`, is what makes a clean potential-function analysis possible.
 
 **The exponential / potential-function style of analysis.** A recurring technical motif across these
-fields is to track a single scalar "potential" — a sum or a relative-entropy — and show it both
-*shrinks fast* when the algorithm performs well relative to the best decision and *cannot shrink below*
-a floor set by the best decision's cumulative cost. Sandwiching the potential between these two bounds
+fields is to track a single scalar "potential" — a sum or a relative-entropy — and show that its
+round-by-round motion is controlled by the algorithm's expected cost while its final value cannot fall
+below the surviving weight of any fixed decision. Sandwiching the potential between these two bounds
 yields the regret guarantee. The key elementary facts used are `1 + x ≤ e^x`, the convexity
 inequalities `(1-η)^x ≤ 1 - ηx` for `x ∈ [0,1]` and `(1+η)^{-x} ≤ 1 - ηx` for `x ∈ [-1,0]`, and the
 logarithm estimates `ln(1/(1-η)) ≤ η + η²`, `ln(1+η) ≥ η - η²` valid for `η ≤ 1/2`.
@@ -88,7 +88,7 @@ solve a feasibility LP `Ax ≥ b` over an easy convex set `P`, dualize the hard 
 weighted constraint `p^T A x ≥ p^T b` and iterate, adjusting the multipliers `p` toward the violated
 constraints. This is a quantitative Lagrangian-multiplier method; its running time depends on a *width*
 parameter `ρ`, the largest constraint violation. The gap: the iteration count scales with `ρ²`, which
-can be large, motivating later width-reduction ideas.
+can be large, motivating width-reduction techniques.
 
 **Hannan's "follow the perturbed leader" (Hannan, 1957).** Pick the decision minimizing the total cost
 so far *plus a random perturbation* `r_i` per decision. With carefully chosen perturbations this attains
@@ -114,11 +114,10 @@ parameters are `n` (or `m`), `T` (or the round count), the cost range `[-ρ,ρ]`
 
 ## Code framework
 
-The primitives that already exist: arrays of nonnegative floats, sampling an index proportional to a
-list of weights, and numerical linear algebra (`numpy`) for the LP application. What does not yet exist
-is the update rule that turns observed costs into a new weighting, and the encodings that cast each
-target problem as a repeated decision game. The scaffold below lays out the generic harness and leaves
-empty slots for exactly those pieces.
+Available primitives are arrays of nonnegative floats, sampling an index proportional to a list of
+weights, and numerical linear algebra (`numpy`) for the LP application. The generic harness needs one
+empty weight-revision slot, and the LP wrapper needs empty slots for the single-constraint solver, the
+constraint encoding, and the objective-value search.
 
 ```python
 import random
@@ -134,29 +133,32 @@ def draw(weights):
             return choiceIndex
         choiceIndex += 1
 
-# The repeated-decision harness. Each round: sample a decision from the current
-# weighting, observe an outcome, collect a reward/cost vector, and revise the weights.
-def repeated_decisions(objects, observeOutcome, reward, learningRate, numRounds):
+# The repeated-decision harness. Each round: sample from the current weighting,
+# observe an outcome, record it, and revise the weights.
+def run_weighted_harness(objects, observeOutcome, reward, learningRate, numRounds):
     weights = [1] * len(objects)
+    cumulativeReward = 0
+    outcomes = []
     for t in range(numRounds):
+        assert all(w >= 0 for w in weights)
         chosenObjectIndex = draw(weights)
         chosenObject = objects[chosenObjectIndex]
         outcome = observeOutcome(t, weights, chosenObject)
+        outcomes.append(outcome)
+        cumulativeReward += reward(chosenObject, outcome)
         for i in range(len(weights)):
-            pass  # TODO: the weight-revision rule — the contribution to be designed
-    return weights
+            pass  # TODO: revise each weight from its reward/cost
+    return weights, cumulativeReward, outcomes
 
-# --- Casting a linear program as a repeated decision game ---
 # Solve  min c.x  s.t.  Ax >= b, x >= 0.
-# Need: an ORACLE that, given a weighting over the constraints, returns a single
-# feasible point satisfying the weighted-average constraint; and a reward encoding
-# of "how violated is constraint i".
+# Given weighted constraints, find a single feasible point satisfying the averaged
+# constraint; then average the returned points across rounds.
 
 def makeOracle(c, optimalValue):
-    pass  # TODO: best single point against an averaged constraint
+    pass  # TODO: single-constraint solver for a guessed objective value
 
-def solveGivenOptimalValue(A, b, linearObjective, optimalValue, learningRate):
-    pass  # TODO: encode constraints as decisions, run the harness, average the points
+def solveGivenOptimalValue(A, b, linearObjective, optimalValue, learningRate=0.1):
+    pass  # TODO: encode constraints, run the harness, average the points
 
 def solve(A, b, linearObjective, maxRange=1000):
     pass  # TODO: binary search over the optimal value of c.x

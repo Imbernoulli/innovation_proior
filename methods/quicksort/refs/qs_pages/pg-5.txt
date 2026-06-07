@@ -1,0 +1,71 @@
+Quicksort
+
+If the value of the bound is the greatest or the least no harm will be occasioned by choosing as characteristic
+(or both) of the key values of items in the segment being value the lowest possible value of the key word.
+partitioned, then one (or both) of the pointers will Now whenever a segment is to be partitioned, the
+move outside the segment; but no harm can result, value chosen as the bound is compared with the charac-
+provided neither pointer moves outside the area in teristic value of the segment. If it is greater, parti-
+which the whole mass of data is stored. The upper tioning is performed with the modification described in
+sentinel, having a key value necessarily greater than the last paragraph. If, however, they are equal, then
+that of the bound, will stop the lower pointer, while the it is the upper pointer which is made to stop on
+lower sentinel will stop the upper pointer. The fact encountering an item with key value equal to the bound.
+that two extra key comparisons are made on every Thus all items with key values equal to the characteristic
+application of the partition process will be more than value are collected together in the /ower resulting
+compensated on fairly large segments by the omission segment, and when this segment comes to be partitioned,
+of pointer comparison from the innermost loop. comparison may be made of the next word of the keys
+
+(if any).
+Multi-word Keys The adoption of this refinement means that when the
+
+When the keys, with respect to which the sorting is processing of a segment is postponed, the position of
+performed, extend over more than one computer word, the key word which is next to be considered, and the
+then a long time may be spent on comparing the second characteristic value for the segment, must be stored
+and subsequent words of the key. This is a serious together with the positions of the first and last items.
+problem, since it often happens that a large number of On many machines, the extra book-keeping will be
+items share a very few values for the first words of their justified by the consequent optimization of the innermost
+keys. The problem is aggravated when the items are comparison loop.
+
+nearly sorted, and it is necessary to make many compari-
+sons between keys which are identical except in their
+
+last word. The method described below is due to Multilevel Storage
+
+Mr. P. Shackleton. Quicksort is well suited to machines with more than
+The principle of the method is to compare only a one level of storage, for instance a fast-access working
+single word of the keys on each application of the store on magnetic cores and a backing store on magnetic
+partitioning process. When it is known that a segment discs or drums. The data in the backing store are
+comprises all the items, and only those items, which partitioned repeatedly until each resulting segment may
+have key values identical to a given value over their be contained in the fast-access store, in which it may be
+first n words, then, in partitioning this segment, compari- sorted at high speed.
+son is made of the (” + 1)th word of the keys. A varia- The partitioning process can be applied quite economi-
+tion of the method of partitioning is adopted to ensure cally to data held on a magnetic drum or disc backing
+that all items with identical values of the key word store. The reason for this is that the movement of the
+currently being compared (and consequently identical pointers allows serial transfer of information held
+over earlier words of their keys) are gathered together adjacently in the backing store, and such transfers are
+in one segment as quickly as possible. usually faster than if more scattered random access were
+The variation consists in altering the criteria which required. This is particularly true if information can
+determine the stopping of the pointers. If we ensure only be transferred between the backing store and main
+that all items with key values equal to the bound are store in large blocks. The time lost in searching for
+placed in the upper of the resulting segments, then we information on the backing store may be reduced to
+may associate with each segment its so-called charac- insignificant proportions, provided that it does not take
+teristic value, which is the greatest value equal to or less an exceptionally long time to search for information at
+than all the key values of the segment (using the expres- one end of the store immediately after transferring
+sion key value to mean the value of the word of the key information at the other end. This condition is satisfied
+which will be compared when the segment is partitioned). by many magnetic drums or disc stores; it is obviously
+Furthermore, each segment must contain all the items not satisfied by a magnetic-tape store, on which the
+with key value equal to the characteristic value of the method of Quicksort cannot usefully be applied.
+
+segment. This is easily achieved by making the lower
+pointer stop whenever it meets an item with key value
+
+equal to the bound, so that such an item will be trans- Conclusion
+
+ferred to the upper segment. The value of the bound Quicksort is a sorting method ideally adapted for
+may obviously be taken as the characteristic value of sorting in the random-access store of a computer. It is
+the upper resulting segment, while the characteristic equally suited for data held in core storage and data
+value of the lower resulting segment is the same as that held in high-volume magnetic drum or disc backing
+of the original segment which has just been partitioned. stores. The data are sorted in situ, and therefore the
+Where this rule does not determine the characteristic whole store may be filled with data to be sorted. There
+values (as in the case of the original mass of data), then is no need to sort simultaneously with input or output.
+
+14

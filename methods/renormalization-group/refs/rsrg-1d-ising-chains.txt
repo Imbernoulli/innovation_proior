@@ -1,0 +1,504 @@
+                                                     S TUDENT J OURNAL OF P HYSICS
+
+
+
+
+                                                     Real Space Renormalization Group for One-Dimensional Ising
+                                                     Chains
+
+
+
+
+arXiv:2408.01021v1 [cond-mat.stat-mech] 2 Aug 2024
+                                                     Shraddha Singh1 and Vijay Singh2∗ *
+                                                     Integrated BS-MS Student, 2014-19, Department of Physics, UM-DAE, Centre for Excellence in Basic Sci-
+                                                     ences, Mumbai University, Kalina, Santa-Cruz East, Mumbai 400 098, India.
+                                                     2
+                                                       Raja Ramanna Fellow, Department of Physics, UM-DAE, Centre for Excellence in Basic Sciences, Mumbai
+                                                     University, Kalina, Santa-ruz East, Mumbai 400 098, India.
+
+                                                     Abstract. We apply the real space Renormalisation Group (RNG) technique to a variety of one-dimensional
+                                                     Ising chains. We begin by recapitulating the work of Nauenberg for an ordered Ising chain, namely the dec-
+                                                     imation approach. We extend this work to certain non-trivial situation namely, the Alternate Ising Chain and
+                                                     Fibonacci Ising chain. Our approach is pedagogical and accessible to undergraduate students who have had a
+                                                     first course in statistical mechanics.
+
+
+
+                                                     1. INTRODUCTION
+
+                                                     There is a deep and useful connection between Statistical Mechanics and Quantum Field Theory.
+                                                     Kenneth Wilson appreciated this connection and applied the renormalization ideas to statistical
+                                                     mechanics[1]. Application of these techniques to both classical and quantum many body problems
+                                                     have seen success. However, RNG calculations are often very complex and the approximations
+                                                     made are sometimes obscure. Often, one has to resort to extensive numerical calculations.
+                                                          The present work is written in the spirit of conveying some essential ideas of RNG to a beginner
+                                                     and applying this approach to more complicated Ising chains. We present some pedagogical exam-
+                                                     ples of a form of real space RNG termed Decimation. This technique was introduced by Michael
+                                                     Nauenberg in the context of the one-dimensional Ising model. Unfortunately, this attractive piece
+                                                     of work [2] is marked by several typographical errors. We present Nauenberg’s work in a simplified
+                                                     (and hopefully error-free) fashion. We extend it to related Hamiltonians such as the Alternate Ising
+                                                     model and Fibonacci chain Ising model.
+                                                          The RNG strategy can be symbolically stated as follows. It transforms the Hamiltonian, e.g.
+                                                       ′                                       ′′
+                                                     H = R(H). Next, one iterates it, H = R(H ′ ) until one obtains a fixed point Hamiltonian,
+                                                     H ∗ = R(H ∗ ). The flow towards the fixed point Hamiltonian and the Hamiltonian H ∗ itself yields
+                                                     insight into the physical properties of the system. Wilson suggested such a procedure and was able
+                                                     to elicit the critical properties of the 2D and the 3D Ising model and a famous quantum system
+                                                     namely, the Kondo problem[3].
+                                                       * ∗ physics.sutra@gmail.com
+
+
+
+
+                                                                                                                                                               1
+            Shraddha Singh and Vijay A. Singh
+
+
+      In Sec. 2, we recapitulate the work of Nauenberg and describe how decimation is carried out
+for the one-dimensional Ising model. In Sec. 3, we extend this approach to alternate Ising model
+where the coupling is alternate like in a binary alloy. In Sec. 4, we discuss the Fibonacci Ising chain.
+Sec. 5 constitutes the conclusion.
+
+2. ONE DIMENSIONAL ISING MODEL
+
+We start with the familiar one-dimensional Ising model for N spins, Si = ±1, i = 1, 2...N , with
+nearest neighbour coupling constant J, see Fig.(1).
+ The Hamiltonian HN for this model is written as,
+
+                                J                    J             J        J
+                    S1                         S2             S3       S4       S5
+
+                               Figure 1.: One Dimensional Ising Spin model
+
+                               N
+                         J X
+            HN = −             Si Si+1 ,                                                            (1)
+                        kT i=1
+
+where SN +1 = S1 , J is the nearest neighbiour exchange coupling, T is the temperature, and k is the
+Boltzmann constant. We divide the coupling constant by kT for the sake of convenience in further
+derivations. One can consider the dimensionless Hamiltonian HN , without loss of generality,
+                                     N
+                                     X                        J
+            HN (K) = −K                    Si Si+1       (      = K)                                (2)
+                                     i=1
+                                                             kT
+
+Note that K > 0 implies ferromagnetism.
+
+2.1 Decimation
+
+Let P be the transfer matrix such that P(i, i + 1) = exp(KSi Si+1 ). Thus, the canonical partition
+function ZN is given by,
+                      X                         X
+           ZN =             exp(−HN (K)) =          P(S1 S2 )P(S2 S3 )P(S3 S4 )...             (3)
+                    s1 ,s2 ,s3 ...
+                    "                      #
+                         eK e−K
+              P=                                                                                    (4)
+                        e−K eK
+As the elements of the matrix depend on the product Si Si+1 which is same for all i, we can write
+
+                           (P(K)N ) = T r(P(K)N )
+                     X
+           ZN =                                                                                 (5)
+                   s1 ,s2 ,s3 ...
+
+Now, instead of computing the usual partition sum as shown above, we consider only the partial sum
+of exp[−HN (K)] over all possible values of even spins, Si = ±1, i = 2, 4, .... and for even N we
+
+
+2
+            Real Space Renormalization Group for One-Dimensional Ising Chains
+
+
+                             K                K                        K               K
+                       S1           S2                  S3                       S4        S5
+
+
+
+
+                                    K′                                           K′
+                       S1                               S3                                 S5
+
+                                          Figure 2.: Decimation
+
+
+obtain a scaled partition function exp[−HN (K ′ )], (see Fig. (2)).
+
+The Hamiltonian becomes,
+             X
+                   exp[−HN (K)] = P2S1 S3 P2S3 S5 ....P2SN −1 S1                                 (6)
+            [s2 s4 ..sN ]
+                                                                                                   ′
+     The idea behind this partial summation is to find a renormalization transformation K → K
+such that,
+                                                                   ′
+                            P2 (K) = exp[2g(K)]P(K )                                             (7)
+                                                   N                         2 N
+            X
+                    exp(−HN (K)) = T rP(K)             = T r[P(K) ] ,          2                 (8)
+                                                        ′
+where g(K) is a scalar function of K. Then K can be interpreted as an effective Ising coupling
+constant for the remaining odd spins Si , i = 1, 3, 5....N − 1 and Eq. (8) may (formally) be written
+as.
+                                         N
+            exp(−HN (K)) = P(K)                                                                  (9)
+                               = [exp(2g(K))P(K′ )]N/2                                          (10)
+                                                               ′       N/2
+                               = exp(N g(K))[(P(K ))]                                           (11)
+                                                                             ′
+                               = exp(N g(K))exp(−H N (K ))                                      (12)
+                                                                       2
+
+
+Thus, the resulting equation becomes,
+               X                                X                                  ′
+                      exp[−HN (K)] =                         exp[−HN/2 (K ) + N g(K)]           (13)
+            [s1 s2 ..sN ]                    [s1 s3 ..sN ]
+
+To make the procedure clear we discuss the case of 3 spins,
+                                     −1
+                ′                    X
+            eK S1 S3 ∗ e2g(K) =              eKS1 S2 ∗ eKS2 S3                                  (14)
+                                   S2 =+1
+
+                                 = eK(S1 +S3 ) + e−K(S1 +S3 )                                   (15)
+
+If S1 = S3 = +1
+                ′
+            eK ∗ e2g(K) = e2K + e−2K                                                            (16)
+
+
+                                                                                                  3
+             Shraddha Singh and Vijay A. Singh
+
+
+If S1 = −S3 = +1
+
+                   ′
+            e−K ∗ e2g(K) = 2                                                                         (17)
+
+
+Using Eq.(17) we obtain g(K)
+
+                             1 ′ 1
+            g(K) =             K + ln2                                                               (18)
+                             2    2
+
+Next using Eq. (16) we obtain K’
+
+               ′        1
+            K =           ln{cosh(2K)}                                                               (19)
+                        2
+
+Thus K ′ is related to the original coupling K by a non-linear transformation. We denote this as
+K ′ = f (K). Near the fixed point K = K ∗ + ǫ,
+
+
+                       K ′ = f (K ∗ + ǫ)                                                             (20)
+               ∗         ′          ∗      ′   ∗
+            K + ǫ = f (K ) + ǫf (K )                                                                 (21)
+
+
+As K ∗ = f (K ∗ ) near a fixed point K* we have
+
+
+            ǫ′ = ǫf ′ (K ∗ )                                                                         (22)
+
+
+which is a linear transformation that resembles
+
+
+            ǫ′ = λǫ                                                                                  (23)
+
+
+where λ = tanh(2K ∗ ).
+     There are two solutions for the equation K ∗ = ln{cosh(2K ∗ )}/2, which are known as fixed
+points, K ∗ = 0 and K ∗ = ∞ with λ = 0 and λ = 1 respectively. For phase transition λ must be
+greater than unity. This proves the well established result that there is no phase transition for 1D Ising
+spin model. There is another way to see this. After applying the renormalization transformation n
+times, the mapping K n−1 → K (n) can be obtained from the recurrence relation,
+
+                             1            (n−1)
+            K (n) =            ln {cosh(2K      )}                                                   (24)
+                             2
+
+where K (0) = K.
+
+
+4
+             Real Space Renormalization Group for One-Dimensional Ising Chains
+
+
+
+
+                             Let ζ = tanh(K)                                                  (25)
+                                      1 1 + ζ2
+                      therefore K ′ = ln(       )                                             (26)
+                                      2 1 − ζ2
+                                           1 1 + ζ2
+             Hence, ζ ′ = tanh(K’) = tanh{ ln(        )}                                      (27)
+                                           2 1 − ζ2
+                                          1  1 + ζ 2         1  1 + ζ 2 
+                                      exp ln              − exp  −   ln
+                                           2   1 − ζ2              2     1 − ζ2
+                                    =     1  1 + ζ 2          1 1 + ζ 2              (28)
+                                      exp ln              + exp −    ln(
+                                           2   1 − ζ2               2 1 − ζ2
+                                      s           s
+                                        1 + ζ2      1 − ζ2
+                                               −
+                                        1 − ζ2      1 + ζ2
+                                    = s           s                                           (29)
+                                        1 + ζ2      1 − ζ2
+                                               +
+                                        1 − ζ2      1 + ζ2
+                                        (1 + ζ 2 ) − (1 − ζ 2 )
+                                   =                                                          (30)
+                                        (1 + ζ 2 ) + (1 − ζ 2 )
+Thus,
+
+                  ζ′ = ζ2                                                                     (31)
+             tanh(K’) = tanh(K)2                                                              (32)
+
+Since tanh(K) < 1, tanh(Kn ) tends to zero as n −→ ∞. This suggests that the effective coupling
+gets weaker with each decimation and we are left with a non-itneracting system which will show no
+phase transition. We next discuss the more complex (unequal Ji ) one-dimensional Ising models.
+
+
+3. ALTERNATE ISING MODEL
+
+Here the Ki′ s are arrranged in the manner shown in Fig.(3).
+
+
+             K1           K2               K1              K2          K1         K2
+        S1          S2             S3              S4             S5         S6          S7
+
+
+
+                          K1′                                          K2′
+        S1                                         S4                                    S7
+
+                     Figure 3.: Similar Decimation for Alternate Ising Model
+
+
+In order to adopt a similar decimation procedure we need to consider four spins at a time. This is
+
+
+                                                                                                5
+             Shraddha Singh and Vijay A. Singh
+
+
+illustrated in Fig.(3). Using this procedure,
+                 ′               X
+              eK1 S1 S4 ∗ eg1 =       e K1 S1 S2 ∗ e K2 S2 S3 ∗ e K1 S3 S4                            (33)
+                                        S2 ,S3
+                                        X
+                                   =         eK1 S3 S4 ∗ 2cosh(K1 S1 + K2 S3 )                        (34)
+                                        S3
+
+                                   = eK1 S4 ∗ 2cosh(K1 S1 + K2 ) + e−K1 S4 ∗ 2cosh(K1 S1 − K2 )       (35)
+
+Like in the previous section, we consider S1 = S4 = +1 to obtain ,
+                 ′
+             eK1 ∗ eg1 = eK1 ∗ 2cosh(K1 + K2 ) + e−K1 ∗ 2cosh(K1 − K2 )                               (36)
+
+and S1 = −S4 = +1 to obtain,
+                         ′
+             e−K1 ∗ eg1 = e−K1 ∗ 2cosh(K1 + K2 ) + eK1 ∗ 2cosh(K1 − K2 )                              (37)
+
+Using Eqs.(36) and (37), and cosh(x)=cosh(-x) we obtain,
+                     ′       eK1 cosh(K1 + K2 ) + e−K1 cosh(K1 − K2 )
+             e2K1 =                                                                                   (38)
+                             eK1 cosh(K1 − K2 ) + e−K1 cosh(K1 + K2 )
+employing the addition properties of cosh function, we obtain,
+
+             tanh(K1′ ) = tanh2 (K1 )tanh(K2 )                                                        (39)
+
+One similarly obtains,
+
+             tanh(K2′ ) = tanh2 (K2 )tanh(K1 )                                                        (40)
+
+The fixed points are,{K1∗, K2∗ } = {0, 0} or {∞, ∞}.
+       Note that we need to block spins in a judicious way. If we block them in a non similar fashion,
+i.e. if the new lattice is not alternate (see Fig.(4)), then,
+
+
+              K1                   K2              K1             K2             K1         K2
+      S1                     S2              S3            S4            S5           S6         S7
+
+
+
+                             K1′                          K1′                         K1′
+      S1                                     S3                          S5                      S7
+
+                                           Figure 4.: Non similar decimation
+
+
+             tanh(K1′ ) = tanh(K1 )tanh(K2 )                                                          (41)
+
+In this case a fixed point discussion is not possible as K2′ does not exist. However, the free energy is
+the same in either case.
+
+
+6
+              Real Space Renormalization Group for One-Dimensional Ising Chains
+
+
+4. FIBONACCI CHAIN ISING MODEL
+
+In this section we consider a fibonacci series where two b′ s are never adjacent i.e. the nearest neigh-
+bour of ’b’ is always ’a’ (see Fig.(5)). We suggest a method to generate the decimation procedure
+below.
+
+               a         b         a            a       b            a            b       a            a         b         a
+         s1                  s3        s4                       s6           s7                   s9       s10                 s12
+
+                                            Figure 5.: Fibonacci Ising model
+
+
+
+4.1 Matrix method for generation
+
+It is well known that the Fiboanacci chain can be generated by setting up a number of rules for
+rabbit procreation, better known as Fibonacci Rabbits[4]. In the present case we generate it by the
+mathematical operation shown below. Note that N(0) denotes a vector AB. N(i) denotes the resulting
+vector after N(0) has been operated ’i’ times by M, a matrix operator to generate the Fibonacci Ising
+chain.
+                   "     #             "         # " #
+                     1 1        (0)       N (0)A      A
+             M=            , N =            (0)B
+                                                  =        : AB                                  (42)
+                     1 0                  N           B
+
+                             "         #"       #       "                #
+                   (0)           1 1        A               A+B
+              MN         =                          =                        : ABA = N (1)                                            (43)
+                                 1 0        B                A
+
+                             "         #"               #       "                     #       "            #
+                                 1 1        A+B                      A+B+A                        N (2)A
+              MN   (1)
+                         =                                  =                             =                    = N (2) : ABAAB (44)
+                                 1 0         A                        A+B                         N (2)B
+
+                             "         #"                       #        "                                  #        "            #
+                   (2)           1 1        A+B+A                            A+B+A+A+B                                   N (3)A
+              MN         =                                           =                                           =                    (45)
+                                 1 0         A+B                               A+B+A                                     N (3)B
+                                                                                              = N (3) : ABAABABA
+
+and so on.
+     For general iteration,
+               (n+1)                   (n)                  (n)
+              NA         = M11 NA + M21 NB                           M11 = M21 = M12 = 1                                              (46)
+               (n+1)        (n)      (n)
+              NB     = M12 NA + M22 NB                                       M22 = 0                                                  (47)
+                                                    √
+as n −→ ∞, the ratio r = limn−→∞ N (n)A /N (n)B −→ ( 5 + 1)/2. Here NA , NB are length
+scales of bond A and B respectively.
+
+
+                                                                                                                                        7
+            Shraddha Singh and Vijay A. Singh
+
+
+4.2 Decimation method
+
+Consider now the Ising Chain shown in Fig.(6):
+
+
+                        JL               JS                 JL           JL         JS
+            S1                  S2                  S3              S4        S5         S6
+
+
+
+                                JL′                         JS′               JL′
+            S1                                      S3              S4                   S6
+
+                             Figure 6.: Self-similar blocking for Fibonacci chain
+
+
+     Let Ki = Ji /kT
+                                        N
+                                        X −1
+                       HN (K) = −              Ki Si Si+1                                       (48)
+                                        i=1
+                                       −1
+                                       X
+               ′
+            eKL S1 S3 ∗ eg1 =                  e KL S1 S2 ∗ e KS S2 S3                          (49)
+                                      S2 =+1
+
+As in the previous sections, let S1 = S3 = +1 we obtain,
+               ′
+            eKL ∗ e2g1 = eKL +KS + e−(KL +KS )                                                  (50)
+
+and S1 = −S3 = +1 yields,
+                   ′
+            e−KL ∗ e2g1 = eKL −KS + e−(KL −KS )                                                 (51)
+
+Using Eqs.(50) and (51), and cosh(x) = cosh(−x) leads to,
+
+            tanh(KL′ ) = tanh(KL )tanh(KS )                                                     (52)
+                         1     1
+               and g1 = KL′ + ln(2cosh(KL − KS ))                                               (53)
+                         2     2
+For the ordered case (KL = KS ) the tansformation reduces to tanh(K ′ ) = tanh2 (K) and g1 is
+given by the same expression as Eq.(18). Further, KS′ = KL and g2 = 0. Hence, all the above
+equations are consistent with ordered case. The fixed points in this case are,{K1∗, K2∗ } = {0, 0} or
+{∞, ∞}.
+      We designate bond lengths, distance between two neighbouring sites in the lattice before and
+after first decimation process, for the two types of bonds by two sets of variables. Here, the new
+lengths are L′ for K′1 and S′ for K′2 corresonding to the old lengths, L for K1 and S for K2 . Self
+similarity is preserved if the new lengths follow the following relation.
+            L′    L
+                =                                                                               (54)
+            S ′   S
+
+8
+             Real Space Renormalization Group for One-Dimensional Ising Chains
+
+
+But L′ = L + S and S ′ = L. Thus,
+                 S    L
+             1+    =    =x                                                                           (55)
+                 L    S
+                 1
+            1+ = x                                                                                   (56)
+                 x
+                    √
+which leads to x = ( 5 + 1)/2, the golden ratio.
+
+
+5. CONCLUSION
+
+This decimation approach is perhaps the simplest version of RNG. Its extension to higher dimension
+however gets tricky. The solution to this problem uses the Migdal Kadanoff transformation[5],[6].
+Interestingly, this decimation procedure inspired similar work in quantum systems. We hope to
+describe this quantum version introduced by Bhat, Singh and Subbarao[7] in the future.
+
+
+6. ACKNOWLEDGMENT
+
+One of us (VAS) acknowledges support from the Raja Ramanna Fellowship by the DAE.
+
+
+References
+
+  [1] Wilson K.G., Phys. Rev. B 4, 1374, 1384 (1971).
+  [2] Nauenberg M., J. Math. Phys. 16, 703 (1975).
+  [3] Wilson K.G., Rev. Mod. Phys. 47 , 773 (1975).
+  [4] Ball K. M., Strange Curves, Counting Rabbits, and Other Mathematical Explorations, Princeton Univer-
+      sity Press, 8, (2003)
+  [5] Kadanoff L.P., Ann. Phys. (N.Y.) 100, 359 (1976).
+  [6] Migdal A.A., Soy. Phys. JETP 42, 743 (1976).
+  [7] Bhat G.R. Singh V.A. and Subbarao K., J. Phys. C, Solid State Physics, 17, 5569, (1984).
+
+
+
+
+                                                                                                        9
+

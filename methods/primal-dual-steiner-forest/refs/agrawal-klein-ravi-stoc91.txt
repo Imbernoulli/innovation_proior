@@ -1,0 +1,768 @@
+     When           trees collide:                An approximation                         algorithm         for the generalized
+                                                 Steiner          problem               on networks
+
+                                                  Ajit    Agrawall                       Philip   Kleinl
+                                                                            R. Ravil
+                                                                    Brown         University
+
+
+
+Abstract                                                                              In the course of proving the performance guarantee, we
+                                                                                   prove a combinatorial min-max approximate equality relat-
+                                                                                   ing minimum-cost networks to maximum packings of cer-
+We give the first approximation algorithm for the general-                         tain kinds of cuts. As a consequence of the proof of this
+ized network Steiner problem, a problem in network design.                         theorem, we obtain an approximation      algorithm for opti-
+An instance consists of a network with link-costs and} for                         mally packing these cuts; we show that this algorithm has
+each pair {i, j} of nodes, an edge-connectivity requirement                        application to estimating the reliability of a probabilistic
+Tij. The goal is to find a minimum-cost network using the                          network.
+available links and satisfying the requirements.   Our al-
+gorithm outputs a solution whose cost is within 2 lg R of
+optimal, where R is the highest requirement value.
+                                                                                    1     Introduction:               On      designing          a
+                                                                                          network
+                          //-””””””””””””-””-””-”””””””-”-”--”---
+                                                                                    Here’s the scenario: You’re in the business of providing
+                                                                                    communication channels to your customers. You have a
+                                                                                    set of clients with communication requirements; each client
+                                                                                    has specified a pair of cities between which the client must
+                                                                                    have communication capabilities.      In front of you is the
+                                                                                    AT&T2 price list, which gives prices for constructing com-
+                                                                                    munication links between various cities. Each link built
+                                                                                    has essentially unbounded capacity.       Your job is to se-
+                                                                                    lect a minimum-cost collection of communication links that
+                                                                                    can accommodate all your clients’ communication require-
+                                                                                    ments. The network you must construct need not be con-
+                                                                                    nected; all that is needed is that every client’s pair of cities
+                                                                                    be connected through your network.
+                                                                                       Unfortunately,  your job’s NP-complete.      Even the very
+                                                                                    special case in which each client wants to connect some city
+                                                                                    to New York is the dreaded Network Steiner Tree Prob-
+                                                                                    lem, one of Karp’s original list of NP-complete problems
+                                                                                    [7]. Since you only have polynomial time to spare, you are
+Figure 1: An instance of the unweighed network design                               forced to turn to approximation      algorithms.   Consulting
+problem and its solution. Solid edges correspond to unit-                           the literature [1, 4, 9, 12, 13, 15, 17, 23], you find a vari-
+cost links; dotted edges connect site pairs.                                        ety of good approximation algorithms for the Steiner tree
+                                                                                    problem in networks. Each of these algorithms constructs
+                                                                                    a nearly minimum-cost tree connecting together a given set
+                                                                                    of cities.
+    Permissionto copywithoutfee all or part of this matertial is granted
+    provided that tbe copies are not made or distributed for direct
+                                                                                      1 Researchsupported by NSF grant CCR-9012357,       NSF grant
+    commercial advantage, the ACM copyright notice and the titte of tfre
+                                                                                    CDA S722809, ONR and DARPA contract NOO014-S3-K-0146 and
+    publication and its date appear, and notice is given that the copying is by
+                                                                                    ARPA Order No. 6320, Amendment      1 .
+    permission of the Association for Computing Machinery. To copy other-
+                                                                                      2Disclaimer: The authors are in no way connected to AT&T.
+    wise, or to republish, requires a fee and/or specific permission.
+
+    @ 1991 ACM 089791-397-319110004/0134                         $1.50
+
+
+                                                                                  134
+   However, none of the algorithms addresses the more gen-                                    unsatisfiable.2 Assuming link failures are independent, de-
+eral case in which each client can specify an arbitrary pair                                  termining the probability that the surviving links can serve
+of cities, and the output network need not be connected.                                      all clients’ requirements is a generalization of the notorious
+Moreover, a minimum-cost Steiner tree solution can be ar-                                     #P-complete problem [19] called Network Reliability. No
+bitrarily costlier than a minimum-cost solution to this more                                  approximate ion algorithms are known.
+general problem.                                                                                 However, one powerful and useful heuristic for estimating
+   In this paper, we give the first approximation algorithm                                   two-terminal and k-terminal reliability [2] can be directly
+for this network design problem. Our algorithm is guaran-                                     generalized to handle the case of arbitrary pairs. The (gen-
+teed to output a network that is within a factor of 2–2/k    of                               eralized) heuristic consists in finding a large collection of
+optimal, where k is the number of cities specified by clients.                                edge-disjoint cuts in the network such that each cut sep-
+It generalizes the known approximation algorithms for the                                     arates at least one client’s pair of cities. For a surviving
+Network Steiner Tree Problem, in that its worst-case per-                                     network to be able to serve all clients’ requirements, at least
+formance on instances of this special case is asymptotically                                  one edge in each cut must survive; thus such a cut-packing
+at least as good as those of other known algorithms.                                          can be used to obtain a lower bound on the probability of
+                                                                                              catastrophic failure. Experience [2] with this heuristic in
+Theorem      1.1 There is an O(rn log m) dgorithrn for jind-                                  the cases of two-terminal and k-terminal reliability indi-
+ing a network   of cost at most 2 — 2/k times optimal, where                                  cates that it is one of the best available.
+k is the number         of cities    specijied       by clients,        and m is the             One of the results of this paper is an algorithm for finding
+number of edges in the input               graph.                                             a nearly maximum collection of such cuts in an auxiliary
+                                                                                              network whose reliability is the same as that of the original
+   In fact, we can generalize our result to include costs on                                  network. We give more details in Section 3.
+nodes as well as edges. To our knowledge, no approxi-
+mation algorithms that allow node-weighted graphs were                                        The      combinatorial                   basis      for      our      algorithms:
+known, even for the Steiner tree special case, but they fit                                   a new         approximate                 min-max              equality
+easily into our framework.    We can handle hypergraphs
+with weighted hyperedges as well, through a simple trans-                                     At the heart of our proofs of near-optimality is a combina-
+formation to the node-weighted case.                                                          torial theorem that relates the network design problem to
+                                                                                              the cut-packing problem.
+
+The      Generalized                Steiner          Problem              in    Net-          Theorem            1.3 The minimum               size of a nei!work               design       is
+                                                                                              approximately          eqval    to   one-half       the maximum                   size of a
+works
+                                                                                              collection      of cuts,    where        each    cut      separates        some     client’s
+In fact, the algorithm can be generalized to handle a                                         cities, and no edge is in more than two cuts. By “approz-
+problem involving certain redundancy requirements. Each                                       imately, ” we mean within   a factor of 2 – 2/k, where k is
+client can specify that her pair of cities must be connected                                  the number         of client-specified          cities.
+by some number of edge-disjoint paths, in order that the
+                                                                                                  The proof of Theorem 1.3 is algorithmic, and is given in
+connection be less vulnerable to link failure. The network                                    S t.
+                                                                                                ec Ion 5. We can formulate the two combinatorial quan-
+is then allowed to use multiple links connecting a pair of
+                                                                                              tities as the values of integer linear programs that are dual
+nodes. This problem is the generalized Steiner problem in
+                                                                                              to one another. It follows from Theorem 1.3 that the frac-
+net works.
+                                                                                              tional relaxation of these programs provides a good ap-
+                                                                                              proximation to both combinatorial quantities.       Moreover,
+Theorem    1.2 There is an O(m log m h R) abo~i~hm b                                          the factor of 2 _ 2/k i5 existentially tight for the example
+finding a network of cost at most (2 – 2/k) Pogz(R + 1)1                                      of a k-cycle  given by  Goemans    and Bertsimas [5].
+times    optimal,       subject     to   arbitrary       edge-connectivity        y re-
+quirements     rij,   where       R is the largest        requirement          value.
+                                                                                              2       Related                work
+Packing         cuts,       with         application               to     network
+                                                                                              2.1          The     Steiner         tree        problem              in    networks
+reliability
+                                                                                              There has been volumes of work done on the Steiner tree
+Well, our algorithm’s just made your old job obsolete. So                                     problem in networks, including proposed solution meth-
+you turn to a new job: evaluating network reliability. You                                    ods, computational  experiments, heuristics, probabilistic
+are presented with an existing network and the same list of
+                                                                                                  2A related problem—tiding      the minimum     number of comrnu-
+clients, each specifying a pair of cities. Now you would like                                 nication links that would need to fail for all requirements      to be
+to determine how likely it is that random failure of com-                                     unsatisfiable-can  be solved approximate ely, using techniques we have
+munication links renders some of your clients’ requirements                                   presented in an earlier paper [8].
+
+
+
+
+                                                                                        135
+and worst-case analyses, and algorithms for special classes        heuristic. They show that this approach yields solutions
+of graphs. Winter [20] recently surveyed this body of work.        that are within a factor of 2 min(log R, p) of optimal, where
+   Karp [7] showed that the problem is NP-complete. Taka-          R is the maximum r~ and p is the number of distinct
+hashi and Matsuyama [17], Kou et al. [9], E1-Arbi [4],             nonzero values Ti in the input. Moreover, they show that
+Rayward-Smith [13], Aneja [1], and Wong [23] are among             their analysis is tight in the worst case.
+those who proposed heuristics. Among these, the heuristics            Goemans and Bertsimas restricted their attention to
+that have been analyzed have a worst-case performance ra-          edge-connectivity requirements of the special form Tij =
+tio of 2 – 2/k, where k is the number of cities that need to       min(ri, Tj) in order that each subproblem have essentially
+be connected up (called Z-vertices in [20]). One algorithm,        the form of an (ungeneralized) Steiner tree problem. Thus
+proposed by Plesnik [12] and by Sullivan [15], performs            this restriction was a result of the lack of a known approx-
+somewhat better.      In computational    experiments, these       imation algorithm for the case of Tij c {0, 1}. We remedy
+heuristics generally perform considerably better than the          this lack.
+worst-case bound predicts. Jain [6] proposed an integer-
+program formulation of the Steiner tree problem in net-
+works, and showed that for two random distributions          of    s        Background
+costs, the value of this integer program differed drastically
+from the value of its fractional relaxation. Segev [14] for-       An instance of the generalized Steiner problem consists of
+mulated the node-weighted Steiner problem, and proposed            a graph G with edge-costs c, together with a collection
+branch-and-bound techniques for its solution. We know of           {RI,. ... Rhj of requirements       each requirement fi consists
+no approximation algorithms for this problem.                      of a site pair {si, ti}, a pair of nodes of G, and a Requirement
+                                                                   value T~, a positive integer. A feasible solution, which we
+                                                                   call a network design, is ‘a multiset N consisting of edges of
+2.2    The     generalized         Steiner    problem       in
+                                                                   G, such that for every requirement Ri = ({si, G}, Ti), there
+        networks
+                                                                   are at least ri edge-disjoint paths between si to tiin the
+The generalized   Steiner problem in networks, as originally       Multigraph          with edges N.
+formulated by Krarup (see [21]), is as follows. The input
+consists of a graph with edge-costs, a subset Z of the ver-
+                                                                   3.1       The        unweighed              case
+tices, and, for each pair of vertices i, j c Z, a required
+edge-connectivity Tij. The goal is to output a minimum-            To prove performance guarantees for our algorithm, we
+cost subnetwork satisfying the connectivity requirements.          exploit a duality between network design and packing of
+When the Tij’s are allowed to be zero, we can clearly as-          cuts. Fix some instance of the generalized Steiner prob-
+sume without loss of generality that Z consists of all the         lem, where all costs and requirement values are 1. Thus
+vertices of the graph.                                             the instance consists of a graph G and a collection of site
+   To our knowledge, no approximation algorithms for the           pairs {si, ti}. We will denote the cardinalit y of the set of
+generalized Steiner problem are known. There have been             sites by k.
+papers addressing finding an exact solution and algorithms            Let N be any network design for this instance. (Observe
+for special classes of graphs [21, 20]                             that if N is minimal, then it is just a forest.) Let S be any
+   In the work of Goemans and Bertsimas, described be-             subset of nodes of G such that for some site pair {si, ti}l
+low, and in our work, the edge-connectivity requirement            one of the sites is in S and one is not. In this case, the
+is allowed to be satisfied in part by duplicating edges of         set of edges A with exactly one endpoint in S is called a
+the input graph. This corresponds to “buying” multiple              Requirement   cut. There must be a path between si and ti
+communication links of the same cost and with the same             in i’f, so N intersects A in at least one edge. Thus we have
+endpoints.
+                                                                   Lemma         3.1 fiveTy network            design    and eveTy Requirement
+                                                                    cut have     at least      one   edge in   common.
+2.3     Survivable      networks
+
+In very recent work, Goemans and Bertsimas [5] consid-             Suppose Al, ..., AP are (not necessarily distinct) require-
+ered a special case of the generalized Steiner problem in          ment cuts such that each edge of G occurs in at most two
+networks, which they called the su?’vivabie network    design      cuts. We call such a collection of cuts a 2-packing. Then
+problem.   Instead of arbitrary edge-connectivity require-         we have the following easy lower bound on the minimum
+ments, the input includes an assignment of integers ri to          size of a network design.
+nodes. The goal is to find a minimum-cost network sat-
+isfying edge-requirements Tij = IIIhI(Ti, ~j ). They propose        Lemma        3.2     The    minimum        size   of a network   design   is at
+a simple but powerful approach which involves solving a             least   one-half     the   mazimum         size of a 2-packing    of require-
+series of ordinary Steiner tree problems using a standard           ment    cuts.
+
+
+
+
+                                                                 136
+Proof: Let N be a network design and let Al,...,   Ap be                                   To actually compute an approximately      minimum net-
+a 2-packing consisting of D requirement cuts. We have                                  work design, we don’t use this refinement technique but
+                                                                                       instead use a more direct approach, and thereby achieve
+                                                                                       the time bound stated in Theorem 1.1. In fact, this algo-
+                                                                                       rithm proves Theorem 3.1 for rational (non-integral) costs c
+                                                                                       as well, where we define ‘fractional” packings in the usual
+because each lAi n NI is at least one. ❑                                               way (see, e.g. [10]). By considering fractional packings
+     For comparison, Edmonds and Johnson [3] show that T-                              of node-cuts instead of edge-cuts, we can prove a node-
+joins and T-cuts satisfy an analogous inequality, and, more                            weighted version of Theorem 3.1, and give an algorithm
+ importantly, they satisfy it with equality.                                           for the node-weighted case of the network design problem.
+    Instead of showing equality, we show approximate equal-                            In Section 6, we briefly allude to some of the issues arising
+ ity, to within a factor of 2(1 – I/k). This is the content of                         in implementing these algorithms.
+ Theorem 1.3.
+     Our proof of Theorem 1.3 is algorithmic. We give an al-
+                                                                                       3.3     Arbitrary        integral      requirements
+ gorithm that constructs a network design and a 2-packing,
+ such that the first has size at most (1 —l/k) times the sec-                          So far we have dealt with the case in which each site pair
+ ond. It follows that the network design is approximately                              need only be connected in the final network design. As
+ minimum and the 2-packing is approximately maximum,                                   discussed in the introduction    and Section 2, a client may
+ to within a factor of 2(1 – l/k). The algorithm takes time                            also require that there be at least Tij edge-disjoint paths
+ O(ma(m, m)), where m is the number of edges in the input                              between her pair of sites.3 Thus the case dealt with up to
+ graph G.                                                                              now requires each Tij to be either O or 1.
+     The first step is to transform the original graph GinPUi                              In order to obtain an approximation algorithm for this
+ into a bipartite graph G by replacing each edge w of Ginput                           generalized problem from our algorithm for the case of O–
+ with two edges U2 and xv in series, where z is a new node.                            1 requirements, we make use of a heuristic technique due
+ The resulting graph G has the following properties:                                   to Goemans and Bertsimas [5]. They propose a technique
+                                                                                       they call the tree heuristic, which consists essentially of
+     ●    Any minimal network design in G corresponds to a
+                                                                                       decomposing a problem with many different requirement
+          network design in GO of half the size.
+                                                                                       values into a series of simpler problems in which only two
+     . Any packing of edge-disjoint requirement                         cuts in G      requirement values appear. As we mentioned in Section 2,
+       corresponds to a 2-packing of requirement                        cuts in Go     they use the technique for solving only a special case of the
+       of the same size.                                                               generalized Steiner problem. In conjunction with our new
+                                                                                       algorithms for the O–1 case, however, the technique can be
+Consequently, in order to prove Theorem 1.3 for Go, it is                              easily adapted to apply to the general case.
+sufficient to show the following for G:                                                    Let the different values of Tij be O = p. < PI < P2 <
+ We can find a network design N and a packing of edge-                                 . . . < p,. For each O < d ~ s, consider the transformed
+ disjoint requirement cuts Al, . . . . Ap such that N ~                                problem
+ 2( I – l/k)~, where k is the total number of sites.                                                   ~d =    Pd – Pd- 1  if l’ij ~ Pd
+                                                       (2)                                              tj     o           otherwise
+                                                                                                             {
+We show (2) in Sections 4 and 5.
+                                                                                       which is essentially pd – pd- 1 copies of a O-1 problem prob-
+                                                                                       lem. Use a standard heuristic to find an approximately
+3.2              The     weighted          case                                        optimal solution, and combine the solutions to the s trans-
+Now we consider the case in which the costs of edges may                               formed problems to get a solution to the original problem.
+vary, but the requirement values are still all one. It turns                           The resulting performance guarantee is @(s).4 By using a
+out that, like Edmonds and Johnson’s theorem, Lemma 3.2                                similar approach, if each ri is an integer b bits long, then
+and Theorem 1.3 are self-refining. For nonnegative integer                             the original problem can be decomposed into b problems,
+                                                                                       and the resulting performance bound is 2(1 – l/k)b. This
+edge-costs c, we simply replace each edge e by a path of
+length c(e). We say a collection of requirement cuts is a 2c-                          is how we get the performance bound stated in Theorem
+                                                                                       1.2.
+packing if each edge e appears at most 2c(e) times. Using
+this transformation, we obtain the following theorem from                                 The obvious question is whether one can do better than
+Theorem 1.3.                                                                           this. Goemans and Bertsimas can show that their analysis
+
+                                                                                          s In this case, the network design is allowed to use multiple copies
+Theorem                3.1   The     minimum-     cost   of a network    design   is
+                                                                                       of edges of the input graph; each copy of a given edge costs the same.
+at       least    one-half     the size of a 2c-packing   of requirement                  *More specifically, Goemans and Bert simas show the performance
+cuts,       and    at most     (1 — l/k) times this size.                              bound is 2(1 - l/k~~’=l       (Pd – Pal-l )/Pd)”
+
+
+
+
+                                                                              137
+is tight, so another approach is needed, one that can deal            4.2            Finding           a cut-packing
+simultaneously with widely varying requirement values.
+                                                                      The algorithm for constructing the cut-packing is quite in-
+                                                                      tuitive. (A summary is given at the end of this subsection.)
+3.4     Reliability      estimation                                   We grow disjoint breadth-first search trees from all sites s
+                                                                      simultaneously. We call the edges connecting one level to
+In the introduction, we described a heuristic for estimation
+                                                                      the next in a breadth-first search tree a level cut. Each
+of network reliability in a probabilistic network. In order
+                                                                      level cut in a breadth-first search tree rooted at s is a re-
+to use this heuristic effectively, we want to find a maximum
+                                                                      quirement cut because its edges separate s from its mate.
+collection of edge-disjoint requirement cuts. This problem
+                                                                      Thus at each timestep, we accumulate one additional re-
+is NP-complete for general graphs. Moreover, an approxi-
+                                                                      quirement cut for each tree being grown.
+mation algorithm for this cut-packing problem would yield
+                                                                         When multiple trees collide, we merge them into a single
+an approximation algorithm for maximum independent set,
+                                                                      tree and continue growing from its boundary. Thus in gen-
+a problem that has steadfastly resisted approximation [2].
+                                                                      eral a tree may contain many sites. As soon as every site
+However, we can apply the transformation             described in
+                                                                      in a tree has its mate in the same tree, we can no longer
+Subsection 3.1 to turn an arbitrary graph into a bipartite
+                                                                      guarantee that subsequent level cuts of the tree are require-
+graph with all sites on one side of the bipartition:       replace
+                                                                      ment cuts, so we call the tree inactive,   and we contract all
+an edge having failure probability         1 — p with two series
+                                                                      its nodes into a single supermxie.   A tree that is still in the
+edges each having failure probability         1– @      We don’t
+                                                                      process of being grown is said to be active. The algorithm
+change the probability      of reliability in carrying out this
+                                                                      terminates when there are no active trees. At this point,
+transformation, and we can apply the algorithm of Section
+                                                                      every site pair’s two nodes are contained in the same tree.
+4 to find an approximately maximum set of edge-disjoint
+                                                                      More precisely, since each tree has become inactive, and
+cuts in the resulting graph.
+                                                                      has hence been contracted to a supernode, there are no
+   Thus we propose a four-step recipe for estimating net-
+                                                                      sites remaining in the graph.
+work reliability.    Transform the network into-a bipartite
+                                                                         Because of contractions, the graph on which we are work-
+network, find an approximately            maximum cut-packing,
+                                                                      ing evolves during the course of the algorithm. We use Gt
+compute for each cut the probability that at least one edge
+                                                                      to denote the graph after t timesteps. When we refer to a
+survives, and multiply these probabilities to get an upper
+                                                                      graph, unless we explicitly call it the ‘original graph,” we
+bound on the probability that all clients can continue to
+                                                                      will mean the contracted graph Gt at a certain point t in
+communicant e.
+                                                                      the algorithm.
+                                                                         It is important to the analysis that all active trees grow
+                                                                      at the same rate. The algorithm takes place over a series
+4     The       algorithm
+                                                                      of timesteps. In each timestep, each active tree grows by
+In this section, we describe an algorithm for finding a cut-          one level. Thus after t timesteps, active trees that have
+packing and a network design. Let G be a bipartite graph              not participated in any collisions all have radius t (as mea-
+with all sites on the same side of the bipartition.       (We can     sured in the contracted graph Gt). More generally, let the
+obtain such a graph from an arbitrary graph as described in            boundary of a tree be the set of nodes at the most recent
+Subsection 3.1. All subsequent references to the “original            level of the tree. We have the following proposition
+graph” refer to G.) We are given a collection of site pairs
+                                                                      Proportion              4.1 After       t    timesteps,       each         node      in    the
+{Sl, tl}, {sa, tz}, . . . . {s,, tb}.We refer to the nodes Si,ta as
+                                                                      boundary           of an active      tree   is distance     t from         some     site   in-
+sites. We say that two sites in the same site pair are mates
+                                                                      ternal         to the tree.
+of each other.
+                                                                        In the initial bipartite graph, all the sites are on the
+4.1     Overview                                                      same side of the bipartition.  We show that this property
+                                                                      continues to hold throughout the algorithm.
+We grow breadth-first      search trees from the sites, accu-
+mulating cuts as we go. The algorithm employs a notion                Lemma            4.1     After    t timesteps,      the graph      is still       bipartite,
+of timesteps. At each timestep, each of the breadth-first             with     all    sites    on the same        side   of the   bipartition.
+trees grows by an additional level. Each tree grows until
+all the sites it contains have found their mates. When trees          Proof:    by induction on t. The basis t = O is trivial. We
+collide, they are merged. As we grow trees, we build net-             must show that the bipartition   property described in the
+works spanning the trees’ sites. Using a charging scheme,             lemma is preserved by contractions.     Suppose that Gt _ ~
+we show that the size of each network in a tree is about              obeys the property, and that after t timesteps, some tree T
+twice the number of cuts accumulated while growing the                has just become inactive and is about to be contracted. By
+tree.                                                                 Proposition 4.1, all the nodes in the boundary of T have
+
+
+
+
+                                                               138
+distance t from some site. Hence they all belong in the
+same side of Gt _ l’s bipartition.  It follows that after the
+nodes of T are contracted to a single node, the bipartition
+property still holds. ❑
+   We can use Lemma 4.1 to show that all the cuts found
+by the algorithm are edge-disjoint.
+
+Corollary      4.1 No edge belongs to a level cut of more   than
+one tree.
+
+
+Proof: By Proposition 4.1 and Lemma 4.1, all the nodes
+in boundaries of all active trees are in the same side of the
+bipartition of the graph. Hence no edge is incident to two
+active trees. ❑
+   Thus trees collide by reaching the same node in a given
+step. Below we summarize the cut-packing algorithm. In
+anticipation of the analysis of the algorithm, we ‘assignn
+cuts found to particular trees.
+1     Initialize each site to be an active tree. Repeat the
+      following steps until every tree is inactive.                 Figure 2: The network NT corresponds in a natural way to
+2       Grow each tree by one level. Assign the correspond-         a subgraph NT* of the original graph. To obtain NT* from
+        ing level cut to the tree.                                  NT, replace each supernode v in NT with the subgraph NV,
+3       Contract   each tree that has just become inactive.         and recurse on the supernodes in NV, like v’ in the above
+                                                                    figure.
+4       Repeat
+5           Take two distinct trees sharing a boundary node,
+            and merge them into a single tree (For the cut-         inactive trees. Note that such edges do not even appear in
+            packing algorithm, merging trees consists merely        the contracted graph Gt.
+            of union-ing their nodes and the cuts assigned to           We introduce some terminology to help us relate various
+            them.)                                                  contracted graphs to each other and to the original graph.
+6       Until no more trees can be merged.                          We call a node a real node if it appears in the original graph,
+   Because trees are merged immediately after they col-             in order to distinguish such nodes from supernodes. If the
+lide, we can claim the following      Just before the trees         tree T was contracted to form the supernode u, we say T
+are grown, they are node-disjoint. Just after the trees are          corresponds     to v, and vice versa. We say v immediately
+grown, they are internally node-disjoint: only their bound-          encloses   v’ if v is a supernode corresponding to a tree T
+
+aries can share nodes. We make use of this property in the          containing v’. Note that each node is immediately enclosed
+next subsection.                                                    by at most one node. We say v encloses v’ if either v = v’
+                                                                    or v immediately encloses some node v“ that encloses v’.
+                                                                    That is, v encloses v’ if by some series of contractions, v’
+4.3     The      network     design    algorithm                    was identified with other nodes to form v.
+The basic approach to building a network design is also                 For an edge e incident to a node v in a contracted graph,
+quite intuitive.    For each tree, we maintain a connected          there is a real node v! enclosed in v such that e is incident
+network connecting together all sites in the tree. This is          to v’ in the original graph. We say that v’ is the real node
+easy: start with each site being a network in itself, and,          by which   e is incident   to v.
+
+whenever trees merge, use simple paths to join up their                For each tree T, we maintain a network N+z, a subgraph
+two networks.                                                       of T. We maintain the following site-inclusion invariant:
+   It is possible to show that for each tree, the size of a
+                                                                         For each T, the network NT includes all sites that
+network for that tree is no more than twice the number
+                                                                         are nodes of T.
+of cuts assigned to the tree. Such an analysis, however,
+is insufficient:  the networks formed in this way are not           We specifically mean to exclude those sites strictly enclosed
+connected in the original graph, because of the contractions        by supernodes belonging to T. In the site-inlusion invariant
+we have performed along the way. A path that contains a             only speaks of sites that are themselves nodes of T. If v is
+supernode is not in general a path in the original graph.           a supernode corresponding      to an (inactive) tree T, we use
+Therefore, we must be more careful in joining networks,             Tv to denote T, and we use NV to denote NT. We say a
+and must not forget to include edges between nodes within           node is free if it is not contained in any network NT.
+
+
+
+
+                                                              139
+    Each network NT corresponds in a natural way to a sub-
+graph N; of the original graph. Namely, to get N; from
+NT, replace each supernode u in NT with the subgraph Na,
+and recurse on the supernodes in NV.
+    We want each network NT to correspond to a connected
+subgraph in the original graph. We therefore maintain the
+following connectivity y invariant.
+        Each subgraph N;           is connected.
+                                                                                                                  P
+   At any stage in the algorithm, the networks NT induce
+a subgraph of the original graph, namely the subgraph in-
+duced by the edges in UT NT where the union is over all
+trees active and inactive. Let us call this subgraph N. Note
+that each induced subgraph N; is a subgraph of N.
+   We now observe that when the algorithm terminates,
+the invariants imply that N is a valid network design—for
+each site pair {sl, S2}, there is a path in N between S1 and
+S2. Let T be the tree containing S1. Once the algorithm                                                                                   ‘T
+terminates, T must be inactive, and hence contains S1’s
+mate S2 as well. By the site-inclusion invariant, S1 and                                  Figure 3: After identifying a path P of VI,..., u, to con-
+S2 are nodes of NT. Since they are original nodes, they                                   nect v to T, any supernode u in P is expanded by Ex-
+are also nodes of the induced subgraph N;, which is a                                     pandPath(v,P)    into a connection via the network design
+subgraph of N. Finally, by the connectivity y invariant, N;                               tree of u, NU. If the last node in P, v., is a supern-
+is connected, so the required path exists.                                                ode, it is recursively expanded to a path in the original
+   Now we give the algorithm for network design. We run                                   graph by identifying a vertex v’ on its boundary and call-
+the cut-packing algorithm of the last subsection and, when-                               ing CONNECTTO NETWORK(V’, TV. ) recursively to connect
+ever a ‘{mergen of trees occurs, we update the NT’s in order                              v’ to the network N...
+to maintain the invariants. Initially, when every active tree
+T consists of a single site, NT consists also of this site. For
+each tree T not yet formed, NT is empty. Thus trivially                                   This procedure expands P into a real path (i.e. a path
+the invariants hold initially.                                                            in the original graph) by replacing each supernode v in
+   In step 5 of the cut-packing algorithm, we merge a pair of                             the path with a subpath within T. that connects a bound-
+distinct trees T1 and T2 sharing a common boundary node                                   ary node of TV to v’s network, goes through that network,
+w. By simply unioning their networks NTi, we get a net-                                   and comes out again to the boundary of TV. For techni-
+work that obeys the site inclusion invariant. However, this                               cal    reasons,   EXPANDPATH      does   not    replace   the    last   node
+net work does not obey the connectivity y invariant. We must                              of P, so if this last node is a supernode, we use a recur-
+therefore connect up these networks. To do this, we add                                   sive call to CONNECTTO NETWORK to make this part of
+paths from the common node u to each of the networks NT,.                                 the path real. Making a path real using EXPANDPATH and
+This involves some care when v is a supernode. However,                                   CONNECTTONETWORK is illustrated in fig. 3.
+in this description of the algorithm, we omit discussion of                                  Now                we              give             the
+this case. Assume therefore that v is a real node. We call                                procedure for CONNECTTONETWORK(V, T).         Once again,
+a procedure CONNECTTONETWORK(W, Ti) for i = 1, 2.                                         the basic idea is to find a short path P in T from v to
+   The goal of CONNECTTONETWORK(V, T) is to augment                                       the network NT, then introduce additional edges to make
+various  networks    NTI until v is connected to N;.     To do                            P correspond to a real path, i.e. a path among the real
+this, the procedure first finds a shortest path I’. in T from                             nodes.
+v to a site in T, identifies the shortest initial subpath P
+of P.     that    ends   on   a node     of NT,     and   adds     the      edges   of    CONNECTTONETWORK(V,               T’)
+P      to NT.     We are not yet done; P does not                     necessarily         Assumption:The           node   v is a real    node   enclosed    by some
+correspond        to a connected        subgraph     of the      original     graph       node     V. in the   boundary   of T.
+because      it   may    contain      supernodes.
+                                        Moreover,   we have  cl Let V. be the node in T that encloses v.
+just    added     such          to NT, so the networks NW
+                         supernodes       v
+                                                             C2 Let P. be a shortest path in T from V. to a site s. Let
+corresponding to these supernodes belong to N;.       In or-
+                                                                UT be the first node of P. belonging to NT, and let P
+der to maintain the connectivity y invariant, therefore, we
+                                                                be the subpath of P. from V. to v..
+must connect the networks NV to N;. We make these con-
+nections recursively using a procedure EXPANDPATH (v, P).    C3 Add P to NT.
+
+
+
+
+                                                                                    140
+C4 call EXPANDPATH (v, P) to make a real path out of P,
+   except possibly for the last connection.
+C5 If the last node v, in P is a real node, then stop.
+C6 Else,
+C7         Let T’ be the (inactive)             tree corresponding       to the
+           supernode VV.
+C8         Let v’ be the real node by which the last edge of P
+           is incident to Vr.
+C9    Recursively call CONNECTTONETWORK(V’,         T’).
+  The procedure CONNECTTONETWORK           uses a subproce-
+dure EXPANDPATH (v, P) to make a real path out of P. For
+each node v of P except the last, if that node is a supern-
+ode, we may have to add edges to NV and, recursively.
+
+EXPAND      PATH   (V,   P)
+Assumption:P             is a path in some tree T, whose         first    node
+encloses     v, which     is assumed    to be a real     node.
+
+
+El    Write P = voeovlel         . . .er_lvr.
+
+E2    Fori:=Otor–ldo
+E3         Let v’ be the real node by which ei is incident to vi.                  Figure 4: Proof of lemma 5.2 that the cost of a call to Con-
+                                                                                   nectToNetwork in the construction of the Network Design
+E4         comment       :We must make a real path in N from v
+                                                                                   solution for the tree T is at most Age(T).
+           to v).
+E5         If vi is a supernode then
+E6          Let T be the tree corresponding to vi.                                 We define the connect-cost     of a call to the subroutine
+E7          call CONNECTTONETWORK(V, T).                                           CONNECTTO NETWORK as the number of edges added to
+E8          Call CONNECTTONETWORK(V’, T).                                          the network by the routine not including any calls to the
+E9          comment: Now there is a real path from v to T’s                        routine EXPANDPATH, That is, the cost for a call is the
+            network to v’.                                                         number of edges added in step C3, plus the cost of the
+E1O    Let v be the real node by which ei is incident to                           recursive call in C9. We recursively define the height of
+       v~+l.                                                                       a node to be O if it is a real node and one more than the
+   To prove that by using these procedures in the merge,                           maximum height of any node it encloses if it is a supernode.
+we maintain the connectivity y invariant, we would use in-
+duction to show the following two statements: The call                             Lemma        5.1 Steps    E7    and E8 of EXPANDPATH            are   eze-
+
+CONNECTTONETWORK(V, T) introduces edges in N; to                                   cuted    at most   once for    a given   tree T through   the   course   of
+
+connect the real node v to N;. The call EXPANDPATH (v, P)                          the   algorithm.
+
+introduces edges in the networks Nvi (for each supernode
+vi c P except the last) so that the edges of P are connected                       Proof:   Suppose we are about to begin the merging pro-
+up in N.                                                                           cess for a given timestep.     Through a series of calls
+                                                                                   to CONNECTTONETWORK,        we build paths P that con-
+                                                                                   nect up some trees’ networks.     The key observation is
+5      The         proof                                                           that for every such path P, constructed in step C2 of
+                                                                                   CONNECTTONETWORK, every node of P except the last
+To prove (2) of Subsection 3.1, we shall show that the cost                        was previously free. Moreover, since the edges of P are
+of the network design produced by the algorithm is small                           added to the network in step C3, such nodes are subse-
+relative to the number of cuts produced.                                           quently not free. Consequently, each node appears as a
+   At any point in the execution of the algorithm, the                             non-final node of a path P at most once during the course
+age of a tree is the number of timesteps the tree grew.                            of the algorithm.
+Thus the age of an active tree is the current number of                               To complete the proof of the lemma, we need only
+elapsed timesteps, while the age of an inactive tree is the                        add that a tree T for which Steps E7 and E8 of
+number of timesteps that had elapsed when the tree be-                             EXPANDPATH (v, P) are executed corresponds to a non-final
+came inactive. We denote the age of a tree T by age(T).                            node vi of the path P. ❑
+
+
+
+
+                                                                             141
+Lemma       5.2   The   connect-cost   of   a   tree   T   is    at     most    by one. So far, so good. Next, trees are merged. The addi-
+age(T).                                                                         tional cost incurred in merging TI, . . ., T. to form a tree T
+                                                                                is the cost of 2(T – 1) calls to CONNECTTONETWORK, each
+Proof: We prove it by induction on the height of the nodes                      at cost at most age(T) by Lemma 5.2. Hence the total cost
+on the path from v to NT. The statement trivially holds                         of T is                             P
+if all nodes have height O, because by Proposition 4.1, u is
+                                                                                                            2(T – l)age(T)               + ~     Cosi!(Ti)
+at distance age(Z’) from NT.
+                                                                                                                                           i=l
+    Assume that the statement is true for nodes of height at
+most 1. Let P be the path added in step C3, and let Vr be                       which, by the inductive       hypothesis,   is at at most
+P’s final node. By Proposition 4.1, P has at most age(T)
+                                                                                2( CP(T) – age(T)).   ❑
+                                                                                   Now we can bound the size of the network design output
+edges. Therefore, if v, is a real node, we are through.
+Otherwise, v, corresponds to an inactive tree T’. The proof                     by our algorithm. The size is just the sum, over all inactive
+for this case is illustrated in fig. 4. Let c be the cost                       trees T when the algorithm terminates, of the cost of T plus
+of the recursive call CONNECTTO NETWORK(V’, T’) in step                         the expand-cost of T. For any tree T whose node remains
+C9. By the inductive hypothesis, c is at most age(T’),                          free, the expand-cost is zero. Let us call a tree free if its
+since no node in T1 has height more than L Suppose UTwas                        corresponding supernode is free. Thus we have
+added to T after t timesteps. It follows that the number
+                                                                                size of network design
+of edges in P is age(T) – t. Moreover, age(T’) is at most
+t,since T’ was already inactive when v, was added to T.                             <   ~       Cost(T)             + ExpandCost(T)
+ Hence the total cost of the call to CONNECTTONETWORK
+which is 1P I + c, is at most age(T) – t + age(T’),   which in                      <       ~       Cost(T)+                  ~          (COSt(T)        +    EqxzndCOS~(T))
+turn is at most age(T).      ❑                                                          free T                            unfree T
+    Define the ezpand-cost     of a tree T as the cost of the
+                                                                                    <   2(~CP(T)                     –    ~         age(T))                                        (3)
+ two             calls            CONNECTTONETWORK(V, T)
+                                                                                                T                        free T
+ and CONNECTTONETWORK( tI’, T) in steps steps E7 and
+ E8. By Lemmas 5.1 and 5.2, the expand-cost of T is at                          where the last inequality follows from Lemma 5.3 and our
+ most 2.age(T).     Moreover, by the proof of Lemma 5.1, if                     remarks about expand-cost.
+ the node v corresponding to T remains forever free, then                          Since XT CP(T)     is the total number of cuts assigned by
+ these calls are never made, so the expand-cost of T is zero.                   the cut-packing algorithm, we have proved a version of (2)
+ We use ExpandCost(T)        to denote the expand-cost of T.                    with a factor of 2 instead of 2(1 – I/k). To get the smaller
+    When trees T1, . . . . T. merge, the network NT for the                     factor, we prove a lower bound on the second sum in (3).
+ resulting tree T is constructed by union-ing the net-                             For a tree T, let kT denote the number of sites that are
+ works for the Ti ‘s, and then making some calls to                             nodes of T. Define k; = ~{kT,          : T encloses T’}. Simi-
+ CONNECTTONETWORK. We recursively define the cost of                            larly, let CP*(T) = ~{ CP(T’)       : T encloses T’}.
+ T as the sum of the costs of the trees merged to form T,
+ plus the costs of the calls to CONNECTTONETWORK. Thus                          Lemma           5.4 For              any          tree     T,        age(T)        is    at    least
+
+ the cost of a tree T is the number of edges added to cre-                      CP*(T)/k;               .
+
+ ate N;, not including edges added in steps E7 and E8 of
+                                                                                Proof: The key observation is that for any tree T’, CP(T’)
+ EXPAND PATH.     We denote the cost of T by Cost(T).
+                                                                                is at most kTl times age(T’), since each of the k(T’) sites is
+     We will charge the cost of a tree against the number of
+                                                                                assigned a maximum of one cut per timestep until age(T’)
+ cuts assigned to the tree. Recall from the cut-packing algo-
+                                                                                timesteps. If T’ is enclosed by T, then age(T’)    is at most
+ rithm that in each timestep we grow each tree, and assign
+                                                                                age(T),  so we have
+ the corresponding level cut to the tree. Moreover, when
+ trees are rnerged~ their cuts are assigned to the resulting                    cp* (qI) =                  ~{c!p(g”) ;T enclosesT’}
+tree. We denote the number of cuts assigned to a tree by
+CP(T).                                                                                              <       ~{krl          : T encloses             T’]czge(T)      =   k~age(T)
+
+
+Lemma        5.3 After t timesteps   have elapsed,         the   cost    of a   ❑
+tree T    is at most 2CP(T)     – 2. age(T).                                       We use Lemma 5.4 to get our lower bound on ~{age(T)    :
+                                                                                T  free}. Let k“ = max{k~ : T free}. Then by Lemma 5.4,
+Proof: We shall prove this statement by induction on the                        for each free tree T, age(T) ~ CP* (T)/k”. Since each tree
+number t of elapsed timesteps. When t is O, the lemma                           is enclosed by some free tree, ~{CP* (2’) : T free} is the
+holds trivially. Assume that the statement holds for t.Dur-                     total number CP of cuts assigned.   Hence
+ing the t + 16t timestep, each active tree T, is grown by one
+level, so CP(T)    goes up by one, while its age also increases                                             ~{age(T)               : T free} >
+                                                                                                                                             — CP/k*                               (4)
+
+
+
+
+                                                                        142
+Substituting into (3) and replacing k“ by k, the total num-            symmetric difference with the active site sets of all the el-
+ber of sites, gives (2) and completes the proof of the theo-           ements of W. If the symmetric difference turns out to be
+rem.                                                                   empty, designate the tree being grown as inactive.
+                                                                          The number of operations in the above cut-packing al-
+                                                                       gorithm is proportional to the number of arcs, so the time
+6     Implementation                  issues                           required is O(m.a(m)), where m is the number of edges,
+                                                                       using Tarjan’s analysis of union-find [18].
+In this section, we touch on some of the issues arising in ob-            While the above cut-packing algorithm is progressing,
+taining algorithms for the unweighed and weighted cases.               it should construct two data structures to enable the net-
+Implementation    of the unweighed algorithm uses union-               work design to take place. First, the algorithm builds a
+find data structures. Implementation     of the weighted al-            enclose tree to record the enclosing relation among nodes
+gorithm is similar, but replaces one of the union-find data            and trees. The enclose tree contains one leaf for every real
+structures with a mergeable heap data structure.                       node and one internal vertex for every supernode and ev-
+                                                                       ery tree, such that v is an ancestor of w if and only if u
+                                                                       encloses w. Second, every time the cut-packing algorithm
+6.1     The    unweighed          case                                 grows a tree, the top-level nodes newly added to the tree
+                                                                       are assigned arc pointers to the arcs by which they were
+First we describe the implementation of the cut-packing al-
+                                                                       reached. Thus by using these pointers, one can traverse a
+gorithm, then we show how data structures created during
+                                                                       shortest path from a node in a tree to a site in the same
+cut-packing can be used for network design.
+                                                                       tree.
+   For purposes of the algorithm, it is convenient to copy                These two data structures enable the first two steps of
+the input graph, replacing each edge with two oppositely               CONNECTTONETWORK(V, 2’) to be implemented so that
+directed arcs. We will be removing arcs from the copy as               the total time required for network design is O(m.a(m)).
+the algorithm progresses. A top-level tree or node is one              We add some cryptic remarks in justification of this claim,
+not contained in any tree. It is also convenient to repre-             and postpone a careful description to the final paper.
+sent toplevel real nodes, top-level supernodes, and active             Given a real node v and a tree T enclosing v, one can trace
+trees uniformly, so each is considered as if it were a supern-         up the enclose tree to find the node V. in T that encloses v.
+ode. Thus for each we maintain an arc set consisting of its            Namely, V. is the child of T that is an ancestor of v. During
+outgoing arcs, a node set consisting of all its enclosed real          the trace, one determines all the intermediate ancestors of
+nodes, and an active site set consisting of all its enclosed           v; this sequence of supernodes is stored temporarily with
+active sites. Initially, the only nodes are real nodes. A              V. to enable EXPANDPATH       to recurse. Once vo has been
+real node’s arc set consists of its outgoing arcs, its node set        found, its arc pointer can be used to find the first arc in
+consists of itself, and its site either consists of itself, if it is   a shortest path PO from vo to a site. That arc points to
+a site, or is empty otherwise. Since we maintain these sets             a real node v’ on which this procedure is repeated, and so
+only for toplevel nodes or trees, and since every real node            on.
+is in exactly one top-level node or tree, these sets remain
+disjoint throughout the algorithm.
+                                                            6.2     The weighted      case
+   A timestep consists of growing each active tree (a tree
+with a nonempty active site set) by one step. We consider The basic algorithm to handle the weighted case is essen-
+the active trees in any order. Growing a tree consists of tially the same as that for the unweighed case, except
+the following substeps. Scan the tree’s outgoing arcs in that Dijkstra’s shortest-path algorithm is used in place of
+order to find the set U of real nodes at distance 1 from breadth-first search. It is useful to imagine that in the
+the tree, and remove these scanned arcs from the graph. cut-packing algorithm for the weighted case, each growing
+Next, use the FXND operation on the nodes in U to find tree continuously “consumes” all its outgoing arcs at the
+the set W of toplevel nodes or trees containing nodes of same rate until some edge is completely consumed, at which
+U.   That is, if U contains some real node cent ained in time things must be updated. The implementation can be
+either a supernode or active tree, then W will contain that modified according y by substituting mergeable heaps, e.g.
+supernode or active tree. This substep includes the case binomial trees, for the arc sets. Note that, in constrast to
+where the tree being grown has collided with another tree Dijkstra’s algorithm, the heaps contains arcs rather that
+grown previously during the same timestep.                  nodes. The key associated with an arc is the amount of
+   Next, augment the node set associated with the tree be- the corresponding edge yet to be consumed, plUS the cur-
+ing grown by the union of the node sets of elements of W.   rent timestep.
+Then construct the arc set of the active tree by taking the    We must make one additional modification.   Because an
+union of the arc sets of elements of W. Finally, modify     edge can be consumed from both ends at the same time
+the active site set of the tree being grown by taking the (usually from different trees), we must partition a tree’s
+
+
+
+
+                                                               1[+3
+outgoing arcs into two heaps, one for the arcs whose edges                                       [5]   M. X. Goemans, and D. J. Bertsimas, “Survivable Net-
+are being consumed from only one end, and one for the                                                  works, Linear Programming Relaxations and the Parsimo-
+arcs whose edges are being consumed from both ends. The                                                nious Propert y“, OR 216-90, Center for Operations Re-
+latter arcs are essentially being consumed twice as fast, so                                           search, MIT (1990).
+in determining the next outgoing edge to be completely                                           [6]   A. Jain, ‘Probabtistic analysis of an LP relaxation bound
+consumed, we compare the minimum key in the first heap                                                 for the Steiner problem in networks”, Networks,     vol. f 9
+
+to half the minimum key in the second heap. To maintain                                                (1989),       pp. 793-801.
+
+these two heaps, when some tree begins to consume an                                             [7]   R.     M.     Karp,          “Reducibility               among           combinatorial                  prob-
+arc, it checks whether the oppositely oriented arc is already                                          lems”,      in R.      E, Miller        and J. W. Thatcher                        (eds.),       Complex-
+
+being consumed. If so, it notifies the tree consuming that                                             ity    of   Computer            Computations.                  Plenum         Press,           New      York
+
+arc, and the arcs are moved into the appropriate heaps.                                                (1972)       pp. 85-103.
+
+                                                                                                 [8]   P. N. Klein,           A. Agrawa.1,           R. Ravi,             and S. Rae,                 “Approxi-
+                                                                                                       mation        through        multicommodit                    y flow”,     31st Annual               Symp.
+                                                                                                       on Foundations                 of Comp.           Sci.,       (1990),      pp. 726-737.
+7        Remarks
+                                                                                                 [9]   L. Kou,        G. Markowsky,               and L. Berman,                    “A fast algorithm
+                                                                                                       for    Steiner        trees”,      Acts       Informatica,                 vol.     15 (1981),            pp.
+We described the algorithm above for integral edge weights.
+                                                                                                       141-145.
+The algorithm extends naturally to include node weights.
+                                                                                                [10]   L. L6vasz,           “An     algorithmic            theory        of numbers,               graphs        and
+When node and edge weights are allowed, a set of nodes
+                                                                                                       convexity”.           SIAM,       PhJadelphia                  (1986).
+and edges separating a requirement forma requirement cut.
+An assignment of nonnegative rationals to such cuts con-                                        [11]   M.      Minoux,            “Network          synthesis             and      optimum              network
+
+st it ut es a “fractional” cut-packing; a c-packing in this case                                       design       problems:           models,           solution           methods           and      applica-
+                                                                                                       tions”,       Networks,          vol. 19 (1989)                 pp. 313-360.
+is a packing in which the sum of the rationals assigned
+to any edge or node is at most its cost. The notion of                                          [12]   J.     Plesnik,        “A       bound       for         the     Steiner          tree       problem         in
+
+fractional cut-packing lets us extend our results to rational                                          graphs”,           Math.     Slouaca,        vol.       31 (1981)          pp. 155-163.
+
+node and edge weights. Moreover, by reducing the prob-                                          [13]   V. J. Rayward-Smith,                    “The        computation              of nearly           minimal
+lem in a hypergraph to the problem in a graph with node                                                Steiner       trees in graphs”,            Int.         J. Math.         Educ.      Sci.       Tech.,     vol.
+
+and edge weights, we can obtain similar guarantees for the                                             14 (1983), pp. 15-23.
+generalized Steiner problem in hypergraphs.                                                     [14]   A. Segev, “The node-weighted Steiner tree problem”, Net-
+  It remains an open question if finding a maximum 2c-                                                 works, vol. 17 (1987) pp. 1-17.
+packing of cuts in a graph is NP-complete. Obtaining an                                         [15]   G. F. Sullivan, “Approximation algorithms for Steiner tree
+approximation   algorithm for the directed version of the                                              problems”, Tech. Rep. 249, Dept. of Comp. Sci., Yale Univ.
+generalized Steiner problem remains an important open                                                  (1982).
+problem.                                                                                        [16]   H. Suzuki, T. Akama, and T. Nishizeki, “Finding Steiner
+                                                                                                       forests in planar graphs”, Ist Ann. ACM-SIAM   Symp. on
+                                                                                                       Disc.       Alg.     (1990),     pp. 444-453:
+
+Acknowledgements                                                                                [17]   H. Takahashi,               and A. Matsuyama,                         “ An        approximate              so-
+                                                                                                       lution      for the Steiner             problem           in graphs”,             Math.         Japonica,
+
+Thanks to Marshall                  Berne, Michel Goemans,                   Arie   Segev,
+                                                                                                       vol.     24 (1980) pp. 573-577.
+and Richard Wong.                                                                               [18]   R. E. Tarjan, “Efficiency of a good but not linear set union
+                                                                                                       algorithm”, J. Assoc. Comput.    Mach.,  vol. 22 (1975), pp.
+                                                                                                       215-225.
+References                                                                                      [19]   L. G. Valiant,                “The complexity of enumeration and re-
+                                                                                                       liability          problems”,          Siam        J.     Comput.,           vol.       8 (1979),         pp.
+ [1]   Y. P. Arreja, ‘An integer linear programming approach to                                        410-421.
+       the Steiner        problem         in grapha”,       N;tworkw,     ;ol.   10 (1980)      [20]   Pawel Winter,   “Steiner Problem                                in Networks              : A Survey”,
+       167-178.                                                                                        B~~ .S5 (1985), pp. 485-496.
+ [2] C. J. Colbourn,               “Edge-packings          of graphs    and network       re-   [21]   Pawel        Winter,         “Generalized               Steiner       Problem            in Outerpla-
+       liability”,      J. Discrete        Math.,   vol.    72 (1988)     pp. 49-61.                   nar graphs”,,               Networks       (1987),            pp. 129-167.
+
+ [3] J. Edmonds,                                                                                [22]   R. T. Wong,                “Worst-case         analysis           of network             design         prob-
+                  and E. L. Johnson,    “Matching,  Euler tours
+     and the Chinese postman”,    Math.   Programming,    vol. 5                                       lem heuristics”,                SIAM      J. Atg.             Disc.      Math.,         vol.    1 (1980),
+                                                                                                       pp.      51-63.
+       (1973)        pp. 88-124.
+                                                                                                [23]   R. T. Wong,                “A dual ascent approach                       for Steiner           tree prob-
+ [4] C. E1-Arbl,          “One      heuristique     pour     le problem      de l’arbre   de
+                                                                                                       lems on a directed                graph”,          Math.         Program.,           vol.      28, (1984)
+       Steiner”,       R. A.I.R.     O.    Opemtions        Research,     vol.   12 (1978),
+                                                                                                       pp.      271-287.
+       pp. 207-212.
+
+
+
+
+                                                                                          144
+

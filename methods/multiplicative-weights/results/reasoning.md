@@ -117,10 +117,12 @@ If I must commit to a single 0/1 prediction each round, run weighted majority: p
 more weight, and on a wrong prediction scale the erring experts by `(1-η)`. Track the same `Φ = Σ w_i`.
 Each time *I* err, the experts on the wrong side held at least half the total weight, and they all get
 multiplied by `(1-η)`, so `Φ` drops by at least a factor `(1/2 + (1-η)/2) = (1 - η/2)`. After `M`
-mistakes, `Φ^(T+1) ≤ n(1-η/2)^M`. And `Φ ≥ w_i = (1-η)^{m_i}` for the best expert. Taking logs with
-`-ln(1-η) ≤ η + η²` gives `M ≤ 2(1+η) m_i + 2 ln(n)/η`. The factor *2* is the scar: a deterministic
-predictor can be forced into twice the best expert's mistakes (the adversary splits the weight near
-50/50 and makes my majority side wrong). Randomizing dissolves it, because my expected cost
+mistakes, `Φ^(T+1) ≤ n(1-η/2)^M`. And `Φ ≥ w_i = (1-η)^{m_i}` for any fixed expert. Taking logs gives
+`M ln(1/(1-η/2)) ≤ ln n + m_i ln(1/(1-η))`. Since `ln(1/(1-η/2)) ≥ η/2` and
+`ln(1/(1-η)) ≤ η + η²` for `η ≤ 1/2`, this becomes
+`M ≤ 2(1+η) m_i + 2 ln(n)/η`. The factor *2* is the scar: a deterministic predictor can be forced into
+twice the best expert's mistakes (the adversary splits the weight near 50/50 and makes my majority side
+wrong). Randomizing dissolves it, because my expected cost
 `m^(t)·p^(t)` is *linear* in `p` — that linearity is exactly what let me write `Σ w_i m_i = Φ(m·p)` in
 the potential step. So randomization isn't a flourish; it's what removes the factor of 2 and makes the
 clean bound possible.
@@ -147,26 +149,30 @@ for which `A(p*, j) ≤ λ*` for *every* column `j`, so `(1/T) Σ_t A(p*, j^(t))
 `λ* ≤ (1/T) Σ_t A(p^(t), j^(t)) ≤ λ* + η + (ln n)/(ηT)`.
 
 Choosing `η = ε/2` and `T = ⌈4 ln(n)/ε²⌉` makes the slack at most `ε`. So the time-averaged value of my
-play is within `ε` of `λ*` — using only `O(ln(n)/ε²)` calls to the best-response oracle. And the
-strategies themselves are recovered: my average row distribution `p̄ = (1/T) Σ_t p^(t)` is an
-`ε`-optimal minimizer (some round's `p^(t)` achieves value `≤ λ* + ε` against its best response), and
-the empirical frequencies of the columns `j^(t)` the oracle played form an `ε`-optimal maximizer. The
-two no-regret players' time-averaged play converges to an equilibrium — which is a *constructive,
-algorithmic* proof that `min_p max ≤ max_q min`, i.e. that the value is well-defined and minimax holds.
-The same machinery I built for prediction just produced von Neumann's theorem with an iteration count.
+play is within `ε` of `λ*` — using only `O(ln(n)/ε²)` calls to the best-response oracle. The strategies
+themselves come out of the same averages. For the row player,
+`max_j A(p̄,j) = max_j A((1/T)Σ_t p^(t),j) ≤ (1/T)Σ_t max_j A(p^(t),j) ≤ λ* + ε`, so
+`p̄ = (1/T)Σ_t p^(t)` is an `ε`-optimal minimizer. For the column player, use the regret inequality
+against each pure row `i`: the empirical distribution of the played columns satisfies
+`A(i,q̄) ≥ λ* - ε` for every row `i`, so `q̄` is an `ε`-optimal maximizer. The two no-regret players'
+time-averaged play converges to an equilibrium — which is a *constructive, algorithmic* proof that
+`min_p max ≤ max_q min`, i.e. that the value is well-defined and minimax holds. The same machinery I
+built for prediction just produced von Neumann's theorem with an iteration count.
 This is much sharper than fictitious play (Brown, 1951), which plays a *hard* best response and lacks a
 quantitative rate; here the soft, weight-proportional play is exactly what the regret bound needs.
 
 If a game is a repeated decision problem, so is a linear program — minimax is LP duality in disguise.
 Let me push the game view onto feasibility. I want to know whether there's an `x` in some easy convex
 set `P` (say nonnegativity and a budget) with `A x ≥ b`, the `m` hard constraints. Make each of the `m`
-*constraints* a decision. Now here's the part that looks backwards until you see it: I'll set the cost
-of constraint `i` at a point `x` to be `(1/ρ)(A_i x - b_i)` — *how much the constraint is satisfied*, not
-violated, normalized by the width `ρ = max_i |A_i x - b_i|` so it lands in `[-1,1]`. Why reward
-satisfaction? Because my update *lowers* weight on low-cost decisions. A constraint that's already
-comfortably satisfied gets low weight; the weight piles onto the constraints that are currently
-violated — exactly the hard ones I should be focusing on. The weighting `p^(t)` over constraints thus
-points at the binding ones.
+*constraints* a decision. Now here's the part that looks backwards until the sign is right: I'll set the
+cost of constraint `i` at a point `x` to be `(1/ρ)(A_i x - b_i)` — how much the constraint is satisfied,
+not how much it is violated, normalized by the width `ρ = max_i |A_i x - b_i|` so it lands in `[-1,1]`.
+Why use satisfaction as the cost? Because the cost update multiplies by `1 - η cost`. A comfortably
+satisfied constraint has positive cost and gets pushed down; a violated constraint has negative cost and
+gets multiplied upward. The weighting `p^(t)` over constraints therefore drifts toward the binding and
+violated constraints, exactly where the next point has to work harder. If I write code in gain form
+`w_i ← w_i(1 + η reward_i)`, I just flip the sign and use `reward_i = b_i - A_i x`; it is the same
+pressure on the same constraints.
 
 What does the column player / oracle do now? Given the weighting `p^(t)` over constraints, I ask for a
 single `x ∈ P` satisfying the *one averaged constraint* `p^(t)^T A x ≥ p^(t)^T b`. That's a vastly
@@ -178,20 +184,24 @@ assume the oracle always succeeds, returning `x^(t)`. Then by construction the e
 is `m^(t)·p^(t) = (1/ρ)(p^(t)^T A x^(t) - p^(t)^T b) ≥ 0` — the oracle's guarantee makes my per-round
 cost nonnegative.
 
-Now feed this into the regret bound for a tight constraint `i` (one that ends up binding). The bound
-says `Σ_t m^(t)·p^(t) ≤ Σ_t m_i^(t) + η Σ_t |m_i^(t)| + (ln m)/η`. The left side is `≥ 0` every round.
-The right side, written out with `m_i^(t) = (1/ρ)(A_i x^(t) - b_i)`, after dividing by `T`, multiplying
-by `ρ`, and letting `x̄ = (1/T) Σ_t x^(t)` (which is in `P` because `P` is convex):
-`0 ≤ (1+η)(A_i x̄ - b_i) + 2ηℓ + ρ ln(m)/(ηT)`, where `ℓ` is the bound on how *negative* the
-normalized cost can get on the constrained subset (separating the lower width `ℓ` from the upper width
-`ρ` tightens this). Choose `η = ε/(4ℓ)` and `T = ⌈8 ℓ ρ ln(m)/ε²⌉`, and the slack collapses to:
+Now feed this into the regret bound for a fixed constraint `i`. The bound says
+`Σ_t m^(t)·p^(t) ≤ Σ_t m_i^(t) + η Σ_t |m_i^(t)| + (ln m)/η`, and the left side is nonnegative because the
+oracle satisfies the averaged constraint every round. Substitute
+`m_i^(t) = (1/ρ)(A_i x^(t) - b_i)`:
+`0 ≤ Σ_t (A_i x^(t) - b_i)/ρ + ηΣ_t |A_i x^(t)-b_i|/ρ + (ln m)/η`. The absolute-value term is the only
+place the width bites. If constraint `i` is in the side where negative violation is bounded by `ℓ`, then
+on rounds with `A_i x^(t) - b_i < 0` the absolute value is at most `ℓ`, while on nonnegative rounds I can
+fold `η(A_i x^(t)-b_i)` into the main sum. That gives
+`0 ≤ (1+η)Σ_t (A_i x^(t)-b_i)/ρ + 2ηℓT/ρ + (ln m)/η`. Divide by `T`, multiply by `ρ`, and let
+`x̄ = (1/T)Σ_t x^(t)`, which stays in `P` by convexity:
+`0 ≤ (1+η)(A_i x̄ - b_i) + 2ηℓ + ρ ln(m)/(ηT)`. Choose `η = ε/(4ℓ)` and
+`T = ⌈8ℓρ ln(m)/ε²⌉`; then `2ηℓ + ρ ln(m)/(ηT) ≤ ε`, so
 `A_i x̄ ≥ b_i - ε`. The *average* of the oracle's points is `ε`-approximately feasible, in
-`O(ℓ ρ log(m)/ε²)` oracle calls. This is the Plotkin–Shmoys–Tardos (1995) Lagrangian framework, but now
-it's plainly the *same* multiplicative-weights rule with constraints as experts — and the width `ρ`,
-which entered as the cost-normalizer, is exactly what blows up the iteration count by `ρ²`. That tells
-me where to optimize: shrink the width. (For routing problems one reroutes only as much flow as the
-minimum-capacity edge allows, capping the per-edge cost at 1 — Garg & Könemann's width reduction — and
-the `ρ²` factor disappears.)
+`O(ℓρ log(m)/ε²)` oracle calls. This is the Plotkin–Shmoys–Tardos (1995) Lagrangian framework, but now
+it's plainly the same reweighting rule with constraints as experts — and when `ℓ = ρ`, the width enters
+as `ρ²`. That tells me where to optimize: shrink the width. For routing problems I can reroute only as
+much flow as the minimum-capacity edge allows, so each edge's per-round load is capped at 1; that is the
+Garg–Könemann width reduction.
 
 The `η = 1` corner is worth a look because the rule degenerates into something I recognize. Take Set
 Cover: universe of `n` elements, a family of sets, want the fewest sets covering everything. Make
@@ -215,121 +225,143 @@ combine many such weak classifiers into one that's nearly perfect on `S`. Make t
 decisions. Each round I present my current distribution `p^(t)` over examples to the weak learner and
 get back `h^(t)`. Encode the cost of example `x` as `m_x^(t) = 1 - |h^(t)(x) - c(x)|` — `1` if `h^(t)`
 labels `x` correctly, `0` if it errs. Since `h^(t)` has error `≤ 1/2 - γ` under `p^(t)`, the cost I see
-is `m^(t)·p^(t) ≥ 1/2 + γ` — comfortably above half every round. And because my update *lowers* weight
-on low-cost decisions, the *misclassified* examples (cost 0) keep their weight and the correctly-classified
+is `m^(t)·p^(t) ≥ 1/2 + γ` — comfortably above half every round. And because my update lowers weight
+on high-cost decisions, the *misclassified* examples (cost 0) keep their weight and the correctly-classified
 ones shrink: the distribution drifts toward exactly the examples the ensemble keeps getting wrong, so
 the next weak classifier is forced to attend to them. The final classifier is the majority vote of
 `h^(1), …, h^(T)`. Why does the vote work? An example `x` that the majority gets *wrong* must have been
 misclassified by at least half the `h^(t)`, so its cumulative cost is `Σ_t m_x^(t) ≤ T/2`. But the
-regret bound — here in the sharper restricted-distribution form, whose penalty term is tied to the
-algorithm's own play — says the cumulative cost of *every* example is at least roughly the algorithm's
-total `(1/2 + γ)T` minus a `(ln(N/|E|))/η` slack. Setting `η = γ` and running
-`T = ⌈(2/γ²) ln(1/ε)⌉` rounds forces the fraction of training examples the majority vote gets wrong
-down to `≤ ε`. So the very same reweighting rule, with examples as experts and "did the weak learner
-get me right" as the cost, *is* AdaBoost (Freund & Schapire, 1997).
+restricted-distribution bound makes this precise. Let `E` be the examples the final majority vote gets
+wrong, and compare against the uniform distribution on `E`. The algorithm's total expected cost is at
+least `(1/2 + γ)T`. The comparator's average cost is at most `T/2`, because every example in `E` is
+correct on at most half the rounds. The restricted-distribution bound gives
+`(1/2 + γ)T ≤ (1+η)T/2 + ln(N/|E|)/η`. With `η = γ`, this says
+`γT/2 ≤ ln(N/|E|)/γ`, hence `|E|/N ≤ exp(-γ²T/2)`. Running
+`T = ⌈(2/γ²) ln(1/ε)⌉` rounds forces the fraction of training examples the majority vote gets wrong down
+to `≤ ε`. So the very same reweighting rule, with examples as experts and "did the weak learner get me
+right" as the cost, is AdaBoost (Freund & Schapire, 1997).
 
-So the picture closes. One rule — keep a weight per decision, multiply it by `(1 - η · cost)`, draw in
-proportion to weight — analyzed by one potential `Φ = Σ w_i` squeezed between `n · e^{-η Σ m·p}` and the
-best decision's surviving weight, yields a `2√(T ln n)` regret bound; and by swapping in a
-problem-specific cost encoding and a best-response oracle it becomes a constructive minimax solver, a
-packing/covering LP solver with width-controlled iterations, greedy set cover at `η = 1`, and AdaBoost.
-Let me write the rule down as code I can actually run.
+So the chain is clear now. Committing before seeing adversarial costs rules out chasing the best decision
+per round, so I aim for the best fixed decision; majority and uniform-random both fail, so I reweight;
+additive reweighting can't make a chronic loser negligible, so I multiply, making weights products that
+separate geometrically; the sum of weights `Φ` then satisfies
+`Φ^(t+1) = Φ^(t)(1 - η m^(t)·p^(t)) ≤ Φ^(t)e^{-η m·p}` from above and the single-decision product lower
+bound from below, and squeezing the two gives regret `≤ ηT + (ln n)/η`, minimized at
+`η = √(ln n/T)` to `2√(T ln n)`; randomizing is what makes cost linear in `p` and removes the
+deterministic factor of 2; and because the bound never used anything except `[-1,1]` costs, a
+problem-specific oracle turns the same rule into a constructive minimax solver, a width-controlled LP
+solver, greedy set cover at `η = 1`, and boosting. The code I end up with uses the gain convention,
+because then the LP reward `b_i - A_i x` is positive exactly on violated constraints.
 
 ```python
 import random
+import numpy
 
-# draw an index proportional to the given nonnegative weights:
-# this realizes p_i = w_i / sum(w), the distribution we sample our decision from.
+
+# Draw an index proportional to the given nonnegative weights.
 def draw(weights):
     choice = random.uniform(0, sum(weights))
     choiceIndex = 0
     for weight in weights:
-        choice -= weight                 # walk the cumulative mass
+        choice -= weight
         if choice <= 0:
-            return choiceIndex           # land in the i-th bucket w.p. w_i / sum(w)
+            return choiceIndex
         choiceIndex += 1
 
-# The multiplicative-weights update algorithm, in gain form.
-# Each round: sample a decision from p^(t), observe the outcome the adversary/world
-# reveals, then multiply every weight by (1 + eta * gain_i). Penalizing cost is the
-# same rule run on -gain; here we phrase it as collecting gain.
+
+# Multiplicative weights in gain form:
+# w_i <- w_i * (1 + learningRate * reward_i).
 def MWUA(objects, observeOutcome, reward, learningRate, numRounds):
-    weights = [1] * len(objects)         # Phi^(1) = n: maximum-entropy start, total ignorance
+    weights = [1] * len(objects)
     cumulativeReward = 0
+    outcomes = []
+
     for t in range(numRounds):
-        chosenObjectIndex = draw(weights)            # draw i ~ p^(t) = w^(t)/Phi^(t)
+        assert all(w >= 0 for w in weights)
+        chosenObjectIndex = draw(weights)
         chosenObject = objects[chosenObjectIndex]
-        outcome = observeOutcome(t, weights, chosenObject)   # adversary reveals the round
-        thisRoundReward = reward(chosenObject, outcome)
-        cumulativeReward += thisRoundReward
+
+        outcome = observeOutcome(t, weights, chosenObject)
+        outcomes.append(outcome)
+        cumulativeReward += reward(chosenObject, outcome)
+
         for i in range(len(weights)):
-            # w_i <- w_i * (1 + eta * gain_i): geometric reward for decisions that pay off,
-            # geometric decay for those that don't -- the multiplicative, not additive, nudge.
             weights[i] *= (1 + learningRate * reward(objects[i], outcome))
-    return weights
-```
 
-And the linear-program instantiation, where the "decisions" are the `m` constraints and the oracle
-plays the role of the adversary's best response:
+    return weights, cumulativeReward, outcomes
 
-```python
-import numpy
 
 class InfeasibleException(Exception):
     pass
 
-# ORACLE for min c.x s.t. Ax >= b, x >= 0, given a guessed optimal value of c.x.
-# Given a weighting over constraints, return a single point x in {x>=0, c.x = optimalValue}
-# satisfying the averaged constraint  (A^T w).x >= w.b ; if none exists, the weighting w is
-# a certificate of infeasibility for this guessed value.
+
+# Create an oracle for the one-constraint problem:
+# find nonnegative x with c.dot(x) = optimalValue and weightedVector.dot(x) >= weightedThreshold.
 def makeOracle(c, optimalValue):
     n = len(c)
+
     def oracle(weightedVector, weightedThreshold):
         def quantity(i):
             return weightedVector[i] * optimalValue / c[i] if c[i] > 0 else -1
-        biggest = max(range(n), key=quantity)        # put all budget on the best coordinate
+
+        biggest = max(range(n), key=quantity)
         if quantity(biggest) < weightedThreshold:
             raise InfeasibleException
+
         return numpy.array([optimalValue / c[i] if i == biggest else 0 for i in range(n)])
+
     return oracle
 
+
+# Solve min c.dot(x) subject to Ax >= b, x >= 0, given a guessed objective value.
 def solveGivenOptimalValue(A, b, linearObjective, optimalValue, learningRate=0.1):
     m, n = A.shape
     oracle = makeOracle(linearObjective, optimalValue)
-    # reward of constraint i at point x is b_i - A_i.x : a violated constraint (A_i.x < b_i)
-    # yields positive reward and keeps its weight, so weight concentrates on the hard ones.
-    def reward(i, x):
-        return b[i] - numpy.dot(A[i], x)
+
+    def reward(i, specialVector):
+        constraint = A[i]
+        threshold = b[i]
+        return threshold - numpy.dot(constraint, specialVector)
+
     def observeOutcome(_, weights, __):
         weights = numpy.array(weights)
-        return oracle(A.transpose().dot(weights), weights.dot(b))   # solve the averaged constraint
-    numRounds = 1000
-    weights = MWUA(range(m), observeOutcome, reward, learningRate, numRounds)
-    # collect the oracle's points and average them: x_bar = (1/T) sum_t x^(t) is feasible by convexity
-    # (re-run capturing outcomes; the averaged point is the eps-approximately feasible solution)
-    return weights
+        weightedVector = A.transpose().dot(weights)
+        weightedThreshold = weights.dot(b)
+        return oracle(weightedVector, weightedThreshold)
 
-# Reduce optimization to feasibility by binary-searching the optimal value of c.x.
+    numRounds = 1000
+    weights, cumulativeReward, outcomes = MWUA(
+        range(m), observeOutcome, reward, learningRate, numRounds
+    )
+    return sum(outcomes) / numRounds
+
+
+# Reduce optimization to feasibility by binary-searching the objective value.
 def solve(A, b, linearObjective, maxRange=1000):
     optRange = [0, maxRange]
+    result = None
+
     while optRange[1] - optRange[0] > 1e-8:
         proposedOpt = sum(optRange) / 2
-        learningRate = min(1 / max(2 * proposedOpt * c for c in linearObjective), 0.1)
+        learningRate = 1 / max(2 * proposedOpt * ci for ci in linearObjective)
+        learningRate = min(learningRate, 0.1)
+
         try:
             result = solveGivenOptimalValue(A, b, linearObjective, proposedOpt, learningRate)
-            optRange[1] = proposedOpt          # feasible: lower the target
+            optRange[1] = proposedOpt
         except InfeasibleException:
-            optRange[0] = proposedOpt          # infeasible: raise the target
-    return result
-```
+            optRange[0] = proposedOpt
 
-The causal chain, start to end: committing before seeing adversarial costs rules out chasing the best
-decision per round, so I aim for the best *fixed* decision; majority and uniform-random both fail, so I
-reweight; additive reweighting can't make a chronic loser negligible, so I multiply, making the weight
-a product `(1-η)^{#mistakes}` that decays geometrically; the sum of weights `Φ` then satisfies
-`Φ^(t+1) = Φ^(t)(1 - η m^(t)·p^(t)) ≤ Φ^(t) e^{-η m·p}` from above and `Φ ≥ (1-η)^{Σ m_i}` from below,
-and squeezing the two gives regret `≤ ηT + (ln n)/η`, minimized at `η = √(ln n / T)` to `2√(T ln n)`;
-randomizing (drawing `i ∼ p`) is what makes the cost linear in `p` and removes the deterministic factor
-of 2; and since the bound never restricted the costs beyond `[-1,1]`, plugging in a best-response oracle
-turns the rule into a constructive minimax solver, a width-`ρ` packing/covering LP solver, greedy set
-cover at `η = 1`, and AdaBoost — all one update rule, one potential.
+    return result
+
+
+if __name__ == "__main__":
+    A = numpy.array([[1, 2, 3], [0, 4, 2]])
+    b = numpy.array([5, 6])
+    c = numpy.array([1, 2, 1])
+
+    x = solve(A, b, c)
+    print(x)
+    print(c.dot(x))
+    print(A.dot(x) - b)
+```

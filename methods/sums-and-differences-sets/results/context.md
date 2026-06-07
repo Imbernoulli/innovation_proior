@@ -1,5 +1,3 @@
-# Context: sums versus differences of a finite set of integers
-
 ## Research question
 
 Take a finite set of integers $A$. Form its **sumset** and **difference set**
@@ -18,7 +16,7 @@ Write $[a,b]$ for the integer interval $\{a,a+1,\dots,b\}$. For a set $A$ of $n$
 
 Two structural facts frame everything.
 
-**Differences come in $\pm$ pairs; the difference set is symmetric about $0$.** If $c\in A-A$ then $-c=( -1)\cdot c\in A-A$ as well, because $c=a-a'$ forces $-c=a'-a$. Equivalently, if $c\notin A-A$ then $-c\notin A-A$. So $0\in A-A$ for nonempty $A$, and the remaining elements occur in symmetric pairs, making $|A-A|$ always odd. **Sums have no such forced symmetry:** a value $k$ can be the unique missing element of $A+A$ near one end without anything being forced at the other end. So the *missing* sums and the *missing* differences obey different bookkeeping, and that bookkeeping — not the raw pair count — is where the contest is actually decided.
+**Differences come in $\pm$ pairs; the difference set is symmetric about $0$.** If $c\in A-A$ then $-c\in A-A$ as well, because $c=a-a'$ forces $-c=a'-a$. Equivalently, if $c\notin A-A$ then $-c\notin A-A$. So $0\in A-A$ for nonempty $A$, and the remaining elements occur in symmetric pairs, making $|A-A|$ always odd. **Sums have no such forced symmetry:** a value $k$ can be the unique missing element of $A+A$ near one end without anything being forced at the other end. So the *missing* sums and the *missing* differences obey different bookkeeping, and that bookkeeping — not the raw pair count — is where the contest is actually decided.
 
 **Symmetric sets are exactly balanced.** Call $A$ symmetric (with respect to $a^*$) if $A=a^*-A$. Then
 $$A+A=A+(a^*-A)=a^*+(A-A),$$
@@ -26,7 +24,7 @@ so $A+A$ is a translate of $A-A$ and $|A+A|=|A-A|$. Any arithmetic progression $
 
 **The commutativity heuristic, made quantitative.** For a uniformly random subset $S$ of $\{0,\dots,n-1\}$ (each element included independently with probability $1/2$, so $|S|\approx n/2$), a fixed target value $k$ in the *middle* of the possible range has on the order of $n/4$ representations as a sum of two elements of $S$, and similarly many as a difference. With that many independent chances, $k$ is present with overwhelming probability. The only places where a value can plausibly be *missing* are the **fringes**: $k$ near $0$ or near $2(n-1)$ for sums (few representations there), and $|k|$ near $n-1$ for differences. So the size of $S+S$ and $S-S$ is governed almost entirely by the few elements of $S$ close to $0$ and close to $n-1$; the bulk of $S$ is essentially irrelevant to the cardinalities. This is a *diagnostic observation about random subsets*, independent of any construction.
 
-**Known examples.** Sum-dominant sets exist and were found by hand in the 1960s–70s. Conway is credited with $\{0,2,3,4,7,11,12,14\}$; Marica (1969) gave $\{0,1,2,4,7,8,12,14,15\}$; Freiman and Pigarev (1973) gave a $17$-element example. Ruzsa established existence by probabilistic arguments. These were isolated; the field lacked structured infinite families and a count of how common such sets are.
+**Early examples.** Sum-dominant sets exist and were found by hand in the 1960s–70s. Conway is credited with $\{0,2,3,4,7,11,12,14\}$; Marica (1969) gave $\{0,1,2,4,7,8,12,14,15\}$; Freiman and Pigarev (1973) gave a $17$-element example. Ruzsa established existence by probabilistic arguments. These were isolated; the field lacked structured infinite families and a count of how common such sets are.
 
 ## Baselines
 
@@ -49,61 +47,31 @@ The natural objects and yardsticks, all predating any construction:
 
 ## Code framework
 
-A bare harness for the invariants and the random / fringe-controlled sampling, with empty slots where the constructions will go.
+The fixed primitives are the objects already in hand before any construction is
+attempted. A candidate is a finite set of integers $A$; from it one forms the
+sumset $A+A$ and the difference set $A-A$, reads off their cardinalities
+$|A+A|$ and $|A-A|$, and records the signed imbalance $|A+A|-|A-A|$, with a
+positive value flagging a sum-dominant set and a zero value the balanced case.
+The commutativity intuition — that an unordered pair contributes two differences
+but a single sum, so differences usually outnumber sums — is the heuristic these
+invariants are meant to overturn, and the symmetric (arithmetic-progression-like)
+sets supply the balanced reference point that a construction must break away
+from. Two combinatorial manoeuvres are available as construction tools: base/digit
+separation, in which elements are spread across well-separated digit positions of
+a fixed base so that sums and differences never carry between positions and the
+component cardinalities multiply; and disjoint-copy combination, in which shifted
+copies of a seed set are placed far enough apart that the sumset and difference
+set of the union split cleanly into per-copy and cross-copy pieces with no
+unintended collisions.
 
-```python
-from itertools import product
-
-def sumset(A):
-    A = sorted(set(A))
-    return {a + b for a in A for b in A}
-
-def diffset(A):
-    A = sorted(set(A))
-    return {a - b for a in A for b in A}
-
-def imbalance(A):
-    """ |A+A| - |A-A|. Positive  => sum-dominant. """
-    return len(sumset(A)) - len(diffset(A))
-
-def is_sum_dominant(A):
-    return imbalance(A) > 0
-
-
-# ----- the balanced reference point -----
-def symmetric_about(A, a_star):
-    A = set(A)
-    return A == {a_star - a for a in A}   # symmetric sets are balanced
-
-
-# ----- a single explicit construction (one set, parametrized) -----
-def build_explicit_set(params):
-    """Return a finite set of integers intended to be sum-dominant.
-    TODO: the construction that tips a balanced set into the sum-dominant regime.
-    """
-    pass
-
-
-# ----- an infinite family (yields larger and larger such sets) -----
-def family(seed, size_param):
-    """Yield members of an infinite family of such sets, derived from a seed.
-    TODO: the rule that extends a seed set while preserving the imbalance.
-    """
-    pass
-
-
-# ----- the probabilistic / proportion question -----
-def fixed_fringe(n):
-    """Return (L, U): the elements near 0 and near n-1 to PIN DOWN, chosen so the
-    overall set is forced into a target regime regardless of the middle.
-    TODO: the edge gadget that biases the missing-value budget.
-    """
-    pass
-
-def random_middle_sample(n, trials, rng):
-    """Pin the fringe via fixed_fringe(n); fill {l..n-1-u} at random; measure how
-    often the resulting set lands in the target regime.
-    TODO: assemble fringe + random middle and tally the proportion.
-    """
-    pass
-```
+The empty slots are the choices the discovery has to supply. The first is the
+generative skeleton: which balanced backbone, together with a small adjoined
+fringe near the ends of its range, tips $|A+A|$ above $|A-A|$ — that is, which
+fringe pattern makes one extra sum appear while leaving the symmetric difference
+budget unchanged — and how base separation and disjoint copies then propagate a
+single such seed into an explicit infinite family (and into sets realizing any
+prescribed imbalance). The second is the density slot: the counting argument
+that, by pinning the few fringe elements near $0$ and near $n-1$ while filling
+the middle arbitrarily, shows a positive proportion of the $2^n$ subsets of
+$\{0,\dots,n-1\}$ are sum-dominant, so that such sets are not vanishingly rare
+but common.

@@ -1,0 +1,987 @@
+Mathematical Programming 13 (1977) 329-347.
+North-Holland Publishing Company
+
+
+
+
+        ON CONVERGENCE RATES OF SUBGRADIENT
+        OPTIMIZATION METHODS*
+
+        J.L. G O F F I N
+         McGill University, Montreal, Quebec, Canada
+
+         Received 18 August 1976
+         Revised manuscript received 20 June 1977
+
+           Rates of convergence of subgradient optimization are studied. If the step size is chosen to
+         be a geometric progression with ratio p the convergence, if it occurs, is geometric with rate p.
+         For convergence to occur, it is necessary that the initial step size be large enough, and that the
+         ratio p be greater than a sustainable rate z(ix), which depends upon a condition number Ix,
+         defined for both differentiable and nondifferentiable functions. The sustainable rate z(Ix) is
+         closely related to the rate of convergence of the steepest ascent method for differentiable
+         functions: in fact it is identical if the function is not too well conditioned.
+
+            Key words : Nondifferentiable optimization, Rates of convergence, Nonsmooth optimization.
+
+
+
+1. Introduction
+
+T h e p r o b l e m of m a x i m i z i n g a g e n e r a l c o n c a v e f u n c t i o n c a n b e a p p r o a c h e d b y a
+t e c h n i q u e k n o w n as s u b g r a d i e n t o p t i m i z a t i o n in the U . S . a n d as g e n e r a l i z e d
+g r a d i e n t o p t i m i z a t i o n in the S o v i e t U n i o n .
+     T h e m a i n i d e a o f the m e t h o d o r i g i n a t e s in t h e w o r k o n t h e r e l a x a t i o n m e t h o d
+f o r s o l v i n g s y s t e m s o f l i n e a r i n e q u a l i t i e s b y A g m o n [1], a n d M o t z k i n a n d
+S c h o e n b e r g [21].
+     E r e m i n [4-6] p r o p o s e d g e n e r a l i z a t i o n s o f t h e r e l a x a t i o n m e t h o d to m a k e it
+a p p l i c a b l e to t h e s e a r c h f o r a T c h e b y c h e f f s o l u t i o n o f an i n c o m p a t i b l e s y s t e m o f
+l i n e a r o r n o n - l i n e a r i n e q u a l i t i e s . This l a s t p r o b l e m is e s s e n t i a l l y an o p t i m i z a t i o n
+p r o b l e m a n d S h o r [25] p u t f o r t h an e x t e n s i o n w h i c h c a n s o l v e t h e p r o b l e m o f
+maximizing a general concave function.
+     T h e t e c h n i q u e w a s d i s c o v e r e d i n d e p e n d e n t l y b y H e l d a n d K a r p [12] in t h e i r
+successful solution of the traveling salesman problem. Good computational
+r e s u l t s h a v e b e e n r e p o r t e d b y H e l d , W o l f e a n d C r o w d e r [14] in a v a r i e t y o f
+m e d i u m to l a r g e s c a l e p r o b l e m s .
+     S o m e t h e o r e t i c a l r e s u l t s o n c o n v e r g e n c e h a v e b e e n r e p o r t e d b y E r e m i n [5, 7],
+E r m o l e v [9], P o l y a k [23, 24] a n d D e m y a n o v [2], a n d o n r a t e s o f c o n v e r g e n c e b y
+S h o r [25-29].
+     I n o r d e r to s t u d y r a t e s o f c o n v e r g e n c e o n e n e e d s to define c o n d i t i o n n u m b e r s
+f o r a c o n c a v e f u n c t i o n , w h i c h will r e d u c e to q u a n t i t i e s e n c o u n t e r e d in the
+  * This research was supported in part by the D.G.E.S. (Quebec) and the N.R.C. of Canada under
+grants A8970 and A4152.
+                                                                   329
+ 330                  J.L. GoHin/Convergence rates of subgradient methods
+
+convergence of the steepest ascent method for differentiable c o n c a v e functions.
+As with differentiable functions, slow convergence will be explained by the ill
+conditioning of the function to maximize. The effectiveness of the method in
+m a n y medium to large scale problems comes thus f r o m the u n e x p e c t e d fact that
+" m a n y " such problems are well conditioned.
+   If a function is ill conditioned, then, as for differentiable optimization, there is
+a need to define methods which use second order or nonlocal information. A
+variable metric method has been p r o p o s e d b y Shor [27], a conjugate subgradient
+method by Wolfe [30,31], Lemar~chal [16-18] and Feuer [10]. The Boxstep
+method of Marsten, H o g a n and Blankenship [15] also follows that general trend.
+   It is hoped that the c o n v e r g e n c e results obtained here could be extended to
+these more sophisticated methods or at least serve as minimum standards of
+performance.
+
+
+2. Subgradient optimization
+
+Let f(x) be a finite concave function defined or R" and Of(x) be its subdifferen-
+tial at x, i.e.,
+
+            of(x) = {u ~ R": l ( y ) _< f ( x ) + (u, y - x), Vy ~ R"}.
+  For e v e r y x, Of(x) is a convex, c o m p a c t set, and if f is differentiable then
+Of(x) = {V/(x)}, the gradient of f.
+  I n ' m a n y examples of interest, f(x) will be a piecewise linear function:
+
+           f(x) = rain {(a i, x) + b i}
+                    iEI
+
+where I as a finite set, a i E R", b i E R.
+  Letting I(x) = {i @ I: f(x) = (a i, x) + bi}, then
+
+           Of(x)={uER":         u = ~, Aia i, ~           Ai= l, Ai>O, V i E I ( x ) }
+                                     iEI(x)     i~:l(x)
+
+is the c o n v e x hull of the set {ai: i E I(x)}.
+   It will be assumed that the optimal value f* = max{f(x): x E R"} is reached on
+the optimal set P = { x E R " : f ( x ) = f * } .  It is well k n o w n that P =
+{x E R": 0 ~ Of(x)}. The projection of x on P will be denoted by x*(x), and the
+distance f r o m x to P by d(x) = [x -x*(x)[, where [ [ means Euclidian norm.
+   One will assume that for e v e r y x one element of Of(x) can be found, but that a
+complete description of Of(x) is unattainable, or too expensive to attain; even if
+Of(x) in toto were available, it is not clear how this knowledge could be used as a
+straightforward extension of the steepest ascent method is not in general a
+convergent procedure [31].
+   The most interesting and challenging application is large scale optimization
+using column (in fact; row) generation techniques in problems amenable to a
+treatment by the Dantzig-Wolfe decomposition principle. Within this frame-
+work, a i and b ~ are defined only implicitly and finding, for some x, a, a i and b i
+                         J.L. Goffin[ Convergence rates of subgradient methods                             331
+
+
+with i E I ( x ) requires the solution of a subproblem; this clearly makes the
+c o m p u t a t i o n of Of(x) in total quite impractical.
+   Most illuminating discussions of this can be found in [13, 14, 31].
+   The subgradient algorithm follows:
+  (1) Choose x ° E R n.
+  (2) C o m p u t e a subgradient of f at xq: u q C Of(xq). If u q = 0, an optimal point
+has been found.
+   (3) The next point x q+~ of the sequence will be obtained by moving f r o m x ~ in
+the direction of u q by a certain step size. Go b a c k to (2) with q + 1 replacing q.
+   Various proposals have been made for the step size:
+   (2.1) Shor [25]: x q+l = x q + Aq(uqlluq]), where Aq > 0.
+   (2.2) Held and K a r p [12]: x q+t = x q + pqu q, where pq > 0.
+   (2.3) Held, Wolfe and C r o w d e r [14], Eremin [5], P o l y a k [24], Oettli [22]:
+x q+' = x q + o - q [ ( f - f ( x q ) ) / ( l u q l 2 ) ] u ~, where ~rq > 0 and f > f ( x q) is a guess of the
+optimal value f* of f ( x ) which can either be:
+   (2.3.1) an overestimate: f > f* [5, 14],
+   (2.3.2) an underestimate: f < f* ]24],
+   (2.3.3) the exact estimate: de = f* [1,8, 21,22].
+   It should be noted that an overestimate can be c o m p u t e d if a feasible solution to a
+dual problem is available. In one interesting case considered by Oettli [22] and
+Eremin [8] the optimal value f* is known: the basic idea is that if one maximizes the
+difference between a (maximizing) primal objective and the dual objective subject
+to both primal and dual constraints (assumed feasible), then the optimal value is
+equal to zero; it is clear though that it involves a problem in a space of higher
+dimension.
+   In all cases, the step size selection is crucial to the success or failure of the
+procedure. The difficulty lies in the fact that u q is not in general a direction of
+ascent of f ( x ) , so that no line search is feasible. That the procedure is reasonable
+can be explained by the fact that if x ~ P, then the direction chosen u E Of(x) is a
+direction of descent for the function ½d2(x) as:
+
+               o < f ( x * ( x ) ) - f ( x ) <- (u, x * ( x ) - x )
+
+and
+               x * ( x ) - x = -V(½d2(x)).
+
+   N o w it is clear that the minimum value of d ( x ) (or ½d2(x)) is zero, and its
+minimizing set is P. Thus the direction u chosen at x, which might not be a
+direction of ascent for f ( x ) , is a direction of descent for the function d(x),
+which, though not computable, has the same optimal set as f ( x ) . It follows that
+the direction of m o v e m e n t m a k e s sense, but as far as step size selection, unless
+some a priori information about the p r o b l e m is available, it involves "shooting in
+the dark".
+  Various conditions on the sequences {Aq}, {p~}, {o-q} h a v e b e e n gathered by
+different authors under a wide variety of technical hypotheses.
+   A brief and rough s u m m a r y is given below; (the precise, and sometimes
+332                  )'.L Go~n/ Convergence rates of subgradient methods
+
+restrictive, technical h y p o t h e s e s will not be stated; for exact statements, the
+following references should be used: [1, 2, 5, 7, 11, 14, 19, 22-25]).
+    Case (2.3.2) is essentially the relaxation method of Agmon, Motzkin and
+Schoenberg; convergence results are not too useful within the f r a m e w o r k of
+subgradient optimization as it is not clear how an underestimate f < f * can be
+computed, and, furthermore, b y convergence it is m e a n t finding a point x such
+that f(x)>_f. C o n v e r g e n c e proceeds at a geometric rate if, for all q, o-q
+[e, 2 - e ] for some e > 0 , [1,24], and f u r t h e r m o r e for e v e r y piecewise linear
+function f there exists a value o - * ( f ) < 2 such that if o-q E [ c r * ( f ) , 2 ] then
+convergence is finite [11,21].
+    In case (2.3.3), convergence occurs, at a geometric rate, if for some e > 0, for
+all q, one has o-q E [e, 2 - e], [1,21, 22, 24].
+    The two cases (2.3.2) and (2.3.3) cannot be c o m p a r e d to the three remaining
+ones: it is assumed that a feasible or e v e n optimal value for f is known. This
+permits the selection of a step size o-q E [E, 2 - e ] which guarantees that the
+distance to the set {x: f ( x ) - > f } exhibits monotonic decrease; this leads under
+mild technical assumptions to geometric convergence.
+    The m o s t interesting possibilities are (2.1), (2.2) and (2.3.1). General con-
+vergence results have been given for (2.1) b y P o l y a k [23] and for (2.2) by
+E r m o l e v [9]: let {x q} be the sequence defined b y (2.1) (resp. (2.2)), with the
+additional requirement that Eq=0~q = ~ and limq_~ Aq = 0 (resp: E~=0 pq = ~ and
+limq~= pq = 0), then limq_~ d(x q) = 0. A similar result was p r o v e d b y Eremin [5]
+for piecewise linear functions in case (2.3.1).
+    The main problem with that choice of sequences {Xq}, {pq} or {o-v} is that
+although it implies convergence, it also guarantees that c o n v e r g e n c e will be
+slow; it does rule out geometric convergence.
+    Shor has shown that if for {Aq} one takes a geometric progression converging
+to zero, then convergence at a geometric rate is possible.
+    It should be noted that in the case of a piecewise linear function, the three
+procedures (2.1), (2.2) and (2.3.1) do not differ in an essential manner.
+    F r o m a theoretical point of view, (2.1) is the m o r e interesting case as a similar
+step size rule can lead to geometric c o n v e r g e n c e for both differentiable and
+nondifferentiable functions, thus permitting a c o m p a r i s o n with the steepest
+ascent method as applied to a differentiable function. In case (2.2) this is clearly
+not the case: to get geometric convergence in the differentiable case one needs
+pq ~ [El, e2] where 0 < er-----E2 and e2 depends upon the function f [19]; in the
+nondifferentiable case one needs the sequence pq to b e h a v e like a geometric
+progression converging to zero.
+    Finally the step size given b y (2.3.1) does not seem to be applicable to
+differentiable functions: if u q = Vf(x q) is very small, then [x q+' - x°[ is very large,
+which does not seem reasonable.
+    In the remainder of this paper, only the step size given b y (2.1) will be studied.
+The study of (2.2) and (2.3.1), when f(x) is piecewise linear, will be left for a
+later work, but the results given in the next sections are valid subject to minor
+modifications.
+    F r o m a practical point of view, in the piecewise linear case, there is no reason
+                           J.L. Goffin/ Convergence rates of subgradient methods               333
+
+to believe that any of the p r o c e d u r e s (2.1), (2.2) and (2.3.1) qualifies as superior
+to the others.
+
+
+3. Condition numbers
+
+In all studies concerning rates of c o n v e r g e n c e , in mathematical p r o g r a m m i n g or
+in numerical analysis, condition numbers, or excentricity measures, have to be
+defined.
+  For e v e r y x E R"/P, where R " / P = {x E R": x• P}, define:
+                           (u, x*(x) - x)
+             ~ ( x ) = mln - - 1~--~7-~-~-
+                           .~s~x)lul Ix ( x ) - x l
+It follows f r o m
+             0 < f ( x * ( x ) ) - [ ( x ) <- (u, x * ( x ) - x )
+
+that ix(x) > 0; also ix(x) -< 1.
+
+Definition 3.1. The condition n u m b e r Ix of a c o n c a v e function f ( x ) is
+             /z = inf{ix(x): x E R " / P }                                                  (3.2.1)
+   It is quite possible for /z to be equal to zero, but this is not related to the
+nondifferentiability of f ( x ) . As an example, f(x~, x2) = - ( x 2 + x42), has a condition
+n u m b e r Ix which is equal to zero. I f / z = 0 then c o n v e r g e n c e at a geometric rate
+is unlikely using subgradient optimization.
+    By definition, /x is the cosine of the largest angle b e t w e e n a subgradient (a
+direction that might be used) and the direction pointing towards the closest point
+in the optimal set (a direction one would wish to use).
+
+Definition 3.2. (Shor [25]). The excentricity measure of a c o n c a v e function f ( x )
+is:                 r                       1
+
+           or = sup | s u p d ( x ) / i n f
+                     ~>0    LxES~          xES~
+                                                  d(x)/
+                                                      _1
+                                                                                (3.2.2)
+
+where S, = {x ~ R": f ( x ) = f * - E}.
+  Another w a y to guarantee that the function f is well b e h a v e d would be to
+assume the existence of numbers y, F and t~ such that a > 0, 0 < y - F < +0%
+and
+          y d ' ( x ) <--f * - f ( x ) <- Fd~(x), Vx @ R".                  (3.2.3)
+  If o~ @ (0, 1), f ( x ) cannot be concave, but it could be quasi-concave, and
+subgradient optimization can be extended to c o v e r this case [23].
+             For any piecewise linear function f ( x ) the existence of 3' and F
+             such that (3.2.3) is satisfied with o~ = 1 can be proved.          (3.2.4)
+   If the function f possesses a continuous Hessian with uniform finite u p p e r and
+nonzero lower bounds on the eigenvalue spectrum, then (3.2.3) is satisfied with
+ot = 2, and y and F being one half of the lower and upper bounds.
+   The following theorem c o m p a r e s the various condition numbers of a function f.
+334                              J.L. Gol~inl Convergence rates of subgradient methods
+
+T h e o r e m 3.1. Let Ix, tr, % F and a be defined as in (3.2.1), (3.2.2) and (3.2.3); then
+
+                  / z - > ~ ->
+
+
+Proof. W e will first p r o v e the s e c o n d i n e q u a l i t y . F o r a n y E > 0, define A~ =
+sup~Es~ d(x) a n d a, = infx~s~ d(x). F o r a n y x E S~, o n e has
+
+                  y d ' ( x ) < E = f* - f ( x ) <- Fd~(x)
+or
+
+                                 <- d(x) <- \-4/
+a n d thus
+                           l/a                        lta.
+                  (F)            <--a~<A'<--(~)
+
+It f o l l o w s t h a t
+
+                  A~ < (F~ ~/~
+                  aZ-- ~-4
+and
+                  o . = s u p A ~ < _ ( F ) l/~.
+                            E>o a~       \Y /
+
+   N o w the first i n e q u a l i t y . L e t x E S~ a n d u E af(x). It is clear that P + a,B C
+{x @ Rn: f ( x ) >-f* - ~} w h e r e B = {x E R": Ixl--- 1} is the u n i t ball.
+   F o r a n y y s u c h that f ( y ) -> f * - E, o n e has ( u , y - x ) > - f ( y ) - f ( x ) > _ _
+(f* - ~) - (f* - E) = 0. I n p a r t i c u l a r , as x*(x) E P,
+
+                  x*(x) - a~ ~u~ ~ P + a,B C {x E R": f ( x ) >- f* - E}
+a n d thus
+
+                  ( u, x*(x ) - a, ~ul - x) >- O
+or
+                  (u, x * ( x ) - x) >_ a,.
+                             lul
+N o t i c i n g that I x * ( x ) - x I = d(x)<-A,, it f o l l o w s that
+
+                  (u, x * ( x ) -     x ) >_ (u, x * ( x ) - x) > a___~
+                  lull~*(x)-xl                     luiA~       -- A,"
+
+Thus
+                                                (u,x*(x)-x)         .     a,   1
+                  IX = inf inf m i n                            > lnf -7- - -
+                           ,>o x~s, u~or(x, lul    Ix*(x)-xl-,>oA,
+     I n the case of a q u a d r a t i c f u n c t i o n , e x a c t v a l u e s for Ix a n d tr c a n be given.
+
+T h e o r e m 3.2. Let f(x) = -½(x, A x ) + (b, x) be a quadratic function, where A is a
+symmetric positive definite matrix with smallest and largest eigenvalues A a n d A,
+                           J.L. Go1~n/ Convergence rates of subgradient methods                             335
+
+r e s p e c t i v e l y , (0 < A <- A ), then
+
+
+                /x-A+        A
+
+Proof. L e t x* = A ~b, then Of(x) = {Vf(x) = - A ( x                        - x*)} and P = {x*}. Thus
+
+                           ( x * - x, A ( x * - x ) )
+                /x (x) = ~)--~_- ~ ]A---~ C ~ ]          for x ¢ x*,
+and
+                /z = inf (y' A y )
+                       ,~0 ]yl IAyF
+Letting y = A ~/2z, it follows that
+                                       Iz]4                4AA
+                /x z = infz~0(z, A z ) ( z , A - I z ) - (A + A ) 2
+
+using the well-known K a n t o r o v i c h l e m m a (see [19]).
+  If e~ and eA represent eigenvectors of unit length corresponding to the
+eigenvalues A and A, respectively, then the infimum is attained for y =
+A l/2ea + A ~/2ea. The value given for or is classical.
+
+     If f is a piecewise linear function then /x cannot be equal to zero; this follows
+f r o m (3.2.4) and T h e o r e m 3.1.
+
+
+4. Rates of convergence
+
+The following l e m m a establishes a recursive inequation for the distance f r o m x q
+to the optimal set P.
+
+L e m m a 4.1. L e t {x q} be a s e q u e n c e w h i c h s a t i s f i e s x q+l = x q + Aq(uq/luq]), w h e r e
+u q @ Of(xq), t h e n o n e has f o r all q,
+                d2(x q+l) ~ d2(x q) - 2Aqlxd(x q) + A~.
+
+Proof.
+
+                d2(x.+'~ = Ix .+' _ x*(xq+')12
+                            _< Ix ~+' _ x*(x.)l 2
+                                                Uq            2
+                            = x ~ + G - ( ~ I - x * ( x ~)
+                                                            (x*(x ~) - x q, u ~)
+                             =   Ix ~ -   x*(x~)[ 2 - 2~q             lull
+
+                            <-- d2(x q) - 2Aqtxd(x q) + A~.
+
+   If d ( x q) and /x were known, then taking Aq = t x d ( x q) would imply that
+336                         J.L. Goffin/ Convergence rates of subgradient methods
+
+d(x*+l)<-X/(1-g2)d(xq),       which means geometric convergence at the rate
+V'(1 -/z2). It would also mean that ;tq would behave somewhat like a geometric
+progression with ratio X/(1 -/x2).
+  In the sequel it will be assumed that A, = Aop q where A0 > 0, and O E (0, 1) are
+arbitrary. One could define other sequences {;tq}; but what is important is that
+they resemble a geometric progression; for instance [14] choosing ;t0 and then
+halving it at every k steps is not essentially different from the sequence Aq = ;toO*,
+with p = (1)l/k. Once again, subject to minor changes, all that follows will be
+valid. The proofs are somewhat simpler if ;tq = Moq: this is due to what could be
+called the uniform monotonic decrease of ;tq.
+  The following lemma shows that convergence of the sequence {x q} itself will
+occur.
+
+Lemma 4.2. L e t {x q} be a s e q u e n c e defined b y x *+~ = xq + ;tq(Ua/]uql) with uq E
+Of(xq); ;tq > 0 a n d Eq=o ;tq = A < + ~ ; t h e n t h e s e q u e n c e x q c o n v e r g e s to a p o i n t 2
+( w h i c h m a y o r m a y n o t be an o p t i m a l p o i n t ) a n d f u r t h e r m o r e ,
+
+                lim
+                q-->~
+                      d ( x q) = d(2),           lim
+                                                 q---~
+                                                       f(xq) = f(2),
+
+
+                               l=q
+
+    I f Aq = Aop q, p E (0, 1), a g e o m e t r i c p r o g r e s s i o n , t h e n Ix q - 2] < ; t 0 p q ( 1 - p ) ; i.e.,
+c o n v e r g e n c e to the p o i n t 2 is g e o m e t r i c at a rate given b y p.
+
+Proof. For all q, [x 0+1 - xq[ = ;tq. Thus for all m and all q,
+
+                Ixq+m -- x q l ~       ~1       .
+                                       ]=0 (xq+J+l   --   xq+J)
+
+                                     m--l                         m--I
+                                --< 2       Ix*+j+l- xq+'l = 2 ;tq+J -<              ;tJ"
+                                     j-0                          j=0          j-q
+
+   This implies that {x q} is Cauchy sequence and thus an 2 E R" exists such that
+xq---> ~. The first part of the lemma follows from the continuity of d and f. The
+second part follows from
+                                                pq
+                I x q - 2 1 - < ~ ;top q = ;to
+                                j=q            1-p"
+   A partial converse to L e m m a 4.2 indicates, that if geometric convergence of
+Ix* - xl occurs, then Aq is bounded by a geometric series.
+
+Lemma 4.3. L e t {x q} be a s e q u e n c e s u c h t h a t x q+l = x q + ;tq(u*/luql), with u q E
+9f(xq); t h e n if x q c o n v e r g e s to a p o i n t 2, a n d if Ix* - dl <- M p q f o r s o m e M > 0
+a n d s o m e p E (0, 1) it f o l l o w s t h a t Aq <-- M p * ( 1 + p).
+
+Proof. For all q,
+                    Uq
+               Aq T---m = X q+l - x q = x q+l - ~ + 2 - x q.
+                             J.L. Go1~n/Convergence rates of subgradient methods                          337
+
+Thus
+
+               aq <-Ix q+~- YcI + Ix q - ,~] <- Mpq(1 + p).
+
+
+Theorem 4.4. L e t {x q} be a s e q u e n c e w h i c h satisfies x q+j= x q + Zop~(u~/luOl),
+where u q E Of(xq), )to> O, p ~ (0, 1). Let
+
+               C = m a x { 1 , / z - X / ( / z 2 -,( 11- p 27 ) )p} '   D = p" + V'(/z2 - (1 - p2))
+                                                                                     1 _p2
+                       ~V'(1 - / z 2) i f / , -- ½~v/2,
+               z(t*) = t l/2t*         i f / z >-~X/2"
+
+Then :
+   (A) p >- z(lz ) and d ( x °) E [AoC, AoD] implies that f o r all q: d ( x ~) <- d(x°)p q,
+  (B) p >-- z(l~) and d ( x °) < A0C implies that f o r all q: d(x q) ~- AoCp q,
+  (C) p < z(gt) or d ( x °) > A0D m a y lead to the convergence o f {x q} to a n o n o p -
+timal point.
+
+Proof. L e m m a 4.1 implies that, f o r all q,
+               d2(x q+~) _< d2(x q) - 2Aopq~d(x q) + A 2p 2q.
+
+W e will a t t e m p t to s h o w the e x i s t e n c e of a positive n u m b e r M such that
+
+               d(x q) <_M p q
+will imply that
+               d(x q÷l) < Mpq +1"
+
+  W e thus a s s u m e that d ( x q) = otp q f o r s o m e u n k n o w n q u a n t i t y a w h i c h satisfies
+a E [0, M ] ; it follows that:
+               d2(x q+l) <<_a2p2q __ 2A0C~/xp2q + A 2p 2q.
+
+     T h e induction h y p o t h e s i s will be satisfied if, f o r all oe E [0, M ] , one has
+               a2p2q -- 2 a 0 0 ~ p 2q q- A 2p 2q .< M2p2q +2
+or
+               VaE[0,         M]         a2-2Ao/za+a2--M2p2.
+
+     As the left-hand side is a c o n v e x f u n c t i o n of a, the inequality will b e satisfied
+f o r all t, E [0, M ] if it is satisfied f o r a = 0 and a -- M, i.e.,
+               a. ~ <~M2p 2 and                 M 2 - 2aop.M + )to2 -----MZp 2.
+
+L e t M/)to = to; it m u s t thus be s h o w n that f o r s o m e to > 0 one has:
+                1 --< top,                                                                            (4.1.1)
+               to2(1 _ p2) _ 2/,to + 1 --< 0,                                                         (4.1.2)
+               d(x °) <- )toto.                                                                       (411.3)
+338                          J.L. Goffin/ Convergence rates of subgradient methods
+
+If p < %/(1-/~2), (4.1.2) has no solution, in to. If
+               p --> ~/(1 - / x 2)                                                                        (4.1.4)
+then
+               to2(1 _ p2) _ 2/~to + 1 --- 0 iff
+                   _ % / ( ~ 2 _ (1 - p2))             < ~ + %/(~2_   (1 - p2))
+                             1 - p2               ~ to _        1 - p2                                    (4.1.5)
+
+
+N o w (4.1.1) and (4.1.5) h a v e a c o m m o n solution iff/9-> % / ( 1 - / x 2 ) , and
+
+                   + %/(/x 2 - (1 - p2)) > 1                                                              (4.1.6)
+                        1-p 2            --p
+
+But (4.1.6) c a n be w r i t t e n as
+               p%/(2_           (1 - 02)) -> 1 - p 2 _ p ~ .
+
+This is true if
+               1 - p2 _ p~          _< 0                                                                 (4.1.7)
+or
+               p2(     2 _ (1 - p2)) >_ (1 - 0 2 - p/~)2.                                                (4.1.8)
+
+N o w (4.1.7) is true if p -> ~(-/x + %/(/x2+ 4)), and (4.1.8) leads to p -> 1/2~.
+   T o s u m m a r i z e , ( 4 . 1 . 1 ) a n d (4.1.2) h a v e a c o m m o n solution iff
+
+               p - - > % / ( 1 - - / x 2)   and    [p >-~+%/(/x2+4)                       +]
+                                                       -        2            or     p -        .
+
+A simple graphical s t u d y s h o w s that this is e q u i v a l e n t to P - z(Iz) in the s t a t e m e n t
+of the t h e o r e m (see Fig. 1).
+   T h e set of solutions that (4.1.1) and (4.1.2) h a v e in c o m m o n is: to E [C, D].
+N o w (4.1.3) can be written as
+               d(x °) <-)toto f o r s o m e to E [C, D]
+or
+               d(x °) <- M            for s o m e M E [MC, )t0D].
+  T h e s m a l l e s t M possible will of c o u r s e give the b e s t b o u n d f o r d(xq).
+  It is clear that if d(x °) E [h0C, )to/)], M = d(x °) will satisfy the r e q u i r e m e n t s ; if
+d(x °) < )toC, w e take M = )t0C; and if d(x °) > )toD, no such M c a n be found.
+  This c o n c l u d e s the p r o o f of the t h e o r e m .
+
+    This t h e o r e m is an e x t e n s i o n and a s h a r p e n e d v e r s i o n of a result b y Shor [25]: he
+p r o v e s that f o r a n y x0 E R", and f o r tr > %/2, there exists a )t0 such that if the
+s e q u e n c e {xo} is g e n e r a t e d with )tq = M ( % / ( o - : - 1)/o-) q, then d(xo) <- )te It suffices
+to notice that for a n y c o n c a v e f u n c t i o n one has %/(1 - / z 2) -< %/(tr 2 - 1)/o" and that
+/x -< ½%/2 implies that o- - %/2 to see that S h o r ' s result is c o n t a i n e d in T h e o r e m
+4.4.
+    W e b e c a m e a w a r e , during the revision p r o c e s s , of two articles w h i c h contain
+results quite similar to T h e o r e m 4.4; one b y Shor and G a m b u r d [28] and the other
+one a s u r v e y b y Shor [29].
+                                      J.L. Goffin/ Convergence rates of subgradient methods       339
+
+
+
+
+                                  I
+                                       . . . . . . . ~ / / I                "
+
+
+
+
+                                                                                           I
+                                 .5                                                   P = 2""ff
+
+                                                                       I
+                                                                       I
+                                                                       I
+                                                                       I
+                                                                       I                     IL
+
+                                       0                       .5      4~                     p
+                                                                        2
+
+
+                                                               I/HI : p :, z(tJ)
+                                                 Fig. 1. Sustainable rate of convergence.
+
+
+   In the first paper [28], two things are of relevance:
+    (i) If or @ [1, 2] and p >- ½o-, then geometric convergence at the rate p occurs,
+provided )to is large enough; but as 1/2/~ -½o-, this result is implied by Theorem
+4.4.
+   (ii) The condition number ~ is introduced (denoted as cos ~b) and geometric
+convergence is proved for ~b E [~1r, ½1r) if p = sin ~b = ~/(1 -/~z) and for ~b E [0, ~r)
+if p ~ (1/2 cos ~b) = 1/2/x.
+   In the second paper [29], geometric convergence is proved for ~b E [0,½~r)
+provided p = z(/x) and:
+                                                            1   1
+                                  d ( x °) cos ~b for ~b E [3~',~rr),
+                      )to ~           d ( x °)
+                                                         for ~ E [0, ~Ir).
+                                  2 cos ~b
+
+    This is identical to Theorem 4.4 if p is chosen to be z(/x).
+
+
+5. I n t e r p r e t a t i o n
+
+
+The convergence results given in Theorem 4.4 can be roughly summarized as
+follows: estimate d ( x °) and /x; then choose a p such that p ~ z(/z), (z(/~) could
+be called the sustainable rate of convergence); also choose A0 approximately
+340                     J.L. Goffin/ Convergence rates of subgradient methods
+
+equal to Ixd(x°). T h e o r e m 4.4 describes the implications of mistakes m a d e in
+estimating Ix and d(x°).
+    If either p < z(ix), or d(x °) > AoD, then c o n v e r g e n c e to a n o n o p t i m a l point x
+could occur. C o n v e r g e n c e to x will be g e o m e t r i c at a rate given b y p.
+    If p -> z(ix), and d(x °) E [AoC, AoD], g e o m e t r i c c o n v e r g e n c e at a rate given b y P
+will take place: f o r all q, d(xq) <- d(x°)p q (this could be called true g e o m e t r i c
+convergence).
+    If p -> z(ix), and d(x °) < AoC, g e o m e t r i c c o n v e r g e n c e at a rate given b y p will
+take place, with the difference that the u p p e r b o u n d on d(x q) will start with A0C
+rather than d(x°): for all q, d(x ~) <- XoCp q.
+    It is clear that if one u n d e r e s t i m a t e s Ix, b y being too daring, c o n v e r g e n c e to a
+n o n o p t i m a l point might result; if one o v e r e s t i m a t e s Ix, b y being too cautious,
+c o n v e r g e n c e at a g e o m e t r i c rate p will o c c u r , but it will be slower than the
+sustainable rate o f c o n v e r g e n c e z(ix).
+    A closer look at the variations of C and D will shed s o m e f u r t h e r light on the
+implications of w r o n g estimates of d(x°).
+    Define
+
+              B = Ix _ %/(IXz+ pZ_ 1)
+                              1 _pZ
+then C = max{B, l/p} and B • D = 1/(1 "p2). It is a l w a y s true if p - z(ix) that D
+increases with p, while B and lip and thus C d e c r e a s e with p; and f u r t h e r m o r e
+C<_D.
+  Case 1. 0<ix--<½.
+
+              C=D=B              1     for p = %/(1 - IX2),
+                                Ix
+                          1
+              C=B>-                    for % / ( 1 - - / 1 , 2 ) < 0 < 1;
+                          P
+                                                 1
+              lim D = + ~ ,           lim C = -
+              p--*l                   p~l       2ix
+   Case 2. ½< IX <- ½%/2.
+
+              C=D=B              1 for p = %/(1 -- Ixz)
+                                IX
+                                                                         1
+              C=B=-=I          2IX, D =            2ix          for p = ~-- -> %/(1 - Ix2),
+                    P                          (2IX) 2 - 1              zix
+                                    1
+              c;!>B
+                 p
+                               for ~--~-< p < 1,
+
+              lim D = + ~ ,           lim C = 1.
+              p~l                     p---~l
+
+
+   Case 3. IX ~ ½%/2.
+                                                        1
+              C=A=D=2IX>                  B    for p = ~---,
+                                                       zix
+                    J.L. Go1~in/ Convergence rates of subgradient methods            341
+
+
+                                                  1
+            C =-I>B                       for         <p<l,
+                P
+
+           lira D = + ~ ,         lim C = +1.
+            p~l                   p~-~l
+
+
+  All of this roughly means that if /~ were k n o w n exactly, and one chose
+p = z(/z), then D = C, and in order to guarantee true geometric c o n v e r g e n c e one
+would need an exact knowledge of d(x°); if p is greater than z(/z), then as D
+increases with p and limp_,l D(p) = +0% overestimates of d(x°)i unless by a wide
+margin, will lead to true geometric convergence, but as C decreases with p, but
+only slightly, underestimates of d(x °) will still cause geometric convergence to
+occur starting with a rather high initial bound. As p increases, the interval [C, D]
+widens and the safety factor on the e s t i m a t e of d(x °) increases.
+  In most practical problems, crude overestimates of d(x °) can be made, but
+estimates o f / z are quite unreachable. The fact that subgradient optimization has
+worked well on a wide variety of medium to large scale optimization problems
+[12, 14] indicates that m a n y such problems are well conditioned (i.e./z is not too
+small).
+   Subgradient optimization can be applied to differentiable funCtions; it is the
+steepest ascent method defined by
+
+            X a+l = X q + Aq
+                               Vf(x )
+with the important restriction that no function evaluation, and thus no line
+search, is permitted.
+  If f is a quadratic function with smallest and largest eigenvalues A and A,
+respectively (0 < A < A < + ~ ) , then
+
+           z(/x) = AA-A+
+                       A          if A/A 0< 3" - 2X/2
+                                                   - -~       (/x -----½X/2),
+
+                   A+A
+           z(t*) = 4~/A A         if A/A > 3 - 2X/2           (tz > ½X/2).
+
+  If condition 3.2.3 is satisfied with o~ = 2, then
+
+           Z(/.t)--< (1 - - ~ ) 1/2 if __Y<I_
+                                       F--2'
+                  <I(F~     ''2         3' 1
+           z(Iz)---~\-4/             if ~ > ~ .
+
+   Thus, unless the function f is very well conditioned, (/~ -> ½X/2) the sustainable
+rate of c o n v e r g e n c e is the rate given by the steepest ascent method with line
+search (the difference is of course that in that case one does not need to k n o w / x
+to attain the c o n v e r g e n c e rate z(/z)).
+   If p~ > ½X/2, then z(tz) = 1/2~ > X/(1 - tz2); and thus subgradient optimization
+cannot attain the rate of c o n v e r g e n c e of the steepest ascent method.
+   The fact that z ( 1 ) = ½ can be explained as follows. T a k e the function f(x)=
+342                          J.L. Goffin/ Convergence rates of subgradient methods
+
+
+-Ix] where x E R; clearly/x = 1. Assume that at some step q, one has x ~ = O, and
+that one chooses u q = +1; then x q+~= Aq = Aop q. A necessary condition for the
+sequence {xJ: ] -> q + 1} to converge to zero is that
+
+                                                          A0pq+l
+                 x q+l = Aop q <_              Aop q -
+                                       j=q+l              1- p '
+which is true iff p---½. If p < ½, then it is not always possible to recover from
+previous mistakes.
+  The value g =½X/2 which plays an important role in Theorem 4.4 has a
+meaning which will be given by the next theorem.
+
+Theorem 5.1. I f a c o n c a v e f u n c t i o n f ( x ) h a s a c o n d i t i o n n u m b e r Ix g r e a t e r t h a n
+½%/2, t h e n e v e r y s u b g r a d i e n t is a d i r e c t i o n o f a s c e n t o f f.
+
+Proof. For all x, for all u @ 0f(x),/z > ½%/2 implies that the angle between u and
+( x * ( x ) - x ) is less than ~-.
+    It follows that any direction v such that the angle between v and ( x * ( x ) - x ) is
+less than or equal to J~r (in particular any v E Of(x)), will make an angle less than
+½7r with any u ~ 0f(x); i.e., (v, u) > 0 for all u ~ Of(x), which implies that v is a
+direction of ascent.
+
+   The most interesting case as far as practical applications are concerned is
+when f is a piecewise linear function. If one has 3 " d ( x ) ~ f * - f ( x ) < - F d ( x ) ,
+where 3' > 0 and F < + ~ , such that 3' -< F, always exist (but are not known), then
+tz >- 3"/F.
+
+
+
+6. Experimentation
+
+In order to check some of the theory presented here, computational experiments
+were done using the problems A42, A48 and A57 as defined by Held, Wolfe and
+Crowder [14]. They are assignment problems of size 42, 48 and 57, whose cost
+matrices come from some well known traveling salesman problems. Results will
+be reported only for A48, as A42 and A57 behaved quite similarly. A complete
+description of the problems and of the subgradient algorithm is given in [14].
+  Let C={Ckj} be a n by n cost matrix, then the dual objective of the
+assignment problem can be written as:
+
+
+                 f(x) =           Xk + ~         n[c~i -- x~].
+                            k=l         j=l
+
+   For each j, let s ( j ) be any index s which minimizes {csj - x s : s = 1. . . . . n}, then
+if uk = 1 --~U:~(j)=k~ 1, it follows that u = (Uk)k=~ ...... is a subgradient of f at x.
+   The initial point was chosen to be x ° = 0 in all experiments, so that d ( x °) is a
+given (though unknown) constant throughout. The sequence {x q} was generated
+by the algorithm
+                      J.L. Go1~in/Convergence rates of subgradient methods                            343
+
+
+                      IOglo (f* ftxq))
+                                     -
+
+
+
+
+                                                                          x o = 200
+                            5,
+                                   •.          ~                           p : .9
+
+                            2-
+                                     ..\
+
+
+
+                                         !         i   i     i   i    i    i    i     i    i    ~1,
+                                                                 5O                       I00
+
+                                 Fig. 2. Case 1: True geometric convergence.
+
+
+                                              Uq
+             xq+l = x q + X0pq ]u~]"
+
+    As the value of d(x q) is not c o m p u t a b l e (the optimal set P can be quite
+complex), the values of lOgl0 ( f * - f ( x q ) ) as a function of q will be plotted. The
+optimal value of f is f* = 9870, and the figures 2, 3 and 4 exhibit the three cases
+of T h e o r e m 4.4 for values of the pair A0, p equal to (200, 0.9), (2000, 0.9), (20,
+0.9), (300, 0.85) and (500, 0.85).
+    It is clear that as there exist y and F such that 0 < 3'-< F < +oo and yd(x)<-
+f* - f ( x ) <- Fd(x) Vx ~ R", geometric c o n v e r g e n c e of the sequence d(x q) at a rate
+given by p(d(x q) <-Mp q) implies the geometric convergence of the sequence
+f * - f ( x ~) at a rate p:
+             f* - f ( x q) <--FMp q, Vq.
+   Figs. 2, 3 and 4 confirm the fact that c o n v e r g e n c e (if at all) occurs at the rate p
+which was selected.
+   The exact formula for c o n v e r g e n c e given in T h e o r e m 4.4. was checked; about
+100 runs of A48 were made for various values of )to and p. C o n v e r g e n c e or
+n o n c o n v e r g e n c e were reported for each pair of values (see Fig. 5). A curve
+separating the values for which c o n v e r g e n c e occurred f r o m the values for which
+c o n v e r g e n c e did not occur can be observed. T h e o r e m 4.4 says that c o n v e r g e n c e
+occurs if
+(i)          p-->N/(1 -lu, 2) if /z --<~/2,
+             p -> l/2/z                      i f / x > 1~/2
+
+(ii)         )to >- d(x°)                                  /x -~-~/(/.~2 "l'-192- 1)
+                     D           where D =                          1 - p2
+344       J.L. Go95n/Convergence rates of subgradient methods
+
+
+                   ioglO (ft _ f(xq))
+
+
+          4- P
+               DO
+                                                                         ~'o = 2000
+          3-
+                                                                          p :,9
+
+
+          2-
+
+
+                                     •       • •    •                                  :    .9
+
+
+                                                               ° ° ° ° ° •
+                                                               ° ° ° o                       ~
+
+
+          -I
+
+
+
+                                                     I "                                         I                   q
+                                                    50                                           I uO
+
+
+
+      Fig. 3. Case 2: Geometric convergence with higher upper bound.
+
+
+
+
+                   iOglO (f*- f(xq))
+
+
+                                                                           X   ~o = 2 0                     p= ,9
+                                                                           •                     300           .85
+                                                                           D                     500           .85
+                    X
+               •         X       X       X         X       X
+
+
+
+
+                         [~,=,
+
+
+
+                                         DD
+
+                                                                                           .85
+
+
+                                                                []             •
+
+                     I   I       I       I         510     I         f     I       I             I      q
+                                                                                                 I00
+
+
+                             Fig. 4. Case 3: Non-convergence.
+                        J.L. Goffinl Convergence rates of subgradient methods                          345
+
+                                 1.5                  2                    2.5       3       I°glOAO
+                                 I                    I       _             I        I
+
+
+                     " "'V--           x
+                           •     ,x" -.x
+    .95 _
+
+
+                                       •   X   ~'~,       X
+
+    .90 -                                       Xo ~',. X         X
+                                                                  X
+                                                          •\x
+                                                          •       •   %.             X   X
+    .85-                                                                         X   •   X   •
+
+
+             x : CONVERGED
+    •B O      • : FAILED
+            - - - : THEORETICAL
+                    SEPARATING
+                    CURVE (FITTED)
+    .75
+
+
+
+
+                               Fig. 5. Convergence as a function of Ao and p.
+
+
+   A plot of p as a function log I/D was drawn for different values of Ix, and
+adjusted to the experimental results (see Fig. 5). A reasonable fit was obtained
+for d ( x ° ) ~ 5 5 0 and Ix----0.53. The sustainable rate of c o n v e r g e n c e is thus
+z(0.53) ~ 0.85.
+   The step size chosen by Held, Wolfe and C r o w d e r [14], using (2.3.1), was,
+towards the end of the sequence, a halving of o- (see 2.3) at each five iterations.
+This is equivalent to p = (~)1/5_~ 0.87 > 0.85. It thus implies that c o n v e r g e n c e is
+not only possible, but at a rate which is quite fast.
+   It also seems that the initial value of the step size chosen in [14] provides an
+equivalent value of k0 which is a rather safe o v e r e s t i m a t e of Ixd(x°).
+   W h a t is really m o s t surprising is that, for a problem of this size (x E R 48) and
+with the large n u m b e r of pieces of linearity defining f(x), the value of Ix is as
+high as 0.53 (to be more accurate, one should say the values of the Ix(x q)
+encountered m o s t of the time by the actual sequence {xq}). It is possible to
+construct piecewise linear functions of R 2 with arbitrarly small Ix, and yet it
+seems that in a wide variety of large scale problems the condition numbers tend
+to be quite high. There is no obvious reason w h y it should be the rule.
+
+
+7. Conclusions
+
+  The c o n v e r g e n c e properties of subgradient optimization have some similarities
+with the properties of the steepest ascent method for differentiable functions;
+namely that geometric c o n v e r g e n c e occurs at a rate which depends on the
+conditioning of the function to optimize. In fact the sustainable rate of con-
+vergence in subgradient optimization reduces to the rate of c o n v e r g e n c e of the
+steepest ascent method in the case of a differentiable function provided that
+346                    J.L. Goffin[ Convergence rates of subgradient methods
+
+/z-----lx/2; if ~ >½X/2 then the sustainable rate of convergence is slower, with a
+best possible value of i if the function satisfies tz = 1.
+   The big difference is, of course, that in subgradient optimization, the rate of
+convergence z(/x) could be obtained only if it were known (which is clearly not
+the case).
+   The main expectation from the more sophisticated methods like conjugate
+subgradient optimization is that they would guarantee a rate of convergence
+which would not require any a priori knowledge of a condition number nor an
+estimate of d(x°).
+
+
+Acknowledgment
+
+I wish to thank Denise Martin, Dogo Nedje Bhe a n d Jean Talbot for doing most
+of the computing work on a small time sharing computer which was not quite
+capable of handling it. L e m m a 4.3 was suggested by the referee.
+
+
+References
+
+ [1] S. Agmon, "The relaxation method for linear inequalities", Canadian Journal of Mathematics 6
+     (1954) 382-392.
+ [2] V.F. Demjanov and V.Iq. Malozemov, "The theory of nonlinear minimax problems", Uspekhi
+     Matematicheski Nauk 26 (1971) 53-104.
+ [3] V.F. Demjanov and A.M. Rubinov, "Minimization of functionals in normed spaces", S I A M
+     Journal on Control 6 (1968) 73-89.
+ [4] I.I. Eremin, "Incompatible systems of linear inequalities", Doklady Akademii Nauk SSSR 138
+     (1961) 1280-1283. [= Soviet Mathematics Doklady 2 (1961) 821-824.] Mathematical Reviews 24
+     #A735.
+ ]5] I.I. Eremin, "An iterative method for Cebysev approximations of incompatible systems of linear
+     inequalities", Doklady Akademii Nauk SSSR 143 (1962) 1254-1256. [= Soviet Mathematics
+     Doklady 3 (1962) 570-572.] Mathematical Reviews 24 #A3166.
+ [6] I.I. Eremin, "A generalization of the Motzkin-Agmon relaxation method", Uspekhi Mathema-
+     ticheski Nauk 20 (1%5) 183-187.
+ [7] I.I. Eremin, "On systems of inequalities with convex functions in the left sides", American
+     Mathematical Society Translations 88 (2) (1970) 67-83. [Translation of Izvestiga Akademii Nauk
+     SSSR Serija Matematii?eskaja 30 (1966) 265-278.]
+ [8] I.I. Eremin, "Methods of Fejer's approximations in convex programming", Mathematical Notes
+     o f Academy of Sciences USSR 3 (2) (1968) 139-149.
+ [9] Yu. M. Ermolev, "Methods of solution of nonlinear extremal problems", Kibernetika 2 (4)
+     (1966) 1-17.
+[10] A. Feuer, "Minimizing well-behaved functions", in: Proceedings of the twelfth annual Allerton
+     conference on circuit and system theory (Coordinated Science Laboratory, University of
+     Illinois, Urbana, IL, 1974).
+[11] J.L. Goffin, "On the finite convergence of the relaxation method for solving systems of
+     inequalities", Operations Research Center rept. ORC 71-36, University of California at Berkeley
+     (1971).
+[12] M. Held and R.M. Karp, "'The traveling-salesman problem and minimum spanning trees: part
+     II", Mathematical Programming 1 (1971) 6-25.
+[13] H. Held, R.M. Karp and P. Wolfe, "Large-scale optimization and the relaxation method", in:
+     Proceedings of the 25th national A C M meeting, Boston, MA, August 1972.
+                      J.L. Gol~inl Convergence rates of subgradient methods                    347
+
+[14] M. Held, P. Wolfe and H. Crowder, "Validation of subgradient optimization", Mathematical
+     Programming 6 (1974) 62-88.
+[15] W.W. Hogan, R.E. Marsten and J.W. Blankenship, "The Boxstep method for large scale
+     optimization", Operations Research 23 (1975).
+[16] C. Lemarechal, "An algorithm for minimizing convex functions", in: J.L. Rosenfeld, ed.,
+     Information processing '74 (North-Holland, Amsterdam, 1974) pp. 552-556.
+[17] C. Lemarechal, "Note on an extension of 'Davidon' methods to nondifferentiable functions",
+     Mathematical Programming 7 (1974) 384-387.
+[18] C. Lemarechal, "An extension of Davidon' methods to nondifferentiable problems", Mathema-
+     tical Programming Study 3 (1975) 95-109.
+[19] E.S. Levitin and B.T. Polyak, "Constrained minimization methods", Zurnal Vycislitel'noi
+     Matematiki i Matematiceskoi Fiziki (USSR Computational Mathematics and Mathematical
+     Physics) 6 (5) (1965).
+[20] D.G. Luenberger, Introduction to linear and nonlinear programming (Addison-Wesley, Reading,
+     MA, 1973).
+[21] T. Motzkin and I.J. Schoenberg, "The relaxation method for linear inequalities", Canadian
+     Journal of Mathematics 6 (1954) 393-404.
+[22] W. Oettli, "An iterative method, having linear rate of convergence, for solving a pair of dual
+     linear programs", Mathematical Programming 3 (1972) 302-311.
+[23] B.T. Polyak, "A general method for solving extremal problems", Doklady Akademii Nauk SSSR
+     174 (1967) 33-36. [In Russian; Eng. transl: Soviet Mathematics Doklady 8 (1967) 593-597.]
+[24] B.T. Polyak, "Minimization of unsmooth functionals", Zurnal Vycislitel'noi Mathematiki i
+     Matematiceskoi Fiziki (USSR Computational Mathematics and Mathematical Physics) 9 (1969)
+     509-521.
+[25] N.Z. Shor, "On the rate of convergence of the generalized gradient method", Kibernetika 4 (3)
+     (1968).
+[26] N.Z. Shor and M.B. Schepakin, "Algorithms for the solution of the two-stage problem in
+     stochastic programming", Kibernetika 4 (3) (1968).
+[27] N.Z. Shor, "On the convergence rate of the generalized gradient method with space dilation",
+     Kibernetika 6 (2) (1970).
+[28] N.Z. Shor and P.R. Gamburd, "Some questions concerning the convergence of the generalized
+     gradient method", Kibernetika 7 (6) (1971).
+[29] N.Z. Shor, "Generalizations of gradient methods for nonsmooth functions and their applications
+     to mathematical programming", Economic and Mathematical Methods Vol. 12, No. 2, pp.
+     337-356 (in Russian) 1976.
+[30] P. Wolfe, "Note on a method of conjugate subgradients for minimizing nondifferentiable
+     functions", Mathematical Programming 7 (1974) 380-383.
+[31] P. Wolfe, "A method of conjugate subgradients for minimizing nondifferentiable functions",
+     Mathematical Programming Study 3 (1975) 145-173.
+

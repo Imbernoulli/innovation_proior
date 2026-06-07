@@ -1,0 +1,769 @@
+612                                                                     11    Interior-point methods
+
+
+11.7.2   The surrogate duality gap
+
+         In the primal-dual interior-point method the iterates x(k) , λ(k) , and ν (k) are not
+         necessarily feasible, except in the limit as the algorithm converges. This means
+         that we cannot easily evaluate a duality gap η (k) associated with step k of the
+         algorithm, as we do in (the outer steps of) the barrier method. Instead we define
+         the surrogate duality gap, for any x that satisfies f (x) ≺ 0 and λ  0, as
+
+                                             η̂(x, λ) = −f (x)T λ.                                (11.59)
+
+         The surrogate gap η̂ would be the duality gap, if x were primal feasible and λ, ν
+         were dual feasible, i.e., if rpri = 0 and rdual = 0. Note that the value of the
+         parameter t that corresponds to the surrogate duality gap η̂ is m/η̂.
+
+
+11.7.3   Primal-dual interior-point method
+
+         We can now describe the basic primal-dual interior-point algorithm.
+
+             Algorithm 11.2 Primal-dual interior-point method.
+
+             given x that satisfies f1 (x) < 0, . . . , fm (x) < 0, λ ≻ 0, µ > 1, ǫfeas > 0, ǫ > 0.
+             repeat
+                 1. Determine t. Set t := µm/η̂.
+                 2. Compute primal-dual search direction ∆ypd .
+                 3. Line search and update.
+                      Determine step length s > 0 and set y := y + s∆ypd .
+             until krpri k2 ≤ ǫfeas , krdual k2 ≤ ǫfeas , and η̂ ≤ ǫ.
+
+
+
+         In step 1, the parameter t is set to a factor µ times m/η̂, which is the value of t
+         associated with the current surrogate duality gap η̂. If x, λ, and ν were central,
+         with parameter t (and therefore with duality gap m/t), then in step 1 we would
+         increase t by the factor µ, which is exactly the update used in the barrier method.
+         Values of the parameter µ on the order of 10 appear to work well.
+             The primal-dual interior-point algorithm terminates when x is primal feasible
+         and λ, ν are dual feasible (within the tolerance ǫfeas ) and the surrogate gap is
+         smaller than the tolerance ǫ. Since the primal-dual interior-point method often has
+         faster than linear convergence, it is common to choose ǫfeas and ǫ small.
+
+         Line search
+         The line search in the primal-dual interior point method is a standard backtracking
+         line search, based on the norm of the residual, and modified to ensure that λ ≻ 0
+         and f (x) ≺ 0. We denote the current iterate as x, λ, and ν, and the next iterate
+         as x+ , λ+ , and ν + , i.e.,
+
+                    x+ = x + s∆xpd ,           λ+ = λ + s∆λpd ,          ν + = ν + s∆νpd .
+         11.7   Primal-dual interior-point methods                                               613
+
+
+         The residual, evaluated at y + , will be denoted r+ .
+            We first compute the largest positive step length, not exceeding one, that gives
+         λ+  0, i.e.,
+
+                           smax     =   sup{s ∈ [0, 1] | λ + s∆λ  0}
+                                    =   min {1, min{−λi /∆λi | ∆λi < 0}} .
+
+         We start the backtracking with s = 0.99smax , and multiply s by β ∈ (0, 1) until we
+         have f (x+ ) ≺ 0. We continue multiplying s by β until we have
+
+                             krt (x+ , λ+ , ν + )k2 ≤ (1 − αs)krt (x, λ, ν)k2 .
+
+         Common choices for the backtracking parameters α and β are the same as those for
+         Newton’s method: α is typically chosen in the range 0.01 to 0.1, and β is typically
+         chosen in the range 0.3 to 0.8.
+             One iteration of the primal-dual interior-point algorithm is the same as one step
+         of the infeasible Newton method, applied to solving rt (x, λ, ν) = 0, but modified to
+         ensure λ ≻ 0 and f (x) ≺ 0 (or, equivalently, with dom rt restricted to λ ≻ 0 and
+         f (x) ≺ 0). The same arguments used in the proof of convergence of the infeasible
+         start Newton method show that the line search for the primal-dual method always
+         terminates in a finite number of steps.
+
+
+11.7.4   Examples
+
+         We illustrate the performance of the primal-dual interior-point method for the
+         same problems considered in §11.3.2. The only difference is that instead of starting
+         with a point on the central path, as in §11.3.2, we start the primal-dual interior-
+         point method at a randomly generated x(0) , that satisfies f (x) ≺ 0, and take
+          (0)
+         λi = −1/fi (x(0) ), so the initial value of the surrogate gap is η̂ = 100. The
+         parameter values we use for the primal-dual interior-point method are
+
+                          µ = 10,       β = 0.5,       ǫ = 10−8 ,      α = 0.01.
+
+         Small LP and GP
+         We first consider the small LP used in §11.3.2, with m = 100 inequalities and
+         n = 50 variables. Figure 11.21 shows the progress of the primal-dual interior-point
+         method. Two plots are shown: the surrogate gap η̂, and the norm of the primal
+         and dual residuals,
+                                                                  1/2
+                                   rfeas = krpri k22 + krdual k22      ,
+         versus iteration number. (The initial point is primal feasible, so the plot shows the
+         norm of the dual feasibility residual.) The plots show that the residual converges
+         to zero rapidly, and becomes zero to numerical precision in 24 iterations. The
+         surrogate gap also converges rapidly. Compared to the barrier method, the primal-
+         dual interior-point method is faster, especially when high accuracy is required.
+            Figure 11.22 shows the progress of the primal-dual interior-point method on the
+         GP considered in §11.3.2. The convergence is similar to the LP example.
+614                                                                  11    Interior-point methods
+
+
+
+
+       102                                               105
+       100
+                                                         100
+         −2
+       10
+                                                         10−5
+  η̂   10−4                                      rfeas
+       10−6
+                                                         10−10
+       10−8
+                                                         10−15
+       10−10
+           0    5         10    15   20  25    30            0   5         10    15   20  25   30
+                        iteration number                                 iteration number
+               Figure 11.21 Progress of the primal-dual interior-point method for an LP,
+               showing surrogate duality gap η̂ and the norm of the primal and dual resid-
+               uals, versus iteration number. The residual converges rapidly to zero within
+               24 iterations; the surrogate gap also converges to a very small number in
+               about 28 iterations. The primal-dual interior-point method converges faster
+               than the barrier method, especially if high accuracy is required.
+
+
+
+
+       102                                               105
+       100
+                                                         100
+       10−2
+
+  η̂   10−4                                      rfeas   10−5
+       10−6
+                                                         10−10
+       10−8
+
+       10−10                                             10−15
+           0        5       10     15    20    25            0       5       10     15    20   25
+                        iteration number                                 iteration number
+               Figure 11.22 Progress of primal-dual interior-point method for a GP, show-
+               ing surrogate duality gap η̂ and the norm of the primal and dual residuals
+               versus iteration number.
+       11.8    Implementation                                                                           615
+
+                                     50
+
+
+                                     40
+
+
+
+                        iterations
+                                     30
+
+
+                                     20
+
+
+                                     10 1
+                                       10                  102                      103
+                                                            m
+               Figure 11.23 Number of iterations required to solve randomly generated
+               standard LPs of different dimensions, with n = 2m. Error bars show stan-
+               dard deviation, around the average value, for 100 instances of each dimen-
+               sion. The growth in the number of iterations required, as the problem di-
+               mensions range over a 100 : 1 ratio, is approximately logarithmic.
+
+
+
+       A family of LPs
+       Here we examine the performance of the primal-dual method as a function of
+       the problem dimensions, for the same family of standard form LPs considered
+       in §11.3.2. We use the primal-dual interior-point method to solve the same 2000
+       instances, which consist of 100 instances for each value of m. The primal-dual
+       algorithm is started at x(0) = 1, λ(0) = 1, ν (0) = 0, and terminated using tolerance
+       ǫ = 10−8 . Figure 11.23 shows the average, and standard deviation, of the number
+       of iterations required versus m. The number of iterations ranges from 15 to 35,
+       and grows approximately as the logarithm of m. Comparing with the results for
+       the barrier method shown in figure 11.8, we see that the number of iterations in
+       the primal-dual method is only slightly higher, despite the fact that we start at
+       infeasible starting points, and solve the problem to a much higher accuracy.
+
+
+
+
+11.8   Implementation
+       The main effort in the barrier method is computing the Newton step for the cen-
+       tering problem, which consists of solving sets of linear equations of the form
+                                                            
+                                H AT          ∆xnt             g
+                                                       =−          ,                (11.60)
+                                 A    0        νnt             0
+       where
+                                            m
+                                            X                                  Xm
+                                                     1                     T         1
+                H   =       t∇2 f0 (x) +                2
+                                                          ∇f i (x)∇f i (x)   +              ∇2 fi (x)
+                                            i=1
+                                                f i (x)                        i=1
+                                                                                   −f i (x)
+616                                                                          11     Interior-point methods
+
+                                          m
+                                          X     1
+                 g   =       t∇f0 (x) +                ∇fi (x).
+                                          i=1
+                                              −f i (x)
+
+
+         The Newton equations for the primal-dual method have exactly the same structure,
+         so our observations in this section apply to the primal-dual method as well.
+             The coefficient matrix of (11.60) has KKT structure, so all of the discussion
+         in §9.7 and §10.4 applies here. In particular, the equations can be solved by elimi-
+         nation, and structure such as sparsity or diagonal plus low rank can be exploited.
+         Let us give some generic examples in which the special structure of the KKT equa-
+         tions can be exploited to compute the Newton step more efficiently.
+
+         Sparse problems
+         If the original problem is sparse, which means that the objective and every con-
+         straint function each depend on only a modest number of variables, then the gradi-
+         ents and Hessian matrices of the objective and constraint functions are all sparse,
+         as is the coefficient matrix A. Provided m is not too big, the matrix H is then
+         likely to be sparse, so a sparse matrix method can be used to compute the Newton
+         step. The method will likely work well if there are a few relatively dense rows and
+         columns in the KKT matrix, which would occur, for example, if there were a few
+         equality constraints involving a large number of variables.
+
+         Separable objective and a few linear inequality constraints
+         Suppose the objective function is separable, and there are only a relatively small
+         number of linear equality and inequality constraints. Then ∇2 f0 (x) is diagonal,
+         and the terms ∇2 fi (x) vanish, so the matrix H is diagonal plus low rank. Since H
+         is easily inverted, we can solve the KKT equations efficiently. The same method
+         can be applied whenever ∇2 f0 (x) is easily inverted, e.g., banded, sparse, or block
+         diagonal.
+
+
+11.8.1   Standard form linear programming
+
+         We first discuss the implementation of the barrier method for the standard form
+         LP
+                                   minimize cT x
+                                   subject to Ax = b, x  0,
+
+         with A ∈ Rm×n . The Newton equations for the centering problem
+                                                                  Pn
+                                        minimize      tcT x −          i=1 log xi
+                                        subject to    Ax = b
+
+         are given by
+                                                                                       
+                            diag(x)−2     AT        ∆xnt               −tc + diag(x)−1 1
+                                                               =                                .
+                                A          0         νnt                       0
+         11.8    Implementation                                                                 617
+
+
+         These equations are usually solved by block elimination of ∆xnt . From the first
+         equation,
+
+                         ∆xnt     =   diag(x)2 (−tc + diag(x)−1 1 − AT νnt )
+                                  =   −t diag(x)2 c + x − diag(x)2 AT νnt .
+
+         Substituting in the second equation yields
+
+                                A diag(x)2 AT νnt = −tA diag(x)2 c + b.
+
+         The coefficient matrix is positive definite since by assumption rank A = m. More-
+         over if A is sparse, then usually A diag(x)2 AT is sparse, so a sparse Cholesky
+         factorization can be used.
+
+
+11.8.2   ℓ1 -norm approximation
+
+         Consider the ℓ1 -norm approximation problem
+
+                                          minimize   kAx − bk1
+
+         with A ∈ Rm×n . We will discuss the implementation assuming m and n are large,
+         and A is structured, e.g., sparse, and compare it with the cost of the corresponding
+         least-squares problem
+                                         minimize kAx − bk22 .
+            We start by expressing the ℓ1 -norm approximation problem as an LP by intro-
+         ducing auxiliary variables y ∈ Rm :
+                                            T
+                             minimize       y
+                                           1               
+                                              A −I    x      b
+                             subject to                         .
+                                             −A −I    y     −b
+
+         The Newton equation for the centering problem is
+                T                                            T   
+                 A    −AT       D1 0          A −I        ∆xnt       A g1
+                                                                 =−
+                 −I    −I        0 D2        −A −I        ∆ynt        g2
+
+         where
+                    D1 = diag(b − Ax + y)−2 ,         D2 = diag(−b + Ax + y)−2
+         and
+
+                    g1   =   diag(b − Ax + y)−1 1 − diag(−b + Ax + y)−1 1
+                    g2   =   t1 − diag(b − Ax + y)−1 1 − diag(−b + Ax + y)−1 1.
+
+         If we multiply out the lefthand side, this can be simplified as
+                  T                                                   T   
+                    A (D1 + D2 )A −AT (D1 − D2 )            ∆xnt          A g1
+                                                                    =−           .
+                     −(D1 − D2 )A         D1 + D2           ∆ynt           g2
+618                                                                  11    Interior-point methods
+
+
+         Applying block elimination to ∆ynt , we can reduce this to
+
+                                          AT DA∆xnt = −AT g                               (11.61)
+
+         where
+                     D = 4D1 D2 (D1 + D2 )−1 = 2(diag(y)2 + diag(b − Ax)2 )−1
+         and
+                                   g = g1 + (D1 − D2 )(D1 + D2 )−1 g2 .
+         After solving for ∆xnt , we obtain ∆ynt from
+
+                            ∆ynt = (D1 + D2 )−1 (−g2 + (D1 − D2 )A∆xnt ).
+
+         It is interesting to note that (11.61) are the normal equations of a weighted least-
+         squares problem
+                                  minimize kD1/2 (A∆x + D−1 g)k2 .
+         In other words, the cost of solving the ℓ1 -norm approximation problem is the cost
+         of solving a relatively small number of weighted least-squares problems with the
+         same matrix A, and weights that change at each iteration. If A has structure
+         that allows us to solve the least-squares problem fast (for example, by exploiting
+         sparsity), then we can solve (11.61) fast.
+
+
+11.8.3   Semidefinite programming in inequality form
+
+         We consider the SDP
+                                    minimize      cT x
+                                                  P  n
+                                    subject to       i=1 xi Fi + G  0,
+
+         with variable x ∈ Rn , and parameters F1 , . . . , Fn , G ∈ Sp . The associated centering
+         problem, using the log-determinant barrier function, is
+                                                             Pn
+                            minimize tcT x − log det(− i=1 xi Fi − G).
+
+         The Newton step ∆xnt is found from H∆xnt = −g, where the Hessian and gradient
+         are given by
+
+                             Hij    =   tr(S −1 Fi S −1 Fj ), i, j = 1, . . . , n
+                              gi    =   tci + tr(S −1 Fi ), i = 1, . . . , n,
+                       Pn
+         where S = − i=1 xi Fi − G. One standard approach is to form H (and g), and
+         then solve the Newton equation via Cholesky factorization.
+            We first consider the unstructured case, i.e., we assume all matrices are dense.
+         We will also just keep track of the order in the flop count, with respect to the
+         problem dimensions n and p. We first form S, which costs order np2 flops. We
+         then compute the matrices S −1 Fi , for each i, via Cholesky factorization of S, and
+         then back substitution with the columns of Fi (or forming S −1 and multiplying
+         by Fi ). This cost is order p3 for each i, so the total cost is order np3 . Finally,
+         11.8   Implementation                                                                      619
+
+
+         we form Hij as the inner product of the matrices S −1 Fi and S −1 Fj , which costs
+         order p2 flops. Since we do this for n(n + 1)/2 such pairs, the cost is order n2 p2 .
+         Solving for the Newton direction costs order n3 . The dominating order is thus
+         max{np3 , n2 p2 , n3 }.
+              It is not possible, in general, to exploit sparsity in the matrices Fi and G, since
+         H is often dense, even when Fi and G are sparse. One exception is when Fi and G
+         have a common block diagonal structure, in which case all the operations described
+         above can be carried out block by block.
+              It is often possible to exploit (common) sparsity in Fi and G to form the (dense)
+         Hessian H more efficiently. If we can find an ordering that results in S having
+         a reasonably sparse Cholesky factor, then we can compute the matrices S −1 Fi
+         efficiently, and form Hij far more efficiently.
+              One interesting example that arises frequently is an SDP with matrix inequality
+
+                                             diag(x)  B.
+
+         This corresponds to Fi = Eii , where Eii is the matrix with i, i entry one and all
+         others zero. In this case, the matrix H can be found very efficiently:
+
+                                             Hij = (S −1 )2ij ,
+
+         where S = B − diag(x). The cost of forming H is thus the cost of forming S −1 ,
+         which is at most (i.e., when no other structure is exploited) order n3 .
+
+
+11.8.4   Network rate optimization
+         We consider a variation on the optimal network flow problem described in §10.4.3
+         (page 550), which is sometimes called the network rate optimization problem. The
+         network is described as a directed graph with L arcs or links. Goods, or packets
+         of information, travel on the network, passing through the links. The network
+         supports n flows, with (nonnegative) rates x1 , . . . , xn , which are the optimization
+         variables. Each flow moves along a fixed, or pre-determined, path (or route) in the
+         network, from a source node to a destination node. Each link can support multiple
+         flows passing through it. The total traffic on a link is the sum of the flow rates of
+         the flows that travel over the link. Each link has a positive capacity, which is the
+         maximum total traffic it can handle.
+             We can describe these link capacity limits using the flow-link incidence matrix
+         A ∈ RL×n , defined as
+                                     
+                                       1 flow j passes through link i
+                              Aij =
+                                       0 otherwise.
+
+         The total traffic on link i is then given by (Ax)i , so the link capacity constraints
+         can be expressed as Ax  c, where ci is the capacity of link i. Usually each path
+         passes through only a small fraction of the total number of links, so the matrix A
+         is sparse.
+             In the network rate problem the paths are fixed (and encoded in the matrix A,
+         which is a problem parameter); the variables are the flow rates xi . The objective
+620                                                                   11     Interior-point methods
+
+
+      is to choose the flow rates to maximize a separable utility function U , given by
+                                   U (x) = U1 (x1 ) + · · · + Un (xn ).
+      We assume that each Ui (and hence, U ) is concave and nondecreasing. We can
+      think of Ui (xi ) as the income derived from supporting the ith flow at rate xi ; U (x)
+      is then the total income associated with the flows. The network rate optimization
+      problem is then
+                                   maximize U (x)
+                                                                                    (11.62)
+                                   subject to Ax  c, x  0,
+      which is a convex optimization problem.
+          Let us apply the barrier method to solve this problem. At each step we must
+      minimize a function of the form
+                                          L
+                                          X                       n
+                                                                  X
+                              −tU (x) −         log(c − Ax)i −          log xj ,
+                                          i=1                     j=1
+
+      using Newton’s method. The Newton step ∆xnt is found by solving the linear
+      equations
+                            (D0 + AT D1 A + D2 )∆xnt = −g,
+      where
+                         D0    =     −t diag(U1′′ (x), . . . , Un′′ (x))
+                         D1    =     diag(1/(c − Ax)21 , . . . , 1/(c − Ax)2L )
+                         D2    =     diag(1/x21 , . . . , 1/x2n )
+      are diagonal matrices, and g ∈ Rn . We can describe the sparsity structure of this
+      n × n coefficient matrix precisely:
+                                     (D0 + AT D1 A + D2 )ij 6= 0
+      if and only if flow i and flow j share a link. If the paths are relatively short, and
+      each link has relatively few paths passing through it, then this matrix is sparse, so
+      a sparse Cholesky factorization can be used. We can also solve the Newton system
+      efficiently when some, but not too many, of the rows and columns are relatively
+      dense. This occurs when a few of the flows intersect with a large number of the
+      other flows, which might occur if a few flows are relatively long.
+           We can also use the matrix inversion lemma to compute the Newton step by
+      solving a system with L × L coefficient matrix, with form
+                       (D1−1 + A(D0 + D2 )−1 AT )y = −A(D0 + D2 )−1 g,
+      and then computing
+                                ∆xnt = −(D0 + D2 )−1 (g + AT y).
+      Here too we can precisely describe the sparsity pattern:
+                                (D1−1 + A(D0 + D2 )−1 AT )ij 6= 0
+      if and only if there is a path that passes through link i and link j. If most paths
+      are short, this matrix is sparse. This matrix will be sparse, with a few dense rows
+      and columns, if there are a few bottlenecks, i.e., a few links over which many flows
+      travel.
+Bibliography                                                                                   621
+
+
+Bibliography
+The early history of the barrier method is described in detail by Fiacco and McCormick
+[FM90, §1.2]. The method was a popular algorithm for convex optimization in the 1960s,
+along with closely related techniques such as the method of centers (Liêũ and Huard
+[LH66]; see also exercise 11.11), and penalty (or exterior-point) methods [FM90, §4].
+Interest declined in the 1970s amid concerns about the ill-conditioning of the Newton
+equations of the centering problem (11.6) for high values of t.
+The barrier method regained popularity in the 1980s, after Gill, Murray, Saunders, Tom-
+lin, and Wright [GMS+ 86] pointed out the close connections with Karmarkar’s polynomial-
+time projective algorithm for linear programming [Kar84]. The focus of research through-
+out the 1980s remained on linear (and to a lesser extent, quadratic) programming, result-
+ing in different variations of the basic interior-point methods, and improved worst-case
+complexity results (see Gonzaga [Gon92]). Primal-dual methods emerged as the algo-
+rithms of choice for practical implementations (see Mehrotra [Meh92], Lustig, Marsten,
+and Shanno [LMS94], Wright [Wri97]).
+In their 1994 book, Nesterov and Nemirovski extended the complexity theory of linear
+programming interior-point methods to nonlinear convex optimization problems, using
+the convergence theory of Newton’s method for self-concordant functions. They also
+developed interior-point methods for problems with generalized inequalities, and discussed
+ways of reformulating problems to satisfy the self-concordance assumption. The geometric
+programming reformulation on page 587, for example, is from [NN94, §6.3.1].
+As mentioned on page 585, the complexity analysis shows that, contrary to what one might
+expect, the centering problems in the barrier method do not become more difficult as t
+increases, at least not in exact arithmetic. Practical experience, supported by theoretical
+results (Forsgren, Gill, and Wright [FGW02, §4.3.2], Nocedal and Wright [NW99, page
+525]), also indicates that the effects of ill-conditioning on the computed solution of the
+Newton system are more benign than thought earlier.
+Recent research on interior-point methods has concentrated on extending the primal-dual
+methods for linear programming, which converge faster and reach higher accuracies than
+(primal) barrier methods, to nonlinear convex problems. One popular approach, along
+the lines of the simple primal-dual method of §11.7, is based on linearizing modified KKT
+equations for a convex optimization problem in standard form, i.e., problem (11.1). More
+sophisticated algorithms of this type differ from algorithm 11.2 in the strategy used to
+select t (which is crucial to achieve superlinear asymptotic convergence), and the line
+search. We refer to Wright [Wri97, chapter 8], Ralph and Wright [RW97], den Hertog
+[dH93], Terlaky [Ter96], and the survey by Forsgren, Gill, and Wright [FGW02, §5] for
+details and references.
+Other authors adopt the cone programming framework as starting point for extending
+primal-dual interior-point methods for linear programming to convex optimization (see
+for example, Nesterov and Todd [NT98]). This approach has resulted in efficient and
+accurate primal-dual methods for semidefinite and second-order programming (see the
+surveys by Todd [Tod01] and Alizadeh and Goldfarb [AG03]).
+As for linear programming, primal-dual methods for semidefinite programming are usually
+described as variations of Newton’s method applied to modified KKT equations. Unlike
+in linear programming, however, the linearization can be carried out in many different
+ways, which lead to different search directions and algorithms; see Helmberg, Rendl,
+Vanderbei, and Wolkowicz [HRVW96], Kojima, Shindo, and Harah [KSH97], Monteiro
+[Mon97], Nesterov and Todd [NT98], Zhang [Zha98], Alizadeh, Haeberly, and Overton
+[AHO98], and Todd, Toh, and Tütüncü [TTT98].
+Great progress has also been made in the area of initialization and infeasibility detection.
+Homogeneous self-dual formulations provide an elegant and efficient alternative to the
+classical two-phase approach of §11.4; see Ye, Todd, and Mizuno [YTM94], Xu, Hung,
+622                                                          11    Interior-point methods
+
+
+      and Ye [XHY96], Andersen and Ye [AY98] and Luo, Sturm, and Zhang [LSZ00] for details.
+      The primal-dual interior-point methods for semidefinite and second-order cone program-
+      ming have been implemented in a number of software packages, including SeDuMi [Stu99],
+      SDPT3 [TTT02], SDPA [FKN98], CSDP [Bor02], and DSDP [BY02], A user-friendly in-
+      terface to several of these codes is provided by YALMIP [Löf04].
+      The following books document the recent developments in this rapidly advancing field
+      in greater detail: Vanderbei [Van96], Wright [Wri97], Roos, Terlaky, and Vial [RTV97]
+      Ye [Ye97], Wolkowicz, Saigal, and Vandenberghe [WSV00], Ben-Tal and Nemirovski,
+      [BTN01], Renegar [Ren01], and Peng, Roos, and Terlaky [PRT02].
+     Exercises                                                                                               623
+
+
+     Exercises
+     The barrier method
+11.1 Barrier method example. Consider the simple problem
+
+                                           minimize        x2 + 1
+                                           subject to      2 ≤ x ≤ 4,
+
+     which has feasible set [2, 4], and optimal point x⋆ = 2. Plot f0 , and tf0 + φ, for several
+     values of t > 0, versus x. Label x⋆ (t).
+11.2 What happens if the barrier method is applied to the LP
+
+                                      minimize        x2
+                                      subject to      x1 ≤ x 2 ,     0 ≤ x2 ,
+
+     with variable x ∈ R2 ?
+11.3 Boundedness of centering problem. Suppose the sublevel sets of (11.1),
+
+                                  minimize        f0 (x)
+                                  subject to      fi (x) ≤ 0,      i = 1, . . . , m
+                                                  Ax = b,
+
+     are bounded. Show that the sublevel sets of the associated centering problem,
+
+                                         minimize        tf0 (x) + φ(x)
+                                         subject to      Ax = b,
+
+     are bounded.
+11.4 Adding a norm bound to ensure strong convexity of the centering problem. Suppose we
+     add the constraint xT x ≤ R2 to the problem (11.1):
+
+                                  minimize        f0 (x)
+                                  subject to      fi (x) ≤ 0, i = 1, . . . , m
+                                                  Ax = b
+                                                  xT x ≤ R 2 .
+
+     Let φ̃ denote the logarithmic barrier function for this modified problem. Find a > 0 for
+     which ∇2 (tf0 (x) + φ̃(x))  aI holds, for all feasible x.
+11.5 Barrier method for second-order cone programming. Consider the SOCP (without equality
+     constraints, for simplicity)
+
+                       minimize          fT x
+                                                                                                   (11.63)
+                       subject to        kAi x + bi k2 ≤ cTi x + di ,        i = 1, . . . , m.
+
+     The constraint functions in this problem are not differentiable (since the Euclidean norm
+     kuk2 is not differentiable at u = 0) so the (standard) barrier method cannot be applied.
+     In §11.6, we saw that this SOCP can be solved by an extension of the barrier method
+     that handles generalized inequalities. (See example 11.8, page 599, and page 601.) In this
+     exercise, we show how the standard barrier method (with scalar constraint functions) can
+     be used to solve the SOCP.
+     We first reformulate the SOCP as
+              minimize        fT x
+              subject to      kAi x + bi k22 /(cTi x + di ) ≤ cTi x + di ,      i = 1, . . . , m   (11.64)
+                              cTi x + di ≥ 0, i = 1, . . . , m.
+624                                                                         11     Interior-point methods
+
+
+           The constraint function
+                                                   kAi x + bi k22
+                                        fi (x) =                  − cTi x − di
+                                                    cTi x + di
+           is the composition of a quadratic-over-linear function with an affine function, and is twice
+           differentiable (and convex), provided we define its domain as dom fi = {x | cTi x+di > 0}.
+           Note that the two problems (11.63) and (11.64) are not exactly equivalent. If cTi x⋆ +di = 0
+           for some i, where x⋆ is the optimal solution of the SOCP (11.63), then the reformulated
+           problem (11.64) is not solvable; x⋆ is not in its domain. Nevertheless we will see that
+           the barrier method, applied to (11.64), produces arbitrarily accurate suboptimal solutions
+           of (11.64), and hence also for (11.63).
+
+            (a) Form the log barrier φ for the problem (11.64). Compare it to the log barrier that
+                arises when the SOCP (11.63) is solved using the barrier method for generalized
+                inequalities (in §11.6).
+            (b) Show that if tf T x + φ(x) is minimized, the minimizer x⋆ (t) is 2m/t-suboptimal for
+                the problem (11.63). It follows that the standard barrier method, applied to the
+                reformulated problem (11.64), solves the SOCP (11.63), in the sense of producing
+                arbitrarily accurate suboptimal solutions. This is the case even though the optimal
+                point x⋆ need not be in the domain of the reformulated problem (11.64).
+
+      11.6 General barriers. The log barrier is based on the approximation −(1/t) log(−u) of the
+           indicator function Ib− (u) (see §11.2.1, page 563). We can also construct barriers from
+           other approximations, which in turn yield generalizations of the central path and barrier
+           method. Let h : R → R be a twice differentiable, closed, increasing convex function,
+           with dom h = −R++ . (This implies h(u) → ∞ as u → 0.) One such function is
+           h(u) = − log(−u); another example is h(u) = −1/u (for u < 0).
+           Now consider the optimization problem (without equality constraints, for simplicity)
+
+                                     minimize       f0 (x)
+                                     subject to     fi (x) ≤ 0,    i = 1, . . . , m,
+
+           where fi are twice differentiable. We define the h-barrier for this problem as
+                                                         m
+                                                         X
+                                             φh (x) =          h(fi (x)),
+                                                         i=1
+
+
+           with domain {x | fi (x) < 0, i = 1, . . . , m}. When h(u) = − log(−u), this is the usual
+           logarithmic barrier; when h(u) = −1/u, φh is called the inverse barrier. We define the
+           h-central path as
+                                       x⋆ (t) = argmin tf0 (x) + φh (x),
+           where t > 0 is a parameter. (We assume that for each t, the minimizer exists and is
+           unique.)
+            (a) Explain why tf0 (x) + φh (x) is convex in x, for each t > 0.
+            (b) Show how to construct a dual feasible λ from x⋆ (t). Find the associated duality gap.
+            (c) For what functions h does the duality gap found in part (b) depend only on t and
+                m (and no other problem data)?
+      11.7 Tangent to central path. This problem concerns dx⋆ (t)/dt, which gives the tangent to the
+           central path at the point x⋆ (t). For simplicity, we consider a problem without equality
+           constraints; the results readily generalize to problems with equality constraints.
+            (a) Find an explicit expression for dx⋆ (t)/dt. Hint. Differentiate the centrality equa-
+                tions (11.7) with respect to t.
+     Exercises                                                                                        625
+
+
+       (b) Show that f0 (x⋆ (t)) decreases as t increases. Thus, the objective value in the barrier
+           method decreases, as the parameter t is increased. (We already know that the duality
+           gap, which is m/t, decreases as t increases.)
+11.8 Predictor-corrector method for centering problems. In the standard barrier method, x⋆ (µt)
+     is computed using Newton’s method, starting from the initial point x⋆ (t). One alternative
+     that has been proposed is to make an approximation or prediction x    b of x⋆ (µt), and then
+                                                   ⋆
+     start the Newton method for computing x (µt) from x        b. The idea is that this should
+     reduce the number of Newton steps, since x    b is (presumably) a better initial point than
+     x⋆ (t). This method of centering is called a predictor-corrector method, since it first makes
+     a prediction of what x⋆ (µt) is, then corrects the prediction using Newton’s method.
+     The most widely used predictor is the first-order predictor, based on the tangent to the
+     central path, explored in exercise 11.7. This predictor is given by
+
+                                                     dx⋆ (t)
+                                      b = x⋆ (t) +
+                                      x                      (µt − t).
+                                                       dt
+
+     Derive an expression for the first-order predictor xb. Compare it to the Newton update
+     obtained, i.e., x⋆ (t) + ∆xnt , where ∆xnt is the Newton step for µtf0 (x) + φ(x), at x⋆ (t).
+     What can you say when the objective f0 is linear? (For simplicity, you can consider a
+     problem without equality constraints.)
+11.9 Dual feasible points near the central path. Consider the problem
+
+                                minimize      f0 (x)
+                                subject to    fi (x) ≤ 0,     i = 1, . . . , m,
+
+     with variable x ∈ Rn . We assume the functions fi are convex and twice differentiable. (We
+     assume for simplicity there are no equality constraints.) Recall (from §11.2.2, page 565)
+     that λi = −1/(tfi (x⋆ (t))), i = 1, . . . , m, is dual feasible, and in fact, x⋆ (t) minimizes
+     L(x, λ). This allows us to evaluate the dual function for λ, which turns out to be g(λ) =
+     f0 (x⋆ (t)) − m/t. In particular, we conclude that x⋆ (t) is m/t-suboptimal.
+     In this problem we consider what happens when a point x is close to x⋆ (t), but not quite
+     centered. (This would occur if the centering steps were terminated early, or not carried
+     out to full accuracy.) In this case, of course, we cannot claim that λi = −1/(tfi (x)),
+     i = 1, . . . , m, is dual feasible, or that x is m/t-suboptimal. However, it turns out that
+     a slightly more complicated formula does yield a dual feasible point, provided x is close
+     enough to centered.
+     Let ∆xnt be the Newton step at x of the centering problem
+                                                         Pm
+                                minimize     tf0 (x) −      i=1
+                                                                  log(−fi (x)).
+
+     A formula that often gives a dual feasible point when ∆xnt is small (i.e., for x nearly
+     centered) is                                      
+                               1          ∇fi (x)T ∆xnt
+                      λi =             1+                 , i = 1, . . . , m.
+                            −tfi (x)          −fi (x)
+     In this case, the vector x does not minimize L(x, λ), so there is no general formula for the
+     dual function value g(λ) associated with λ. (If we have an analytical expression for the
+     dual objective, however, we can simply evaluate g(λ).)
+     Verify that for a QCQP
+
+                       minimize     (1/2)xT P0 x + q0T x + r0
+                       subject to   (1/2)xT Pi x + qiT x + ri ≤ 0,        i = 1, . . . , m,
+
+     the formula for λ yields a dual feasible point (i.e., λ  0 and L(x, λ) is bounded below)
+     when ∆xnt is sufficiently small.
+626                                                                           11     Interior-point methods
+
+
+         Hint. Define
+                                                                1
+                        x0 = x + ∆xnt ,         xi = x −               ∆xnt ,      i = 1, . . . , m.
+                                                            tλi fi (x)
+         Show that
+                                                      m
+                                                      X
+                                        ∇f0 (x0 ) +         λi ∇fi (xi ) = 0.
+                                                      i=1
+
+        Now use fi (z) ≥ fi (xi ) + ∇fi (xi )T (z − xi ), i = 0, . . . , m, to derive a lower bound on
+        L(z, λ).
+  11.10 Another parametrization of the central path. We consider the problem (11.1), with central
+        path x⋆ (t) for t > 0, defined as the solution of
+                                                              Pm
+                                   minimize       tf0 (x) −      i=1
+                                                                       log(−fi (x))
+                                   subject to     Ax = b.
+         In this problem we explore another parametrization of the central path.
+         For u > p⋆ , let z ⋆ (u) denote the solution of
+                                                                     Pm
+                             minimize      − log(u − f0 (x)) −          i=1
+                                                                              log(−fi (x))
+                             subject to    Ax = b.
+        Show that the curve defined by z ⋆ (u), for u > p⋆ , is the central path. (In other words,
+        for each u > p⋆ , there is a t > 0 for which x⋆ (t) = z ⋆ (u), and conversely, for each t > 0,
+        there is an u > p⋆ for which z ⋆ (u) = x⋆ (t)).
+  11.11 Method of analytic centers. In this problem we consider a variation on the barrier method,
+        based on the parametrization of the central path described in exercise 11.10. For simplic-
+        ity, we consider a problem with no equality constraints,
+                                   minimize       f0 (x)
+                                   subject to     fi (x) ≤ 0,       i = 1, . . . , m.
+
+         The method of analytic centers starts with any strictly feasible initial point x(0) , and any
+         u(0) > f0 (x(0) ). We then set
+                                       u(1) = θu(0) + (1 − θ)f0 (x(0) ),
+         where θ ∈ (0, 1) is an algorithm parameter (usually chosen small), and then compute the
+         next iterate as
+                                              x(1) = z ⋆ (u(1) )
+         (using Newton’s method, starting from x(0) ). Here z ⋆ (s) denotes the minimizer of
+                                                             m
+                                                             X
+                                     − log(s − f0 (x)) −            log(−fi (x)),
+                                                              i=1
+
+         which we assume exists and is unique. This process is then repeated.
+         The point z ⋆ (s) is the analytic center of the inequalities
+                                   f0 (x) ≤ s,    f1 (x) ≤ 0, . . . , fm (x) ≤ 0,
+         hence the algorithm name.
+         Show that the method of centers works, i.e., x(k) converges to an optimal point. Find a
+         stopping criterion that guarantees that x is ǫ-suboptimal, where ǫ > 0.
+         Hint. The points x(k) are on the central path; see exercise 11.10. Use this to show that
+                                                       m+θ
+                                          u+ − p ⋆ ≤       (u − p⋆ ),
+                                                       m+1
+         where u and u+ are the values of u on consecutive iterations.
+

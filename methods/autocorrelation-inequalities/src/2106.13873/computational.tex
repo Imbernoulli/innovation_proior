@@ -1,0 +1,148 @@
+%!TEX root = main.tex
+%Observe that 
+
+\subsection{Computational aspects I: Regularity with respect to \texorpdfstring{$\lambda$}{lambda}} The computational strategy will be to find the value $c_\lambda$ for a discrete subset of the possible $\lambda$, and prove regularity properties of $c_\lambda$ that guarantee that $C_{opt}= c_{\lambda^*}$ is not far from the maximum of the values of $c_{\lambda}$.
+
+\begin{lemma}
+The following properties hold:
+\begin{itemize}
+    \item[(i)] The Lipstchitz constant of $c_{\lambda}$ is at most $1$.
+    \item[(ii)] If $C_{opt}=c_{\lambda^*}$, then
+    $$
+    c_{\lambda} \ge \frac{2 c_{\lambda^*} }{\lambda^{-1}\lambda^*+\lambda{\lambda^*}^{-1}}
+    $$
+\end{itemize}
+\end{lemma}
+\begin{proof}
+%\newb{Clarify the proof of the first part of the lemma}
+{\it{Proof of (i):}} Let $g$ be a function such that $\|g\|_1 = 1$, then $\langle g|K_w|g\rangle\le 1$, and 
+$$
+\left|\frac d {d\lambda} (\lambda \|g\|^2_2+ \lambda^{-1} \|g\|^2_1)^{-1}\right| = \lambda^ {-1}(\lambda \|g\|^2_2+ \lambda^{-1} \|g\|^2_1)^{-2} |\lambda \|g\|^2_2- \lambda^{-1}\|g\|^2_1|\le 1.
+$$
+The result follows from this.\\
+
+{\it{Proof of (ii)}:} %For the second, 
+We start observing that
+$$
+\lambda^{*}=\frac{\|f^*\|_1}{\|f^*\|_2},
+$$
+where $f^*$ is an extremizer for our original problem (This is when the equality happen in AM-GM inequality).
+Then
+\begin{align*}
+ c_{\lambda}({\lambda^{*}}^{-1}\|f^*\|^2_1+\lambda^{*}\|f^*\|^2_{2})\geq 2\langle f^*|K_w|f^*\rangle= 2\|f^*\|_1\|f^*\|_2c_{\lambda^*}.
+\end{align*}
+Therefore
+\begin{align*}
+    c_{\lambda}\geq \frac{2\|f^*\|_1\|f^*\|_2c_{\lambda^*}}{{\lambda^{*}}^{-1}\|f^*\|^2_1+\lambda^{*}\|f^*\|^2_{2}}=\frac{2c_{\lambda^*} }{\lambda^{-1}\lambda^*+\lambda{\lambda^*}^{-1}}.
+\end{align*}
+\end{proof}
+
+
+%\textbf{------------------}
+\subsection{Computational aspects II: Discretizing the convolution kernel.}
+Let $a,b\in \delta\mathbb{Z}$, and
+as previously, let $V_\delta$ be the set of functions $g:[a,b)\to\mathbb{R}$ that are constants on intervals of length $\delta$.
+Let $f:\delta \mathbb Z\cap [a,b)\to\mathbb{R}$, we define $\|f\|_{l^p_\delta}:= \left (\sum_{i\in\delta\mathbb Z\cap[a,b)} f(i)^p \delta\right )^{1/p}$ (essentially a $\delta-$discretization of the $L^p$ norm), and, we define $E[f]:=\sum_{i\in\delta\mathbb Z} f(i)\chi_{[i,i+\delta]}\in V_{\delta}$. Observe that we have the equality $\|f\|_{l^p_\delta} = \|E[f]\|_{L^p}$. For any $a,b\in \delta \mathbb Z$ this defines a natural isomorphism between $V_{\delta}$ and functions with domain $\delta \mathbb Z \cap [a,b)$. Let
+$$
+\iota :l^2(\delta \mathbb Z \cap [a,b)) \to L^2(\mathbb R \cap [a,b))\cap V_{\delta}
+$$ be the map given by this isomorphism i.e $if=E[f]$ for all $f\in \delta\mathbb{Z}\cap[a,b)$ 
+(Here we are considering $\delta \mathbb Z$ with $\delta$ times the counting measure as a measure). This isomorphism allows us to define the metrics induced in $V_{\delta}$ by  %$L^{1:2}$, 
+$H_\lambda$, $B_\lambda$ as a metric for functions in $\delta \mathbb Z \cap [a,b)$. %Let $$\iota :l^2(\delta \mathbb Z \cap [a,b)) \to L^2(\mathbb R \cap [a,b))\cap V_{\delta}$$ be the map given by this isomorphism.
+
+
+Given a function $w \in L^1 \cap L^{\infty} (
+[a,b])$ there is a function in $\tilde w \in l^1 \cap l^{\infty} (\delta \mathbb Z \cap [a,b])$ such that for $f,g \in l^2(\delta \mathbb Z \cap [a,b))$ it holds that $$\langle  \iota f, w\ast_{\mathbb R} \iota g \rangle_{L^2(\mathbb R)} =  \langle  f, \tilde w\ast_{\delta \mathbb Z}  g \rangle_{l^2(\delta \mathbb Z)}. $$
+
+The function $\tilde w$ is given explicitly by:
+
+\begin{align*}
+\tilde w(s) 
+=&
+\langle \delta^{-1} 1_s, \tilde w\ast_{\delta \mathbb Z} (\delta^{-1} 1_{0}) \rangle_{l^2(\delta \mathbb Z)} 
+\\=&
+\langle \delta^{-1} \chi_{[s,s+\delta)},  w\ast_{ \mathbb R} (\delta^{-1} \chi_{[0,\delta)}) \rangle_{L^2(\mathbb R)} 
+%\\=&
+%\langle \delta^{-1} 1_s, \tilde w\ast_{\delta \mathbb Z} (\delta^{-1} 1_{0}) \rangle_{l^2(\delta \mathbb Z)} 
+\\=&
+\fint_{s}^{s+\delta}\fint_{0}^{\delta} w(y-x)  dx dy
+\\=&
+\delta^{-2} \int_{s}^{s+\delta} w(t) (\delta-|t-s|) dt.
+\end{align*}
+In the two cases of special interest (when $w$ is a Gaussian function or when $w$ is the characteristic function of a set, we get more explicit values). In practice, however, the high stability of the integrals make it more accurate to perform the integrals numerically if $\delta$ is small than to compute the difference numerically (of the order of $10^{-5}$), for more details see the annotated code.
+
+
+
+\subsection{Computational aspects II: Solving the problem for a fixed \texorpdfstring{$\lambda$}{lambda} at a discretization scale \texorpdfstring{$\delta$}{delta} }
+
+What remains to do now is to give an algorithm that allows us to solve the extended problem for a fixed value of $\lambda$. The key fact that we use is that, if we %were able to 
+remove the constraint $f\ge 0$, then the solution could be readily found using the power method for self-adjoint finite dimensional linear operators (symmetric matrices). We focus first in the situation when the constraint $f\ge 0$ is removed, and then argue that we can assume we are in that situation. \\
+
+Recalling that
+$$
+C_{opt}(w) = \max_{\lambda>0} \max_{f \in L^1 \cap L^2([-a,a])}  2 \frac{\bra f w \ket f}{\lambda  \braket f f + \lambda^ {-1}\braket f 1 \braket 1 f}. 
+$$
+Assume that the functions under consideration are supported in $[-a,a)$, so we have $\braket 11 = 2a$. In an abuse of notation, we denote by $w$ the convolution operator associated to $w$.
+The key observation is the following
+$$
+{\lambda \braket f f + \lambda^{-1} \braket f 1 \braket 1 f} = \bra f  (\sqrt \lambda Id + b_{\lambda} \ket 1 \bra 1 )^2 \ket f = \bra f A_{\lambda}^2 \ket f,
+$$
+where $b_{\lambda}$ is the unique positive solution to $\lambda^{-1} = 2\sqrt{\lambda} b_{\lambda}+2a b_{\lambda}^2$ and $A_{\lambda}$ is a hermitian positive definite matrix. Let $g:= A_{\lambda}f$, then we have:
+
+$$
+2 \frac{\bra f w \ket f}{\lambda  \braket f f + \lambda^ {-1}\braket f 1 \braket 1 f}  = 2 \frac{\bra g A_{\lambda}^{-1}  w A_{\lambda}^{-1}  \ket g}{\braket gg}
+$$
+defining $M_{\lambda}:= 2 A_{\lambda}^{-1}  w A_{\lambda}^{-1} $ we have that
+
+$$
+C_{opt}(w) = \max_{\lambda>0} \max \operatorname{Spec}(M_{\lambda}).
+$$
+
+
+%\subsection{Solving the auxiliary problem}
+
+What remains to be shown is that the constraint $f\ge 0$ can indeed be dropped out. Let $f^*$ be the solution to the discretized problem constrained to $f\ge 0$. We can assume (by the discrete version of Riesz rearrangement inequality, see \cite[Chapter X]{HLP}) that $f^*$ is symmetric and non-increasing. Assume that, out of all potential extremizers to the discretized problem, $f^*$ has minimal support. \\
+
+Let $\tilde V$ be the (finite dimensional) space of functions in $\delta \mathbb Z$ with the same support as $f^*$. Since $f^*$ extremizes the rayleigh quotient $\langle f|w|f\rangle$  it must be an eigenvector $w$ restricted to the support of $f$. It is the unique eigenvector: If there was another eigenvector $g^*$, the function $g^*-\alpha f^*$ would be an eigenvector as well, with a strictly smaller support if $\alpha$ is chosen appropriately.\\
+
+Let $l$ be the number of $\delta$-intervals in the discretized shortest support. We can further constrain the optimization problem to functions supported in these $l$ intervals without changing the value of the optimization. In this case, the extremizer function $f^*$ will be an extremizer on the interior, and therefore, the largest eigenvalue of the bilinear form induced by $w$. We can find such eigenvalue by the power method.\\
+
+
+
+This shows the following algorithm will give the extreme value up to discretization erros:
+
+\begin{enumerate}
+	\item Choose $\delta$ small enough for the desired error in Proposition \ref{bounding the error} to hold. Let $N$ be the number of $\delta-$intervals intersecting $[-a,a]$
+	\item Fix $\lambda$ (and then repeat for a large enough set of $\lambda$ for the desired tolerance in Proposition \ref{bounding the error} to hold).
+    \item For each natural $1\le k\le N$ solve the unconstrained discretized problem (the eigenvalue problem) with the power method. If the solution satisfies the constraints, keep as a potential problem.
+    \item The maximum for our original problem (up to the tolerance/error arising from the discretization) is the maximum over all the solutions given in the previous step, where the maximum is taken over all the $\lambda$ and $k$.
+\end{enumerate}
+
+\subsection{A conjectured iterative method}
+
+
+The Euler-Lagrange equations for $f$ in the support of $f$ can be written as:
+
+	\begin{equation}\label{euler-lagrange-2}
+		 \frac \optf {\|\optf\|_2^2} =  \max\left (\frac{2 \optf\ast w}{\int_{\mathbb R^2} \optf(x)\optf(y) w(x-y) dx dy}  - \frac 1 {\|\optf\|_1},0\right ).
+	\end{equation}
+This suggests a fixed point method (both in the discrete and continuous set-ups) to find an extremizer to the autoconvolution problem. This method converges in practice (see the last column in Table \ref{table}), and is hundreds of times faster than the method described in the previous section. We have however been unable to show convergence of such method. 
+
+This method bears resemblance to the numerical method in \cite{CDGJLM}, where the authors were not able to show convergence of the method either.
+
+\section{A comparison with the maximum problem}
+
+At first glance this problem bears resemblance to the original maximum problem originally studied by Cilleruelo, Rusza and Vinuesa \cite{CRV}. The problem of the mean (when $w = \chi_{[-1/2,1/2]}$) was indeed posed by Steinberger as a relaxation of the problem of the maximum, namely finding the largest constant such that:
+
+\begin{equation}
+    \label{eq:maximo}
+\text{max}_{-1/2 \le t \le 1/2} \int_{\R} f(t-x)f(x) \, dx \ge c_{\max} \left(\int_{-1/4}^{1/4} f(x) \, dx\right)^2.
+\end{equation}
+
+this problem was studied using computational methods by Cloninger and Steinberger \cite{CS}. The complexity of numerical method proposed in \cite{CS} grows exponentially in the level of discretization of the function, as opposed to the polynomial cost in the method proposed in this work.
+
+One may hope that the methods in this work could generalize to methods in the maximum problem, however we believe that the problems are genuinely different for two reasons:
+
+\begin{itemize}
+    \item There is no reason to expect smooth (or Liptschitz) global extremizers to the maximum problem. In fact, the best known numerical extremizers \cite[Figure 1]{MV} seem non-smooth, and are certainly not symetrically decreasing. This prevents the gain of a $\delta^2$ in the discretization of the problem, which now has to be done much more carefully (\cite[Lemma 1]{CS}). 
+    \item The (discretized) problem of the maximum seems to have multiple local extremizers of the functional in equation \eqref{eq:maximo}. This quite likely prevents fixed point methods to be efficient.  
+\end{itemize}

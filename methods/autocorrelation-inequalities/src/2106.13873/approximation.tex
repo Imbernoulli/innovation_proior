@@ -1,0 +1,199 @@
+%!TEX root = main.tex
+\textbf{Notation:} Trough this section $\bra f$ will denote a row vector, $\ket f$ a column vector. If $a$ is a matrix, $\bra f a \ket g$ will be the vector-matrix-vector product. Moreover, $\ket 1$ will be the column vector with all ones. We will use the notation $\braket fg$ as a dot product for $f,g$, with the dot product $\braket fg = \delta_x \sum f_i g_i$ ($\delta_x$ is the discretization scale). If the discretized functions are supported in $(-a,a)$, then $\braket 11 = 2a$. We denote by $K_w$ the convolution operator associated to $w$.
+
+Let 
+$
+L^{1,2}([a,b]):= L^{1}([a,b])\cap L^{2}([a,b]),$ and, for each function $f\in L^{1,2}([a,b])$ we define
+$\|f\|_{L^{1:2}([a,b])} := \|f\|^{1/2}_{L^1([a,b])}\|f\|^{1/2}_{L^2([a,b])}$.
+
+\begin{definition}
+We define some spaces as the space of measurable functions (up to a.e. equivalence) with the following norms (with $\lambda$ a parameter greater than zero):
+
+\begin{itemize}
+    %\item %$\|f\|^2_{L^{1:2}([a,b])} = \|f\|_{L^1([a,b])}\|f\|_{L^2([a,b])}$
+    \item $\|f\|_{H_\lambda([a,b])}^{2} = \lambda\|f\|_2^2+\lambda^{-1}\left|\int_a^b f dx \right|^2$.
+    \item $\|f\|_{B_\lambda([a,b])}^{2} = \lambda\|f\|_2^2+\lambda^{-1}\left|\int_a^b |f| dx \right|^2$.
+\end{itemize}
+These spaces satisfy nice properties, including the following:
+\begin{itemize}
+    \item $\|f\|^2_{L^{1:2}([a,b])} = \frac 1 2 \inf_{\lambda} \|f\|^2_{B_{\lambda}([a,b])}$. This is a consequence of AM-GM inequality.
+    \item $ \|f\|_{B_{\lambda}([a,b])} \ge \|f\|_{H_{\lambda}([a,b])}$ with equality if and only if $f$ is nonnegative.
+    \item $H_{\lambda}$ is a Hilbert space. Since, by definition, $\|\cdot\|_{H_{\lambda}([a,b])}$ satisfies the parallelogram law.
+\end{itemize}
+\end{definition}
+{\remark{
+Observe that by H\"older's inequality and AM-GM inequality we have
+\begin{align*}
+&\|f+g\|^2_{H_{\lambda}([a,b])}-\|f\|^2_{H_{\lambda}([a,b])}-\|g\|^2_{H_{\lambda}([a,b])}-2\|f\|_{H_{\lambda}([a,b])}\|g\|_{H_{\lambda}([a,b])}\\
+&=\lambda\|f+g\|_{L^2([a,b])}^2+\lambda^{-1}\left|\int_a^b f+g dx \right|^2\\
+&\ \ \ -\lambda\|f\|_{L^2([a,b])}^2-\lambda^{-1}\left|\int_a^b f dx \right|^2-\lambda\|g\|_{L^2([a,b])}^2-\lambda^{-1}\left|\int_a^b g dx \right|^2\\
+&\ \ \ -2\|f\|_{H_{\lambda}([a,b])}\|g\|_{H_{\lambda}([a,b])}\\
+&\leq 2\lambda\int_{a}^{b}fgdx+\frac{2}{\lambda}\left|\int_{a}^{b}fdx\right| \left|\int_{a}^{b}gdx\right|-2\|f\|_{H_{\lambda}([a,b])}\|g\|_{H_{\lambda}([a,b])}\\
+&\leq 2\lambda\|f\|_{L^{2}{([a,b])}}\|g\|_{L^{2}([a,b])}+\frac{2}{\lambda}\left|\int_{a}^{b}fdx\right| \left|\int_{a}^{b}gdx\right|-2\|f\|_{H_{\lambda}([a,b])}\|g\|_{H_{\lambda}([a,b])}\\
+&\leq 0, \ \text{for any two functions}\ f,g\in H_{\lambda}([a,b]).
+\end{align*}
+This means that
+$\|\cdot\|_{H_{\lambda}([a,b])}$ satisfies the triangle inequality, so this is really a norm (since all the other properties trivially hold).
+Similarly we can see that
+$\|\cdot\|_{B_{\lambda}}$} 
+is in fact a norm.}
+
+The strategy to find the optimal value $C_{opt}$ will be in two steps:
+
+\begin{itemize}
+    \item First, by the addition of a parameter $\lambda$ we will turn the optimization problem into a computtionally tractable optimization problem.
+    \item We will then show that a suitably discretized version of the computationally tractable problem is quantitatively close to the original continuous problem.
+\end{itemize}
+
+\subsection*{A computationally tractable relaxation of the problem.} For any $\lambda>0$, let 
+\begin{equation}\label{c lambda definition}
+c_{\lambda}:=c_{\lambda}(w):=\max_{f \in L^1 \cap L^2}  2 \frac{\bra f w \ket f}{\lambda  \braket f f + \lambda^ {-1}\braket f 1 \braket 1 f}.
+\end{equation}
+Observe that by Fubini's theorem and H\"older's inequality we have
+\begin{equation}\label{upper bounds for c lambda depending on lambda}
+    c_{\lambda}\leq \min\{2\lambda,2/\lambda\}.
+\end{equation}
+Using the fact that $\min_{\lambda >0} \lambda a^2+\lambda^ {-1} b^2 = 2 ab$ by AM-GM inequality. We can turn our original problem into:
+$$
+C_{opt}:=c(w) :=\max_{\lambda>0}c_{\lambda}(w)= \max_{\lambda>0} \max_{f \in L^1 \cap L^2}  2 \frac{\bra f w \ket f}{\lambda  \braket f f + \lambda^ {-1}\braket f 1 \braket 1 f}. 
+$$
+
+
+
+\begin{lemma}\label{relation between norms in H lambda and L12}
+
+We have that 
+$$
+\max_{\|f\|_{L^{1:2}([a,b])}\le 1} \langle f|K_w|f\rangle = 2\max_{\lambda>0} \max_{\substack{\|f\|_{H_\lambda ([a,b])}\le 1\\f\ge 0
+             }
+     }
+\langle f|K_w|f\rangle
+$$
+moreover, the extremizers to $\max_{\|f\|_{H_\lambda ([a,b])}\le 1} \langle f|K_w|f\rangle$ (which exist by the Hilbert theory) are symmetric decreasing nonnegative.
+\end{lemma}
+\begin{proof}
+Observe that
+\begin{align*}
+    \max_{\|f\|_{L^{1:2}([a,b])}\le 1} \langle f|K_w|f\rangle &=\max_{f\in L^{1:2}([a,b])} \frac{\langle f|k_w|f\rangle}{\|f\|^2_{L^{1:2}[(a,b)]}}  \\
+    &= 2\max_{f\in L^{1:2}([a,b])} \frac{\langle f|k_w|f\rangle}{\inf_{\lambda>0}\|f\|^2_{B_{\lambda}[(a,b)]}}\\
+    &= 2\max_{\substack{f\in {H_\lambda ([a,b])}\\f\ge 0}} \frac{\langle f|k_w|f\rangle}{\inf_{\lambda>0}\|f\|^2_{H_{\lambda}[(a,b)]}}\\
+    &=2\max_{\lambda>0} \max_{\substack{\|f\|_{H_\lambda ([a,b])}\le 1\\f\ge 0}}
+\langle f|K_w|f\rangle.
+\end{align*}
+The last part of the statement follows from the Riesz rearrangement inequality.
+\end{proof}
+
+The problem of finding $c_{\lambda}$ for a fixed $\lambda$ becomes now essentially a problem about finding the spectrum of $w$ (as a convolution operator) in a certain Hilbert space, with certain subtleties arising from the fact that we have a restriction to $f\ge 0$. These subtleties are addressed in Section 3.3. 
+
+\subsection*{Relating a discretized version of the problem to the continuous problem.}  We start by defining our discretized spaces as the space of step functions on intervals of length $\delta$:
+
+
+\begin{definition}
+ Given $\delta>0$ the set $V_\delta$ will be the set of functions that are constant on intervals of the form $[n\delta, (n+1)\delta)$. Given a function $f$ we define $[f]_\delta \in V_\delta$ by $[f]_\delta = \delta^{-1}\int_{\delta n}^{\delta(n+1)} f(s) ds$. We also define $\{f\}_{\delta} := f-[f]_{\delta}$.
+\end{definition}
+
+Observe that $\|[f]_{\delta}\|_1=\|f\|_1$ and by H\"older's inequality $\|[f]_{\delta}\|_2\leq \|f\|_2$ for all $f\in L^{1}(\R)\cap L^{2}(\R)$. 
+Moreover, by the previous observation, \begin{equation}\label{relacion entre normas en H}
+\|[f]_{\delta}\|_{H_{\lambda}}\leq \|f\|_{H_{\lambda}} \end{equation}
+for all $f\in H_{\lambda}$.
+
+
+Our next lemma establishes smoothness properties for the extremizers on the interior of the support. %under mild conditions on the weight $w$.
+Regularity (in the form of \ref{l-infinity bound for the derivative}) will be crucial  %in the following sections, 
+in order to implement a numerical scheme to find the constants $C_{opt}$.
+
+\begin{lemma}\label{l-infinity bound for the derivative}
+Let $\hat f$ be an extremizer to the problem $\max_{\|f\|_{H_\lambda ([a,b])}\le 1} 2\langle f|K_w|f\rangle
+$.\\
+Let $c_\lambda =  \max_{f\ge 0; \|f\|_{H_\lambda ([a,b])}\le 1} 2 \langle f|K_w|f\rangle
+$. Then  $\|\hat f\|_{2} \le \lambda^{-1/2}$ and $\|\hat f'\|_{2} \le \frac{4}{c_\lambda \lambda^2}$.
+\end{lemma}
+
+%\textbf{Creo que lo que obtenemos es:}
+%$$
+%\frac{8}{\lambda^{5/2}c^2_{\lambda}}?
+%$$
+
+\begin{proof}
+    The fact that $\|\hat f\|_{2} \le \lambda^{-1/2}$ follows from the fact that $\|\hat f\|_{2} \le \lambda^{-1/2}\|\hat f\|_{H_{\lambda}}$.
+
+For the second part, observe that the function $\hat f$ maximizes the functional
+	\begin{equation*}
+		\mathcal F (g) :=  \log \langle g|k_w|g\rangle   -  \log \|g\|^2_{H_{\lambda}([a,b])}
+	\end{equation*}
+	over the set of functions  $g\in H_{\lambda}([a,b])$. This leads to the following Euler-Lagrange equation inside of the support of $\hat f$:
+
+	\begin{equation}\label{euler-lagrange2}
+		0 = \nabla_f \mathcal F (\hat f) = \frac{2 k_w \hat f}{\langle \hat f|k_w|\hat f\rangle}  - \frac {2\lambda \hat f+2\lambda^{-1}I \hat f} {\|\hat f\|_{H_{\lambda}([a,b])}} ,
+	\end{equation}
+	where $I$ is the operator that maps $f$ to a function with value equal to the integral of $f$.
+	Then, multiplying by $\|\hat f\|_{H_{\lambda}([a,b])}$, and using the definition of $c_{\lambda}$, we obtain
+		\begin{equation*}
+		0 = \nabla_f \mathcal F (\hat f) = \frac{4 k_w\hat f}{c_{\lambda}}  -  {2\lambda \hat f-2\lambda^{-1}I\hat f}.
+	\end{equation*}
+		Therefore, since $\hat f\geq0$ we have that
+	\begin{equation}\label{euler lagrange eq for lambda problem}
+	\hat f=\max\{0,[c^{-1}_{\lambda}(\lambda+\lambda^{-1}I)^{-1}2k_w]\hat f\}.
+	\end{equation}
+    This implies that on the support of $f$, it holds that 
+$$|\hat f ' |\leq  \frac{2}{c_\lambda \lambda} |(w \ast \hat f)'|$$
+then, by Young's convolution inequality
+$$
+    \|\hat f '\|_2\le \frac{2}{c_\lambda \lambda} \|w'\|_{1}\|\hat f\|_2=\frac{2}{c_\lambda \lambda} \|w\|_{TV} \|\hat f\|_2  = \frac{4}{c_\lambda \lambda} \|w\|_{\infty} \|\hat f\|_2 \le \frac{4}{c_\lambda \lambda^{3/2}}.
+    $$
+\end{proof}
+
+
+We are now ready to state the main result of the section:
+
+\begin{proposition}\label{bounding the error}
+    Let $c_{\lambda,\delta}:= \sup_{f\ge 0, f\in V_\delta,\|f\|_{H_{\lambda}}\le 1} \langle f |K|f\rangle$ be the discretized version of $c_{\lambda}$. Then:
+
+    \begin{align}
+0 \le c_\lambda-c_{\lambda,\delta} \le& \frac{16\delta^2}{\pi^2c_{\lambda}\lambda^2}
+\end{align}
+
+\begin{proof}
+By construction, $c_\lambda\ge c_{\lambda,\delta}$, so we can focus on the second inequality. Let $f^*$ be an extremizer for $c_\lambda$, we assume without loss of generality that $\|f^*\|_{H_{\lambda}}=1$.
+Then, by \eqref{relacion entre normas  en H} we have $\|[f^*]_{\delta}\|_{H_{\lambda}}\leq 1$, moreover
+$$
+c_{\lambda}-c_{\lambda,\delta}\leq K_w(f^*,f^*) - \frac{K_w([f^*]_\delta, [f^*]_\delta)}{\|[f^*]_{\delta}\|^2_{H_{\lambda}}}\leq K_w(f^*,f^*) - K_w([f^*]_\delta, [f^*]_\delta).
+$$
+Thus, it suffices to bound 
+$$
+K_w(f^*,f^*) - K_w([f^*]_\delta, [f^*]_\delta) = K_w([f^*]_\delta + f^*, \{f^*\}_\delta)  = (([f^*]_\delta + f^*)\ast w, \{f^*\}_{\delta}).
+$$
+In order to do this, we use two key properties: 
+\begin{itemize}
+    %\item (Free $\delta$ improving) The map $f\mapsto[f]_{\delta}$ (and therefore $\{\cdot\}_{\delta}$ )is an $L^2$ (and an $H_\lambda$) orthogonal projection. In particular $(g,\{f\}_{\delta}) = (\{g\}_{\delta}, \{f\}_{\delta})$.
+    \item (Orthogonality) $([f]_{\delta},\{g\}_{\delta})=0$ for any two functions $f,g\in L^{1}(\R)$.
+    \item (Optimal Poincare's inequality) $\|\{f\}_{\delta}\|_{L^2}\le \frac \delta {\pi} \|f'\|_{L^2} $.
+\end{itemize}
+
+%By the first estimate,
+Using the orthogonality property and Young's convolution inequality we obtain
+$$
+c_\lambda-c_{\lambda,\delta} \le \|\{(f^* +[f^*]_\delta)\ast w\}_\delta\|_2 \|\{f^*\}_{\delta}\|_2.
+$$
+Moreover, by the optimal Poincare's inequality and Young's convolution inequality
+$$
+\|\{(f^* +[f^*]_\delta)\ast w\}_\delta\|_2\leq 
+\frac{\delta}{\pi} \|(f^* +[f^*]_\delta)*w'\|_2
+\leq \frac{\delta}{\pi}\|(f^* +[f^*]_\delta\|_2\|w\|_{TV}.
+$$
+Therefore, once again, by the optimal Poincaré inequality %(together with the fact that $\|(f^*\ast w)'\|_2 \le \|f^*\|_2\|w\|_{TV}$),
+$$
+c_\lambda-c_{\lambda,\delta} \le \frac{\delta^2}{\pi^2}\|f^* +[f^*]_\delta\|_2\| w\|_{TV} \|{f^*}'\|_2
+$$
+
+The proposition now follows using that $\|[f^*]_{\delta}\|_2\leq \|f^*\|_{2} \le \lambda^{-1/2}$, $\|\hat {f^*}'\|_{2} \le \frac{4}{c_\lambda \lambda^{3/2}}$, $\|w\|_{TV}=2\|w\|_{\infty}=2$, and the triangle inequality, to obtain:
+
+\begin{equation}
+    c_\lambda-c_{\lambda,\delta} \le \frac{16\delta^2}{\pi^2c_{\lambda}\lambda^2}.
+\end{equation}
+
+\end{proof}
+
+
+\end{proposition}
+

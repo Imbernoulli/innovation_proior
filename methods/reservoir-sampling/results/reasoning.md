@@ -4,7 +4,7 @@ Let me first remind myself how I'd do this if I *did* know `N`. Easy: pick `k` d
 
 What if I just flip a coin per record — keep each one with some fixed probability `p`? One pass, tiny memory per decision. But what do I end up holding? A `Binomial(N, p)` number of records. That's random, and worse its mean is `Np`, which I can't even aim at `k` without knowing `N`. Wrong on two counts: not exactly `k`, and untunable. Dead end.
 
-So I need something cleverer that hits exactly `k` and never references `N`. Let me change my mental model of "random subset." Here's a move that doesn't depend on `N` at all: imagine I give every record an independent uniform random tag `u_i ~ U(0,1)` as it goes by. Then ask — which `k` records have the smallest tags? Since the tags are iid and ties never happen, *every* `k`-subset is equally likely to be the set of smallest-`k` tags. That's exactly a uniform random sample of size `k`. And nothing in that statement mentions `N`. The beauty is I don't have to keep all the tags around: to know the smallest `k` so far, I only ever need to remember the `k` smallest tags and their records. A new record displaces the current worst-of-the-best only if its tag is smaller than the largest tag I'm currently holding. That's a one-pass, `O(k)` procedure, full stop. So a correct algorithm exists. Good — but generating and comparing a real-valued tag for *every* record, and threading them through a heap, feels heavier than it needs to be for what is, at heart, "keep a uniform sample." Let me see if I can get the same guarantee with even less bookkeeping, and come back to the tags later because I suspect they'll pay off for speed.
+So I need something cleverer that hits exactly `k` and never references `N`. Let me change my mental model of "random subset." I can give every record an independent uniform random tag `u_i ~ U(0,1)` as it goes by. Then ask — which `k` records have the smallest tags? Since the tags are iid and ties never happen, *every* `k`-subset is equally likely to be the set of smallest-`k` tags. That's exactly a uniform random sample of size `k`. And nothing in that statement mentions `N`. The beauty is I don't have to keep all the tags around: to know the smallest `k` so far, I only ever need to remember the `k` smallest tags and their records. A new record displaces the current worst-of-the-best only if its tag is smaller than the largest tag I'm currently holding. That's a one-pass, `O(k)` procedure, full stop. So a correct algorithm exists. Good — but generating and comparing a real-valued tag for *every* record, and threading them through a heap, feels heavier than it needs to be for what is, at heart, "keep a uniform sample." Let me see if I can get the same guarantee with even less bookkeeping, and come back to the tags later because I suspect they'll pay off for speed.
 
 Let me try to build the sample incrementally and just demand that the invariant hold at every step: *after I've seen `t` records, the `k` I'm holding are a uniform sample of those `t`.* If I can keep that true as `t` grows, then when the tape ends at `t = N` I automatically have a uniform sample of `N`, and I never needed to know `N` — I just kept patching the invariant forward.
 
@@ -14,29 +14,31 @@ Now the `(t+1)`-st record shows up. For the invariant to survive, the new collec
 
 If I accept it, it has to push something out — I only have `k` slots. Which slot? I want the survivors to stay a uniform sample, so I shouldn't favor any of them. Evict a *uniformly random* one of the `k` current holders. Intuitively that keeps the holders exchangeable; let me not hand-wave it though, let me check the survivors' probabilities actually come out right.
 
-So the rule is: when the `(t+1)`-st record arrives, accept it with probability `k/(t+1)`; if accepted, overwrite a uniformly random one of the `k` slots; if not, drop it and move on. Let me verify the invariant propagates. Assume after `t` records each seen record sits in the reservoir with probability `k/t`. Take some old record `x` that's currently in with probability `k/t`. Does it survive the `(t+1)`-st step with the right probability `k/(t+1)`?
+So the rule is: when the `(t+1)`-st record arrives, accept it with probability `k/(t+1)`; if accepted, overwrite a uniformly random one of the `k` slots; if not, drop it and move on. Let me verify the invariant propagates. The first check is the marginal one: assume after `t` records each seen record sits in the buffer with probability `k/t`. Take some old record `x` that's currently in with probability `k/t`. Does it survive the `(t+1)`-st step with the right probability `k/(t+1)`?
 
 `x` survives the step in two disjoint ways. Either the new record is rejected — probability `1 - k/(t+1)` — and then nothing moves, `x` stays. Or the new record is accepted — probability `k/(t+1)` — but the evicted slot isn't `x`'s; given acceptance, the evicted slot is uniform over the `k` slots, so `x` is spared with probability `1 - 1/k`. So, conditioning on `x` having been in (probability `k/t`),
 
 `Pr[x still in] = (k/t) * [ (1 - k/(t+1)) + (k/(t+1))(1 - 1/k) ]`.
 
-Let me grind the bracket. `(1 - k/(t+1)) + (k/(t+1)) - (k/(t+1))(1/k)`. The `-k/(t+1)` and `+k/(t+1)` cancel, and `(k/(t+1))(1/k) = 1/(t+1)`, so the bracket is `1 - 1/(t+1) = t/(t+1)`. Then `Pr[x still in] = (k/t) * (t/(t+1)) = k/(t+1)`. The new record itself is in with probability `k/(t+1)` by construction. So *every* one of the `t+1` records is now in with probability `k/(t+1)` — invariant preserved. Base case `t = k` holds, induction carries it to `t = N`. So at the end each record is in the final sample with probability `k/N`, and the construction never touched `N`.
+Let me grind the bracket. `(1 - k/(t+1)) + (k/(t+1)) - (k/(t+1))(1/k)`. The `-k/(t+1)` and `+k/(t+1)` cancel, and `(k/(t+1))(1/k) = 1/(t+1)`, so the bracket is `1 - 1/(t+1) = t/(t+1)`. Then `Pr[x still in] = (k/t) * (t/(t+1)) = k/(t+1)`. The new record itself is in with probability `k/(t+1)` by construction. So every one of the `t+1` records now has the right inclusion probability.
+
+But marginals are not the whole invariant. I need every size-`k` subset, not just every item, to have equal probability. Take a fixed size-`k` subset `A` of the first `t+1` records. If `A` does not contain the new record, then the only way to end at `A` is that the old buffer was exactly `A` and the new record was rejected. That probability is `(1 / C(t,k)) * (1 - k/(t+1)) = (1 / C(t,k)) * ((t+1-k)/(t+1)) = 1 / C(t+1,k)`. If `A` does contain the new record, write `B` for the `k-1` old records in `A`. Before the step, the old buffer must have been `B` plus one extra old record `z`, and there are `t-k+1` choices for `z`. Each old buffer has probability `1 / C(t,k)`; then the new record must be accepted and `z` must be the one evicted, with probability `(k/(t+1)) * (1/k) = 1/(t+1)`. So `Pr[final buffer = A] = (t-k+1) * (1 / C(t,k)) * (1/(t+1)) = 1 / C(t+1,k)`. Good: the full subset law, not only the marginals, propagates. Base case `t = k` holds, induction carries it to `t = N`, and the construction never touched `N`.
 
 Let me make the accept-with-probability-`k/(t+1)` step concrete and cheap. I don't want to compute a fraction and compare; cleaner: when the `i`-th record arrives (`i = t+1`), draw an integer `j` uniformly from `{1,...,i}`. If `j <= k`, put the record in slot `j`; otherwise discard. Then `Pr[accept] = k/i` exactly, and *conditioned on accept*, `j` is uniform over `{1,...,k}`, which is exactly the uniform eviction I needed — the same draw does both jobs at once. Slot `j` is overwritten. That's the whole algorithm: keep the first `k`; for each later item draw `j` in `{1,...,i}` and if `j <= k` overwrite slot `j`. One pass, `k` slots, no `N`. I'll call this the basic reservoir rule.
 
 Now the part that's been bugging me. Count the work. For *every* one of the `N` records I draw a random integer and do a comparison. That's `Theta(N)` random draws. But how many records ever actually enter the reservoir? The `i`-th enters with probability `k/i`, so the expected number of acceptances over `i = k+1,...,N` is `sum_{i=k+1}^N k/i = k(H_N - H_k)`, where `H_m` is the `m`-th harmonic number. That's about `k * ln(N/k)`. For `N` a billion and `k` a thousand, that's only a few thousand acceptances against a billion records. I'm drawing a billion random numbers to make a few thousand decisions that matter. On this hardware a good uniform draw is not free; it's plausibly the dominant cost. The per-record coin flip is almost all waste.
 
-Here's the thing I should pin down before optimizing: is there *any* one-pass algorithm that avoids touching every record? Suppose I've seen `t` records and I'm holding a valid sample. The `(t+1)`-st record, whatever I do, has to end up in the sample with probability exactly `k/(t+1)` — that was forced, it didn't depend on my algorithm, only on "the output must be a uniform sample of `t+1` things." So every one-pass method is, deep down, this same reservoir with the same per-step acceptance probabilities. The only freedom left is *how I realize the sequence of accept/reject decisions*. I don't have to make them one record at a time. I can decide, in one shot, *how far ahead the next acceptance lands*, skip everything in between without drawing anything for it, and only spend randomness at the acceptances. Since there are only `~k ln(N/k)` acceptances, if I can generate each "skip distance" cheaply, the total random draws drop from `N` to `~k ln(N/k)` — a logarithmic count instead of linear.
+Before optimizing, I need to understand what freedom is actually left. Suppose I've seen `t` records and I'm holding a valid sample. Since the stream could end after the next record, the `(t+1)`-st record has to end up in the sample with probability exactly `k/(t+1)`. That was forced by uniformity, not by this particular implementation. So every one-pass method is, deep down, facing the same per-step acceptance probabilities. The freedom left is *how I realize the sequence of accept/reject decisions*. I don't have to make them one record at a time. I can decide, in one shot, *how far ahead the next acceptance lands*, skip everything in between without drawing anything for it, and only spend randomness at the acceptances. Since there are only `~k ln(N/k)` acceptances, if I can generate each "skip distance" cheaply, the total random draws drop from `N` to `~k ln(N/k)` — a logarithmic count instead of linear.
 
-So let `S` be the number of records I skip before the next one enters the reservoir, given I've processed `t` so far. I want the distribution of `S` and a cheap way to sample it. Going record by record under the basic rule, the record at position `t+1` is rejected with probability `1 - k/(t+1)`, the next at `t+2` rejected with `1 - k/(t+2)`, and so on, these being independent draws. So
+So let `S` be the number of records I skip before the next one enters the buffer, given I've processed `t` so far. I want the distribution of `S` and a cheap way to sample it. Going record by record under the basic rule, the record at position `t+1` is rejected with probability `1 - k/(t+1)`, the next at `t+2` is rejected with `1 - k/(t+2)`, and so on, these being independent draws. If `S > s`, then the next `s+1` records are all rejected, so
 
-`Pr[S > s] = Pr[next s records all rejected] = prod_{m=1}^{s} (1 - k/(t+m)) = prod_{m=1}^{s} (t+m-k)/(t+m)`.
+`Pr[S > s] = prod_{m=1}^{s+1} (1 - k/(t+m)) = prod_{m=1}^{s+1} (t+m-k)/(t+m)`.
 
-That product telescopes nicely. The numerator runs `(t+1-k)(t+2-k)...(t+s-k)` and the denominator runs `(t+1)(t+2)...(t+s)`. So `Pr[S > s] = (t-k+s)! / (t-k)! * t! / (t+s)!`, a ratio of falling factorials. Hence `Pr[S <= s] = 1 - [(t+1-k)(t+2-k)...]/[(t+1)(t+2)...]`. I can sample `S` by inverse transform: draw one uniform `V`, then march `s = 0, 1, 2, ...` accumulating the product until `Pr[S > s]` drops below `V`. That's *one* random draw per skip, and the marching costs `O(S)` cheap multiplications but no extra draws. Already this turns `N` draws into `~k ln(N/k)` draws while keeping correctness exactly — each `S` reproduces the same accept schedule the per-record rule would have.
+Therefore the CDF is `F(s) = Pr[S <= s] = 1 - prod_{m=1}^{s+1} (1 - k/(t+m))`. The product telescopes: the numerator runs `(t+1-k)(t+2-k)...(t+s+1-k)` and the denominator runs `(t+1)(t+2)...(t+s+1)`, so the survival term is `((t+s+1-k)!/(t-k)!) * (t!/(t+s+1)!)`. I can sample `S` by inverse transform: draw one uniform `V`, then march `s = 0, 1, 2, ...` accumulating the survival product until `Pr[S > s]` drops below `V`. That's one random draw per skip, and the marching costs `O(S)` cheap multiplications but no extra draws. Already this turns `N` draws into `~k ln(N/k)` draws while keeping correctness exactly — each `S` reproduces the same accept schedule the per-record rule would have.
 
 That's a real win, but the marching is `O(S)` arithmetic and the product `(t-k+s)/(t-k)` business is a fiddly time-varying distribution — `t` shifts every time I accept. I'd like the skip distribution to be *stationary* over a run so I can draw it in closed form, ideally one `exp`/`log` and done. Let me go back to the tags idea, because I think it linearizes this.
 
-Recall the tag picture: every record gets an iid `u ~ U(0,1)`, and I keep the records with the `k` smallest tags. Online, I hold the `k` smallest tags seen so far in a heap; the only number that governs admission is the *largest* tag among those `k` — call it the threshold `w`. A new record is admitted exactly when its tag is below `w`. Now here's the simplification: I don't actually care about the individual tags of the records I'm holding — I only care about `w`, because `w` alone decides who gets in next. So can I track just the scalar `w` and forget the rest?
+Recall the tag picture: every record gets an iid `u ~ U(0,1)`, and I keep the records with the `k` smallest tags. Online, I hold the `k` smallest tags seen so far in a heap; the only number that governs admission is the *largest* tag among those `k` — call it the threshold `w`. A new record is admitted exactly when its tag is below `w`. The individual tags of the records I'm holding are more detail than the admission process needs; `w` alone decides who gets in next. So can I track just the scalar `w` and forget the rest?
 
 What is `w`, distributionally? After I've filled the reservoir, `w` is the maximum of `k` iid `U(0,1)` tags. The max of `k` uniforms has CDF `Pr[max <= x] = x^k`. So to *draw* `w` I don't need `k` tags — by inverse transform, if `U ~ U(0,1)` then `U^{1/k}` has exactly that CDF. So `w = U^{1/k}`, one draw. (And `U^{1/k} = exp(log(U)/k)` — same thing, handy for the code.)
 
@@ -44,23 +46,9 @@ Now hold `w` fixed and let records stream by. Each one is admitted independently
 
 What happens to `w` at an admission? The new record's tag is below `w`, so it joins the `k` smallest and the *old* largest-of-the-small (the old `w`) gets evicted. The threshold tightens to the new maximum of the `k` retained tags. I need the distribution of the new `w` given the old. The retained set after the swap is `k` tags each known only to lie below the old `w`; conditioned on that, each is uniform on `(0, w_old)`, and the new threshold is their maximum. Maximum of `k` iid uniforms on `(0, w_old)` is `w_old` times the maximum of `k` iid `U(0,1)` — which I just showed is distributed as `U^{1/k}`. So `w_new = w_old * U^{1/k}`. The threshold just gets multiplied by a fresh `U^{1/k}` each time something enters. `w` marches monotonically downward, admissions get rarer and rarer — exactly mirroring `k/i` shrinking as `i` grows, but now I never compute `k/i` and never look at a rejected record.
 
-Let me also confirm I haven't broken which slot gets the new record. The tag bookkeeping says the evicted item is the current threshold-holder, but I've thrown away which physical slot that is. Does it matter? No — the records I'm holding are exchangeable; the *set* I keep is all the correctness cares about, and overwriting a uniformly random slot keeps the set exactly the set of `k`-smallest-tag records as a multiset of *records*. So at an admission I just drop the new record into a uniformly random one of the `k` slots, same as before. The tag story was scaffolding to *derive the skip law*; the runtime only needs `w` and a random slot.
+Let me also confirm I haven't broken which slot gets the new record. If I were literally maintaining all the virtual tags, I would evict the current threshold-holder. But the tags are only a way to generate the same distribution of admission times; the subset proof already told me what replacement must look like once an admission happens. The old records in the buffer are exchangeable, so I drop the new record into a uniformly random one of the `k` slots. The acceptance schedule comes from the threshold `w`; the uniform eviction keeps the subset invariant.
 
-So the optimized loop is: after filling `k` slots, set `w = U^{1/k}` and pre-compute the next admission position by skipping `floor(log(U)/log(1-w))` records; when the stream pointer reaches that position, overwrite a random slot, multiply `w` by a fresh `U^{1/k}`, and compute the next skip. The number of random draws is now two per admission — one for the skip, one for the threshold update — and there are only `~k ln(N/k)` admissions, so the total is `O(k(1 + log(N/k)))` draws. The per-record marching is gone; between admissions I literally advance the pointer by the skip count and read nothing. That's the optimal cost — it matches the lower bound, because any algorithm must at least *register* each of the `~k ln(N/k)` acceptances.
-
-Let me write the core loop the way it actually runs (1-indexed over stream positions, reservoir `R[1..k]`):
-
-```
-fill R with the first k items; i := k
-W := exp(log(random())/k)              # W = U^{1/k}, the initial threshold
-while i <= n:
-    i := i + floor(log(random())/log(1-W)) + 1   # geometric skip to next admission
-    if i <= n:
-        R[randomInteger(1,k)] := S[i]            # overwrite a uniformly random slot
-        W := W * exp(log(random())/k)            # tighten threshold by a fresh U^{1/k}
-```
-
-The `+1` is because after skipping `g` rejects the *next* position is the one that gets admitted. `log(1-W)` is negative and `log(random())` is negative, so the ratio is positive — good. When `W` is small, `log(1-W) ≈ -W`, so the skip is about `-log(U)/W`, i.e. a wait on the order of `1/W` records, which blows up as `W` shrinks — admissions thin out exactly as they should deep into a long stream.
+So the optimized loop is: after filling `k` slots, set `w = U^{1/k}` and draw the next geometric gap `floor(log(U)/log(1-w))`; the admitted position is one past those skipped records. The `+1` is because after skipping `g` rejects, the next position is the one that gets admitted. When the stream pointer reaches that position, I overwrite a random slot, tighten `w` by multiplying it by a fresh `U^{1/k}`, and only then draw the following gap from the new threshold. `log(1-w)` is negative and `log(U)` is negative, so the ratio is positive. When `w` is small, `log(1-w) ~= -w`, so the skip is about `-log(U)/w`, a wait on the order of `1/w` records; as `w` shrinks, admissions thin out exactly as they should deep into a long stream. The number of random draws is now constant per admission, and the expected number of admissions after the initial fill is `k(H_N - H_k)`, so the draw count has the optimal order `O(k(1 + log(N/k)))`.
 
 Now a different generalization that I want while I'm here: what if records carry *weights* `w_i` and I want a sample where an item's chance of selection scales with its weight, still without replacement, still one pass and `O(k)` memory? The uniform case used tag `u`; can I bend the tag so that heavier items tend to win? I want a key whose *largest values* are biased toward heavy items. Try the key `key_i = u_i^{1/w_i}` with `u_i ~ U(0,1)`. Check its law: `Pr[key_i <= x] = Pr[u_i <= x^{w_i}] = x^{w_i}` for `x in (0,1)`. So a heavier `w_i` makes `x^{w_i}` smaller for `x < 1`, i.e. pushes the key's distribution toward `1` — heavy items get systematically larger keys. Now keep the `k` items with the *largest* keys. Is the top key the right item with the right probability? For a single draw (`k=1`), `Pr[item i has the max key] = Pr[key_i > all others]`. Compute it: `Pr[max-key is i] = integral_0^1 (d/dx x^{w_i}) prod_{j != i} x^{w_j} dx = integral_0^1 w_i x^{w_i - 1} x^{(W - w_i)} dx`, where `W = sum_j w_j`, which is `w_i integral_0^1 x^{W-1} dx = w_i / W`. So item `i` wins with probability `w_i / sum_j w_j` — proportional to weight, exactly the goal. And the same key construction, kept as the top `k`, gives weighted sampling without replacement (each subsequent "round" conditions on the remaining weights, and the order-statistics structure makes the round-`r` selection probability `w_i` over the sum of not-yet-selected weights).
 
@@ -68,86 +56,96 @@ Online and `O(k)`: keep a min-heap of the `k` largest keys; its minimum is the c
 
 Can I get the same skip-the-rejects speedup here? The uniform case worked because rejections shared one parameter `w`. In the weighted case admissions happen when a key beats `T`, and the "budget" until the next admission accumulates in *weight*, not in count. Let `S_w` be the total weight of items skipped before the next entry; because each item independently clears the threshold with a probability tied to its own weight and the common threshold, the *weighted* waiting time is exponential. So draw an exponential budget once and walk the stream subtracting weights until the budget is exhausted, admitting the item that crosses it. Concretely, with threshold key `T_w` (the current heap min), draw `r ~ U(0,1)` and set the budget `X_w = log(r)/log(T_w)` (both logs negative, so `X_w > 0`); then advance through items subtracting `w_c, w_{c+1}, ...` until the running sum first reaches `X_w` — that item enters. When it enters I need to give it a key consistent with "it cleared `T_w`": draw the new key from the conditional, `t_w = T_w^{w_i}`, `r2 ~ U(t_w, 1)`, key `= r2^{1/w_i}` (which forces `key > T_w`), then refresh `T_w` to the new heap min and draw the next budget. Random draws drop from `O(n)` to `O(k log(n/k))`, the weighted echo of the same logarithmic acceptance count.
 
-Let me also write the basic-rule version explicitly since it's the one that's obviously-correct and is the right thing to reach for when `N` isn't huge and the draw count doesn't dominate:
-
-```
-fill R with the first k items
-for i := k+1 to n:
-    j := randomInteger(1, i)     # uniform in {1,...,i}
-    if j <= k:
-        R[j] := S[i]             # accept with prob k/i, into a uniformly random slot
-```
-
-and the skip-accelerated uniform version (Algorithm L above), and the weighted versions. Putting it into real, runnable code, faithful to how these are actually written:
+The basic per-item rule is still the one I want when `N` is not huge and the random-draw count does not dominate. The gap-driven uniform version fills the same interface, and the weighted versions use the same bounded-buffer shape with a heap for the keys. Putting it into real, runnable code:
 
 ```python
 import math, random, heapq
 
-# Basic reservoir: keep first k; i-th item overwrites a random slot with prob k/i.
-class ReservoirR:
+class StreamSampler:
     def __init__(self, k):
-        self.k = k; self.reservoir = []; self.i = 0
-    def add(self, item):
-        self.i += 1
-        if len(self.reservoir) < self.k:
-            self.reservoir.append(item)                  # seed: first k are a sample of themselves
-        else:
-            j = random.randrange(self.i)                 # uniform in {0,...,i-1}
-            if j < self.k:                               # happens with prob k/i
-                self.reservoir[j] = item                 # uniform-slot eviction
-    def sample(self): return self.reservoir
+        self.k = k
+        self.buffer = []
+        self.i = 0
 
-# Skip-accelerated reservoir: jump over rejected runs (geometric gaps).
-class ReservoirL:
-    def __init__(self, k):
-        self.k = k; self.reservoir = []; self.i = 0
-        self.w = 1.0; self.next_i = None
-    def _advance(self):
-        # geometric number of items to skip, then tighten the threshold by U^(1/k)
-        self.next_i += math.floor(math.log(random.random()) / math.log(1 - self.w)) + 1
-        self.w *= math.exp(math.log(random.random()) / self.k)
     def add(self, item):
         self.i += 1
-        if len(self.reservoir) < self.k:
-            self.reservoir.append(item)
-            if len(self.reservoir) == self.k:            # reservoir just filled
-                self.w = math.exp(math.log(random.random()) / self.k)   # w = U^(1/k)
+        if len(self.buffer) < self.k:
+            self.buffer.append(item)
+        else:
+            j = random.randrange(self.i)        # uniform in {0,...,i-1}
+            if j < self.k:                      # probability k/i
+                self.buffer[j] = item
+
+    def sample(self):
+        return self.buffer
+
+def sample_stream(stream, k):
+    sampler = StreamSampler(k)
+    for item in stream:
+        sampler.add(item)
+    return sampler.sample()
+
+class FastStreamSampler:
+    def __init__(self, k):
+        self.k = k
+        self.buffer = []
+        self.i = 0
+        self.schedule_state = 1.0
+        self.next_i = None
+
+    def _schedule_next(self):
+        gap = math.floor(math.log(random.random()) / math.log(1.0 - self.schedule_state))
+        self.next_i += gap + 1
+
+    def add(self, item):
+        self.i += 1
+        if len(self.buffer) < self.k:
+            self.buffer.append(item)
+            if len(self.buffer) == self.k:
+                self.schedule_state = math.exp(math.log(random.random()) / self.k)
                 self.next_i = self.k
-                self._advance()
-        else:
-            if self.i == self.next_i:                    # this position was pre-chosen for admission
-                self.reservoir[random.randrange(self.k)] = item
-                self._advance()
-    def sample(self): return self.reservoir
+                self._schedule_next()
+        elif self.i == self.next_i:
+            self.buffer[random.randrange(self.k)] = item
+            self.schedule_state *= math.exp(math.log(random.random()) / self.k)
+            self._schedule_next()
 
-# Weighted, without replacement: key = u^(1/w); keep the k largest keys.
-def a_res(stream, k):
-    heap = []                                            # min-heap; heap[0] is threshold T
+    def sample(self):
+        return self.buffer
+
+def sample_stream_fast(stream, k):
+    sampler = FastStreamSampler(k)
+    for item in stream:
+        sampler.add(item)
+    return sampler.sample()
+
+def sample_stream_weighted(stream, k):
+    heap = []
     for item, weight in stream:
-        key = random.random() ** (1.0 / weight)          # Pr[key<=x] = x^weight -> heavy items skew high
+        key = random.random() ** (1.0 / weight)
         if len(heap) < k:
             heapq.heappush(heap, (key, item))
-        elif key > heap[0][0]:                           # beats the current threshold
+        elif key > heap[0][0]:
             heapq.heapreplace(heap, (key, item))
     return [item for _key, item in heap]
 
-# Weighted with exponential jumps: skip over weight-budget worth of items per draw.
-def a_expj(stream, k):
-    it = iter(stream); heap = []
+def sample_stream_weighted_fast(stream, k):
+    it = iter(stream)
+    heap = []
     for _ in range(k):
         item, weight = next(it)
         heapq.heappush(heap, (random.random() ** (1.0 / weight), item))
-    T_w = heap[0][0]
-    X_w = math.log(random.random()) / math.log(T_w)      # exponential weight budget, > 0
+    threshold = heap[0][0]
+    budget = math.log(random.random()) / math.log(threshold)
     for item, weight in it:
-        X_w -= weight
-        if X_w <= 0:                                      # this item crosses the budget -> admit
-            t_w = T_w ** weight
-            key = random.uniform(t_w, 1.0) ** (1.0 / weight)   # key drawn conditioned on > T_w
+        budget -= weight
+        if budget <= 0:
+            cutoff = threshold ** weight
+            key = random.uniform(cutoff, 1.0) ** (1.0 / weight)
             heapq.heapreplace(heap, (key, item))
-            T_w = heap[0][0]
-            X_w = math.log(random.random()) / math.log(T_w)
+            threshold = heap[0][0]
+            budget = math.log(random.random()) / math.log(threshold)
     return [item for _key, item in heap]
 ```
 
-The whole chain, end to end: I can't know `N` and can't store the stream, so I refuse to think in terms of `N` and instead demand only that what I'm holding always be a uniform sample of what I've seen — which forces the `(t+1)`-st item to enter with probability `k/(t+1)` and forces uniform eviction, and an induction on `t` shows that single local rule keeps every seen item at probability `k/t` all the way to `t = N`. That basic rule is correct but spends a random draw on every record while only `~k ln(N/k)` records ever enter, so I reframe each item as carrying a uniform tag and keep the `k` smallest tags; the admission threshold is just the scalar `w = U^{1/k}`, fixed-threshold admissions are independent so the gap between them is geometric and I leap it with one `floor(log U / log(1-w))`, tightening `w` by a fresh `U^{1/k}` at each admission — dropping the draw count to the optimal `O(k(1+log(N/k)))`. Bending the tag to `u^{1/w}` makes the largest keys land on the heaviest items with probability `w_i / sum_j w_j`, giving weighted sampling without replacement via a `k`-element min-heap, and replacing the count budget with an exponential *weight* budget jumps over the rejects there too.
+The whole chain, end to end: I can't know `N` and can't store the stream, so I demand only that what I'm holding always be a uniform sample of what I've seen — which forces the `(t+1)`-st item to enter with probability `k/(t+1)` and forces uniform eviction, and an induction on `t` shows that single local rule gives every size-`k` subset probability `1/C(t,k)` all the way to `t = N`. That basic rule is correct but spends a random draw on every record while only `~k ln(N/k)` later records ever enter, so I reframe each item as carrying a uniform tag and keep the `k` smallest tags; the admission threshold is just the scalar `w = U^{1/k}`, fixed-threshold admissions are independent so the gap between them is geometric and I leap it with one `floor(log U / log(1-w))`, tightening `w` by a fresh `U^{1/k}` after each admission. Bending the tag to `u^{1/w}` makes the largest keys land on the heaviest items with probability `w_i / sum_j w_j`, giving weighted sampling without replacement via a `k`-element min-heap, and replacing the count budget with an exponential weight budget jumps over the rejects there too.

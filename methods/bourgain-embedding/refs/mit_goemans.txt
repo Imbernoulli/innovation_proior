@@ -1,0 +1,357 @@
+Massachusetts Institute of Technology
+Lecturer: Michel X. Goemans
+18.409: Topics in TCS: Embeddings of Finite Metric Spaces
+September 20, 2006
+Scribe: Jinwoo Shin
+
+Lecture 5
+Last time we discussed the sparsest cut problem and its connection to metric embeddings. If we
+can efficiently embed any metric (i.e. l ∞ -embeddable) into l1 with distortion α then we can derive an
+α-approximation algorithm for the sparsest cut problem. Similarly, for embedding a negative-type
+metric into l1 . In 1985, Bourgain [1] proved that any n-point metric space can be embedded into l 2
+(hence, l1 or any lp for p ≥ 1) with distortion O(log n). Metrics from expander
+√ graphs show this is
+tight. Recently, Arora, Lee and Naor [2] have shown that a distortion of O( log n · log log n) can
+be achieved to embed a negative type metric into Euclidean space. Today, we describe Bourgain’s
+result and prove it.
+Theorem 1. Every metric space (X, d) with |X| = n can be embedded into l 2 with distortion
+O(log n).
+Frechet Embedding. For a given metric space (X, d), distance between a point x ∈ X and a set
+A ⊂ X is defined as:
+d(x, A) = min d(x, y).
+y∈A
+
+Also, we can check that a function fA : X → R1 which maps x to d(x, A) has the following nonexpanding property. For x ∈ X, let s ∈ X be such that d(x, s) = d(x, A) and, similarly for y ∈ X,
+let t ∈ X be such that d(y, t) = d(y, A). Thus,
+fA (x) − fA (y) = d(x, A) − d(y, A)
+= d(x, s) − d(y, t)
+
+≤ d(x, t) − d(y, t) ≤ d(x, y).
+
+The same is true if we exchange the roles of x and y and thus we have |f A (x) − fA (y)| ≤ d(x, y).
+A Frechet Embedding of (X, d) is a probability distribution µ over all non-empty subsets of X. If
+A is a random subset distributed according to µ, then we associate, to every x ∈ X, the real-valued
+random variable Fµ (x) = d(x, A). Then, the following lemma holds.
+Lemma 2. Let (X, d) be a metric space with |X| = n. If, for a Frechet embedding µ, we can show
+that
+∀x, y ∈ X, d(x, y) ≤ γEµ |Fµ (x) − Fµ (y)| = γEµ [|d(x, A) − d(y, A)|]
+p
+n
+then the mapping G : X → R2 with1 G(x) = ( µ(A) d(x, A))A⊂X embeds (X, d) into l2 with
+distortion γ.
+1
+
+n
+
+The coordinate value of G(x) corresponding to A in R2 is
+
+1
+
+p
+µ(A) d(x, A)
+
+Proof.
+
+
+∀x, y ∈ X, ||G(x) − G(y)||2 = 
+≤
+
+X
+
+A⊆X
+
+
+
+1
+2
+
+X
+
+µ(A)(d(x, A) − d(y, A))
+1
+
+2
+
+µ(A)d(x, y)
+
+A⊆X
+
+= d(x, y).
+
+2
+
+2
+
+p
+p
+n
+Also, if we set u, v ∈ R2 as u = ( µ(A) |d(x, A) − d(y, A)|)A⊆X , v = ( µ(A))A⊆X , we can get
+the other direction of the inequality as follows:
+∀x, y ∈ X, ||G(x) − G(y)||2 = ||u||2 = ||u||2 ||v||2
+
+≥ hu, vi (by the Cauchy Schwartz inequality)
+X
+µ(A)|d(x, A) − d(y, A)|
+=
+A⊆X
+
+= Eµ [|d(x, A) − d(y, A)|]
+1
+≥ d(x, y).
+γ
+
+Therefore, for all x, y ∈ X, we have
+||G(x) − G(y)||2 ≤ d(x, y) ≤ γ||G(x) − G(y)||2 .
+
+For proving the main theorem, this lemma says that it suffices to find a Frechet embedding µ
+which satisfies the condition of the lemma with γ = O(log n).
+Let K = {1, 2, . . . , 2p } where p = blog 2 (n)c, and construct a Frechet embedding µ as follows:
+
+ 1 n1 if |A| ∈ K
+p+1 ( )
+|A|
+µ(A) =
+ 0 if |A| ∈
+/ K.
+
+We need to verify the condition of Lemma 2 for every x and y. So, fix x, y ∈ X, and define some
+notions.
+Definition 1.
+
+• B(x, ρ) = {y ∈ X, d(x, y) ≤ ρ}
+
+• B̄(x, ρ) = {y ∈ X, d(x, y) < ρ}
+• ρt = min{ρ : |B(x, ρ)| ≥ 2t & |B(y, ρ)| ≥ 2t }.
+By definition, ρ0 = 0. Let l be a least index with ρl ≥ d(x,y)
+4 . Then, B(x, ρl−1 ) ∩ B(y, ρl−1 ) = φ
+d(x,y)
+l
+because ρl−1 < 4 . Therefore, 2 ≤ n because n ≥ |B(x, ρl−1 ) ∪ B(y, ρl−1 )| = |B(x, ρl−1 )| +
+|B(y, ρl−1 )| ≥ 2l−1 + 2l−1 = 2l . Thus l ≤ p. Now, fix k = 2j with p − l ≤ j ≤ p − 1, and let
+2
+
+t = p − j. (Hence, 1 ≤ t ≤ l.) We can assume | B̄(x, ρt )| < 2t without loss of generality, because
+either |B̄(x, ρt )| < 2t or |B̄(y, ρt )| < 2t . Set
+Rk = {A ⊆ X : |A| = k, B̄(x, ρt ) ∩ A = φ, B(y, ρt−1 ) ∩ A 6= φ}.
+Then, the following lemma holds.
+Lemma 3. There exists a constant β (independent from k) such that
+n
+|Rk | ≥
+
+k
+
+.
+
+β
+
+Proof. Let P and Q be B̄(x, ρt ) and B(y, ρt−1 ) respectively for convenience. P and Q are disjoint,
+and |P | < 2t , |Q| ≥ 2t−1 . If we generate A uniformly among sets of size k = 2 j , then
+ 
+n
+P r[A ∩ P = φ & A ∩ Q 6= φ] = Rk /
+k
+"
+#  
+ 
+n − |P | − |Q|
+n
+n − |P |
+−
+/
+=
+k
+k
+k
+(n − |P |)!(n − k)! (n − |P | − |Q|)!(n − k)!
+−
+n!(n − |P | − k)!
+n!(n − |P | − |Q| − k)!
+|P |
+|P |
+|P |
+|P | + |Q|
+|P | + |Q|
+= (1 −
+)(1 −
+) . . . (1 −
+) − (1 −
+) . . . (1 −
+)
+n
+n−1
+n−k+1
+n
+n−k+1
+
+=
+
+|P |
+
+≈ (e− n )k − (e−
+≥ e−
+
+2t 2p−t
+n
+
+|P |+|Q|
+n
+
+(1 − e−
+
+2t−1 2p−t
+n
+
+≥ e−1 (1 − e−4 ) = 1/β,
+
+|P |k
+
+|Q|k
+
+2p
+
+2p−1
+n
+
+)k = e− n (1 − e− n )
+) = e− n (1 − e−
+
+)
+
+where the approximation can be made formal.
+Now, we are ready to prove the main theorem.
+Proof. µ satisfies the condition of Lemma 2 for the following reason. If A ⊂ R k , |d(x, A)−d(y, A)| ≥
+ρt − ρt−1 because d(x, A) ≥ ρt , d(y, A) ≤ ρt−1 . Thus we have:
+Eµ [|d(x, A) − d(y, A)|]
+=
+
+X
+
+A⊆X
+
+≥
+
+≥
+
+µ(A)|d(x, A) − d(y, A)| ≥
+
+p−1
+X
+
+X
+
+A∈Rk
+j=p−l
+(k=2j ,t=p−j)
+p−1
+X
+
+(ρt − ρt−1 )
+
+(ρt − ρt−1 )
+
+j=p−l
+(k=2j ,t=p−j)
+
+p−1
+X
+
+X
+
+A∈Rk
+j=p−l
+(k=2j ,t=p−j)
+
+1
+1
+=
+p + 1 nk
+
+p−1
+X
+
+j=p−l
+(k=2j ,t=p−j)
+
+1 1
+(by Lemma 3)
+p+1β
+
+3
+
+|d(x, A) − d(y, A)|µ(A)
+
+|Rk |(ρt − ρt−1 )
+
+1
+1
+
+p + 1 nk
+
+=
+≥
+
+1 1
+1 1 d(x, y)
+ρl ≥
+p+1β
+p+1β 4
+1
+d(x, y).
+O(log n)
+
+Therefore, this completes the proof of the main theorem.
+Remark 1. (X, d) can be embedded into any l p (p ≥ 1) with distortion O(log n) because l 2 can
+be isometrically embedded into lp . Also, lemma 2 can be slightly modified to give directly the l p embedding with distortion γ.
+n
+
+Remark 2. We have embedded (X, d) into R 2 . The Frechet embedding µ we constructed considered
+1
+1
+) to their sets. But, instead of
+all subset A of size k = 2j , and gave the same probability( p+1
+(nk)
+looking all subsets A of size k = 2j , if we choose O(log n) sets among them, the second lemma
+(P r[A ∩ P = φ & A ∩ Q 6= φ] ≥ constant) holds with high probability for each x, y ∈ X (using
+a Chernoff bound [3]). Therefore, we can do the embedding efficiently (in polynomial time) into
+2
+RO(p log n) = RO(log n) with the same distortion O(log n). This was observed by London, Linial and
+Rabinovich (1985).
+Remark 3. The embedding we constructed gives a O(log n)-approximation algorithm for the general
+sparsest cut problem. However, if we focus on the source and sink vertices (T = {(s 1 , t1 ), (s2 , t2 ), . . . ,
+(sk , tk )}) and do the embedding G as we did but restricted to T (thus considering only sets A ⊆ T ),
+we can get
+d(x, y)
+∀x, y ∈ T, ||f (x) − f (y)||2 ≥
+.
+O(log k)
+Furthermore, the non-expanding property of our embedding says
+∀x, y ∈ X, ||f (x) − f (y)||2 ≤ d(x, y).
+These two inequality are enough to analyze that this gives O(log k)-approximation algorithm because
+the denominator of the formulas2 of α(G) and β(G) only depend on vertices in T .
+
+References
+[1] J. Bourgain. On Lipschitz embeddings of finite metric spaces in Hilbert space. Israel Journal
+of Mathematics, 52:46–52, 1985.
+[2] S. Arora, J. R. Lee, and A. Naor. Euclidean distortion and the sparsest cut. In 37th STOC,
+2005.
+[3] H. Chernoff. A measure of asymptotic efficiency for test of hypothesis based on the sum of
+observations. Annals of Mathematical Statistics, vol. 23, pp. 493–507, 1952.
+
+2
+
+P
+
+c(e)·d(e)
+
+α(G) = min(V,d), l∞ −embeddable Pke∈ED ·d(s ,t )
+i=1
+
+i
+
+i
+
+i
+
+4
+
+

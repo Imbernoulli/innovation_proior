@@ -17,25 +17,12 @@ the entries are non-commuting matrix blocks — recurses to
 
     T(n) = 7·T(n/2) + O(n²)  ⟹  T(n) = Θ(n^{log₂ 7}),   log₂ 7 ≈ 2.807.
 
-The deeper reframing: the minimum number of multiplications for the bilinear map ⟨n,n,n⟩ is the
-**rank** R(t) of its matrix-multiplication tensor t (the minimum number of rank-one tensors
-u⊗v⊗w summing to t). Matrix tensors multiply, ⟨k,m,n⟩ ⊗ ⟨k',m',n'⟩ = ⟨kk',mm',nn'⟩, and rank is
-submultiplicative, so R(⟨2,2,2⟩) ≤ 7 yields R(⟨2^L,2^L,2^L⟩) ≤ 7^L and ω ≤ log₂ 7. The recursion
-is a tensor power; the base rank becomes the exponent.
-
-Tensor rank is not closed under limits: the two-output bilinear map
-(a0b0, a1b0 + a0b1) has rank 3 but border rank 2. **Border rank** R̲ — approximation up to higher
-order in a formal ε — can therefore be strictly smaller than rank and still bounds the exponent,
-because coefficient extraction after recursion costs only n^{o(1)}. Bini's partial 2×2 product
-(compute z11, z12, z21 and omit z22) has rank 6 and border rank 5; two copies give
-R̲(⟨2,2,3⟩) ≤ 10 and therefore
-
-    ω ≤ log_{(2·2·3)^{1/3}} 10 = 3·log₁₂ 10 ≈ 2.78.
-
-Schönhage's asymptotic-sum theorem generalizes this: if
-R̲(⊕_i ⟨k_i,m_i,n_i⟩) ≤ r and τ solves Σ_i (k_i m_i n_i)^τ = r, then ω ≤ 3τ. All of it is one
-principle: the cost of matrix multiplication is the (border) rank of its tensor, and that rank
-powers up multiplicatively.
+The deeper reframing: over a fixed field, a bilinear algorithm with r multiplications is exactly
+a decomposition of the matrix-multiplication tensor t into r rank-one tensors u⊗v⊗w. The minimum
+such r is the **rank** R(t). Matrix tensors multiply,
+⟨k,m,n⟩ ⊗ ⟨k',m',n'⟩ = ⟨kk',mm',nn'⟩, and rank is submultiplicative, so R(⟨2,2,2⟩) ≤ 7 yields
+R(⟨2^L,2^L,2^L⟩) ≤ 7^L and ω ≤ log₂ 7. The recursion is a tensor power; the base rank bound
+becomes the exponent bound.
 
 ## The 2×2 identity (seven multiplications)
 
@@ -57,6 +44,28 @@ For A = [[A11,A12],[A21,A22]], B = [[B11,B12],[B21,B22]] (entries may be matrix 
 Seven multiplications, eighteen additions/subtractions. Every P_k is (an A-side combination) ×
 (a B-side combination), so no factor is ever reordered and the identity holds for non-commuting
 entries — which is what licenses the recursion.
+
+Expanding the recombinations gives the four block products exactly:
+
+    P1 + P4 − P5 + P7
+      = (A11B11 + A11B22 + A22B11 + A22B22)
+        + (A22B21 − A22B11) − (A11B22 + A12B22)
+        + (A12B21 + A12B22 − A22B21 − A22B22)
+      = A11B11 + A12B21 = C11
+
+    P3 + P5
+      = (A11B12 − A11B22) + (A11B22 + A12B22)
+      = A11B12 + A12B22 = C12
+
+    P2 + P4
+      = (A21B11 + A22B11) + (A22B21 − A22B11)
+      = A21B11 + A22B21 = C21
+
+    P1 − P2 + P3 + P6
+      = (A11B11 + A11B22 + A22B11 + A22B22)
+        − (A21B11 + A22B11) + (A11B12 − A11B22)
+        + (A21B11 + A21B12 − A11B11 − A11B12)
+      = A21B12 + A22B22 = C22
 
 ## Algorithm
 
@@ -99,11 +108,13 @@ def block_product(A, B, recurse):
 
     return C
 
-def fast_matmul(A, B, leaf=64):
+def recursive_matmul(A, B, leaf=64):
     A = np.asarray(A)
     B = np.asarray(B)
+    if leaf < 1:
+        raise ValueError("leaf must be at least 1")
     if A.ndim != 2 or B.ndim != 2 or A.shape != B.shape or A.shape[0] != A.shape[1]:
-        raise ValueError("fast_matmul expects two n x n matrices")
+        raise ValueError("recursive_matmul expects two n x n matrices")
 
     def recurse(X, Y):
         n = X.shape[0]

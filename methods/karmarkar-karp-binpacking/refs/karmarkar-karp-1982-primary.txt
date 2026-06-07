@@ -1,0 +1,775 @@
+                                      An Efficient Approximation Scheme For The One-
+                                             DimenSIonal Bin-Packing Problem
+
+
+                                                Narend.ra Karmarkar and. Richard. M. Karp·
+
+
+                                                             University oj Calilorniti
+                                                              Berkeley. CA 94'120
+
+
+
+                                                                                   In 1981 Fernandez de la Vega and Lueker [2] pub-
+      1. AbIItract                                                            lished a paper which represented a sharp departure
+           We present several polyn~mial-tlme approximation                   from this line of research. They exhibited an approxi-
+      alaoritbms for the one-dimensional bln-packina prob-
+      lem. usina a subroutine to solve a certain linear pro-                  mation scheme which accept.s as input an instance I
+      Iramminl relaxation of the problem. Our main results                    and a positive real number t, and produces a packing
+      are as follows:                                                         of cost ~ (1 + e) OPT(l) + O{t- 2 ). The execution time
+      There is a polynomial-time alaoritbm A such that                        of their method is linear in no, the number of pieces.
+       A(/)!C OPT(/) + O(tog· OPT(/» .        There     is    a               but grows worse than exponentially as a function of .!..
+      polynomial-time alaorithm A such that, if WI. (J)                                                                             t
+      denotes the number of dist.inct sizes of pieces occurring               Johnson [5] then point.ed out that, by letting t depend
+      in instance I. then A(/)!C OPT(/) + O{1o,· m(/» .                       on the instance I, one could use any such scheme to
+      There is an approximation scbeme whicb accepts as
+      input an instance I and a positive real number £. and                   construct a polynomial-time algorithm A such that
+      produces as output a packina ulina as most                               A{I) ~ OPT{I) + 0 (OPT{I»      and. using a particular
+       (1 + £) OPT(/) + 0(£-') bins. Its execution time is                    scheme suggested by the present writ.ers, he achieved
+       0(£-- n loa n) • where c is a constant. These are tbe
+      best asymptotic performance bounds that bave been                        A{I) ~ OPT(l) + O{OPT(I)l-') , where tS is a certain
+      achieved to date for polynomial-time bin-packing. Each                  positive constant.
+      of our algorithms makes at most O(log n) calls on the
+      LP relaxation subroutine and takes at most O(n loa n)                         The present paper achieves further progress in the
+      lime for other operations. The LP relaxation of bin                     directions initiated by Fernandez de la Vega and Lueker
+      packinl was solved efficiently in practice by Gilmore                   [2] and Johnson [4]. Our results depend upon the ability
+      and Gomory. We prove its membersbip in P. despite the
+      fact that it bas an astronomically large number of vari-                to solve a certain linear programming relaxation of the
+      ables.                                                                  "bin-packing problem in polynomial time. The solutions
+                                                                              of this linear program represent packings in which a
+                                                                              given bin configuration is allowed to be used a frac-
+                                                                              tional, rather than integral, number of times. This
+                                                                              linear program was introduced by Eisemann [1]. Gil-
+2. IntroducUon                                                                more and Gomory [3] demonstrated that it can be
+     An instance I of the one-dimensional bin packing                         solved efficiently in practice by a "column generation"
+problem is specified by n pieces, each of which has a                         method. and used this method successfully for the
+size which is a rational number between 0 and 1. The                          approximate solution of bin-packing" problems arising in
+object is to pack the pieces into a minimum number of                         the paper industry. To solve this linear program in poly-
+bins. subject to the constraint that the sum of the sizes                     nomial time. despite the fact that it has a vast number
+of the pieces in each bin is Ie ss than or equal to 1. Let                     of variables. we use a variant of the ellipsoid method
+ OPT{I) denote the minimum number of bins required                             due to Grotschel. Lovasz and Schrijver [4]. Our algo-
+in a solution to instance I. An approxima.tion scheme                          rithms also employ three techniques introduced by Fer-
+ A for the bin packing problem accepts as input an                             nandez de la. Vega and Lueker (elimination of small
+instance I and produces as output a packing which                              pieces. linear grouping and rounding of fractional solu-
+solves instance l. Let A{l) denote the number of bins                          tions). as well as two new techniques (geometric group-
+required by this packing.                                                     ing and extraction of residual problems) which are
+     Most of the past. work on the one-dimensional bin-                        essential for our sharpest results.
+packing problem has been concerned with approxima-                                  The execution times of our algorithms are stated in
+tion algorithms which operate in time O{n log no) and                          terms of a polynomial-bounded function T{m.. n)
+produce approximations satisfying an inequality of the                        derived from the time bound for our fractional bin-
+form A{l) ~ C OPT{l) + o{OPT{I». In a series of                               packing algorithm. In addit.ion, ft (l) denotes the
+papers published appearing during the period 1973-                            number of pieces occurring in instanc e I, m. (1)
+19BO, the best achievable constant C was gradually                             denotes t.he number of distinct sizes, a. (I) denotes the
+reduced from 1. 7 to 1.18333....                                               size of the smallest piece and SIZE{I) denotes the sum
+                                                                               of the sizes of all the pieces. The main results are as
+                                                                              .follows:
+
+
+·Relle&rch supported by NSF Grant I.ICS81-05217
+
+
+
+
+                                                                        312
+0272-5428/82I000O/0312$00.75 © 1982 IEEE·
+      (1) There is an approximation algorithm A                            Lemma 2
+          which runs in time D( T(SIZE{/), n (I»
+                                                                                          SIZE(I} ~ LIN (I) ~ OPT (I)
+          such        that,         for       all      I •
+           A(I) ~ OPT(/) + 0(log2 OPT{/» .                                                  ~ LIN(/) + m(/) + 1
+      (2) There is an approximation algorithm A                                                             2
+          which runs in time O{T{m{l). n{/» such                           Proof       SIZE{I) ~ LIN (I) . Let % be an optimal
+          that.            for            all          I .                             solution to the linear program. Let s be
+           A{I) ~ OPT{I) + 0{log2 m(/) .                                               the m. -vector whose i th component is Si'
+      (3) For 0 < a < 1 there is an approximation                                      Then
+          algorithm      A      which    runs     in time                               LIN(I) = 1'% ~ CsT A) % ~ sT b = SIZE{I).
+           O{T(SIZE{/)(l-II).n{/»       such that, for all
+           I , A(I) ~ OPT(I) + O(OPT{I)Cl) .                                     (LIN (I) ~ OPT(/» Corresponding to an optimal
+      (4) For every t >0 there is an approximation                         solution of the bin-packing problem there is a feasible
+          algorithm      A      which    runs     in time                  solution to the linear program in which %; denotes the
+           O(T(t- 2 ,n(/»      sllchthat, for all      I,                  number of occurrences of bins with configuration j.
+           A{I) ~ (1 + t) OPT{/) + 0{t-2 ) •                               The cost of this solution is OPT(I).
+
+     Unfortunately, the best bound we can currently
+                                                                                (OPT(I) ~ LIN(I) +   m,(IJ + 1) Recall that. in a
+give for T(m,n) is                                                         basic (extreme point) feasible solution to any linear pro-
+                                                                           gram, the number of nonzero variables is at most the
+  T{m, n) = O{m 8 1og m. log2 n     +   m4 n    log m log n).              number of constraints, not counting the nonnegativity
+                                                                           constraints on individual variables. Let % be an
+                                                                           optimal basic feasible solution to the fractional bin-
+However, it is entirely possible that a blend of our tech-                 packing problem for instance I. Then % has at most
+niques with the column generation method of Gilmore                         m(/) nonzero components. We construct from % a
+and Gomory will lead to an algorithm which is very                         packing consisting of a principal pa.rt and a residual
+efficient in practice.                                                     pa.rt. For each nonzero variable %;. The principal part
+                                                                           of the packing includes [zjJ bins with configuration ; .
+                                                                           The remaining pieces comprise an instance I'. Let
+3. Fractional Bin Packing
+     Consider an instance I of the bin-packing problem
+                                                                              =                                         =
+                                                                            Ii Xi -lziJ· Then SIZE(I') ~ LIN{I') 'Eli' and it
+                                                                                                                        i
+in which there are n pieces of m. different types. All                     suffices to exhibit a packing for instance I' of cost
+                                                                                          m(I) + 1          .
+pieces of a given type are of the same size. For                            ~ SIZE I
+                                                                                   () +~>    2 . A packlng of cost ~ m (1) can
+ i = 1, 2 , ... m let b;. be the number of pieces of type
+             I
+
+
+ i, and let s;. be the common size of these pieces.                        be constructed by starting with one bin of configuration
+Define a configuration as a multiset of piece types capa-                  ; for each nonzero f i ' and then deleting excess
+ble of being packed within a bin. Let the number of dis-                   pieces. By Lemma 1, there exists a packing of cost
+tinct configurations be q, and let av denote the                           ~ 2 SIZE(/') + 1. The better of these two packings has
+number of pieces of type i in configuration ; . The                        cost
+fractional bin-packing problem is the linear program                                      min (m (I). 2 SIZE(/') + 1)
+ (I) minimize 1·% subject to x ~ 0 and A % :?! b ,
+where 1 is the vector of all l's and A is the m xq                            = SIZE{I') + mm(m.(I) - SIZE{/'). SIZE(I') + 1)
+matrix ( C1;J) .                                                                           ~ SIZE(I') + m,(I~ + 1 .
+Example     Suppose
+            m = 2, b 1   =31. b = 7.81 = 0.3 ands 2 = 0.4.
+                                2                                               The proof of Lemma 2 suggests a general rounding
+            Then    q    =7. the matrix A is                               method for obtaining a packing from a basic feasible
+                 t
+             [~ g ~ ~ ~ ~). and
+            solution     to   the
+                                     b =
+                                      linear
+                                               Pl). An optimal
+                                                  program       is
+                                                                           solution to the fractional bin-packing problem.
+                                                                           Corollary 1 There is an algorithm which has as input an
+                                    17                                                  instance 1 of the bin-packing problem and
+             % = (0, 0, 0, 7. 0, 0, ~ .
+                                                                                        a basic feasible solution % to the associ-
+     Let LIN (I) ~enote the optimal value of the frac-                                  ated fractional bin-packing problem, and
+tional bin-packing problem associated with instance I.                                  produces as output a packing of cost
+We shall study the relationship between LIN (I) and
+                                         m                                               ~ 1,% +m,{lJ   + 1 • The execution time of
+ OPT(I) . Recall that SIZE(I) = I; Sot bi         is the sum of                        this algorithm is O(n(I) log n(I» .
+                                        '£=1
+the sizes of the pieces associated with instance I .
+                                                                                All of our approximation algorithms are based on a
+Lemma 1     OPT(I) ~ 2 SIZE(I) + 1 .                                       polynomial-time algorithm for the approximate solution
+                                                                           of the linear program (I).
+Proof       For any instance I, there exists a packing
+            in which at most one bin is less than half-
+            full. The cost of the packing is at most
+             2 SIZE(I) + 1 .
+
+
+
+
+                                                                     313
+Theorem 1 There exists a polynomial-time algorithm                      Linear Grouping
+          which accepts as input an instance I of the                        Define a partial order on bin-packing instances as
+          bin-packing problem together with a posi-                     follows:
+          tive tolerance h , and produces as output a
+                                                                                 I ~J     if there exists a one-to-one function
+          basic     feasible   solution    of    costs-
+           ~ L1N(I) + h for the linear program (l).
+                                                                                        / (%) from I into J such that
+          Using a model of random-access computa-
+                                                                                         SIZE(% ) ~ SIZE(/ (%». for each item
+                                                                                        % £ I
+          tion in which the operations of addition,
+          subtraction and comparison take one unit
+                                                                                  clearly,
+          of time, and the square root, multiplication
+          and division operations each take time pro-
+          portional to the length of the (longer)                                                          OPT~I~ ~ OPT(J)
+          operand, the execution time of the alg 0-                                    I ~ J => { LIN I           ~ LIN(J)
+                                                                                                 SIZE I           ~SIZE(J)
+          rithm is
+        82           m n     m 4 n log m          (m n~)                     The following process is called linear grouping with
+  O(m log m log ( a,h ~ +         h .       log ~/'                     parameter k . Its purpose is to decrease the number of
+                                                                        different types of pieces. without increasing the piece
+            A randomized version of the algorithm runs                  sizes too much.
+            in expected time
+                                                                             Let I be an instance of the bin-packing problem
+        7        2   m n     m 4 n log m       (m n~)                   and let k be positive integer. Divide the set I into
+  O(m log m log (~) +             h         log ~/·
+                                                                        groups G1• G21 ••• Gq so that G1 contains the k
+                                                                                                   I
+
+
+
+            The proof of Theorem 1 is deferred to the                   largest pieces, G2 contains the next k largest pieces
+            tinal section of the paper.                                 and so on.
+                                                                        Hence         G1 ~ G2~ ... ~ Gq
+4. EliminaUon and Grouping                                              and           I ~ I = k for all except the last group.
+     In this section we present three basic technique~                  Let Gi ' be th,e multi-set of items obtained by increasing
+for the construction of bin-packing algorithms. The first               the size of each piece in group Gi to the maximum size
+two of these are due to Fernandez de la Vega and Lueker                 of a piece in that group.
+[2].                                                                    Hence         G1 ~ G2 ' ~ G2 ~ . . . ~ Gq ' ~ Gq
+                                                                                     q        q
+Elimination of Small Pieces                                                          UG,'~I~ UGi '
+                                                                                    i=2      i=1
+     Each of our bin-packing algorithms proceeds by                                     q
+putting aside all sufficiently small pieces, packing the                Let          J = U Gt and J' = G1
+                                                                                                       I
+
+remaining pieces and, finally, inserting the small ones.                                     i=2
+The following lemma is used to justify this tactic.                                  J~I~JUJ'
+Lemma 3      Let I be an instance of the bin-packing                                OPT(J) ~ OPT(I) ~ OPT(JUJ')
+            problem, and let g be a real number                                     ~ OPT(J) + OPT(J') s OPT(J) + k
+            between 0 and 1. Designate each piece as
+                                                                        Thus we have proved the following lemma.
+            large if its size is > ~ and small otherwise.
+                                                                        Lemma 4    OPT(J) ~ OPT(I) ~ OPT(J) + k
+            Consider a process which starts with a given                           L1N(J) ~ LIN (I) ~ L1N(J) + k
+            packing of the large pieces into bins, and                             SIZE(J) ~ SIZE(I) ~ SIZE(J) + k
+            then inserts the small pieces, starting a new
+            bin only when nec essary. If the cost of the                Geometric Grouping
+            given packing of the large pieces is A, then                    The following refinement of linear grouping is called
+            the cost of the packing resulting from the                  geometric grouping with parameter k . It is one of the
+            process is ~ max (A, (1 + g) OPT(I) + 1) .                  main innovations of the present paper.
+                                                                            Let I be an instance of the bin-packing problem.
+Proof       Let B be the cost of the packing. If the                    Recall that a, (I) denotes the size of the smallest piece.
+            insertion of the small pieces does not
+                                                                        For r = 0, 1, .. , [log2 atI) J let
+                                                                                                          IT be the instance
+            require the use of a new bin then B        =
+                                                   A. If
+            a new bin is required, then, in the resulting               consisting of those pieces from I whose sizes lie in the
+            packing, there is at most one bin in which                  interval (2-(r+ 1), 2-r ). Let Jr   and JT ' be the
+            the sum of the piece sizes is less than                     instances obtained by applying linear grouping with
+                                                                        parameter k· 2r to Ir •
+            1 - ~.          It          follows            that
+                                                                             Let J = U Jr and I' = U J'T
+            SIZE(I) ~ (1 - ~) (B - 1) ,           so       that                         r                     T
+
+
+
+            B ~ _1- SIZE (I) + 1~(1 + g) OPT(I) + 1                     Lemma 5      OPT{J) :!!: OPT{I) :!!: OPT{J) + k [log2 a{lI) 1
+                 I-H-                                                                LIN{J) :!!: LIN (I) :!!: LIN{J) + k [log2 atI) 1
+                     2
+                                                                                     SIZE{J) :!!: SIZE{I) :!!: SIZE{J) + k [log2 atI) 1
+                                                                                     and m. (J) (number of distinct item-sizes in
+                                                                                     J)
+                                                                                     :!!:   ~ SIZE{I) + fiog 2 atI) 1
+
+
+                                                                  314
+Proof          From Lemma 4.                                                     Note that      L" - L,,-1           1
+                                                                                                             ~ --+ --- +
+                                                                                                                                       1             . .. _1_
+                I r ~ Ir ~ I r U I r '                                                           ~ - 1          ~-l             ~-1+1                        l,-1
+                I ~ I ~ I U I'                                                   ... SIZE(J')          ~ 1e[1 + -l_1_+ L+                                      1]
+               OPT(/} ~ OPT(I} ~ OPT(I U I'}                                                                             1 -   1           II                l, - 1
+               ~ OPT(J) + OPT(J')
+                                                                                                                           l   -1                              _le
+                                                                                                                                                                 __ 1
+               OPT(J') ~      L: OPT(lr ')                                                             ~ k[l + In I: _ 2 ] ~ k[l + In af~ 1                                  ]
+                               r
+                                               Ie· 2 r
+     Each non-empty J r ' contains      pieces each of
+size less than 2-7'. Hence J r ' can be packed· into at
+most Ie bins.
+                                                                                                       ~ k [1 + In         alI) ]+              1
+                                                                                 Also,
+                   OPT(J') ~ k ·[loge     alI) 1                                  LIN(J') ~ OPT(J') ~ 2.SIZE(J') + 1:!!: 2A:[2 + In                                  alI) ]
+                   OPT(J) ~ OPT(I) ~ OPT(J) + k ·[loge            alI) 1         SIZE{J}         ~    tie.   L,.-1
+The proof of other two inequalities is similar.
+                                                                                                      (=2     lot
+    For each r
+                     SIZE(Ir ) ~ 2 -(r+l)'n(Ir ) ~
+                       2-(r+l)[(m (Jr )-1)·Ie. 2r ]
+                                                                                                 ~1e(q-1)_Ie[_1_+_1_ ... +1-.]
+                m.(Jr ) - 1 ~ ~ SIZE(Ir)                                                                                       II + 1               II + 2              t,
+                m.(J) ~ ~ SIZE(I) + [loge           alI) 1                                       ~ Ie (q - 1) - Ie In              i7- ~
+                                                                                                                                   l                                    1
+                                                                                                                                                Ie [( q - 1) - in a,(I) ]
+      Now we present another variation of Geometric
+Grouping:                                                                                       ...    m.(/) = q - 1 ~ SIZE(/) + In _1_
+Sort the set I of items in non-increasing order of
+                                                                                                                                                k              a(I)
+piece-sizes. Starting from the largest piece, put as may                         Thus we have proved the following theorem:
+items in group G t as necessary to make the size of G 1
+equal or exceed Ie. Repeating the same operation on                              Theorem 2
+the remaining pieces. create a sequence of groups
+ G2 • Ga. . .. Gq •       Let
+                               Ie
+                                     l, = I Gi I .   Then                        1.      SIZE(J) ~ SIZE(I) :!!: SIZE(l) + k [2 + In                             alI) ]
+ Ie + 1 ~ II ~ l2 ~ ... lq ~ a,{I} . Now we can no longer
+claim that Gi ~ Gi +1 • since G'+l may contain more
+                                                                                 2.      LIN(J) ~ LIN(I) ~ LIN(J) + 2k[2 + In                                alI) ]
+items than Gi . To remedy this problem. we partition
+ Gi • i = 2." q • as follows:
+                                                                                 3.      OPT(J) :!!: OPT(I) ~ OPT(l) + 2k [2 + In                             alI) ]
+Let !:J.Gi=   the set of smallest (z.. - z..-t) pieces in Gi .                   4.      m(l) ~ SIZ:{J} + In               'alI)
+... I Gi - !:J. G, I = Lt-l = I Gi-II
+Let Gi ' be the multi-set obtained by increasing the size                        5. The Algorithms
+of each piece in Gi - !l Gi to the maximum size of a                                  The following alg orithms invoke a Fractional Bin-
+piece in Gi - !:J. Gi •                                                          Packing procedure which accepts as input an instance
+                                                                                  I of the bin-packing problem and a positive tolerance
+                     Gi ' ~   G'-1 }. - 2 3,'"               q.
+              :.     G ~ Gi ' U 6~  1 -  ,                                       h • and produces as output a basic feasible solution of
+                      i
+                                                                                 cost less than or equal to LIN (I) + h for the linear pro-
+               , .             q                                                 gram (I). In stating time bounds we postulate that.
+Define J = U ~. J' = U !lGi ' U G1                                               whenever     this    subroutine    is   executed      with
+              \=2             ,=2
+                                                                                 n(l) ~ n. m(I) ~ m. 0.(/) ~ .Land h ~ 1. its execution
+     J ~ I ~ J U J'                                                                                                            n
+..   SIZE(/) ~ SIZE(I) ~ SIZE(J U I'}                                            time ·does not exceed T(m. n). where T is a fixed
+                                                                                 monotonic increasing polynomial·bounded function. A
+                       ~ SIZE(J) + SIZE(J')                                      particular implementation of this subroutine is given in
+                                                                                 Section 6. along with a suitable choice of the function
+                                                                                  T.
+Now we establish a bound on SIZE{/').                                                 Our first bin-packing algorithm accepts as input an
+By definition of Gi • the total size of the largest L,. - 1                      instance I and a positive real number t.
+pieces in ~ is less than Ie • and !:J.G, is the set of the                       ALGORITHM 1
+smallest ~ -Lt-l pieces in ~
+                                                                                 1.      Discard all pieces of size                    ~ maz( ~. ~ ).               Call the
+     SIZE(!l~)~ l;, - l'-1 .Ie
+                          ~ -1                                                           resulting instance I.
+
+     SIZE(/'} = SIZE(Gi ) +         t SlZE(!l~)                                  2.      Perform linear grouping with Ie      fn, (J)t 2 1. Call     =
+                                    (=2
+                                                                                         the resulting instances K and K' .
+         II          ~    lot - ~-1 ]                                            3.      Pack each of the Ie pieces in the instance K' into
+     [
+~ Ie r;-=T + (1;2            "" - 1                                                      a bin by itself.
+
+
+
+                                                                           315
+4.      Apply the Fractional Bin-Packing subroutine to             2.                        1-- 1n .L do
+                                                                        While SIZE(/) > 1 + __
+        instance K with tolerance h = 1. Let % be the                                          1
+                                                                                            1- -    9
+        basic feasible solution produced as output.                                                          k
+5.      Using the rounding method of Corollary 1, con-                   Perform geometric grouping with parameter k
+        struct from % a packing for instance K using at                  to create instances J and J' . Pack J' in at
+                     m{K} + 1     .                                      most 2k [2 + In ~ bins.
+        mo~t 1·% +        i      blns.                                                    9
+                                                                         Execute the Fractional Bin-Packing subroutine on
+6.      By reducing piece sizes as necessary. create a                   instance J with tolerance h = 1 : let % be the
+        packing for instance J from the packing for K                    resulting basic feasible solution.
+        together with the k bins created in Step 3.                      For each k such that %1 ~ 1 • create [ziJ bins
+7.      Create a packing for instance I by inserting the                 with configuration j and delete the pieces so
+        pieces discarded in Step 1. using a new bin only                 packed.
+        when necessary.
+                                                                   3.   Pack    the  remalmng                    pieces         in         at         most
+                                                                        2 + _2__ ln 1.. bins.
+Theorem.. 3     The execution time of ALGORITHM 1 is                         1 _.!..  9
+                 O(n(I) log n{/} + T(~. n(I)})                                       k
+                                     t                             4.     Insert the pieces eliminated at Step 1. using a new
+Let A (I) denote the cost of the packing produced by                      bin only when necessary.
+ALGORITHM 1. Then                                                  Analysis of ALGORITHM 2
+               A{I) ~ (1 + t) OPT{I) + ~+3                                Let t denote the number of times the body of the
+                                         2t                        while loop is executed. For i             =
+                                                                                                      1, 2. ' " t define prob-
+                                                                   lem instances Ii' J i , J'i and non-negatives integers Xi
+Proof           The proof proceeds via the following ine-          and Yi associated with the i th execution of the body of
+                qualities:                                         the while loop; Ii is the instance occurring at the
+                                                                   beginning of this execution of the body. J,and J'i are
+(i)      OPT{K) ~ OPT{J) ~ OPT{/} .                                the instances that result from the application of
+(ii)     OPT(J) ~ SIZE{J) ~ tn(J) .                                geometric grouping to 1(1 X" is the number of bins
+(iii)    k = fn{J)t 21~ t OPT(J) + 1 ~ t OPT(I) + 1 .
+                                                                   created using %. the solution produced by the Frac-
+                                                                   tional Bin-Packing subroutine applied to instance
+                 n(K)      n(K)        n(J)       1
+                                                                    Ji • and ~ is the number of bins required to pack J'i .
+(iv)     m.(K) ~ k      ~ fn(J)t 21 ~ fn{J)t 21 ~ 7
+                                                                   In particular Ii = I .
+(v)      The execution time of the Fractional Bin-Packing
+                                                                          We first derive an upper bound on t. the number
+         algorithm is ~ T(m.{K). n(K» ~ T(~. n{l).                 of iterations.
+                                              t
+(vi)     Since time O(n(I) log n (I» suffices for all the                      SIZE{Ii + 1) ~ LIN(Ii + 1) ~ l; %i - FiJ ~
+         operations except the Fractional Bin-Packing sub-                                                          1
+         routine. the execution time of ALGORITHM 1 is                                   SIZE(J,)            1     SIZE(I,,)
+          0('11(/) log neIl + T(~. n(/».                                 m. (J") ~          Ie         + In g~            k              + In   g-1
+                              t
+(vii)   1,% ~ LIN(K) + 1 ~ OPT(K) + 1 ~ OPT(I) + 1 .                . SIZE(IHI) oS: (~ ~, SIZE(J) + 10 ..L[1 + ~ + .. (                          b     H   ]
+(viii) The cost of the packing produced at Step 6 is
+       ~ 1,% + m(X) + 1 + k
+                                                                           .         ~ (1..)( SIZE(I} + _f_ 1n .!..
+                      2                                                                    k                      1-.!..             9
+                                                                                                                        k
+                           1+ L
+                                2                                  but SIZE (I, ) > 1 + _ 1 _ 1n .!..
+          ~ (OPT(/) + 1) +   2t   + t OPT(I) + 1 .                                      1 _.!..  9
+                                                                                                       k
+(ix)      By Lemma 3. the cost of the packing produced at           , t ~ In SIZE{I) + 1
+          Step 7 is                                                , .        In k
+                                                                        To derive an upper bound on execution time, note
+     A(I) ~ maz{(1 + t) OPT(I)+~+ 3,(1 + t} OPT(I)+ 1)             that in the i th execution of the body of the while loop.
+                             2t
+                                                                   the time to execute the Fractional Bin-Packing subrou-
+          ~ (1 + t) OPT(/) + ~+ 3.                                 tine is ~ T(m. (Ji ). 71.(Ji » and the time for all other
+                             2t                                    operations is       O(n (I) log n (I».    m. (lot) decreases
+     Our second bin-packing algorithm has two parame-              according to a geometric series. Thus the execution
+ters: a positive integer k and a positive real number              tim~ of the algorithm is
+ g.                                                                          SIZE(I)            1
+ALGORITHM 2
+                                                                         (T(     k       + In          g-I
+                                                                                                  71.(1» + n(I) log n(/) ).
+1.  Eliminate all pieces of size ~ 9 .                                  To bound the error in the number of bins produced
+                                                                   by the algorithm. we use the following inequalities:
+                                                                        LIN(I;,+I) ~ LIN(Ji ) + 1 - X, ~ LIN (Ii) + 1 - Xi
+
+                                                                                                 t Xi ~ LIN{J) +
+                                                                                                 (=1
+                                                                                                                            t
+
+
+
+
+                                                             316    .
+The number of bins in the packing produced after Step             6. A Fractional Bin-Packing Algorithm
+3 is                                                                   This se ction is devoted to the c onstruc tion of a
+          t                    1          2       1               polynomial-time algorithm which accepts as input an
+       ~ o~ X( + t[21e(2 + In ~] + 2 + - - 1 - In -               instance 1 of the bin-packing problem together with a
+         \=1                  9        1- -       9               positive tolerance h and produces as output a basic
+                                                                                            I
+                                            Ie
+                                                                  feasible solution of cost ~ LIN (I) + h for the linear
+Hence by Lemma 3,                                                 program I. Using a model of random-access computa-
+. .           A(I)   ~ maX{(l + 2g) OPT(I) + 1.                   tion in which the ~perations of addition, subtraction and
+                                                                  comparison take one unit of time, and the square root,
+                                                                  multiplication and division operations each take time
+          DPT(/) + [1 + In SIZE(I) ] [1 + 41e + 2k In L]
+                            In Ie                     9           proportional to the length of the (longer) operand, the
+                                                                  execution time of the algorithm is
+                         +2+    2       }
+                          1- .!.-In 1.-
+                             k      9                                 O{ m. B 1n m. 1og 2( ma hn 7~ + m .. n hlog m. Iog ( m n:\)
+                                                                                                                           a h 7
+Certain special choices of parameters Ie and 9 in
+ALGORITHM 2 lead to noteworthy results.                           where       a. m. and n      are    abbreviations  for
+                                                                   a(I). m(I) and n (I), respectively. A randomized ver..
+                                   1
+If we choose Ie   =
+                 2 and 9       =
+                              SIZE(I) , we get the fol-           sian of the algorithm runs in expected time
+lowing theorem:                                                      O(m? log m log2 ( ' : :    n+ m n ~og m log (:: : n
+                                                                                                        4
+
+
+
+Theorem 4      There is polynomial time algorithm A                The GLS method
+               such                                  that
+                A(I) ~ OPT(I) + O(log2 OPT(/». It runs                  Our fractional bin-packing algorithm is based on
+               ~                                    time           the Grotschel-Lovasz-Schrijver (GLS) version of the ellip-
+                                                                   soid method for the solution of linear programming
+                O(T( n~I) , n(I» + n(I) log n(I)) .    In          problems. The input to the GLS algorithm consists of: a
+               particular, it makes 0(l09 n) calls on              bounded convex polyhedron P ~ R n and a profit vector
+               the Fractional Bin"Packing subroutine.               cERn: a positive real tolerance t : points z 1 and Z2
+                                                                   in R"' and positive real numbers rand R such that
+    It is possible to obtain a trade-off between time and
+                                                                    B(z l' r) ~ P ~ B(Z2.R). where B(a, () denotes the
+error by the following choice of parameters:
+                                                                   ball with center (1 and radius (". The output is point
+Let 0 < a < 1 Ie = SIZE(/)a , 1..= SIZE(I)l-a                       pEP such that c 0p ~ max c'y -t Thus P is a near-
+                                  9                                optimal feasible solution to the linear programming
+Then     A(I) ~ OPT{I) + O(OPT(/)a 10g(OPT(I») and
+                                     0
+                                                                   problem maximize c °Y subject to yEP.
+the               execution               time         is               The algorithm requires a "separating hyperplane
+O( T(2 n (/)l-a, n (I» + n (I) In n (I».                           oracle" which, given a point z ERn • either determines
+     Finally we point out a variant of ALGORITHM 2 that           ·that z €.P or else produces d. such that a d. oZ < d.'y
+is advantageous when m (I) is small.                               for all yEP.
+ALGORITHM 3                                                             The algorithm constructs a sequence Eo, Ell                     0   •   0   I
+
+                                           2                       of ellipsoids in R n • with centers Yo. Yl'
+1.   Eliminate all pieces of size ~ 108 m (I) . Call the                                                          such that
+                                                                                                                   0   ••   ,
+
+
+
+
+                                         SIZE (I)                  the following inductive assertion hold for each 1c: Et
+     resulting instance K.                                         contains every point yEP such that
+2.   If m(K) ~SIZE(K) then
+        Execute the Fractional Bin-Packing subroutine on
+        instance K with h = 1.: let % be the resulting
+                                                                       c·y > max{C'Yi I Yi € P.; =          1,2, ....       Ie -   1}
+        basic feasible solution.                                  Thus, after iteration Ie - 1 the search for an improved
+        For each j such that %; ~ 1. creates F;J bins             feasible solution need only consider points in E t .
+        with configuration ; . and delete the pieces so
+                                                                       The inital ellipsoid Eo is the ball B(z, R). At
+        packed from the set of remaining pieces.                  each iteration an ellipsoid Et with center Yle will be
+3.   Execute Step 2 of ALGORITHM 2 on the instance                given. The algorithm intersects this ellipsoid with a
+     defined by the set of remaining pieces.                      half"space of the form yoh~ ~ Yt . ht , and EIc + 1 is an
+4.    Insert the pieces eliminated at Step 1, using a new         ellispoid circumscribed in a particular way (cf. [ ])
+      bin only wbennecessary.                                     around the half"ellipsoid created by the intersection of
+                                                                   E" with the half-space. The construction of E"+l from
+                                                                   E" and h t requires O(n 2) arithmetic. operations. and
+Theorem 5     The execution time of ALGORITHM 3 is                the volume of Et + 1 is smaller than that of Elc by the
+               O(T(m.(I). n{/» + n(I) log n{/»log m{I)                       1
+
+              If A (I) is the cost of the packing pro"            factor e -~.
+              duced     by    ALGORITHM        3    then                The vector h t is determined by submitting the
+               A(/) ~ OPT(J) + O(log 2 m (I» .                    point y~ to the oracle. If the oracle determines that
+The proof of Theorem 4 is omitted: it is quite similar to          YIc ~ P then hie    = C , and the effect of the iteration is
+the proof of Theorem 3.                                           to eliminate pointswberethe value of the objective
+                                                                  function is less than or equal to the value at Ylc . If the
+                                                                  oracle determines that y" EP and produces a d. €oR"'
+                                                                  such that d. Yle < d. . Y for all yEP • then h = d. • and
+                                                                                 0
+
+
+
+
+                                                                  the effect of t.he iterations to eliminate infeasible points.
+
+
+
+
+                                                            317
+                          2                                             knapsack problem is easy to solve, and then we deter-
+    Let N = 4n 2 fIn 2R       IIClll. It is proven in [4] that,         mine whether u is feasible. This test of the "approxi-
+                          rt
+if N iterations are carried out, and if each intermedi-                 mate feasibility" of u will permit the ellipsoid method
+ate result is calculated with 5N bits of precision after                to solve the dual program within a specified tolerance
+the binary point, then the problem will be solved within                 t in polynomial time.
+a tolerance of t : Le., the following inequality will hold:                  At each iteration of the modified GLS method an
+                                                                        ellipsoid E with center iI is given. A new price vector
+                   maxIe 'VIc I Vic EP}                                  U is created by rounding each component of iI down
+                                                                        to a multiple of L; Le., .~ = Ll ~1I.t J. The knapsack
+                 ~ maX{e. v I YEP} - t.
+                                                                                           n              n t
+                                                                        problem with this price vector and the given piece sizes
+                                                                        is then solved by dynamic programming as follows. For
+                                                                         k = 0, i .... , 1 + max {i~ , let F(k) be the minimum
+      The .time to solve the linear program within t,                                                 i
+excluding the execution time of the separating hyper-                   total length of a set of pieces whose total price is k.~ •
+plane oracle, can now be estimated. On the assumption
+that the time to extract a square root or perform an                    Then                    F(O) =0                                    and
+arithmetic operation is proportional to the length of the
+(longer) operand, the time for each iteration is
+                                                                         F(It:)   = min [F(k -~) + s,], It: > o.
+                                                                                   ~-,,:.o
+
+ O(n 2 N), and the time for the entire computation is                         The point u is feasible if and only if, for all
+ O(n 2 N 2 ) •                                                           k > 1, F(k) > 1. The number of additions, subtractions
+The Dual of the Fractional Bin-Packing Problem                          and comparisons t.o tabulate F, determine whether u
+                                                                        is feasible and, if not, recover a bin configuration of
+      Our object is to solve within an additive error h
+the linear program min 1·% subject to % ~ 0, A % ~ b.,                  pric e > 1 ,is 0 (         n;n) .
+where the columns of A correspond to the possible bin
+                                                                             Depending on the outcome of the knapsack calcula-
+configurations and b, is the number of pieces of type                   tion, two cases arise:
+    =
+ i, i   1, 2....• m. Becaus.e this linear program has •
+                                                                        Case 1          The point         u
+                                                                                                      is infeasible. In this case the
+an astronomically large number of variables we consider
+instead the dual linear program, which has a constraint                                 dynamic programming calculation deter-
+for every possible bin configuration,· but only m. vari-                                mines a m. -vector a, corresponding to
+abIes. The dual program is: maximize u· b subject to                                    som.e configuration,such that u'Q> 1 .
+ u ~ 0 and u T A ~ 1 .                                                                  Then iI'a >u'a > 1, so the point fl is not
+The duality theorem of linear programming tells us that                                 feasible. In this case a "feasibility cut" is
+the primal and dual programs have the same optimal                                      made, imposing the constraint u'a ~ u·a.
+value: min 1·% = maxu·b .                                               Case 2           The point 11 is feasible. In this case, 1Z
+      The dual program has the following economic                                       mayor may not be feasible. Nevertheless
+interpretation. The dual variable 1L& is the price of                                   an "optimality cut" through iI is made,
+every piece of type i. The program seeks to maximize                                    imposing the constraint 'U·b >=1Z·b. Since
+the sum of the prices of all the pieces, subject to the                                  iii ~ ~ + 1- for each           i, 1Z' b ~ it . b + t .
+constraints that each price must be nonnegative, and                                                      n
+                                                                                     Thus no point of E is eliminated if its
+the the sum of the prices of all the pieces in any single
+                                                                                     objective function value exceeds the value
+bin must be ~ 1 .
+                                                                                     at the feasible point 11: be more than t .
+      We shall solve the dual program within an additive
+                                                                             The bound on the number of iterations for the GLS
+tolerance t using a modified form of the GLS algo-
+                                                                        algorithm to solve a linear program within a tolerance of
+rithm. Consider the task faced by a separating hyper-
+                                                                         t applies to our modified algorithm as well. Moreover,
+plane oracle which must determine whether a point u
+                                                                         B(uo, r) ~ K ~ B(Ul' R) where K is the feasible
+is feasible for the dual and, if not, must exhibit a con-
+                                                                        region for the (dual) linear program, each component of
+straint violated at u. We may assume that 1.£ ~ 0 ,
+since otherwise the task is trivial. The nonnegative vec-               Uo is       a~). r = a ~)             each component of u 1 is       *
+tor u is feasible if and only if there is no bin
+configuration of price greater than 1, where ~ is the
+                                                                        and R =      *....rm .
+                                                                                           It follows that the modified algorithm
+                                                                        can be terminated after M iterations, with the guaran-
+price of a piece of type i. Let Si be the size of a piece               tee that the best feasible solution found achieves a price
+of type i, and .let S be the m -vector whose i th                       within     t    of      the    optimal    price,    where
+component is s,. Then u is feasible if and only if th
+optimal value of the following knapsack problem is ~ 1 :
+                                                                         M = 4m 2 rIn
+                                                                                        n
+                                                                                           1.':t
+maximize V'u subject to v·s ~ 1, v ~ 0, v integer.                           The execution time of the modified algorithm, tak-
+Here v represents a bin configuration containing Vi                     ing into account both the knapsack calculations and the
+pieces of type i. If u is infeasible and v is an                        steps within the       ellipsoid method proper,       is
+optimal solution to the knapsack problem, then the
+required violated inequality is u·v ~ 1 .                                O(Mm. (Mm + ~ ~) .
+      To avoid solving arbitrary instances of the NP-hard
+knapsack problem we modify the GLS algorithm as fol-                    The Fractional Bin-Packing Subroutine
+lows. Each time the separating hyperplane oracle is                          The fractional bin-packing program and its dual are
+called to determine whether the m -vector u is feasi-
+                                                                        (I) mInimIze 1·% subject to % ~ 0 and A % ~ b
+ble, we round u to a nearby vector u for which the
+                                                                        (II) maximize 1.£' b subject to u ~ 0 and uTA ~ 1 .
+
+
+
+
+                                                                  318
+Let z be the common optimal value of these two pro-                  constraint-elimination procedure selects a subset S of
+grams.                                                               the set of constraints of (II), aqd constructs an even
+      The Fractional Bin-Packing subroutine produces a               more relaxed linear program (II) by deleting these
+basic feasible solution for program (I) of cost                      constraints. A test is then made to determine whether
+                                                                     the sUbset. S can be dropped. This is done by using the
+ ~ z + h. The subroutine involves a parameter t > 0
+                                                                     GLS algorithm to find a feasible solution u for (ll)
+which will be specified below.. The first step in the sub-           such that u· b is within t of the optimal value of (n) .
+routine is to execute the modified GLS algorithm on pro-             If it· b ~ 11· b + t then the test is successful and the
+gram (II) to obtain a solution 11.* of value ~ z - t .               sUb~et of constraints S is permanently dropped. Oth-
+An important byproduct of this calculation is the ability            erwise the subset of constraints S is retained and the
+to eliminate from consideration all but a handful of the             constraint-elimination procedure tries another subset.
+vast number of possible bin configurations. Rec all that             The process terminates when only m             constraints
+each configuration corresponds to a variable in program              remain.
+ (I) and a constraint in program (II) Define a realized
+linear program (II') which has the same variables and                     The following observation determines the method of
+                                                                     ~electing trial subsets of constraints to be dropped. It
+objective function as (II), but includes only the follow-
+                                                                     IS a funda~ental fact of linear programming that, in any
+ing constraints:
+         the constraints 0 ~ ~ ~ 1, i = 1, 2 ....• m and             bounded hnear program with m variables, there is a
+         the constraints of the form 'U'v ~ 1 .returned by           set of m constraints which determine the optimal
+         the separating hyperplane                                   values; Le., the optimal value wo'uld not increase even if
+                                                                     all the other constraints were dropped. If T is this
+oracle at those iterations when infeasible points 11.                critical set of constraints for the program (ll) and S
+were presented to it. an observer of the execution just              is a subset of constraints disjoint from T, then the test
+completed of the modified GLS algorithm would have no                based on the GLS algorithm will be successful, and the
+way to determine whether program (II) or program                     subset S will be dropped.
+ (II') was being solved. both restriction of the search to
+the original ellipsoid Eo and the behavior of the                          At a general step the constraint-elimination pro-
+separating hyperplane oracle are valid for both pro-                 cedure partitions the set of constraints into m. + 1
+grams. it follows that every claim that can be made                  subsets of nearly equal size, and tests these subsets
+about program (II) on the basis of this calculation is               successfully until it loc ates a subset which can be
+also valid for program (II'). Let z' be the optimal                  dropped. By the pigeonhole principle, at least one of
+value          of         program        (II') .       Then          these subsets is disjoint from T, and therefore qualifies
+                                                                     to be dropped. Moreover, if a random partition into sub-
+ u··b ~ z ~ z' ~ u··b + t .       Here     the    inequality
+ u·· b ~ z follows because u* is a feasible solution of              sets is used and the number of constraints is much
+  (II), z ~ z' because (II') is a relaxation of (II), and            greater than m, then the expected number of trials
+                                                                     until the first success will be bounded by a constant.
+  z' ~ u··b + t     follows from the properties of the
+modified GLS alg orithm. It follows that z ~ z' ~ z + t ;                  Let the number of constraints in program (II') be
+thus, little error is committed in considering (II') (or             Q.   Then    Q ~ M + 2m , where M = 4m 2 fIn ~l           is
+its dual (I'), which represents a fractional bin-packing                                                                at
+problem in which only a restricted set of configurations             an upper bound on the number of iterations when the
+                                                                     modified GLS algorithm is applied to program (II). An
+is permitted) instead of (II) or its dual (I).
+                                                                     easy calculation shows that the number of successful
+       The Fractional Bin-Packing subroutine continues by            trails of the constraint-elimination procedure needed in
+gradually eliminating constraints from (II') without                 order to reduced the number of constraints to m is
+increasing the optimal value very much. Eventually,
+ exactly m.       linearly independent constraints will               ~ r ---.lL-+
+                                                                          m
+                                                                                 1 1+ (M + 1) In ~ r ---.lL-l + 1. Since at least
+                                                                                                     m + 1
+remain. Each of these constraints will either be of the              one out of every m + 1 successive trials succeeds, the
+form .. 1L£ ~ 0 or of the form u'a ~ 1, where a                      total number of executions of the GLS algorithm is
+ specifies a bin configuration. The linear program deter-
+ mined by these constraints will be of the form maximize
+                                                                      (m + 1)( r ---.lL-+
+                                                                                        1 1+ (m. + 1) In r ---.lL-l + 1) . For
+                                                                                 m.                        m + 1
+  u·b subject to u T B ~ T , where r is a vector of O's              the randomized version of the constraint-elimination
+ and l's and B is a nonsingular m. x m matrix. The                   algorithm, the expected number of· executions of the
+ constraint-elimination process will guarantee that the              GLS algorithms is O(m + 1) ( 1 + In r ~l ). If the
+ optimal value of this program will be within a tolerance                                                  m + 1
+  h of z, the optimal value of (II). The dual of this                tolerance t within the GLS algorithm is
+ program has. as its unique optimal basic feasible solu-                                          h
+ tion, the vector % = B- 1 b . Every component of % will
+ be either a slack variable corresponding to the inequal-                        r ----9.-+
+                                                                                   m
+                                                                                         1 1+ (m. + 1) In r -Q-l + 2
+                                                                                                            m. + 1
+ ity - 1.LL ~ O. or a variable associated with a bin
+                                                                     then the cost of the packing obtained will not exceed
+ configuration. corresponding to an inequality of the
+                                                                     the cost of an optimal packing by more than h .
+ form u· a ~ 1. Those components of % corresponding
+to bin configurations will determine the desired near-                    We have now specified a polynomiahtime algorithm
+ optimal bin packing.                                                which accepts as input an instance I of the bin-packing
+                                                                     problem and a tolerance h , and produces as output a
+       At a general step of ~he constraint-elimination pro-          basic feasible solution of cost ~ LIN(I) + h for the
+ cess a linear program (II) will be given: this program              linear program ( ). The main steps of the algorithm are
+ has the same variables and objective function as (II'),             as follows.
+ but only a subset of its constraints; a feasible solution
+  it of (ll) will also be given, such that, if z is the
+ optimal value of (ll), then ~ - t ~ 1I·b ~ ~. The
+
+
+
+
+                                                               319
+(1) Set t equal to
+                         h
+     r --9-1+ (m + 1) lnr --9-1+ 2
+       m+ 1               m+ 1
+(2) Execute the modified GLS algorithm with tolerance
+     t on the program (II) minimize 'U·b subject to
+    1.1, ~ O. 'U r A ~ 1 .
+
+(3) Extract from the execution of the modified GLS
+    algorithm a relaxed linear program (II') with the
+    same variables and objective function as (II). but
+    with only Q ~ M + 2m constraints.
+(4) Use the constraint-elimination proce dure to obtain
+    a linear program (Il*) with the same variables and
+    objective function as (II'). but with only m. con-
+    straints.
+(5) Obtain a near-optimal bin packing by solving the
+    dual of (11-) .
+    The execution time of this algorithm is
+   O(m81n m 10g2 (mah,n) + m n ~Og m log (mah,n»
+                                  4
+
+
+
+and. uniformly for all pairs I, h the expected execution
+time of the randomized version of the alg orithm is
+
+   O(m? in m 10g 2   (":m.n ) + m n ~og m log (mah,n »)
+                                  4
+
+
+
+     It follows that the function T(m.. n) used in the
+statements of our line bounds can be chosen as
+          m. e log m. 10g2 n + m. 4 n log m log n
+
+7. .Aclmowledgmenbl
+     The authors wish to thank David Johnson. Howard
+Karlotf. Alexander Rinnooy Kan and Ron Shamir for their
+helpful comments.
+
+
+
+
+                        Reference.
+
+[1] K. Eisemann. The trim problem. Management Sci-
+    ence 3 (1957). pp. 279-284.
+[2] W. Fernandez de la Vega and G.S. Lueker. Bin pack-
+    ing can be solved within 1 + t in linear time. Com-
+    binatorica 1 (1981), pp. 349-355.
+[3] P.C. Gilmore and R.E. Gomory. A linear program-
+    ming approach to the cutting-stock problem.
+    Operations Research 9 (1961). pp. 849-859.
+[4] M. Grotschel. L. Lovasz and A. Schrijver. The ellip-
+    soid method and its consequences in combinatorial
+    optimization. Combinatoric a 1 (1981). pp. 169-19B.
+[5] D.S. Johnson. The NP-completeness column: an
+    ongoing guide. Journal of Algorithms. September,
+    1982.
+
+
+
+
+                                                           320
+

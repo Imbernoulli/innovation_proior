@@ -1,0 +1,239 @@
+arXiv:0803.2336v3 [math.CO] 20 Mar 2008
+
+On the size of Kakeya sets in finite fields
+Zeev Dvir ∗
+
+Abstract
+A Kakeya set is a subset of Fn , where F is a finite field of q elements, that
+contains a line in every direction. In this paper we show that the size of every
+Kakeya set is at least Cn · q n , where Cn depends only on n. This improves the
+previously best lower bound for general n of ≈ q 4n/7 .
+
+1
+
+Introduction
+
+Let F denote a finite field of q elements. A Kakeya set (also called a Besicovitch set) in
+Fn is a set K ⊂ Fn such that K contains a line in every direction. More formally, K is
+a Kakeya set if for every x ∈ Fn there exists a point y ∈ Fn such that the line
+Ly,x , {y + a · x|a ∈ F}
+is contained in K.
+The motivation for studying Kakeya sets over finite fields is to try and understand
+better the more complicated questions regarding Kakeya sets in Rn . A Kakeya set
+K ⊂ Rn is a compact set containing a line segment of unit length in every direction.
+The famous Kakeya Conjecture states that such sets must have Hausdorff (or Minkowski)
+dimension equal to n. The importance of this conjecture is partially due to the connections it has to many problems in harmonic analysis, number theory and PDE. This
+conjecture was proved for n = 2 [Dav71] and is open for larger values of n (we refer the
+reader to the survey papers [Wol99, Bou00, Tao01] for more information)
+It was first suggested by Wolff [Wol99] to study finite field Kakeya sets. It was asked
+in [Wol99] whether there exists a lower bound of the form Cn · q n on the size of such
+sets in Fn . The lower bound appearing in [Wol99] was of the form Cn · q (n+2)/2 . This
+bound was further improved in [Rog01, BKT04, MT04, Tao08] both for general n and
+for specific small values of n (e.g for n = 3, 4). For general n, the currently best lower
+bound is the one obtained in [Rog01, MT04] (based on results from [KT99]) of Cn · q 4n/7 .
+The main technique used to show this bound is an additive number theoretic lemma
+Department of Computer Science, Weizmann institute of science, Rehovot, Israel.
+zeev.dvir@weizmann.ac.il. Research supported by Binational Science Foundation (BSF) grant.
+∗
+
+1
+
+relating the sizes of different sum sets of the form A + r · B where A and B are fixed sets
+in Fn and r ranges over several different values in F (the idea to use additive number
+theory in the context of Kakeya sets is due to Bourgain [Bou99]).
+The next theorem gives a near-optimal bound on the size of Kakeya sets. Roughly
+speaking, the proof follows by observing that any degree q − 2 homogenous polynomial
+in F[x1 , . . . , xn ] can be ‘reconstructed’ from its value on any Kakeya set K ⊂ Fn . This
+implies that the size of K is at least the dimension of the space of polynomials of degree
+q − 2, which is ≈ q n−1 (when q is large).
+Theorem 1. Let K ⊂ Fn be a Kakeya set. Then
+|K| ≥ Cn · q n−1 ,
+where Cn depends only on n.
+The result of Theorem 1 can be made into an even better bound using the simple
+observation that a product of Kakeya sets is also a Kakeya set.
+Corollary 1.1. For every integer n and every ǫ > 0 there exists a constant Cn,ǫ , depending only on n and ǫ such that any Kakeya set K ⊂ Fn satisfies
+|K| ≥ Cn,ǫ · q n−ǫ ,
+Proof. Observe that, for every integer r > 0, the Cartesian product K r ⊂ Fn·r is also a
+Kakeya set. Using Theorem 1 on this set gives
+|K|r ≥ Cn·r · q n·r−1,
+which translates into a bound of Cn,r · q n−1/r on the size of K.
+We derive Theorem 1 from a stronger theorem that gives a bound on the size of sets
+that contain only ‘many’ points on ‘many’ lines. Before stating the theorem we formally
+define these sets.
+Definition 1.2 ( (δ, γ)-Kakeya Set). A set K ⊂ Fn is a (δ, γ)-Kakeya Set if there exists
+a set L ⊂ Fn of size at least δ · q n such that for every x ∈ L there is a line in direction
+x that intersects K in at least γ · q points.
+The next theorem, proven in Section 2, gives a lower bound on the size of (δ, γ)Kakeya sets. Theorem 1 will follow by setting δ = γ = 1.
+Theorem 2. Let K ⊂ Fn be a (δ, γ)-Kakeya Set. Then
+
+
+d+n−1
+,
+|K| ≥
+n−1
+where
+d = ⌊q · min{δ, γ}⌋ − 2.
+Notice that, in order to get a bound of ≈ q n(1−ǫ) on the size of K, Theorem 2 allows
+δ and γ to be as small as q −ǫ .
+2
+
+1.1
+
+Improving the bound to ≈ q n
+
+Following the initial publication of this work, Noga Alon and Terence Tao [AT08] observed that it is possible to turn the proof of Theorem 1 into a proof that gives a bound
+of Cn · q n , thus achieving an optimal bound. We give below a proof of this argument
+(the same argument gives an improvement also for Theorem 2).
+Theorem 3. Let K ⊂ Fn be a Kakeya set. Then
+|K| ≥ Cn · q n ,
+where Cn depends only on n.
+Proof. Indeed, suppose this is false and let K ⊂ F n be a Kakeya set of size less than
+q+n−2
+. Then there is a nonzero polynomial of degree at most q − 1 P ∈ F[x1 , . . . , xn ]
+n
+Pq−1
+so that P (x) = 0 for all x ∈ K. Write P = i=0
+Pi , where Pi is the homogeneous part
+n
+of degree i of P . Fix y ∈ F . Then there is a b ∈ Fn so that P (b + ay) = 0 for all
+a ∈ F . For fixed b and y this is a polynomial of degree q − 1 in a which vanishes for all
+a ∈ F. It is thus identically zero, and hence all its coefficients are zero. In particular, the
+coefficient of aq−1 is zero, but it is easy to see that this is exactly Pq−1 (y). Since
+Pyq−2was
+arbitrary it follows that the polynomial Pq−1 is identically zero. Therefore P = i=0 Pi
+and repeating this argument we conclude that the polynomials Pq−2 , Pq−3 , . . . , P1 are all
+identically zero. Hence P is the constant term P0 , which has to be zero, as P vanishes
+at some points (including all points of K). This is a contradiction, completing the
+proof.
+
+2
+
+Proof of Theorem 2
+
+We will use the following bound on the number of zeros of a degree d polynomial proven
+by Schwartz and Zippel [Sch80, Zip79].
+Lemma 2.1 (Schwartz-Zippel). Let f ∈ F[x1 , . . . , xn ] be a non zero polynomial with
+deg(f ) ≤ d. Then
+|{x ∈ Fn |f (x) = 0}| ≤ d · q n−1 .
+Proof of Theorem 2. Suppose in contradiction that
+
+
+d+n−1
+.
+|K| <
+n−1
+Then, the number of monomials in F[x1 , . . . , xn ] of degree d is larger than the size of K.
+Therefore, there exists a homogenous degree d polynomial g ∈ F[x1 , . . . , xn ] such that g
+is not the zero polynomial and
+∀x ∈ K, g(x) = 0
+3
+
+(this follows by solving a system of linear equations, one for each point in K, where the
+unknowns are the coefficients of g). Our plan is to show that g has too many zeros and
+therefore must be identically zero (which is a contradiction).
+Consider the set
+K ′ , {c · x | x ∈ K, c ∈ F}
+containing all lines that pass through zero and intersect K at some point. Since g is
+homogenous we have
+g(c · x) = cd · g(x)
+and so
+∀x ∈ K ′ ,
+
+g(x) = 0.
+
+Since K is a (δ, γ)-Kakeya set, there exists a set L ⊂ Fn of size at least δ · q n such
+that for every y ∈ L there exists a line with direction y that intersects K in at least γ · q
+points.
+Claim 2.2. For every y ∈ L we have g(y) = 0.
+Proof. Let y ∈ L be some non zero vector (if y = 0 then g(y) = 0 since g is homogenous).
+Then, there exists a point z ∈ Fn such that the line
+Lz,y = {z + a · y|a ∈ F}
+intersects K in at least γ · q points. Therefore, since d + 2 ≤ γ · q, there exist d + 2
+distinct field elements a1 , . . . , ad+2 ∈ F such that
+∀i ∈ [d + 2], z + ai · y ∈ K.
+If there exists i such that ai = 0 we can remove this element from our set of d + 2
+points and so we are left with at least d + 1 distinct non-zero field elements ( w.l.o.g
+a1 , . . . , ad+1 ) such that
+∀i ∈ [d + 1],
+
+z + ai · y ∈ K and ai 6= 0
+
+Let bi = a−1
+where i ∈ [d + 1]. The d + 1 points
+i
+wi , bi · z + y, i ∈ [d + 1]
+are all in the set K ′ and so
+g(wi ) = 0, i ∈ [d + 1].
+If z = 0 then we have wi = y for all i ∈ [d + 1] and so g(y) = 0. We can thus assume that
+z 6= 0 which implies that w1 , . . . , wd+1 are d + 1 distinct points belonging to the same
+line (the line through y with direction z). The restriction of g(x) to this line is a degree
+≤ d univariate polynomial and so, since it has d + 1 zeros (at the points wi ), it must be
+zero on the entire line. We therefore get that g(y) = 0 and so the claim is proven.
+4
+
+We now get a contradiction since
+d/q < δ
+and, using Lemma 2.1, a polynomial of degree d can be zero on at most a d/q fraction
+of Fn .
+
+3
+
+Acknowledgments
+
+I am grateful to Avi Wigderson for encouraging me to work on this problem and for
+many helpful discussions. I thank my advisers Ran Raz and Amir shpilka for their
+continuous support. I thank Noga Alon, Richard Oberlin and Terrence Tao for pointing
+out the improvements to Theorem 1.
+
+References
+[AT08]
+
+N. Alon and T. Tao. Private communication. 2008.
+
+[BKT04] J. Bourgain, N. Katz, and T. Tao. A sum-product estimate in finite fields, and
+applications. GAFA, 14(1):27–57, 2004.
+[Bou99] J. Bourgain. On the dimension of Kakeya sets and related maximal inequalities.
+Geom. Funct. Anal., (9):256–282, 1999.
+[Bou00] J. Bourgain. Harmonic analysis and combinatorics: How much may they
+contribute to each other? IMU/Amer. Math. Soc., pages 13–32, 2000.
+[Dav71] R. Davies. Some remarks on the Kakeya problem. Proc. Cambridge Philos.
+Soc., (69):417–421, 1971.
+[KT99]
+
+N. Katz and T. Tao. Bounds on arithmetic projections, and applications to
+the Kakeya conjecture. Math. Res. Letters, 6:625–630, 1999.
+
+[MT04]
+
+G. Mockenhaupt and T. Tao. Restriction and Kakeya phenomena for finite
+fields. Duke Math. J., 121:35–74, 2004.
+
+[Rog01] K.M Rogers. The finite field Kakeya problem. Amer. Math. Monthly 108,
+(8):756–759, 2001.
+[Sch80]
+
+J. T. Schwartz. Fast probabilistic algorithms for verification of polynomial
+identities. J. ACM, 27(4):701–717, 1980.
+
+[Tao01]
+
+T. Tao. From rotating needles to stability of waves: emerging connections between combinatorics, analysis, and pde. Notices Amer. Math. Soc., 48(3):294–
+303, 2001.
+5
+
+[Tao08]
+
+T. Tao. A new bound for finite field besicovitch sets in four dimensions. Pacific
+J. Math (to appear), 2008.
+
+[Wol99] T. Wolff. Recent work connected with the Kakeya problem. Prospects in
+mathematics (Princeton, NJ, 1996). pages 129–162, 1999.
+[Zip79]
+
+R. Zippel. Probabilistic algorithms for sparse polynomials. In Proceedings
+of the International Symposiumon on Symbolic and Algebraic Computation,
+pages 216–226. Springer-Verlag, 1979.
+
+6
+
+

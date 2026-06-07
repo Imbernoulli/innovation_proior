@@ -26,11 +26,11 @@ The cut value of a graph measures its weakest point: the fewest edges whose remo
 
 ## Evaluation settings
 
-The natural yardstick is correctness probability against the true global min cut, and running time, as functions of n and m. Test instances are connected undirected (multi)graphs: random graphs at various densities; graphs with a planted sparse cut (e.g. two dense clusters joined by a few bridge edges, so the min-cut value is known by construction); and standard benchmark graphs used for partitioning. The metrics are: the empirical fraction of independent runs that recover a cut of the true minimum value (compared against the analytic per-run success bound), the number of repetitions needed to reach a target overall failure probability (e.g. 1/n or 1/poly(n)), and wall-clock / asymptotic running time versus the flow-based and deterministic-contraction baselines. Memory is O(m) for the adjacency multigraph. No outcomes are reported here — these are the conditions under which a method would be measured.
+The natural yardstick is correctness probability against the true global min cut, and running time, as functions of n and m. Test instances are connected undirected (multi)graphs: random graphs at various densities; graphs with a planted sparse cut (e.g. two dense clusters joined by a few bridge edges, so the min-cut value is known by construction); and standard benchmark graphs used for partitioning. The metrics are: the empirical fraction of independent runs that recover a cut of the true minimum value (compared against the analytic per-run success bound), the number of repetitions needed to reach a target overall failure probability (e.g. 1/n or 1/poly(n)), and wall-clock / asymptotic running time versus the flow-based and deterministic-contraction baselines. Memory is O(m) for the adjacency multigraph. These are the conditions under which a method would be measured.
 
 ## Code framework
 
-The primitives that already exist: an adjacency-multigraph representation (a map from supernode to a list of incident supernodes, with parallel edges as repeats and no self-loops), a uniform-random choice over edges, the contraction operation that merges two supernodes, a routine to read off the crossing-edge count when two supernodes remain, and an outer loop that repeats a randomized run and keeps the best. The open slots are the policy that drives a single run down to a target number of supernodes, and the control structure that turns one cheap-but-unreliable run into a reliable algorithm.
+The primitives that already exist: an adjacency-multigraph representation (a map from supernode to a list of incident supernodes, with parallel edges as repeats and no self-loops), a way to sample from a finite weighted list, the contraction operation that merges two supernodes, a routine to read off the crossing-edge count when two supernodes remain, and an outer loop that repeats a randomized run and keeps the best. The open slots are the edge-selection rule inside contraction, the repeated one-shot driver, the candidate-producing driver, and the amplified driver.
 
 ```python
 import copy
@@ -41,41 +41,37 @@ import random
 def contract(graph, t):
     """Drive the multigraph down to t supernodes by merging edges.
 
-    graph: {node: [neighbor, ...]} multigraph (parallel edges = repeats,
-    self-loops never stored). Returns the contracted multigraph.
+    graph: adjacency multigraph as {node: [neighbor, ...]}; parallel edges
+    appear as repeated neighbors, self-loops are never stored.
+    Returns the contracted multigraph (still has t supernodes).
     """
-    g = copy.deepcopy(graph)
-    while len(g) > t:
-        u, w = _choose_edge(g)        # TODO: which edge to merge
-        _merge(g, u, w)               # commit u,w to the same side
-    return g
-
-
-def _choose_edge(g):
-    # TODO: the rule for selecting the edge to contract
+    # TODO: copy the graph, choose edges with the distribution the
+    # analysis requires, merge endpoints, drop self-loops, keep
+    # parallel edges, and return the contracted graph.
     pass
 
 
-def _merge(g, u, w):
-    # absorb w into u; redirect w's edges, drop the u-w self-loops
-    for x in g[w]:
-        if x != u:
-            g[u].append(x)
-    for x in g[w]:
-        g[x].remove(w)
-        if x != u:
-            g[x].append(u)
-    del g[w]
-
-
 def cut_value(g):
-    """Crossing-edge count once two supernodes remain."""
-    return len(g[next(iter(g))])
+    """Number of crossing edges once two supernodes remain."""
+    # TODO: read the edge multiplicity between the two remaining supernodes.
+    pass
 
 
-def min_cut(graph):
-    # TODO: the control structure that turns single runs into a
-    # reliable global-min-cut algorithm (how far each run contracts,
-    # how runs are combined / repeated to amplify the success probability)
+def repeated_contraction_cut(graph, trials):
+    """Repeat a complete randomized contraction and keep the smallest cut."""
+    # TODO: decide how a one-shot run is sampled and amplified.
+    pass
+
+
+def candidate_cut(graph):
+    """Produce one candidate cut value."""
+    # TODO: decide whether the candidate comes from a complete run,
+    # a partial run, or another control structure.
+    pass
+
+
+def amplified_min_cut(graph, trials):
+    """Repeat the candidate driver and keep the smallest cut."""
+    # TODO: choose the number of repetitions from the success bound.
     pass
 ```

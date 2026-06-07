@@ -1,129 +1,119 @@
-OK, let me think this through from scratch. I have two integers, each up to `n` digits, and I want their product. The only method I actually know how to execute is the one from school: take every digit of the first number, multiply it against every digit of the second, drop each little product into its place according to where the two digits sat, and add up all the carries. If both numbers have `n` digits, that's `n` rows, each with `n` single-digit multiplications — `n²` one-digit multiplies, and another `n²`-ish additions to fold the carries together. The cost is `Θ(n²)`.
+OK, let me think this through from scratch. The thing I'm actually after is a lower bound. Kolmogorov stated the conjecture at the seminar: multiplying two `n`-digit numbers needs on the order of `n²` bit operations, and that's a floor — no method can beat it. I find that very plausible and I want to *prove* it. The way you prove a lower bound like this is to corner the problem: build the most economical multiplication automaton you can, analyze exactly how its operations are forced, and show the count can't sink below `n²`. So my plan is to construct the tightest recursive multiplication scheme I can and then read off the lower bound from its structure. Let me build that scheme.
 
-And the received wisdom is that you can't do better — that any multiplication procedure must, in the worst case, do on the order of `n²` elementary operations. I should take that belief seriously, because it has a very plausible story behind it: in the final product, *every* digit of `x` genuinely interacts with *every* digit of `y`. Digit `xᵢ` lands at place `i + j` for each `yⱼ`; there are `n²` such pairs, and they all contribute. So it *feels* like there must be `n²` little multiplications, one per pair, and you can't escape them.
+The only multiplication I actually know how to execute is the schoolbook one: take every digit of the first number, multiply it against every digit of the second, drop each little product into its place according to where the two digits sat, and add up the carries. If both numbers have `n` digits, that's `n` rows of `n` single-digit multiplications — `n²` one-digit multiplies, plus another `n²`-ish additions for the carries. Cost `Θ(n²)`. This is the thing the conjecture says is optimal, and the historical argument for it is strong: people have used this method for four thousand years, and if anything cheaper existed surely someone would have stumbled on it by now. The structural intuition is just as compelling — in the final product, *every* digit of `a` genuinely meets *every* digit of `b`; digit `aᵢ` lands at place `i+j` for each `bⱼ`, there are `n²` such pairs, and they all contribute. So it *feels* like `n²` little multiplications, one per pair, with no escape.
 
-But let me stare at that argument, because it's doing the work and I'm not sure it's airtight. The claim "every pair of digits contributes" is true. The claim "therefore I must *separately multiply* every pair of digits" is a leap. What actually has to be true is that the final digits of the answer depend on all the input digits. That's a statement about the *output*, not about *how many multiplications* I'm forced to do. Lots of things depend on all their inputs but can be computed with far less than one operation per input-pair. So the `n²` feeling might be an artifact of the schoolbook *layout*, not a law about the problem. Let me try to actually attack it rather than believe it.
-
-The handle I have is divide-and-conquer: when a problem is built out of smaller copies of itself, split it. A number is built out of its digits, so the obvious split is to cut each number in half. Pick `m ≈ n/2`, and write each number in base `B` with its top half and bottom half separated at the `Bᵐ` boundary:
-
+Before I try to turn that feeling into a proof, let me first simplify what I'm proving about. Multiplication and squaring are the same problem up to a constant, because
 ```
-x = x₁·Bᵐ + x₀
-y = y₁·Bᵐ + y₀
+a·b = ¼[(a+b)² − (a−b)²],
 ```
+and dividing by 4 in binary is just a two-bit shift. So `M(n)`, the complexity of multiplying two `n`-digit numbers, equals up to a constant the complexity of squaring one `n`-digit number — Kolmogorov pointed this out immediately. Good: I'll study squaring `a²`, one operand instead of two. The lower bound for squaring transfers to multiplication.
 
-where `x₁` is the high `m` digits, `x₀` the low `m` digits, same for `y`. Now multiply, just expanding the product of the two binomials:
-
+Now, to get a handle on `a²` recursively, I split `a` by digit position. The number is built out of its digits, so cut it at the half. With `n = 2m`, write
 ```
-x·y = (x₁·Bᵐ + x₀)(y₁·Bᵐ + y₀)
-    = x₁y₁·B²ᵐ + x₁y₀·Bᵐ + x₀y₁·Bᵐ + x₀y₀
-    = x₁y₁·B²ᵐ + (x₁y₀ + x₀y₁)·Bᵐ + x₀y₀.
+a = aₕ·Bᵐ + aₗ,
 ```
+`aₕ` the high `m` digits, `aₗ` the low `m` digits. Square it:
+```
+a² = aₕ²·B²ᵐ + 2aₕaₗ·Bᵐ + aₗ².
+```
+Three pieces. Two of them, `aₕ²` and `aₗ²`, are squares of `m`-digit numbers — exactly the smaller version of the problem I'm recursing on. The middle piece `2aₕaₗ` is a *product*, not a square. If I insist on a square-only recursion, I would reduce that product with the same identity `ab = ¼[(a+b)²−(a−b)²]`, which means two more `m`-size squarings. If I stop using squares and analyze a two-operand product directly, the ordinary half-split has the same four products: high-high, high-low, low-high, low-low. So the naive recursive picture is four half-size multiplication problems plus linear recombination. Let me write the cost that way and see what lower bound it forces.
 
-The multiplications by `B²ᵐ` and `Bᵐ` aren't real multiplications — they're just shifts, sliding the digits left, which costs `O(n)`. The genuine work is the four products `x₁y₁`, `x₁y₀`, `x₀y₁`, `x₀y₀`, each of two `m`-digit numbers, and then a couple of `O(n)` additions to combine. So I've turned one `n`-digit multiplication into four `(n/2)`-digit multiplications plus linear overhead. If I keep recursing — multiply the halves by splitting *them* in half, and so on down to single digits — the total cost obeys
-
+If squaring an `n`-digit number reduces to four `m`-size sub-multiplications plus `O(n)` shifts and adds, the cost obeys
 ```
 T(n) = 4·T(n/2) + O(n).
 ```
+Let me unfold the recursion tree, because the whole lower-bound argument lives in how this sum grows. At the root, `O(n)` combine-work. The root has 4 children of size `n/2`, each doing `O(n/2)` combine, so that level is `4·O(n/2) = O(2n)`. Next level: `4² = 16` nodes of size `n/4`, doing `16·O(n/4) = O(4n)`. Level `i` has `4ⁱ` nodes of size `n/2ⁱ`, contributing `4ⁱ·O(n/2ⁱ) = O(2ⁱ·n)`. The per-level work *doubles* going down, so the bottom dominates: there are `4^{log₂ n} = n^{log₂ 4} = n²` leaves, each a single-digit multiply. Total `T(n) = Θ(n²)`.
 
-Let me solve this, because the whole question is whether the recursion bought me anything. Unfold the recursion tree. At the root I do `O(n)` combine-work. The root has 4 children, each a problem of size `n/2`, each doing `O(n/2)` combine-work — so that level does `4 · O(n/2) = O(2n)`. The next level has `4² = 16` nodes of size `n/4`, doing `16 · O(n/4) = O(4n)`. In general level `i` has `4ⁱ` nodes each of size `n/2ⁱ`, contributing `4ⁱ · O(n/2ⁱ) = O(2ⁱ·n)`. The per-level work *doubles* as I go down. There are `log₂ n` levels, and the last level dominates: at the bottom there are `4^{log₂ n} = n^{log₂ 4} = n²` leaves, each a single-digit multiply. Summing, `T(n) = Θ(n²)`.
+So my carefully-built recursive scheme costs `n²` — which is exactly what I wanted: it looks like it confirms the conjecture. But wait. Stare at where the `n²` came from. It came entirely from the `4`. Four sub-problems of half the size is `4·(n/2)² = n²` no matter how I arrange the bookkeeping; the linear combine work never mattered. The exponent is `log₂(number of sub-multiplications)`. So this construction doesn't *prove* anything about `M(n)` — it only shows that *this particular scheme, with four sub-multiplications, hits `n²`*. To turn it into a lower bound I'd need to argue that four is forced, that no recursive split can manage with fewer. And the moment I try to argue *that*, I have to ask the opposite question: is four actually forced? Could I do the split with *three* sub-multiplications? Because if I could, the exponent would drop to `log₂ 3 ≈ 1.585`, and far from proving the conjecture I'd be demolishing it.
 
-Wall. The recursion gave me *nothing*. I split, I recursed, I paid all the overhead of the divide-and-conquer machinery — and I landed right back on `n²`. And in hindsight that's obvious: four sub-problems of half the size is `4 · (n/2)² = n²` work at the leaves no matter how I shuffle it. The `4` is the killer. With `a` sub-multiplications of half-size numbers, the leaf count is `a^{log₂ n} = n^{log₂ a}`, and `a = 4` gives the exponent `log₂ 4 = 2`. So splitting in half is fine, but *as long as I keep doing four multiplications per split, I'm pinned at `n²`*. The believers were right about this particular method. To beat `n²` I have to drive that `4` down. If I could do the same split with only `3` sub-multiplications, the exponent would drop to `log₂ 3 ≈ 1.585`, which is genuinely sub-quadratic. So the real question sharpens: can I get `x·y` out of *three* products of half-size numbers instead of four?
-
-Let me look hard at the four products and what I actually *need* from them, because maybe I'm computing more than the answer requires. The product is
-
+That is where the proof attempt stops being a proof. I need to stop trying to prove four is necessary and instead attack it — look hard at the three coefficients and what I actually *need* from them, because maybe the scheme computes more than the answer requires. Go back to the general two-number split, it's cleaner than dragging the squaring through:
 ```
-x·y = x₁y₁·B²ᵐ + (x₁y₀ + x₀y₁)·Bᵐ + x₀y₀.
+a = a₁·Bᵐ + a₂,   b = b₁·Bᵐ + b₂,
+a·b = a₁b₁·B²ᵐ + (a₁b₂ + a₂b₁)·Bᵐ + a₂b₂.
 ```
+The coefficient at `B²ᵐ` is `a₁b₁`, the coefficient at `B⁰` is `a₂b₂`, and the coefficient at `Bᵐ` is `a₁b₂ + a₂b₁`. I need `a₁b₁`. I need `a₂b₂`. And for the middle I need — not `a₁b₂` and `a₂b₁` *separately* — only their **sum** `a₁b₂ + a₂b₁`. The two cross products sit at the same place value `Bᵐ`; the individual values are never used apart. So I've been computing two products just to add them and throw the parts away. If I could get the *sum* with one multiplication instead of two, I'd be at three multiplications total: `a₁b₁`, `a₂b₂`, and one for the middle.
 
-Look at the three coefficients sitting at the three place-values `B²ᵐ`, `Bᵐ`, `B⁰`:
-- the high coefficient is `x₁y₁`,
-- the low coefficient is `x₀y₀`,
-- the middle coefficient is `x₁y₀ + x₀y₁`.
-
-So I need `x₁y₁`, I need `x₀y₀`, and for the middle I need... not `x₁y₀` and `x₀y₁` *separately* — I only need their **sum** `x₁y₀ + x₀y₁`. That's the crack. I've been computing two products, `x₁y₀` and `x₀y₁`, just to add them together and throw away the individual values. They never appear apart in the answer; they sit at the same place value `Bᵐ`. If I could get the *sum* `x₁y₀ + x₀y₁` with a single multiplication instead of two, I'd be down to three multiplications total: `x₁y₁`, `x₀y₀`, and one more for the middle.
-
-So: is there a single product whose value contains `x₁y₀ + x₀y₁`? A sum of cross terms like that smells like what falls out of multiplying two sums. Multiply the sum of the halves of `x` by the sum of the halves of `y`:
-
+Is there a single product whose value contains `a₁b₂ + a₂b₁`? A sum of cross terms like that is what spills out of multiplying two sums. Multiply the sum of `a`'s halves by the sum of `b`'s halves:
 ```
-(x₁ + x₀)(y₁ + y₀) = x₁y₁ + x₁y₀ + x₀y₁ + x₀y₀.
+(a₁ + a₂)(b₁ + b₂) = a₁b₁ + a₁b₂ + a₂b₁ + a₂b₂.
 ```
+There's the cross sum I wanted, `a₁b₂ + a₂b₁` — but bundled with the two corner products `a₁b₁` and `a₂b₂`. And those corners are *exactly* what I'm already computing for the high and low coefficients. So I don't chase the cross sum on its own; I isolate it by subtracting the corners I already have:
+```
+a₁b₂ + a₂b₁ = (a₁ + a₂)(b₁ + b₂) − a₁b₁ − a₂b₂.
+```
+I can set the pieces this way:
+```
+z₂ = a₁·b₁                  (high)
+z₀ = a₂·b₂                  (low)
+z₁ = (a₁ + a₂)(b₁ + b₂) − z₂ − z₀   (middle)
+a·b = z₂·B²ᵐ + z₁·Bᵐ + z₀.
+```
+Three multiplications — `z₂`, `z₀`, and `(a₁+a₂)(b₁+b₂)` — and everything else is additions, subtractions, and shifts, all `O(n)`. The cross term I thought needed two of the four products is recovered from products I had to compute anyway plus one extra. The fourth multiplication is gone. Let me verify the middle by expanding:
+```
+(a₁+a₂)(b₁+b₂) − z₂ − z₀ = (a₁b₁ + a₁b₂ + a₂b₁ + a₂b₂) − a₁b₁ − a₂b₂ = a₁b₂ + a₂b₁. ✓
+```
+And reassembling gives back `a₁b₁·B²ᵐ + (a₁b₂+a₂b₁)·Bᵐ + a₂b₂`, the exact product — not an approximation, which matters because I need the precise answer.
 
-There it is — the right-hand side contains the cross sum `x₁y₀ + x₀y₁` I wanted, but it's bundled together with the two corner products `x₁y₁` and `x₀y₀`. And those two corners are *exactly the products I'm already computing* for the high and low coefficients. So I don't need to chase the cross sum on its own; I can isolate it by subtracting the corners I already have:
+I should also carry the same trick through the *squaring* form, since that's the version my recursion is actually set up on and I want the algebra airtight there. With `a = aₕ·Bᵐ + aₗ`,
+```
+a² = aₕ²·B²ᵐ + 2aₕaₗ·Bᵐ + aₗ².
+```
+The troublesome middle is `2aₕaₗ`, and the same identity gives it without a separate product:
+```
+2aₕaₗ = (aₕ + aₗ)² − aₕ² − aₗ².
+```
+So the square can be written as
+```
+a² = aₕ²·B²ᵐ + [(aₕ+aₗ)² − aₕ² − aₗ²]·Bᵐ + aₗ²,
+```
+and the only genuine work is three *squarings* of `m`-digit numbers: `aₕ²`, `aₗ²`, `(aₕ+aₗ)²`. Three, not four. Same saving, expressed in squares.
 
+But there's a snag I have to handle before I claim the recursion squares only `m`-digit numbers. The sum `aₕ + aₗ` of two `m`-digit numbers can carry up to `m+1` digits. If `(aₕ+aₗ)²` is the square of an `(m+1)`-digit number, the recursion isn't cleanly halving — the sub-problem is a digit too big. Let me absorb that overflow. Write the possibly-`(m+1)`-digit sum by peeling off its top bit:
 ```
-x₁y₀ + x₀y₁ = (x₁ + x₀)(y₁ + y₀) − x₁y₁ − x₀y₀.
+aₕ + aₗ = ε + 2·a₃,   ε ∈ {0,1},   a₃ an m-digit number.
 ```
+Then
+```
+(aₕ + aₗ)² = (2a₃ + ε)² = 4a₃² + 4a₃ε + ε²,
+```
+and `ε² = ε`, `4a₃ε` is either `0` or `4a₃` (a shift), so squaring the `(m+1)`-digit sum reduces to squaring the `m`-digit number `a₃` plus `O(m)` cheap operations. So the three sub-squarings are genuinely all of `m`-digit numbers, and the recursion halves cleanly. Good — that was the one place the clean "three half-size sub-problems" story could have leaked, and it's patched with a shift and an add.
 
-Let me name the three real multiplications and check the whole thing closes:
+Let me make the cost precise, keeping the digit-length variable straight. If squaring an `r`-digit number takes `N(r)` operations, then squaring a `2r`-digit number — three `r`-digit squarings plus shifts and adds — takes
+```
+N(2r) ≤ 3·N(r) + c·r,
+```
+for a constant `c`: the `3·N(r)` is the three sub-squarings, and the `c·r` is the linear combine (the shifts, the algebraic sum of at most seven `O(r)`-digit numbers, and the overflow fix). If I index the lengths as `1, 2, 4, ...`, the same statement appears as `N_{q+1} ≤ 3N_q + c·2^q`; the exponential is only because the digit length at level `q` is `2^q`. Unrolling over `log₂ n` levels gives a sum where the branching by 3 outgrows the linear combine terms. The dominant term is the `3^{log₂ n}` from the leaves.
 
-```
-z₂ = x₁ · y₁            (high product)
-z₀ = x₀ · y₀            (low product)
-z₃ = (x₁ + x₀)(y₁ + y₀) (product of the sums)
-```
-
-Then the middle coefficient is `z₃ − z₂ − z₀`, and the answer is
-
-```
-x·y = z₂·B²ᵐ + (z₃ − z₂ − z₀)·Bᵐ + z₀.
-```
-
-Three multiplications — `z₂`, `z₀`, `z₃` — and everything else is additions, subtractions, and shifts, all `O(n)`. The cross term I thought required two of the four products is recovered *for free* from products I had to compute anyway plus one extra. The fourth multiplication is gone.
-
-Let me sanity-check the algebra by expanding `z₃ − z₂ − z₀`:
-```
-z₃ − z₂ − z₀ = (x₁y₁ + x₁y₀ + x₀y₁ + x₀y₀) − x₁y₁ − x₀y₀ = x₁y₀ + x₀y₁. ✓
-```
-Exactly the middle coefficient. And let me check the whole product reassembles correctly:
-```
-z₂·B²ᵐ + (z₃ − z₂ − z₀)·Bᵐ + z₀
-  = x₁y₁·B²ᵐ + (x₁y₀ + x₀y₁)·Bᵐ + x₀y₀,
-```
-which is the expansion I started from. So it's exact, not an approximation — good, because the problem demands the precise product.
-
-Now there's a flicker of recognition. A product of two two-part things — `(x₁ + x₀)(y₁ + y₀)` — where you want the cross term but you compute it from one product-of-sums minus the two corner products... I've met this shape before. Multiplying two complex numbers `(a + b·i)(c + d·i)` gives real part `ac − bd` and imaginary part `ad + bc`; the imaginary part is a cross sum `ad + bc`, and the old trick is `ad + bc = (a + b)(c + d) − ac − bd`, so you get the complex product with three real multiplications instead of four. It's the same identity. The structural fact is that the cross term of a product of sums is recoverable from the product-of-sums minus the corner products — and here that fact is what cracks `n²`. What was a parlor trick for saving one real multiplication in a `2×2` bilinear form becomes, applied *recursively* to the digit-splitting, a change in the asymptotic exponent.
-
-Let me ground it on a concrete pair before I trust the recursion: `1234 × 4321`. Four digits, split at `m = 2`, base `B = 10`. So `x₁ = 12, x₀ = 34, y₁ = 43, y₀ = 21`.
-```
-z₂ = 12 · 43 = 516
-z₀ = 34 · 21 = 714
-z₃ = (12 + 34)(43 + 21) = 46 · 64 = 2944
-middle = z₃ − z₂ − z₀ = 2944 − 516 − 714 = 1714
-x·y = 516·10⁴ + 1714·10² + 714 = 5 160 000 + 171 400 + 714 = 5 332 114.
-```
-And `1234 × 4321 = 5 332 114` directly. It checks. And notice the recursion is real: those three sub-products `12·43`, `34·21`, `46·64` are themselves multiplications of smaller numbers, which I'd compute the same way until the operands are single digits and I just multiply them outright.
-
-Now the payoff — the cost. The recurrence is the same shape as before but with the `4` replaced by a `3`:
+For the two-number multiplication routine, the four-case recurrence has the `4` knocked down to `3`:
 ```
 T(n) = 3·T(n/2) + O(n).
 ```
-The `O(n)` is the combine work: forming `x₁ + x₀` and `y₁ + y₀`, the two subtractions for the middle, and the shifted additions — all linear. Let me unfold the tree the same careful way. Level `i` has `3ⁱ` nodes, each of size `n/2ⁱ`, each doing `O(n/2ⁱ)` combine work, so level `i` contributes `3ⁱ · O(n/2ⁱ) = O((3/2)ⁱ · n)`. Now the per-level work grows by a factor `3/2` each level down — *slower* than the `4`-case's factor of `2`, but still growing, so again the bottom level dominates. There are `log₂ n` levels, and the number of leaves is `3^{log₂ n}`. Rewrite that exponent: `3^{log₂ n} = (2^{log₂ 3})^{log₂ n} = 2^{log₂ 3 · log₂ n} = (2^{log₂ n})^{log₂ 3} = n^{log₂ 3}`. So there are `n^{log₂ 3}` leaves, each an `O(1)` single-digit multiply, and the total is dominated by them:
+Unfold the tree the same careful way. Level `i` has `3ⁱ` nodes of size `n/2ⁱ`, each doing `O(n/2ⁱ)` combine, so level `i` contributes `3ⁱ·O(n/2ⁱ) = O((3/2)ⁱ·n)`. The per-level work grows by `3/2` each level down — slower than the `4`-case's factor of `2`, but still growing, so the bottom dominates again. Leaf count `3^{log₂ n}`. Rewrite that exponent: `3^{log₂ n} = (2^{log₂ 3})^{log₂ n} = 2^{log₂ 3·log₂ n} = (2^{log₂ n})^{log₂ 3} = n^{log₂ 3}`. So `n^{log₂ 3}` leaves, each an `O(1)` single-digit multiply, and they dominate:
 ```
 T(n) = Θ(n^{log₂ 3}) ≈ Θ(n^{1.585}).
 ```
+Let me confirm which term dominates by summing the geometric series outright: total `= ∑_{i=0}^{log₂ n} (3/2)ⁱ·n = n·∑(3/2)ⁱ`. Since `3/2 > 1`, the sum is `Θ((3/2)^{log₂ n})`, so total `= Θ(n·(3/2)^{log₂ n})`. And `(3/2)^{log₂ n} = 3^{log₂ n}/2^{log₂ n} = n^{log₂ 3}/n`, so `n·n^{log₂ 3}/n = n^{log₂ 3}`. Same answer, and now I see exactly why: the linear combine work per level, with exponent `1`, is strictly below `log₂ 3 ≈ 1.585`, so the branching out-grows it and the leaves set the rate.
 
-Let me make sure I'm not fooling myself about which term dominates, by summing the geometric series explicitly. The total work is `∑_{i=0}^{log₂ n} (3/2)ⁱ · n = n · ∑ (3/2)ⁱ`. Since `3/2 > 1`, the sum is dominated by its largest term, `(3/2)^{log₂ n}`, up to a constant factor: `∑ (3/2)ⁱ = Θ((3/2)^{log₂ n})`. So `T(n) = Θ(n · (3/2)^{log₂ n})`. Now `(3/2)^{log₂ n} = 3^{log₂ n} / 2^{log₂ n} = n^{log₂ 3} / n`, so `n · (3/2)^{log₂ n} = n · n^{log₂ 3}/n = n^{log₂ 3}`. Same answer, and now I see exactly why: the linear combine work per level is *out-grown* by the branching, so it's the leaves, not the root, that set the rate. This is the regime where the number of sub-problems dominates the per-level overhead — the `f(n) = O(n)` combine cost has exponent `1`, which is strictly below `log₂ 3 ≈ 1.585`, so the leaves win and the closed form is `n^{log₂ 3}`.
+And `log₂ 3 < 2`. So the conjecture I sat down to *prove* is false, and the construction I built to corner it is what kills it. The intuition behind the floor — "every digit-pair interacts, so `n²` products are forced" — confused *the output depending on all digit-pairs* with *needing one multiplication per digit-pair*. The cross sum `a₁b₂ + a₂b₁` depends on all those interactions, yet I pull it out with a single multiplication by sharing work with the corner products. Recursively, that one saved multiplication per level compounds into a changed exponent. The historical argument — "if something cheaper existed it would have been found" — turns out to be evidence about how *non-obvious* the sharing is, not about whether it exists.
 
-And that's strictly below `2`. The believed lower bound — that multiplication needs `Ω(n²)` operations — is just false. The intuition behind it ("every pair of digits interacts, so `n²` products are forced") confused *the output depending on all digit-pairs* with *needing one multiplication per digit-pair*. The cross term `x₁y₀ + x₀y₁` depends on all four half-products' worth of digit interactions, yet I extract it with a single multiplication by sharing work with the corner products. Recursively, that single saved multiplication per level compounds into a changed exponent.
+I do not need a more elaborate split to refute the lower-bound conjecture. Two halves are the smallest place where the two cross products collide into the same middle coefficient, and that collision is exactly what the product-of-sums identity exploits. A single clean counterexample is enough, so I should keep the construction here and make the implementation exact.
 
-Let me also pin down why I split into *two* halves and not, say, three or more pieces, since the trick was really about reducing the multiplication count. The leaf count is `a^{log_b n} = n^{log_b a}` when I split each number into `b` pieces and manage with `a` sub-multiplications. Splitting in half (`b = 2`) and getting it down to `a = 3` gives exponent `log₂ 3`. The principle generalizes — split into more pieces and you'd want to drive `a` even lower relative to `b²`, which is a direction worth chasing later — but the two-piece, three-multiplication version already breaks the barrier, so that's the one to nail down now.
+The code has to follow this algebra directly, with a base case when an operand is a single digit; otherwise pick the split `m`, cut both numbers into halves, make the *three* recursive multiplications, and recombine with shifts.
 
-Now let me turn this into code, and stay honest about the places where a naive transcription bites. The structure is: base case when an operand is a single digit; otherwise pick the split point `m`, cut both numbers into high/low halves, make the *three* recursive multiplications, recombine with shifts.
-
-There's a subtlety in choosing `m`. The two operands may differ in length, and after splitting, `x₁ + x₀` and `y₁ + y₀` can each be one digit longer than the half — that's fine, the recursion just handles slightly larger operands, and it doesn't change the asymptotics. I'll take `m` as half the digit-length of the longer operand and split both at that same `m`, so the place values `B²ᵐ` and `Bᵐ` line up consistently for the recombination.
-
-The other trap is purely a language one but it's fatal: when I split with `m = n // 2` I'm using integer division, and I must split the numbers with *integer* floor-division and remainder too. If I write `x / 10**m` with true division I get a float, the operands stop shrinking toward the single-digit base case in integer-land, and the recursion never bottoms out. So: floor-divide and remainder (`divmod`) everywhere, integers throughout.
+Choosing `m`: the operands may differ in length, and `a₁+a₂`, `b₁+b₂` can each run one digit past the half — fine, the recursion handles slightly larger operands and the asymptotics don't change. I take `m` as half the digit-length of the longer operand and split both at that same `m`, so the place values `B²ᵐ` and `Bᵐ` line up for recombination. The other trap is a language one but fatal: when I split, I must use *integer* floor-division and remainder; true division would turn the halves into floats, the operands would stop shrinking toward the single-digit base case, and the recursion would never bottom out. So `divmod` everywhere, integers throughout.
 
 ```python
+BASE = 10
+
 def karatsuba(x, y):
-    # base case: a single-digit operand — just multiply directly (O(1))
-    if x < 10 or y < 10:
+    # base case: a single-digit operand — multiply directly (O(1))
+    if x < BASE or y < BASE:
         return x * y
 
     # split point: half the digit-length of the longer operand
     n = max(len(str(x)), len(str(y)))
     m = n // 2
-    split = 10 ** m
+    split = BASE ** m
 
     # cut each number into high and low halves at the B^m boundary.
     # integer floor-division + remainder — NOT true division, or the
@@ -131,19 +121,19 @@ def karatsuba(x, y):
     high1, low1 = divmod(x, split)   # x = high1 * 10^m + low1
     high2, low2 = divmod(y, split)   # y = high2 * 10^m + low2
 
-    # the THREE multiplications — the whole point.
-    z0 = karatsuba(low1, low2)                       # x0 * y0   (low coeff)
-    z2 = karatsuba(high1, high2)                     # x1 * y1   (high coeff)
-    z3 = karatsuba(high1 + low1, high2 + low2)       # (x1+x0)(y1+y0)
+    # the THREE multiplications — the whole point:
+    z2 = karatsuba(high1, high2)                 # a1 * b1   (high coeff)
+    z0 = karatsuba(low1, low2)                   # a2 * b2   (low coeff)
+    z3 = karatsuba(high1 + low1, high2 + low2)   # (a1+a2)(b1+b2)
 
     # middle coeff = cross sum, recovered from the product-of-sums
-    # minus the two corner products I already have:
-    #   x1*y0 + x0*y1 = z3 - z2 - z0
+    # minus the two corner products already computed:
+    #   a1*b2 + a2*b1 = z3 - z2 - z0
     z1 = z3 - z2 - z0
 
     # recombine with shifts (powers of the base) and adds — all O(n):
     #   x*y = z2 * B^(2m) + z1 * B^m + z0
-    return z2 * 10 ** (2 * m) + z1 * 10 ** m + z0
+    return z2 * BASE ** (2 * m) + z1 * BASE ** m + z0
 ```
 
-The causal chain, start to finish: schoolbook multiplication costs `n²` because it forms a separate product for every digit-pair, and the folklore said that was unavoidable; splitting each number in half and recursing naively keeps four sub-multiplications and so reproduces exactly `n²` — the recursion alone buys nothing, because four half-size problems is still `n²`; staring at the three place-value coefficients shows the middle one needs only the *sum* of the two cross products, not the products themselves; that sum is exactly what `(x₁+x₀)(y₁+y₀)` carries, minus the two corner products `x₁y₁` and `x₀y₀` that are already being computed — so the cross sum costs *one* multiplication instead of two; three sub-multiplications per split turns the recurrence `4T(n/2)+O(n)` into `3T(n/2)+O(n)`, whose recursion tree has `n^{log₂ 3}` leaves; and so the whole thing runs in `Θ(n^{log₂ 3}) ≈ Θ(n^{1.585})`, breaking the `n²` barrier that everyone believed was a law.
+The causal chain, start to finish: I set out to *prove* the `n²` floor by building the tightest recursive multiplication scheme and reading the lower bound off it; the natural scheme splits each number in half and needs four sub-multiplications, giving `4T(n/2)+O(n) = n²` — which looked like confirmation until I saw the `n²` was nothing but `log₂ 4`, an artifact of the count four, not anything forced; staring at the three place-value coefficients showed the middle one needs only the *sum* of the two cross products, and that sum is exactly what `(a₁+a₂)(b₁+b₂)` carries minus the two corner products already in hand — so the cross sum costs one multiplication, not two; three sub-multiplications turns the recurrence into `3T(n/2)+O(n)`, whose tree has `n^{log₂ 3}` leaves; so multiplication runs in `Θ(n^{log₂ 3}) ≈ Θ(n^{1.585})`, and the conjecture I meant to confirm is refuted by the very construction meant to confirm it.

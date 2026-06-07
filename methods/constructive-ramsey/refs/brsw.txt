@@ -1,0 +1,3381 @@
+Annals of Mathematics 176 (2012), 1483–1543
+http://dx.doi.org/10.4007/annals.2012.176.3.3
+
+2-source dispersers for no(1) entropy,
+and Ramsey graphs beating the
+Frankl-Wilson construction
+By Boaz Barak, Anup Rao, Ronen Shaltiel, and Avi Wigderson
+
+Abstract
+The main result of this paper is an explicit disperser for two indepenβ
+dent sources on n bits, each of min-entropy k = 2log n , where β < 1 is
+some absolute constant. Put differently, setting N = 2n and K = 2k , we
+construct an explicit N ×N Boolean matrix for which no K ×K sub-matrix
+is monochromatic. Viewed as the adjacency matrix of a bipartite graph,
+this gives an explicit construction of a bipartite K-Ramsey graph of 2N
+vertices. This improves the previous bound of k = o(n) of Barak, Kindler,
+Shaltiel, Sudakov and Wigderson. As a corollary, we get a construction of a
+o(1)
+(nonbipartite) Ramsey
+graph of 2n vertices, significantly improving
+2n
+√
+Õ( n)
+the previous bound of 2
+due to Frankl and Wilson.
+We also give a construction of a new independent sources extractor that
+can extract from a constant number of sources of polynomially small minentropy with exponentially small error. This improves independent sources
+extractor of Rao, which only achieved polynomially small error.
+Our dispersers combine ideas and constructions from several previous
+works in the area together with some new ideas. In particular, we rely on
+the extractors of Raz and Bourgain as well as an improved version of the
+extractor of Rao. A key ingredient that allows us to beat the barrier of
+√
+k = n is a new and more complicated variant of the challenge-response
+mechanism of Barak et al. that allows us to locate the min-entropy concentrations in a source of low min-entropy.
+
+Most of the work of B. B. was done while at Princeton University, supported by Us-Israel
+BSF grant, NSF grants CNS-0627526, CCF-0426582 and CCF-0832797 and the Packard and
+Sloan fellowships.
+Much of the work of A.R. was done while the author was at the University of Texas,
+visiting Princeton University, and visiting the Institute for Advanced Study, supported in
+part by an MCD fellowship from UT Austin and NSF Grant CCR-0310960.
+The research of R. S. was supported by BSF grants 2004329 and 2010120, ISF grants
+686/07 and 864/11, and ERC starting grant 279559.
+A. W. was supported by NSF grant CCR 0324906.
+
+1483
+
+1484
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Contents
+1. Introduction
+1484
+1.1. Ramsey and Bipartite Ramsy graphs
+1485
+1.2. Randomness extractors
+1486
+1.3. Dispersers and their relation to Ramsey graphs
+1489
+1.4. Organization of this paper
+1490
+2. Techniques
+1491
+2.1. Subsources
+1491
+2.2. Block-sources
+1492
+2.3. Existence of block-sources in general sources
+1492
+2.4. Identifying high entropy parts in the source
+1493
+√
+2.5. On extending this argument to k < n
+1494
+3. Preliminaries
+1495
+3.1. Basic notations and definitions
+1495
+3.2. Useful facts and lemmas
+1498
+3.3. Some results from previous works
+1502
+4. Ingredients
+1502
+4.1. Extractor for one block-source and one general source
+1502
+4.2. A 2-source somewhere extractor with exponentially small error 1503
+5. Informal overview of the construction and analysis of the disperser1506
+5.1. Challenge-response mechanism for linear min-entropy
+1507
+5.2. The challenge-response mechanism in our application
+1510
+6. Construction and analysis of the disperser
+1519
+6.1. Parameters
+1519
+6.2. Formal construction
+1520
+6.3. Formal analysis
+1523
+7. Proof of Theorem 4.1
+1532
+7.1. Achieving small error
+1533
+7.2. Extractor for general source and an SR-source with few rows
+1534
+8. Open problems
+1540
+9. Acknowledgements
+1541
+References
+1541
+
+1. Introduction
+In this paper we give new explicit constructions of certain combinatorial
+objects. The results can be described in two equivalent ways. The first, which
+is simpler and has a longer history, is the language of Ramsey graphs, graphs
+that do not have large cliques or independent sets. The second is the language
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1485
+
+of randomness extractors and randomness dispersers. While a bit more complicated to state, this latter form is key to both the computer science motivation
+of the problem and our actual techniques.
+1.1. Ramsey and Bipartite Ramsy graphs. We start by describing our results in the language of Ramsey graphs.
+Definition 1.1. A graph on N vertices is called a K-Ramsy graph if it
+contains no clique or independent set of size K.
+In 1928 Ramsey [Ram30] proved that there does not exist a graph on
+N = 2n vertices that is n/2 Ramsey. In 1947 Erdős published his paper
+inaugurating the Probabilistic Method with a few examples, including a proof
+that complemented Ramsey’s discovery: most graphs on 2n vertices are 2nRamsey. The quest for constructing Ramsey graphs explicitly has existed ever
+since and led to some beautiful mathematics. By an explicit construction we
+mean an efficient (i.e., polynomial time) algorithm that, given the labels of two
+vertices in the graph, determines whether there is an edge between them.1
+Prior to this work, the best record was obtained in 1981 by Frankl and
+Wilson [FW81], who used intersection
+theorems for set systems to construct
+√
+Ω̃(
+n)
+N -vertex graphs that are 2
+-Ramsey.2 This bound was matched by Alon
+[Alo98] using the Polynomial Method, by Grolmusz [Gro00] using low rank
+matrices over rings, and also by Barak [Bar06] boosting Abbot’s method with
+almost k-wise independent random variables (a construction that was independently discovered by others as well). Remarkably all of these different
+approaches got stuck at essentially the same bound. In recent work, Gopalan
+[Gop06] showed that other than the last construction, all of these can be viewed
+as coming from low-degree symmetric representations of the OR function. He
+also showed that any such symmetric representation cannot be used to give a
+better Ramsey graph, suggesting why these constructions achieved such simi√
+lar bounds. Indeed, as we will discuss in a later section, the n min-entropy
+bound initially looked like a natural obstacle even for our techniques, though
+eventually we were able to surpass it.
+One can make an analogous definition for bipartite graphs.
+Definition 1.2. A bipartite graph on two sets of N vertices is a bipartite
+K-Ramsy graph if it has no K × K complete or empty bipartite subgraph.
+1Almost all of the constructions mentioned below (including our own) achieve this defi-
+
+nition, with the exception of the papers [Bar06], [PR04], which achieve a somewhat weaker
+notion of explicitness.
+2We use Õ and Ω̃ notations when neglecting polylogarithmic factors.
+
+1486
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Given a bipartite K-Ramsey graph G on 2N vertices, one can easily transform it into a nonbipartite K/2-Ramsey graph H on N vertices.3 Thus, the
+problem of explicitly constructing bipartite Ramsey graphs is at least as hard
+as the problem of constructing nonbipartite Ramsey graphs. Indeed, while
+Erdős’ result on the abundance of 2n-Ramsey graphs holds as is for bipartite
+graphs, the best explicit construction of bipartite Ramsey graphs only recently
+surpassed the bound of 2n/2 that is given by the Hadamard matrix. The bound
+was first improved to o(2n/2 ) by Pudlak and Rődl [PR04] and then to 2o(n) by
+Barak, Kindler, Shaltiel, Sudakov and Wigderson [BKS+ 10].
+The main result of this paper is a new bound that improves the state of
+affairs for both the bipartite and nonbipartite cases.
+Theorem 1.3 (Main Theorem). There is an absolute constant α0 > 0
+log1−α0 n
+
+and an explicit construction of a bipartite 22
+over 2 · 2n vertices for every large enough n ∈ N.
+
+= 2n
+
+o(1)
+
+-Ramsey graph
+
+As discussed above, this corollary follows easily.
+Corollary 1.4. There is an absolute constant α0 > 0 and an explicit
+log1−α0 n
+o(1)
+construction of a 22
+= 2n
+Ramsey graph over 2n vertices for every
+large enough n ∈ N.
+1.2. Randomness extractors. We now describe our results in a different
+language — the language of randomness extractors and randomness dispersers.
+We start with some background. The use of randomness in computer science
+has gained tremendous importance in the last few decades. Randomness now
+plays an important role in algorithms, distributed computation, cryptography
+and many more areas. Some of these applications have been shown to inherently require a source of randomness. However, it is far from clear where the
+randomness that is needed for these applications can be obtained.
+An obvious approach is to use a natural source of unpredictable data such
+as users’ typing rates, radioactive decay patterns, fluctuations in the stock
+market, etc. However, when designing randomized algorithms and protocols,
+it is almost always assumed that a sequence of unbiased and independent coin
+tosses is available, while natural unpredictable data do not necessarily come
+in that form.
+3The N × N adjacency matrix of a bipartite Ramsey graph is not necessarily symmetric
+
+and may contain ones on the diagonal. This can be fixed by using only the upper triangle
+of the matrix (e.g., by placing an edge {a, b} in H, where a < b, if the ath vertex on the left
+side is connected to the bth vertex on the right side in G). It is easy to verify that this indeed
+yields a K/2-Ramsey graph.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1487
+
+One way to attempt to close this gap is to apply some kind of hash function that is supposed to transform the unpredictable/high entropy data into
+a distribution that is equal (or at least close to) the uniform distribution. To
+formalize this approach, let us model weak sources as probability distributions
+over n bit strings that have sufficient min-entropy k.4 Such a source is referred
+to as a k-source. One then seeks a function f , called an extractor, that maps
+{0, 1}n to {0, 1}m (for m as large as is feasible) such that for every random
+variable X with sufficient min-entropy, f (X) is close to the uniform distribution. Unfortunately this goal can never be met; it is impossible even if we want
+to output just a single bit from distributions of very high min-entropy (i.e.,
+random variables over {0, 1}n with min-entropy n − 1), as for every function
+f : {0, 1}n → {0, 1}, we can find 2n /2 inputs on which f is constant. Thus,
+the uniform distribution over these inputs is a distribution on which f fails to
+extract randomness.
+One way to break out of this conundrum, suggested by Santha and Vazirani [SV86] and Chor and Goldreich [CG88], is to use more than one input
+source of randomness. That is, we consider the case that the extractor function
+gets samples from several independent sources of randomness. The probabilistic method can be used to show that, in principle, two independent sources
+suffice — for every n ∈ N, ε > 0 and k ≥ 2 log n + 10 log 1/ε, there exists a
+function f : ({0, 1}n )2 → {0, 1}0.9k such that for every two independent distributions X, Y , each having min-entropy at least k, f (X, Y ) is within ε statistical
+distance5 to the uniform distribution over {0, 1}0.9k . Such a function f is called
+a 2-source extractor. Formally, we make the following definition.
+Definition 1.5. Let n, c, k ∈ N and ε > 0. A function f : ({0, 1}n )c →
+{0, 1}m is called a c-source extractor for min-entropy k with error ε if, for
+every independent random variables X1 , . . . , Xc , each having min-entropy at
+least k,
+|f (X1 , . . . , Xc ) − Um | < ε,
+where Um denotes the uniform distribution over {0, 1}m .
+4It turns out that min-entropy, and not Shannon entropy, is the right notion of entropy
+to use in this context. A random variable X has min-entropy at least k if for every x in
+X’s range, Pr[X = x] ≤ 2−k . A special case is flat distributions. (These are distributions
+that are uniformly distributed over some subset of {0, 1}n that is of size 2k .) Note that
+for flat distributions, entropy and min-entropy coincide. Furthermore, any distribution with
+min-entropy k is a convex combination of such flat distributions, and therefore the reader
+can without loss of generality assume that all sources of randomness are flat distributions.
+5The statistical distance of two distributions W, Z over some range R, denoted by |W −Z|,
+P
+is defined to be 1/2 r∈R | Pr[W = r] − Pr[Z = r]|.
+
+1488
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+The probabilistic method shows the existence of an excellent extractor in
+terms of all the parameters. However, to be useful in computer science applications, the extractor needs to be efficiently computable. In other words, we
+need an explicit construction that matches, or at least gets close to, the bounds
+achieved by the probabilistic method. Beyond the obvious motivations (potential use of physical sources for randomized computation), extractors have
+found applications in a variety of areas in theoretical computer science where
+randomness does not seem an issue, such as in efficient constructions of communication networks [WZ99], [CRVW02], error correcting codes [TSZ04], [Gur04],
+data structures [MNSW98] and more. (Many of the applications and constructions are for a related notion called seeded extractors, which are 2-source extractor in which the second source is very short but assumed to be completely
+uniform; see [Sha02] for a survey of much of this work.)
+Until a few years ago, essentially the only known explicit construction
+for a constant number of sources was the Hadamard extractor Had defined by
+Had(x, y) = hx, yi mod 2. It is a 2-source extractor for min-entropy k > n/2
+as observed by Chor and Goldreich [CG88] and can be extended to give Ω(n)
+output bits as observed by Vazirani [Vaz85]. Roughly 20 years later, Barak,
+Impagliazzo and Wigderson [BIW06] constructed a c = O(log(n/k))-source
+extractor for min-entropy k with output m = Ω(k). Note that this means that
+if k = δn for a constant δ, this extractor requires only a constant number of
+sources. The main tool used by Barak et al. was a breakthrough in additive
+number theory of Bourgain, Katz and Tao [BKT04] who proved a finite-field
+sum product theorem, a result which has already found applications in diverse
+areas of mathematics, including analysis, number theory, group theory and
+extractor theory. Building on these works, Barak et al. [BKS+ 10] and Raz
+[Raz05] independently gave constructions of extractors for just three sources
+with min-entropy k = δn for any constant δ > 0. This was followed by a result
+of Rao [Rao09], who showed how to extract from O(log n/ log k) independent
+k-sources. This is an extractor for O(c) sources as long as k is larger than
+n1/c . His extractor did not rely on any of the new results from additive number
+theory. In this paper we extend Rao’s results by improving the error parameter
+Ω(1)
+from ε = k −Ω(1) to ε = 2−k , a result which was also obtained independently
+by Chung and Vadhan [CV].
+Theorem 1.6. There is a polynomial time computable c-source extractor
+n
+f : ({0, 1})c → {0, 1}Ω(k) for min-entropy k > log10 n, c = O( log
+log k ) and ε =
+2−k
+
+Ω(1)
+
+.
+
+Rao also gave extractors that can extract randomness from two “blocksources” with O(log n/ log k) blocks. An important ingredient in our main
+results is extending these results so that only one of the sources needs to be a
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1489
+
+block-source while the other source can be a general source with min-entropy k.
+We elaborate on block-sources and their role in our main construction later on.
+While the aforementioned works achieved improvements for more than two
+sources, the only improvement for two source extractors over the Hadamard
+extractor is by Bourgain [Bou05], who broke the “1/2 barrier” and gave such an
+extractor for min-entropy .4999n, again with linear output length m = Ω(n).
+Theorem 1.7 ([Bou05]). There is a polynomial time computable 2-source
+extractor f : ({0, 1}n )2 → {0, 1}m for min-entropy .4999n, m = Ω(n) and
+ε = 2−Ω(n) .
+This seemingly minor improvement plays an important role in Rao’s extractor for two block-sources and in our improvements.
+1.3. Dispersers and their relation to Ramsey graphs. A natural relaxation
+of extractors is, rather than requiring that the output is statistically close to
+the uniform distribution, simply requiring that it has large support. Such
+objects are called dispersers.
+Definition 1.8. Let n, c, k ∈ N and ε > 0. A function f : ({0, 1}n )c →
+{0, 1}m is called a c-source disperser for min-entropy k and error parameter ε
+if for every independent random variables X1 , . . . , Xc each having min-entropy
+at least k,
+|f (X1 , . . . , Xc )| ≥ (1 − ε)2m .
+We remark that in the definition above it is sufficient to consider only
+flat sources X1 , . . . , Xc . In other words, an equivalent definition is that for
+any c sets S1 , . . . , Sc ⊆ {0, 1}n such that all sets are of size 2k , |f (S1 × · · · ×
+Sc )| ≥ (1 − ε)2m . Dispersers are easier to construct than extractors, and in
+the past, progress on constructing extractors and dispersers often has been
+closely related. In this paper we will be mostly interested in dispersers with
+one bit of output. For such dispersers, we can ignore the error parameter ε,
+because for any ε < 1/2, the condition is simply that the disperser outputs
+both zero and one with positive probability. (For ε > 1/2, the definition is
+meaningless as it holds trivially for any f .) Thus, we say that a function
+f : ({0, 1}n )c → {0, 1} is a c-source disperser for min-entropy k if for every
+independent random variables X1 , . . . , Xc each having min-entropy at least k,
+Pr[f (X1 , . . . , Xc ) = 1] is strictly between 0 and 1.
+2-source dispersers are particularly interesting as they are equivalent to
+bipartite Ramsey graphs. More precisely, if f : ({0, 1}n )2 → {0, 1} is a 2-source
+disperser with one-bit output for min-entropy k, we consider the graph G on
+two sets of 2n vertices where we place an edge from x to y if f (x, y) = 1. Note
+that any 2k ×2k subgraph of this graph cannot be complete or empty as it must
+contain both an edge and a non-edge, and therefore G is a bipartite 2k -Ramsey
+
+1490
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+graph. Recall that this graph can be easily transformed into a (2k−1 )-Ramsey
+graph on 2n vertices.
+For two sources, Barak et al. [BKS+ 10] were able to construct dispersers
+for sources of min-entropy k = o(n):
+Theorem 1.9 ([BKS+ 10]). There exists a polynomial time computable
+2-source disperser f : ({0, 1}n )2 → {0, 1} for min-entropy o(n).
+The main result of this paper is a polynomial time computable disperser
+for two sources of min-entropy no(1) , improving the results of Barak et al.
+[BKS+ 10] (which achieved o(n) min-entropy). By the discussion above, our
+construction yields both bipartite Ramsey graphs and Ramsey graphs for K =
+o(1)
+2n
+and improves
+on Frankl and Wilson [FW81], who built Ramsy graphs
+√
+Õ(
+n)
+with K = 2
+(which in this terminology is a disperser for two identically
+√
+distributed sources for min-entropy Õ( n)).
+Theorem 1.10 (Main theorem, restated). There exists a constant α0 > 0
+and a polynomial time computable 2-source disperser D : ({0, 1}n )2 → {0, 1}
+1−α
+for min-entropy 2log 0 n .
+Even though our main result is a one output bit disperser, we will need
+to use the more general definitions of multiple-source and larger outputs dispersers and extractors in the course of our construction.
+1.4. Organization of this paper. Unfortunately, our construction involves
+many technical details. In an attempt to make this paper more readable, we
+also include some sections that only contain high level informal explanations,
+explanations which are not intended to be formal proofs and can be safely
+skipped if the reader so wishes. The paper is organized as follows.
+In Section 2 we explain the high level ideas used in our construction without going into the details or giving our construction. In Section 3 we give some
+definitions and technical lemmas. We also state results from previous work that
+our work relies on. In Section 4 we present two variants of extractors that are
+used in our construction. The first is an extractor that extracts randomness
+from two independent sources, where one of them is a block-source and the
+other is a general source. The second is a “somewhere extractor” with special
+properties that, when given two independent sources of sufficient min-entropy,
+outputs a polynomial number of strings where one of them is (close to) uniformly distributed. In Section 5 we give a detailed informal explanation of our
+construction and proof. We hope that reading this section will make it easier
+for the reader to follow the formal proof. In Section 6 we present our disperser
+construction and prove its correctness. In Section 7 we show how to construct
+the extractor from Section 4. Finally we conclude with some open problems.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1491
+
+2. Techniques
+Our construction makes use of many ideas and notions developed in previous works as well as several key new ones. In this section we attempt to survey
+some of these at a high level without getting into precise details. In order to
+make this presentation more readable, we allow ourselves to be imprecise and
+oversimplify many issues. We stress that the contents of this section are not
+used in later parts of the paper. In particular, the definitions and theorems
+that appear in this section are restated (using precise notation) in the technical
+sections of the paper. The reader may skip to the more formal parts at any
+point if she wishes.
+2.1. Subsources. Recall that the main goal of this research area is to design
+2-source extractors for low min-entropy k. As explained earlier, it is unknown
+how to achieve extractors for two sources with min-entropy k < 0.4999n and
+this paper only gives constructions of dispersers (rather than extractors). In
+order to explain how we achieve this relaxed goal, we first need the notion of
+subsources.
+Definition 2.1 (Subsource). A distribution X 0 over domain {0, 1}n is a
+subsource of a distribution X (over the same domain {0, 1}n ) with deficiency-d
+if there exists an event A ⊆ {0, 1}n such that Pr[X ∈ A] ≥ 2−d , and X 0 is the
+probability distribution obtained by conditioning X to A. (More precisely, for
+every a ∈ A, Pr[X 0 = a] is defined to be Pr[X = a|X ∈ A] and for a 6∈ A,
+Pr[X 0 = a] = 0.)
+In the case X 0 is a subsource of a flat distribution (a distribution that is
+uniform on some subset), X is simply a flat distribution on a smaller subset.
+It is also easy to see that if X is a k-source and X 0 is a deficiency-d subsource
+of X, then X 0 is a (k − d)-source.
+We say that a function f : ({0, 1}n )2 → {0, 1} is a subsource extractor if
+for every two independent k-sources X and Y , there exist subsources X 0 of X
+and Y 0 of Y such that f (X 0 , Y 0 ) is close to uniformly distributed. While f is
+not necessarily an extractor, it certainly is a disperser, since f (X, Y ) is both
+zero and one with positive probability. Thus, when constructing dispersers, it
+is sufficient to analyze how our construction performs on some subsources of
+the adversarially chosen sources.
+Our analysis uses this approach extensively. Given the initial k-sources X
+and Y (which can be arbitrary) we prove that there exist subsources of X, Y
+that have a certain “nice structure.” We then proceed to design 2-source extractors that extract randomness from sources with this nice structure. When
+using this approach, we shall be very careful to ensure that the subsources we
+use have low deficiency and remain a product distribution.
+
+1492
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+2.2. Block-sources. We now describe what we mean by sources that have
+nice structure. We consider sources that give samples that can be broken
+into several disjoint “blocks” such that each block has min-entropy k even
+conditioned on any value of the previous blocks. Called block-sources, these
+were first defined by Chor and Goldreich [CG88].
+Definition 2.2 (Block-sources [CG88]). A distribution X = (X1 , . . . , Xc )
+where each Xi is of length n is a c-block-source of block min-entropy k if
+for every i ∈ [c], every x ∈ {0, 1}n and every x1 , . . . , xi−1 ∈ ({0, 1}n )i−1 ,
+Pr[Xi = x|X1 = x1 ∧ · · · ∧ Xi−1 = xi−1 ] ≤ 2−k .
+It is clear that any such block-source is a ck-source. However, the converse
+is not necessarily true. Throughout this informal description, the reader should
+think of c as very small compared to k or n so that values like ck, k and k/c are
+roughly the same. Block-sources are interesting since they are fairly general
+(there is no deterministic way to extract from a block-source), yet we have a
+better understanding of how to extract from them. For example, when the
+input sources are block-sources with sufficiently many blocks, Rao proves that
+two independent sources suffice even for the case of lower min-entropy, with
+polynomially small error.
+Theorem 2.3 ([Rao09]). There is a polynomial time computable extractor
+f : ({0, 1}cn )2 → {0, 1}m for two independent c-block-sources with block minentropy k and m = Ω(k) for c = O((log n)/(log k)).
+In this paper we improve his result in two ways— only one of the two
+sources needs to be a c-block-source, and the error is exponentially small. The
+other source can be an arbitrary source with sufficient min-entropy.
+Theorem 2.4 (Block + general source extractor). There is a polynomial time computable extractor B : ({0, 1}n )2 → {0, 1}m for two independent
+sources, one of which is a c-block-source with block min-entropy k and the other
+a source of min-entropy k, with m = Ω(k), c = O((log n)/(log k)) and error at
+Ω(1)
+most 2−k .
+This is a central building block in our construction. This extractor, like
+Rao’s extractor above, relies on 2-source extractor constructions of Bourgain
+[Bou05] and Raz [Raz05]. We do not describe how to construct the extractor
+of Theorem 2.4 in this informal overview. The details are in Sections 4 and 7.
+2.3. Existence of block-sources in general sources. Given that we know
+how to handle the case of block-sources, it is natural to try to convert a general
+k-source into a block-source. Let us first restrict our attention to the case
+where the min-entropy is high: k = δn for some constant δ > 0. (These
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1493
+
+are the parameters already achieved in the construction of [BKS+ 10].) We
+make the additional simplifying assumption that for k = δn, the extractor of
+Theorem 2.4 requires a block-source with only two blocks (i.e., c = 2).
+First consider a partition of the k-source X into t = 1/10δ consecutive
+blocks of length n/t and denote the ith block by Xi . We claim that there has to
+be an index 1 ≤ j ≤ t such that the blocks (X1 ◦ · · · ◦ Xj ) and (Xj+1 ◦ · · · ◦ Xt )
+are a 2-block-source with min-entropy k/4t ≈ δ 2 n. To meet the definition of
+block-sources, we need to pad the two blocks above so that they will be of
+length n, but we ignore such technicalities in this overview.
+To see why something like this must be true, let us consider the case
+of Shannon entropy. For Shannon entropy, we have the chain rule H(X) =
+P
+1≤j≤t H(Xj |X1 , . . . , Xj−1 ). Imagine going through the blocks one by one and
+checking whether the conditional entropy of the current block is at least k/4t.
+Since the total entropy is at least k, we must find such a block j. Furthermore,
+this block is of length n/t and so has entropy at most n/t < k/10. It follows
+that the total entropy we have seen thus far is bounded by t · (k/4t) + k/10 <
+k/2. This means that the remaining blocks must contain the remaining k/2
+bits of entropy even when conditioned on the previous blocks.
+Things become are not so straightforward when dealing with min-entropy
+instead of entropy. Unlike Shannon entropy, min-entropy does not have a chain
+rule and the claim above does not hold in analogy. Nevertheless, imitating the
+argument above for min-entropy gives that for any k-source X, there exists a
+small deficiency subsource X 0 of X such that there exist an index j for which
+0
+the blocks (X10 ◦· · ·◦Xj0 and Xj+1
+◦· · ·◦Xt0 are a 2-block-source with min-entropy
+2
+k/4t ≈ δ n. As we explained earlier, this is helpful for constructing dispersers,
+as we can forget about the initial source X and restrict our attention to the
+“nicely structured” subsource X 0 .
+However, note that in order to use our extractors from Theorem 2.4, we
+need to also find the index j. This seems very hard as the disperser we are
+constructing is only given one sample x out of the source X, and it seems
+impossible to use this information in order to find j. Moreover, the same
+sample x can appear with positive probability in many different sources that
+have different values of j.
+2.4. Identifying high entropy parts in the source. Barak et al. [BKS+ 10]
+devised a technique, which they call “the challenge-response mechanism,” that
+in some sense allows the disperser to locate the high entropy block Xj in
+the source X. This method also relies on the other k-source Y . An important
+contribution of this paper is improving their method and extending it to detect
+blocks with much lower entropy. We will not attempt to describe how this
+method works within this informal overview as the technique is somewhat
+
+1494
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+complicated and it is hard to describe it without delving into details. We do
+give a more detailed informal description (which still avoids many technical
+issues) in the informal explanation in Section 5.
+In this high level overview we will only explain in what sense the challengeresponse method finds the index j. Let us first recall the setup. The disperser
+obtains two inputs x and y from two independent k-sources X and Y . We
+have that X has a subsource X 0 that is a block-source. More precisely, there
+0
+exists an index j such that the blocks (X10 ◦ · · · ◦ Xj0 ) and (Xj+1
+◦ · · · ◦ Xt0 ) are
+2
+a 2-block-source with min-entropy k/4t ≈ δ n.
+Using the challenge-response mechanism, one can explicitly construct a
+function FindIndex(x, y) such that there exist low deficiency subsources X good
+of X 0 and Y good of Y such that
+• FindIndex(X good , Y good ) outputs the correct index j (with high probability).
+• X good is a 2-block-source according to the index j above.
+Loosely speaking, this means that we can restrict our attention (in the analysis)
+to the independent sources X good , Y good . These sources are sources from which
+we can extract randomness! More precisely, when given x, y that are sampled
+from these sources, we can compute FindIndex(x, y) and then run the extractor
+from Theorem 2.4 on x, y using the index FindIndex(x, y). The properties
+above guarantee that we have a positive probability to output both zero and
+one, which ensures that our algorithm is a disperser.
+√
+2.5. On extending this argument to k < n. In the informal discussion
+above we only handled the case when k = δn for some constant δ > 0, though
+in this paper we are able to handle the case of k = no(1) . It turns out that
+there are several obstacles that need to be overcome before we can apply the
+√
+strategy outlined above when k < n.
+Existence of block-sources in general sources. The method we used for
+arguing that every k-source has a subsource that is a 2-block-source does not
+√
+√
+work when k < n. If we partition the source X into t < n blocks, then the
+length of each block is n/t > k and it could be the case that all the entropy lies
+in one block. (In that case the next blocks contain no conditional entropy.) On
+√
+the other hand, if we choose t > n, then our analysis only gives a block-source
+with entropy k/4t < 1, which is useless.
+In order to handle this problem we use a “win-win” case analysis (which
+is somewhat similar to the technique used in [RSW00]). We argue that either
+the source X has a subsource X 0 such that partitioning X 0 according to an
+index j gives a 2-block-source with min-entropy ≈ k/c, or there must exist a
+block j that has entropy larger than ≈ k/c. We now explain how to handle the
+second case, ignoring for now the issue of distinguishing which of the cases we
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1495
+
+are in. Note that we partition X into t blocks of length n/t and therefore in
+the second case there is a block j where the min-entropy rate (i.e., the ratio of
+the min-entropy to the length) increased by a multiplicative factor of t/c  1.
+Loosely speaking, we already have a way to locate the block j (by using
+the challenge-response mechanism) and once we find it, we can recursively
+call the disperser construction on xj and y. Note that we are indeed making
+progress as the min-entropy rate is improving and it can never get larger than
+one. This means that eventually the min-entropy rate will be so high that we
+are guaranteed to have a block source that we know how to handle.
+It is also important to note that this presentation is oversimplified. In
+order to perform the strategy outlined above, we need to also be able to distinguish between the case where our source contains a block-source and the case
+where it has a high entropy block. For this purpose, we develop a new and
+more sensitive version of the challenge-response mechanism that is also able to
+distinguish between the two cases.
+Lack of somewhere extractors for low entropy. In this high level overview
+we did not discuss the details of how to implement the function FindIndex using
+the challenge-response mechanism. Still, we remark that the implementation
+in [BKS+ 10] relies on certain objects called “somewhere extractors.” While
+we do not define these objects here (the definition can be found in the formal
+sections), we mention that we do not know how to construct these objects
+√
+for k < n. To address this problem we implement the challenge-response
+mechanism in a different way, relying only on objects that are available in the
+low-entropy case.
+3. Preliminaries
+The following are some definitions and lemmas that are used throughout
+this paper.
+3.1. Basic notations and definitions. Often in technical parts of this paper, we will use constants like 0.9 or 0.1 where we could really use any sufficiently large or small constant that is close to 1 or 0. We do this because it
+simplifies the presentation by reducing the number of additional variables we
+will need to introduce.
+In informal discussions throughout this paper, we often use the word entropy loosely. All of our arguments actually involve the notion of min-entropy
+as opposed to Shannon entropy.
+Random variables, sources and min-entropy. We will usually deal with
+random variables that take values over {0, 1}n . We call such a random variable an n-bit source. The min-entropy of a random variable X, denoted
+
+1496
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+by H∞ (X), is defined to equal minx {− log2 (Pr[X = x])}, or equivalently
+log2 (1/ maxx {Pr[X = x]}). If X is an n-bit source with H∞ (X) ≥ k and
+n is understood from the context, then we will call X a k-source.
+Definition 3.1 (Statistical distance). If X and Y are random variables over
+some universe U , the statistical distance of X and Y , denoted by |X − Y |, is
+P
+defined to be 12 u∈U |Pr[X = u] − Pr[Y = u]|.
+We have the following simple lemma.
+Lemma 3.2 (Preservation of strongness under convex combination). Let
+X, O, U, Q be random variables over the same finite probability space, with U, O
+both random variables over {0, 1}m . Let ε1 , ε2 < 1 be constants such that
+Pr [|(X|Q = q) ◦ (O|Q = q) − (X|Q = q) ◦ (U |Q = q)| ≥ ε1 ] < ε2 ;
+
+q←R Q
+
+i.e., conditioned on Q being fixed and good, X ◦O is statistically close to X ◦U .
+Then we get that |X ◦ O − X ◦ U | < ε1 + ε2 .
+Definition 3.3 (Subsource). Given random variables X and X 0 on {0, 1}n ,
+we say that X 0 is a deficiency-d subsource of X and write X 0 ⊆ X if there
+exists a set A ⊆ {0, 1}n such that (X|A) = X 0 and Pr[X ∈ A] ≥ 2−d .
+Definition 3.4 (Block-sources). A distribution X = X 1 ◦ X 2 ◦ · · · ◦ X c is
+called a (k1 , k2 , . . . , kc )-block-source if for all i = 1, . . . , c, we have that for
+all x1 ∈ X 1 , . . . , xi−1 ∈ X i−1 , H∞ (X i |X 1 = x1 , . . . , X i−1 = xi−1 ) ≥ ki ; i.e.,
+each block has high min-entropy even conditioned on the previous blocks. If
+k1 = k2 = · · · = kc = k, we say that X is a k-block-source.
+Definition 3.5 (Somewhere random sources). A source X = (X1 , ..., Xt ) is
+(t × r) somewhere-random if each Xi takes values in {0, 1}r and there is an i
+such that Xi is uniformly distributed.
+Definition 3.6. We will say that a collection of somewhere-random sources
+is aligned if there is some i for which the ith row of every SR-source in the
+collection is uniformly distributed.
+Since we shall have to simultaneously use the concept of block-sources
+and somewhere-random sources, for clarity we use the convention that the
+word block refers to a part of a block-source. The word row will be used to
+refer to a part in a somewhere-random source.
+Definition 3.7 (Weak somewhere-random sources). A source X = (X1 , . . .
+. . . , Xt ) is (t×r) k-somewhere-random (k-SR-source for short) if each Xi takes
+values in {0, 1}r and there is an i such that Xi has min-entropy k.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1497
+
+Often we will need to apply a function to each row of a somewhere source.
+We will adopt the following convention: if f : {0, 1}r × {0, 1}r → {0, 1}m is a
+function and a, b are samples from (t × r) somewhere sources, f (~a, ~b) refers to
+the (t × m) string whose first row is obtained by applying f to the first rows of
+a, b, and so on. Similarly, if a is an element of {0, 1}r and b is a sample from
+a (t × r) somewhere source, f (a, ~b) refers to the (t × m) matrix whose ith row
+is f (a, bi ).
+Many times we will treat a sample of a somewhere-random source as a set
+of strings, one string from each row of the source.
+Definition 3.8. Given ` strings of length n, x = x1 , . . . , x` , define Slice(x, w)
+to be the string x0 = x01 , . . . , x0` such that for each i, x0i is the prefix of xi of
+length w.
+3.1.1. Extractors, dispersers and their friends. In this section we define
+some of the objects we will later use and construct. All of these objects will
+take two inputs and produce one output, such that under particular guarantees
+on the distribution of the input, we will get some other guarantee on the
+distribution of the output. Various interpretations of this vague sentence lead
+to extractors, dispersers, somewhere extractors, block extractors etc.
+Definition 3.9 (Two-source extractor). Let n1 , n2 , k1 , k2 , m, ε be some
+numbers. A function Ext : {0, 1}n1 ×n2 → {0, 1}m is called an 2-source extractor
+with k1 , k2 min-entropy requirement, n-bit input, m-bit output and ε-statistical
+distance if for every independent sources X and Y over {0, 1}n1 and {0, 1}n2
+respectively satisfying
+(1)
+
+H∞ (X) ≥ k1 and H∞ (Y ) ≥ k2 ,
+
+it holds that
+(2)
+
+Ext(X, Y ) − Um ≤ ε.
+
+In the common case of a seeded extractor we have n2 = k2 (and hence the
+second input distribution is required to be uniform). Of course, a nontrivial
+construction will satisfy n2  m (and hence also n2  k1 < n). Thus,
+2-source extractors are strictly more powerful than seeded extractor. However,
+the reason seeded extractors are more popular is that they suffice for many
+applications and that (even after this work) the explicit construction for seeded
+extractors have much better parameters than the explicit constructions for
+2-source extractors with k1  n1 , k2  n2 . (Note that this is not the case for
+nonexplicit construction, where 2-source extractors with similar parameters to
+the best possible seeded extractors can be shown to exist using the probabilistic
+method.)
+
+1498
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Variants. In this paper we will use many variants of extractors to various
+similar combinatorial objects. Most of the variants are obtained by giving
+different the conditions on the input (1) and the guarantee on the output (2).
+Some of the variants we will consider are
+Dispersers: In dispersers, the output guarantee (2) is replaced with
+|Supp(Ext(X, Y ))| ≥ (1 − ε)2m .
+Somewhere extractors: In somewhere extractors the output guarantee
+(2) is replaced with the requirement that |Ext(X, Y ) − Z| < ε, where Z
+is a somewhere-random source of t × m rows for some parameter t.
+Extractors for block-sources: In extractors for block-sources the input
+requirement (1) is replaced with the requirement that X and Y are blocksources of specific parameters. Similarly, we will define extractors for
+other families of inputs (i.e., somewhere-random sources) and extractors
+where each input should come from a different family.
+Strong extractors: Many of these definition have also a strong variant,
+and typically constructions for extractors also achieve this strong variant. An extractor is strong in the first input if the output requirement
+(2) is replaced with |(X, Ext(X, Y )) − (X, Um )| ≤ ε. Intuitively, this
+condition means that the output is uniform even on conditioning X.
+We define an extractor to be strong in the second input similarly. If the
+extractor is strong in both inputs, we simply say that it is strong.
+Remark 3.10 (Input lengths). Whenever we have a 2-source extractor
+Ext : {0, 1}n1 × {0, 1}n2 → {0, 1}m with inputs lengths n1 , n2 and entropy
+requirement k1 , k2 , we can always invoke it on shorter sources with the same
+entropy, by simply padding it with zeros. In particular, if we have an extractor
+with n1 = n2 , we can still invoke it on inputs of unequal length by padding one
+of the inputs. The same observation holds for the other source types we will
+use, namely block and somewhere-random sources, if the padding is done in
+the appropriate way (i.e., pad each block for block-sources, add all zero rows
+for somewhere-random sources) and it also holds for all the other extractorlike objects we consider (dispersers, somewhere extractors and their subsource
+variant). In the following, whenever we invoke an extractor on inputs shorter
+than its “official” input length, this means that we use such a padding scheme.
+3.2. Useful facts and lemmas.
+Fact 3.11. If X is an (n, k)-source and X 0 is a deficiency-d subsource
+of X, then X 0 is an (n, k − d)-source.
+Fact 3.12. Let X be a random variable with H∞ (X) = k. Let A be any
+event in the same probability space. Then
+0
+H∞ (X|A) < k 0 ⇒ Pr[A] < 2k −k .
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1499
+
+3.2.1. Fixing functions and projections. Given a source X over {0, 1}n and
+a function F : {0, 1}n → {0, 1}m , we often will want to consider subsources of
+X where F is fixed to some value, and provide some bounds on the deficiency.
+Thus, the following lemma would be useful.
+Lemma 3.13 (Fixing a function). Let X be a distribution over {0, 1}n ,
+F : {0, 1}n → {0, 1}m be a function, and ` ≥ 0 some number. Then there
+exists a ∈ {0, 1}m and a deficiency-m subsource X 0 of X such that F (x) = a
+for every x in X 0 . Furthermore, for every a ∈ Supp(F (X)), let Xa be the
+subsource of X defined by conditioning on F (X) = a. Then if we choose a at
+random from the source F (X), with probability ≥ 1 − 2−` , the deficiency of Xa
+is at most m + `.
+Proof. Let ` > 0 be some number, and let A be the set of a ∈ {0, 1}m such
+that Pr[F (x) = a] < 2−m−` . Since |A| ≤ 2m , we have that Pr[F (X) ∈ A] < 2−` .
+If we choose a ←R F (X) and a 6∈ A, we get that X|F (X) = a has deficiency
+≤ m + `. Choosing ` = 0, we get the first part of the lemma, and choosing
+` = m, we get the second part.
+
+The following lemma will also be useful.
+Lemma 3.14 (Fixing a few bits in X). Let X be an (n, k) source. Let
+S ⊆ [n] with |S| = n − n0 . Let X|S denote the projection of X to the bit
+locations in S. Then for every l, X|S is 2−l -close to a (n − n0 , k − n0 − l)
+source.
+Proof. Let S be the complement of S.
+Then X|S is a convex combination over X|S . For each setting of X|S = h,
+we condition the distribution X|S |(X|S = h).
+0
+
+Define H = {h ∈ {0, 1}n |H∞ (X|S |X|S = h) < n0 + k − l}. Notice that
+H∞ (X|S |X|S = h) = H∞ (X|X|S = h). Then by Fact 3.12, for every h ∈ H,
+0
+
+0
+
+0
+
+Pr[X|S = h] < 2k−n −l−k = 2−(n +l) . Since |H| ≤ 2n , by the union bound we
+get that Pr[X|S ∈ H] ≤ 2−l ].
+
+In some situations we will have a source that is statistically close to having
+high min-entropy, but not close enough. We can use the following lemma to
+lose something in the entropy and get 0 error on some subsource.
+Lemma 3.15. Let X be a random variable over {0, 1}n such that X is
+ε-close to an (n, k) source, with ε ≤ 1/4. Then there is a deficiency-2 subsource
+X 0 ⊆ X such that X 0 is a (n, k − 3)-source.
+Proof. Let t be a parameter that we will pick later. Let H ⊆ Supp(X) be
+defined as H = {x ∈ Supp(X)| Pr[X = x] > 2−t }. H is the set of heavy points
+of the distribution X. By the definition of H, |H| ≤ 2t .
+
+1500
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Now we have that Pr[X ∈ H] − 2−k |H| ≤ ε, since X is ε-close to a source
+with min-entropy k. This implies that Pr[X ∈ H] ≤ ε + 2−k |H| ≤ ε + 2t−k .
+Now consider the subsource X 0 ⊆ X defined to be X|X ∈ (Supp(X) \ H).
+For every x ∈ Supp(X 0 ), we get that
+Pr[X=x]
+Pr[X 0 = x] = Pr[X = x|X ∈
+/ H] ≤ Pr[X
+∈H] ≤
+/
+−k+2
+
+2−t
+.
+1 − (ε + 2t−k )
+
+2
+−k+3 .
+Setting t = k − 2, we get that Pr[X 0 = x] ≤ 1−(ε+2
+−2 ) ≤ 2
+
+
+
+3.2.2. Convex combinations.
+Definition 3.16 (Convex combination). Let X be a random variable, and
+let {Yi }i∈U be a family of random variables indexed by an element in some
+universe U . We say that X is a convex combination of the family {Yi } if there
+exists a random variable I over U such that X = YI .
+A key observation, which is essential to our results, is that random variables that are convex combinations of sources with some good property are
+usually good themselves. This is captured in the following easy propositions.
+Proposition 3.17. Let X, Z be random variables such that X is a convex
+combination of sources that are ε-close to Z. Then X is ε-close to Z.
+3.2.3. Conditional entropy. If X = X1 ◦ · · · ◦ Xt is a random variable (not
+necessarily a block-source) over {0, 1}n divided into t blocks in some way and
+x1 , . . . , xi are some strings with 0 ≤ i < t, we use the notation X|x1 , . . . , xi
+to denote the random variable X conditioned on X1 = x1 ,. . .,Xi = xi . For
+1 ≤ i < j ≤ t, we denote by Xi,...,j the projection of X into the blocks
+Xi , . . . , Xj . We have the following facts about such sources.
+Lemma 3.18 (Typical prefixes). Let X = X1 ◦· · ·◦Xt be a random variable
+divided into t blocks, let X 0 = X|A be a deficiency-d subsource of X, and let `
+be some number. Then for every 1 ≤ i ≤ t, with probability at least 1 − 2−` , a
+random prefix x1 , . . . , xi in X 0 satisfies Pr[X ∈ A|x1 , . . . , xi ] ≥ 2−d−` .
+Proof. We denote by X 1 the first i blocks of X. Let B be the event
+determined by X 1 that Pr[X ∈ A|X 1 ] < 2−d−` . We need to prove that
+d
+Pr[B|A] < 2−` , but this follows since Pr[B|A] = Pr[A∩B]
+Pr[A] ≤ 2 Pr[A ∩ B]. HowP
+ever, Pr[A ∩ B] ≤ Pr[A|B] = x∈B Pr[A|X 1 = x] Pr[X 1 = x|B] < 2−d−` .
+
+As a corollary we get the following
+Corollary 3.19 (Subsource of block-sources). Let X = X1 ◦ · · · ◦ Xc
+be a k-entropy c-block-source (that is, for every x1 , . . . , xi ∈ Supp(X1,...,i ),
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1501
+
+H∞ (Xi+1 |X1,...,i = x1 , . . . , xi ) > k) and X 0 be a deficiency-d subsource of X.
+Then X 0 is c2−l statistically close to being a k − d − l c-block-source.
+Proof. Let X 0 = X|A, and define B to be following the event over X 0 :
+x = x1 , . . . , xc ∈ B if for some i ∈ [c], Pr[X ∈ A|x1 , . . . , xi ] < 2−d−l . By
+Lemma 3.18, Pr[X 0 ∈ B] < c2−l . However, for every x = x1 , . . . , xc ∈ B̄ =
+0 |x , . . . , x
+A \ B, we get that Y 0 = Xi+1
+1
+i−1 is a source with
+H∞ (Y 0 ) ≥ H∞ (Y ) − d − l ≥ k − d − l.
+Hence X 0 |B̄ is a k − d − l-block-source of distance c2−l from X 0 .
+
+
+
+If X = X1 ◦ · · · ◦ Xt is a source divided into t blocks then, in general,
+the entropy of Xi conditioned on some prefix x1 , . . . , xi−1 can depend on the
+choice of prefix. However, the following lemma tells us that we can restrict to
+a low deficiency subsource on which this entropy is always roughly the same,
+regardless of the prefix. Thus, we can talk about the conditional entropy of a
+block Xi without referring to a particular prefix of it.
+Lemma 3.20 (Fixing entropies). Let X = X1 ◦ X2 ◦ · · · ◦ Xt be a t-block
+random variable over {0, 1}n , and let 0 = τ1 < τ2 < · · · < τc+1 = n be
+some numbers. Then there is a deficiency-t2 log c subsource X 0 of X and a
+sequence ē = e1 , . . . , et ∈ [c]t such that for every 0 < i ≤ t and every sequence
+0
+x1 , . . . , xi−1 ∈ Supp(X1,...,i−1
+), we have that
+(3)
+
+τei ≤ H∞ (Xi0 |x1 , . . . , xi−1 ) ≤ τei +1 .
+
+Proof. We prove this by induction. Suppose this is true for up to t − 1
+blocks. We will prove it for t blocks. For every x1 ∈ Supp(X1 ), define the
+source Y (x1 ) to be X2,...,i |x1 . By the induction hypothesis, there exists a
+(t − 1)2 log c deficiency subsource Y 0 (x1 ) of Y (x1 ) source and ē(x1 ) ∈ [c]t−1
+the sequence such that Y 0 (x1 ) satisfies (3) with respect to ē(x1 ). Define the
+function f : X1 → [c]t−1 that maps x1 to ē(x1 ), and pick a subsource X10 of
+X1 of deficiency (t − 1) log c such that f is constant on X10 . That is, there are
+some values e2 , . . . , et ∈ [c]t−1 such that F (x1 ) = e2 , . . . , et with probability 1.
+We let the source X 0 be X conditioned on the event that X1 ∈ supp(X10 ) and
+X2 , . . . , Xt ∈ supp(Y (X1 )).
+The deficiency of X 0 is indeed at most (t − 1) log c + (t − 1)2 log c < t2 log c.
+
+Corollary 3.21. If X in the lemma above is a k-source and ē is as in
+P
+the conclusion of the lemma, we must have that ti=1 τei +1 ≥ k − t2 log c.
+Proof. If this were not the case, we could find some string in the support of
+X that is too heavy. (Simply take the heaviest string allowed in each successive
+block.)
+
+
+1502
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Proposition 3.22. Let Ext : {0, 1}n×{0, 1}d → {0, 1}m be a seeded (n, k, ε)
+strong extractor. Let X be any (n, k) source. Let {0, 1}d = {s1 , s2 , . . . , s2d }.
+Then Ext(X, s1 )◦Ext(X, s2 )◦· · ·◦Ext(X, s2d ) is ε-close to a (2d ×m) somewhererandom source.
+Proof. This follows immediately from the definition of a strong seeded
+extractor (Definition 3.9).
+
+3.3. Some results from previous works. We will use the following results
+from some previous works.
+Theorem 3.23 ([LRVW03]). For any constant
+α ∈ (0, 1), every n ∈ N
+√
+and k ≤ n and every ε ∈ (0, 1) where ε > exp(− k), there is an explicit (k, ε)
+seeded extractor Ext : {0, 1}n × {0, 1}O(log n+log(n/k) log(1/ε)) → {0, 1}(1−α)k .
+Theorem 3.24 ([Tre01], [RRV02]). For every n, k ∈ N, ε > 0, there is an
+3
+explicit (n, k, ε)-strong extractor Ext : {0, 1}n × {0, 1}d → {0, 1}k−O(log (n/ε))
+with d = O(log3 (n/ε)).
+Theorem 3.25 ([CG88], [Vaz85]). For all n, δ > 0, there exists a polynomial time computable strong extractor Vaz : {0, 1}n × {0, 1}n → {0, 1}m with
+m = Ω(n) and error ε = 2−Ω(n) .
+Theorem 3.26 ([Raz05]). For any n1 , n2 , k1 , k2 , m and any 0 < δ < 1/2
+with
+• n1 ≥ 6 log n1 + 2 log n2 ,
+• k1 ≥ (0.5 + δ)n1 + 3 log n1 + log n2 ,
+• k2 ≥ 5 log(n1 − k1 ),
+• m ≤ δ min[n1 /8, k2 /40] − 1,
+there is a polynomial time computable strong 2-source extractor Raz : {0, 1}n1 ×
+{0, 1}n2 → {0, 1}m for min-entropy k1 , k2 with error 2−1.5m .
+Theorem 3.27 ([Rao09]). There is a polynomial time computable strong
+extractor 2SRExt : {0, 1}tn × {0, 1}tn → {0, 1}m such that for every constant
+γ < 1 and n, t with t = t(n), t < nγ , there exists a constant α(γ) < 1 such that
+2SRExt succeeds as long as X is a (t × n) SR-source and Y is an independent
+1−α
+aligned (t × n) SR-source, with m = n − nα and error 2−n .
+4. Ingredients
+In this section we describe two new ingredients that are used in our construction.
+4.1. Extractor for one block-source and one general source. We construct
+an extractor that works for two sources, given an assumption on one of the
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1503
+
+sources. The assumption is that the first source is a block-source, which means
+that it is divided into c blocks such that each block has entropy above a certain threshold even conditioned on all previous blocks. As mentioned in the
+introduction, block-sources turn out to be very useful in many settings in
+randomness extraction. Rao [Rao09] gave an extractor for two independent
+block-sources with few blocks. Here we improve his construction in two ways,
+both of which are important for the application to our disperser construction.
+• We relax the hypothesis so that we need only one block-source. The
+second source can be arbitrary.
+Ω(1)
+• We improve the error of the construction from 1/poly(k) to 2−k .
+We will prove the following theorem (which is a formal restatement of Theorem 2.4).
+Theorem 4.1 (Block + Arbitrary Source Extractor). There are constants
+c1 , c2 and a polynomial time computable function BExt : {0, 1}cn × {0, 1}n →
+n
+{0, 1}m such that for every n, k, with k > log10 (n) with c = O( log
+log k ), if X =
+X 1 ◦ · · · ◦ X c is a k-block-source and Y is an independent k-source, then
+|BExt(X, Y ) − Um | < 2−k
+
+c1
+
+with m = c2 k.
+The low error guaranteed by this theorem is important for applications
+that require a negligible error. Since the concatenation of independent sources
+is a block-source, an immediate corollary of the above theorem is a new extractor for independent sources with exponentially small error. (The corollary
+below is a formal restatement of Theorem 1.6.)
+Corollary 4.2 (Independent source extractor). There are constants c1 , c2
+and a polynomial time computable function BExt : ({0, 1}n )c → {0, 1}m such
+n
+1
+c
+that for every n, k, with k > log10 (n) with c = O( log
+log k ), if X , . . . , X are
+independent (n, k) sources, then
+|BExt(X1 , . . . , Xc ) − Um | < 2−k
+
+c1
+
+with m = c2 k.
+The proof of Theorem 4.1 appears in Section 7.
+4.2. A 2-source somewhere extractor with exponentially small error. A
+technical tool that we will need is a somewhere extractor from two independent
+sources that has a polynomial number of output rows, but exponentially small
+error. This will be used to generate the responses throughout our disperser
+construction. Note that we can get a polynomial number of output rows by
+using a seeded extractor with just one of the sources, but in this case the
+error would not be small enough. In addition, in this section we will prove
+
+1504
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+some other technical properties of this construction which will be critical to
+our construction.
+Theorem 4.3 (Low error somewhere extractor). There is a constant γ
+and a polynomial time computable function SE : ({0, 1}n )2 → ({0, 1}m )l such
+that for every n, k(n) > log10 n, log4 n < m < γk and any two (n, k) sources
+X, Y , we have
+Few rows: l = poly(n).
+Small error: SE(X, Y ) is 2−10m -close to a convex combination of somewhere-random distributions, and this property is strong with respect to
+both X and Y . Formally,
+Pr [SE(X, y) is 2−10m -close to being SR] > 1 − 2−10m .
+
+y←R Y
+
+Hitting strings: Let c be any fixed m bit string. Then there are subsources X̂ ⊂ X, Ŷ ⊂ Y of deficiency 2m and an index i such that
+Pr[c = SE(X̂, Ŷ )i ] = 1.
+Fixed rows on low deficiency subsources: Given any particular row
+index i, there is a subsource (X̂, Ŷ ) ⊂ (X, Y ) of deficiency 20m such that
+SE(X̂, Ŷ )i is a fixed string. Further, (X, Y ) is 2−10m -close to a convex
+combination of subsources such that for every (X̂, Ŷ ) in the combination,
+• X̂, Ŷ are independent.
+• SE(X̂, Ŷ )i is constant.
+The {Hitting strings} and {Fixed rows on low deficiency subsources} properties may at first seem quite similar. The difference is in the
+quantifiers. The first property guarantees that for every string c, we can move
+to low deficiency subsources such there exists an index in the output of SE
+where the string is seen with probability one. The second property guarantees
+that for every index i, we can move to low deficiency subsources where the
+output in that index is fixed to some string.
+Proof. The algorithm SE is the following
+Algorithm 4.4.
+SE(x, y)
+Input: x, y samples from two independent sources with min-entropy k.
+Output: A ` × m boolean matrix.
+Subroutines:
+• A seeded extractor Ext with O(log n) seed length (for example, by Theorem 3.23), setup to extract from entropy threshold 0.9k, with output
+length m and error 1/100.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1505
+
+• The extractor Raz from Theorem 3.26, setup to extract m bits from an
+(n, k) source using a weak seed of length m bits with entropy 0.9m. We
+can get such an extractor with error 2−10m .
+1. For every seed i to the seeded extractor Ext, output Raz(x, Ext(y, i)).
+We will prove each of the items in turn.
+Few rows: By construction.
+Small error: We will argue that the strong error with respect to Y is small.
+Consider the set of bad y’s:
+0
+
+B = {y : ∀i|Raz(X, Ext(y, i)) − Um | ≥ 2−γ k },
+where here γ 0 is the constant that comes from the error or Raz’s extractor.
+We would like to show that this set is very small.
+Claim 4.5. |B| < 20.9k .
+Suppose not. Let B denote the source obtained by picking an element
+of this set uniformly randomly. Since Ext has an entropy threshhold of
+0.9k, there exists some i such that Ext(B, i) is 1/100 close to uniform. In
+particular, |Supp(Ext(B, i))| ≥ 0.992m > 20.9m . This is a contradiction,
+since at most 20.9m seeds can be bad for Raz.
+Thus, we get that
+γ0
+
+Pr [|Raz(X, Ext(y, i)) − Um | < 2−k ] < 20.9k /2k = 2−0.1k .
+
+y←R Y
+
+Setting γ = γ 0 /10, we get that 10m < 10γk < γ 0 k and 10m < 0.1k.
+Hitting strings: The proof for this fact follows from the small error property.
+Let Ỹ = Y |(Y ∈
+/ B), where B is the set of bad y’s from the previous item.
+Then we see that for every y ∈ Supp(Ỹ ), there exists some i such that
+|Raz(X, Ext(y, i)) − Um | < 2−10m . By the pigeonhole principle, there must
+be some seed s and some index i such that
+1
+Pr [Ext(y, i) = s] ≥ m .
+l2
+y←R Ỹ
+Fix such an i and string s, and let Ŷ = Ỹ |Ext(Ỹ , i) = s. This subsource
+has deficiency at most 1+m+log l < 2m from Y . Thus, Ext(Ŷ , i) is fixed and
+|Raz(X, Ext(y, i)) − Um | < 2−10m . Note that the ith element of the output
+of SE(X, Ŷ ) is a function only of X. Thus, we can find a subsource X̂ ⊂ X
+of deficiency at most 2m and string c ∈ {0, 1}m such that SE(X̂, Ŷ )i = c.
+Fixed rows on low deficiency subsources: Let i be any fixed row. For
+any m-bit string a, let Ya ⊂ Y be defined as Y |(Ext(Y, i) = a). By
+Lemma 3.13, for any ` > 1, Pra←R Ext(Y,i) [Ya has deficiency more than m + `]
+< 2−` .
+
+1506
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Let A = {a : Ya has deficiency more than m + `}. Then by Lemma 3.13,
+we see that Y is 2−` -close to a source Y , where Pr[Ext(Y , i) ∈
+/ A] = 1, and
+Y has min-entropy at least k −1. We break up Y into a convex combination
+of variables Ŷa = Y |(Ext(Y , i) = a), each of deficiency at most m + `.
+Similarly, we can argue that X is 2−` -close to a random variable X a with
+min-entropy k − 1, where X a is a convex combination of subsources X̂a,b
+with deficiency at most m + ` such that Raz(X̂a,b , a) is constant and equal
+to b.
+Thus, we obtain our final convex combination. Each element X̂a,b , Ŷb
+of the combination is associated with a pair (a, b) of m bit strings. By
+construction, we see that the ith row SE(X̂a,b , Ŷb )i = a and that X̂a,b , Ŷb
+each have min-entropy k − m − `.
+
+
+5. Informal overview of the construction and analysis of the
+disperser
+In this section we give a detailed yet informal description of our construction and analysis. On the one hand, this description presents the construction
+and steps of the analysis in a very detailed way. On the other hand, the fact
+that this section is not a formal proof allows us to abstract many tedious technical details and parameters and to focus only on what we consider to be central.
+This section complements Section 2 and provides a detailed explanation of the
+challenge-response mechanism.
+The structure of this presentation closely imitates the way we formally
+present our construction and proof in Section 6, and we make use of “informal
+lemmas” in order to imitate the formal presentation and make the explanation
+more clear. We stress that these “informal lemmas” should not be interpreted
+as formally claimed by this paper (and these lemmas typically avoid being
+precise regarding parameters). We furthermore stress that the content of this
+section is not used in the latter part of the paper and the reader may safely
+skip to the formal presentation in Section 6 if she wishes.
+The setup. We are given two input sources X, Y that have some minentropy, and we would like to output a nonconstant bit. The idea behind the
+construction is to try to convert the first source X into a block-source or at
+least find a subsource (Definition 3.3) X good ⊂ X which is a block-source. Once
+we have such a block-source, we can make use of some of the technology we
+have developed for dealing with block-sources (for instance, the extractor BExt
+of Theorem 4.1).
+One problem with this approach is that there is no deterministic procedure
+that transforms a source into a block-source, or even to a short (e.g., of length
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1507
+
+much less than nk ) list of sources, one of which is guaranteed to be a blocksource. Still, as we will explain shortly, we will manage to use the second
+source Y to “convert” X into a block-source. Loosely speaking, we will show
+that there exist independent subsources X good ⊂ X and Y good ⊂ Y such that
+X good is a block-source and our construction “finds” this block-source when
+applied on X good , Y good . This task of using one source to find the entropy in
+the other source while maintaining independence (on subsources) is achieved
+via the “challenge-response mechanism.”
+We describe our construction in two phases. As a warmup, we first discuss
+how to use the challenge-response mechanism in the case when the two sources
+have linear min-entropy. (This was first done by Barak et al. [BKS+ 10].) Then
+we describe how to adapt the challenge-response mechanism for the application
+in this paper.
+5.1. Challenge-response mechanism for linear min-entropy. The challengeresponse mechanism was introduced in [BKS+ 10] as a way to use one source of
+randomness to find the entropy in another source. Since they only constructed
+2-source dispersers that could handle linear min-entropy, they avoided several
+complications that we will need to deal with here. Still, as an introduction
+to the challenge-response mechanism, it will be enlightening to revisit how to
+use the mechanism to get dispersers for linear min-entropy. Below we will give
+a sketch of how we might get such a disperser using the technology that is
+available to us at this point. Note that the construction we discuss here is
+slightly different from the one originally used by Barak et al.@
+We remind the reader again of the high level scheme of our construction. We will construct a polynomial time computable function Disp with the
+property that for any independent linear entropy sources X, Y , there exist
+subsources X good ⊂ X, Y good ⊂ Y with the property that Disp(X good , Y good ) is
+both 0 and 1 with positive probability. Since X good , Y good are subsources of
+the original sources, this implies that Disp is a disperser even for the original
+sources. Now let us describe the construction.
+Let us assume that for linear min-entropy our extractor BExt requires only
+two blocks; so we have at our disposal a function BExt : {0, 1}n × {0, 1}n →
+{0, 1} with the property that if X1 ◦ X2 is a block-source with linear minentropy, and Y is an independent block-source, BExt(X1 ◦ X2 , Y ) is exponentially close to being a uniform bit.
+We are given two sources X, Y that are independent sources with minentropy δn, where δ is some small constant. We would be in great shape if we
+were given some additional advice in the form of an index j ∈ [n] such that
+X[j] ◦ X is a block-source with min-entropy say δn/10. (That is, the first j
+bits of X have min-entropy δn/10 and, conditioned on any fixing of these bits,
+
+1508
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+the rest of the source still has min-entropy at least δn/10.) In this case we
+would simply use our block-source extractor BExt and be done. Of course, we
+do not have any such advice. On the other hand, the good news is that it can
+be shown that such an index j does exist.
+Step 1: Existence of a structured subsource. We associate a tree of parts
+with the source X. In this warmup this will be a tree of depth 1, with the
+sample from X at the root of the tree. We break the sample from the source
+X into a constant t  1/δ number of equally sized parts x = x1 , . . . , xt ,
+each containing n/t consecutive bits. These are the children of the root. Our
+construction will now operate on the bits of the source that are associated with
+the nodes of this tree.
+In the first step of the analysis, we use standard facts (Lemma 3.20 and
+Corollary 3.21) to show that
+Informal Lemma 5.1. If X has min-entropy δn, there is a j ∈ [t] and
+a subsource X̂ ⊂ X in which
+• X̂i is fixed for i < j.
+• H∞ (X̂j ) ≥ δ 2 n/10).
+• (X̂j+1 , . . . , X̂t ) has conditional min-entropy at least δ 2 n/10 given any
+fixing of X̂j .
+Given this lemma, our goal is to find this index j (which is the “advice”
+that we would like to obtain). We will be able to do so on independent subsources of X̂, Y . This is achieved via the challenge-response mechanism.
+Step 2: Finding the structure using the challenge-response mechanism.
+Here are the basic pieces we will use to find the index j:
+1. A polynomial time computable function Challenge : {0, 1}n × {0, 1}n →
+{0, 1}clen . In view of the final construction, we view the output of this
+function as a matrix with one row of length clen. We also require the
+following properties:
+Output length is much smaller than entropy: clen  δ 20 n.
+Output has high min-entropy: Given X̂, Ŷ that are independent
+sources with min-entropy δ 2 n/100 each, Challenge(X̂, Ŷ ) is statistically close to having min-entropy Ω(clen).
+In extractor terminology, these conditions simply say that Challenge is
+a condenser for two independent sources. In [BKS+ 10] such a function
+(in fact, a somewhere-random extractor) was constructed using results
+from additive number theory.
+2. A polynomial time computable function Response : {0, 1}n × {0, 1}n →
+({0, 1}clen )` . We interpret the output as a list of ` matrices that have the
+same dimensions as the challenge matrix given by the Challenge function
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1509
+
+above. We use the somewhere extractors from Theorem 4.3 as the function Response. Below, we recall that this function satisfies the following
+properties (which will also be used in our final construction):
+Few matrices: ` = poly(n).6
+Hitting matrices: Given X̂, Ŷ independent sources with min-entropy
+δ 3 n each and any fixed matrix α ∈ {0, 1}clen , there there exist i
+and low deficiency subsources X 0 ⊂ X̂, Y 0 ⊂ Ŷ such that in these
+subsources Response(X 0 , Y 0 )i = α with probability 1.
+Fixed matrices on low deficiency subsources: Given any index i
+and any independent sources X̂, Ŷ , we can decompose (X̂, Ŷ ) into
+a convex combination of low deficiency independent sources such
+that for every element of the combination X 0 , Y 0 , Response(X 0 , Y 0 )i
+is fixed to a constant.
+Given the explicit functions Challenge and Response satisfying the properties above, we can now discuss how to use them to find the index j given
+samples x ←R X and y ←R Y .
+Definition 5.2. Given a challenge matrix and a list of response matrices,
+we say that the challenge is responded by the response if the challenge matrix
+is equal to one of the matrices in the response.
+To find the index j,
+1. Compute the response Response(x, y).
+2. For every i ∈ [t], compute a challenge Challenge(xi , y).
+3. Set r to be the smallest i for which Challenge(xi , y) was not responded
+by Response(x, y).
+We remind the reader that we will prove that the disperser works by
+arguing about subsources of the original adversarially chosen sources X, Y .
+Recall that we are currently working with the subsource X̂ ⊂ X that has the
+properties guaranteed by Informal Lemma 5.1. Using the functions Challenge
+and Response, we can then prove the following lemma.
+Informal Lemma 5.3. There exist low deficiency subsources X good ⊂
+X̂, Y good ⊂ Y such that in these subsources, r = j with high probability.
+Proof Sketch. The lemma will follow from two observations.
+Informal Claim 5.4. There are subsources X good ⊂ X̂, Y good ⊂ Y in which
+for every i < j, Challenge(Xigood , Y good ) is responded by Response(X good , Y good )
+6In [BKS+ 10] the component they use for this step has an ` that is only constant. We
+
+can tolerate a much larger ` here because of the better components available to us.
+
+1510
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+with probability 1. Furthermore, X good is a block-source (with roughly the
+same entropy as X) and Y good has roughly the same entropy as Y .
+Proof Sketch. Note that for i < j, X̂i is fixed to a constant, and so
+Challenge(X̂i , Y ) is a function only of Y . Since the output length of Challenge
+is only clen bits, this implies (by Lemma 3.13) that there exists a subsource
+Ŷ ⊂ Y of deficiency at most clen·t such that Challenge(X̂i , Ŷ ) is fixed for every
+i < j.
+We can then use the {Hitting matrices} property of Response to find
+smaller subsources X 0 ⊂ X̂, Y 0 ⊂ Y such that there exists an index h1 for which
+Pr[Challenge(X10 , Y 0 ) = Response(X 0 , Y 0 )hi ] = 1. Repeating this, we eventually
+get subsources X good ⊂ X̂, Y good ⊂ Y such that for every i < j, there exists an
+index hi such that Pr[Challenge(Xigood , Y good ) = Response(X good , Y good )hi ] = 1;
+i.e., the challenge of every part of the source before the j th part is responded
+with probability 1 in these subsources.
+The fact that X good remains a block-source follows from Corollary 3.19. 
+Informal Claim 5.5. With high probability, Challenge(Xjgood , Y good ) is not
+responded by Response(X good , Y good ).
+Proof Sketch. The argument will use the union bound over ` events, one
+for each of the ` matrices in the response. We want to ensure that each
+matrix in the response is avoided by the challenge. Consider the ith matrix
+in the response Response(X good , Y good )i . By the {Fixed matrices on low
+deficiency subsources} property of Response, we know that X good , Y good is a
+convex combination of independent sources in which the ith matrix is fixed to
+a constant. For every element of this convex combination, the probability that
+the challenge is equal to the ith response is extremely small by the property
+that the output of Challenge has high min-entropy.
+
+Step 3: Computing the output of the disperser. The output of the disperser
+is then just BExt(x[r] ◦ x, y). To show that our algorithm outputs a distribution
+good
+with large support, first note that BExt(X[r]
+◦ X good , Y good ) is a subsource
+good
+of BExt(X[r] ◦ X, Y ). Thus, it is sufficient to show that that BExt(X[r]
+◦
+good
+good
+X
+,Y
+) has a large support. However, by our choice of r, r = j with high
+good
+probability in X good , Y good . Thus, BExt(X[r]
+◦ X good , Y good ) is statistically
+good
+close to BExt(X[j]
+◦ X good , Y good ) and hence is statistically close to being
+uniform.
+
+
+5.2. The challenge-response mechanism in our application. Let us summarize how the challenge-response mechanism was used for linear min-entropy.
+The first step is to show that in any general source there is a small deficiency
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1511
+
+subsource that has some “nice structure.” Intuitively, if the additional structure (in the last case the index j) was given to the construction, it would
+be easy to construct a disperser. The second step is to define a procedure
+(the challenge-response mechanism) that is able to “find” the additional structure with high probability, at least when run on some subsource of the good
+structured subsource. Thus, on the small subsource it is easy to construct a
+disperser. Since the disperser outputs two different values on the small subsource, it definitely does the same on the original source.
+Now we discuss our disperser construction. In this discussion we will often
+be vague about the settings of parameters, but we will give pointers into the
+actual proofs where things have been formalized.
+There are several obstacles to adapting the challenge-response mechanism
+as used above to handle the case of min-entropy k = no(1) , which is what we
+achieve in this paper. Even the first step of the previous approach is problem√
+atic when the min-entropy k is less than n. There we found a subsource of
+X that was block-source. Then we fixed the leading bits of the source to get
+a subsource that has a leading part that is fixed (no entropy), followed by a
+part with significant (medium) entropy, followed by the rest of the source that
+contains entropy even conditioned on the medium part.
+√
+When k < n, on the one hand, to ensure that a single part of the source
+Xi cannot contain all the entropy of the source (which would make the above
+√
+approach fail), we will have to make each part be smaller than n bits. On
+the other hand, to ensure that some part of the source contains at least one
+√
+bit of min-entropy, we will have to ensure that there are at most n parts,
+otherwise our construction will fail for the situation in which each part of the
+√
+source contains k/ n bits of entropy. These two constraints clearly cannot be
+resolved simultaneously. Thus, it seems like there is no simple deterministic
+way to partition the source in a way that nicely splits the entropy of the source.
+The fix for this problem is to use recursion. We will consider parts of very
+large size (say n0.9 ), so that the parts may contain all the entropy of the source.
+We will then develop a finer grained challenge-response mechanism that we can
+use to handle three levels of entropy differently: low, medium or high for each
+part of the source. If we encounter a part of the source that has low entropy,
+as before we can fix it and ensure that our algorithm correctly identifies it as
+a block with low entropy. If we encounter a part that has a medium level of
+entropy, we can use the fact that this gives a way to partition the source into
+a block-source to produce a bit that is both 0 and 1 with positive probability.
+We will explain how we achieve this shortly. We note that here our situation
+is more complicated than [BKS+ 10] as we do not have an extractor that can
+√
+work with a block-source with only two blocks for entropy below n. Finally,
+if we encounter a part of the source that has a high entropy, then this part of
+
+1512
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+the source is condensed ; i.e., its entropy rate is significantly larger than that
+of the original source. Following previous works on seeded extractors, in this
+case we run the construction recursively on that part of the source (and the
+other source Y ). The point is that we cannot continue these recursive calls
+indefinitely. After a certain number of such recursive calls, the source that
+we are working with will have to have such a high entropy rate that it must
+contain a part with a medium level of entropy.
+Although this recursive description captures the intuition of our construction, to make the analysis of our algorithm cleaner, we open up the recursion
+to describe the construction and do the analysis.
+Now let us give a more concrete description of our algorithm. Let c(δ) be
+the number of blocks the extractor BExt of Theorem 4.1 requires for entropy
+k = nδ , and let t be some parameter to be specified later. (Think of t as a very
+small power of k.)
+We define a degree-t tree with depth log n/ log t < log n tree Tn,t , which
+we call the n, t partition tree. The nodes of Tn,t are subintervals of [1, n] defined
+in the following way:
+1. The root of the tree is the interval [1, n].
+2. If a node v is identified with the interval [a, b] of length greater than k 1/3 ,
+we let v1 , . . . , vt denote the t consecutive disjoint length-|v|/t subinterb−a
+th child of
+vals of v. That is, vi = [a + b−a
+t (i − 1), a + t i]. We let the i
+v be vi .
+For a string x ∈ {0, 1}n and a set S ⊆ [1, n], we will denote by xS the
+projection of x onto the coordinates of S. If v is a node in Tn,t , then xv denotes
+the projection of x onto the interval v.
+Step 1 of analysis. In analogy with our discussion for the case of linear
+min-entropy, we can show that any source X with min-entropy k contains a
+very nice structured low deficiency subsource X̂. We will show that there is a
+vertex v b in the tree such that
+• Every bit of X̂ that precedes the bits in v b is fixed.
+b
+• There are c children i1 , . . . , ic of v√
+such that X̂i1 , X̂i2 , . . . , X̂ic is a
+c-block-source with entropy at least k in each block (even conditioned
+on previous blocks).
+• There is an ancestor v med of v b such that X̂vmed , X̂ is a block-source with
+k 0.9 entropy in each block.
+These three properties are captured in Figure 1. This is done formally in Step 1
+of the analysis.
+As in the case of linear min-entropy, we would be in great shape if we
+were given v b , v med , i1 , . . . , ic . Of course, we do not know these and even worse,
+this time we will not even be able to identify all of these with high probability
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+X
+
+med
+
+1513
+
+par(V med)
+high
+
+V
+
+med
+
+med
+
+Vb
+high
+
+Fixed parts
+
+med
+
+Figure 1. Finding two related medium parts in X med .
+
+in a subsource. Another obstacle to adapting the construction for linear minentropy to the case of k = no(1) is that we do not have a simple replacement for
+the function Challenge that we had for the case of linear min-entropy. However
+we will be able to use the components that are available to us to compute
+challenge matrices that are still useful.
+The construction will proceed as follows:
+1. For every vertex v of the tree, we will compute a small (nrows × clen)
+challenge matrix Challenge(xv , y) of size len = nrows · clen; this challenge
+matrix will be a function only of the bits that correspond to that vertex
+in x and all of y.
+2. For every vertex v of the tree, we will associate a response Response(xv , y),
+which is interpreted as a list of poly(n) matrices each of size len = nrows ·
+clen.
+For every vertex v in the tree, we will call the set of vertices whose intervals
+lie strictly to the left of v (i.e., the interval does not intersect v and lies to
+the left of v) and whose parent is an ancestor of v, the left family of v. In
+Step 2 of the formal analysis, we will find low deficiency subsources X good ⊂
+X̂, Y good ⊂ Y such that for every vertex v that is in the left family of v b ,
+good
+Challenge(Xvgood , Y good ) is a fixed matrix that occurs in Response(Xpar(v)
+, Y good )
+with probability 1.
+
+1514
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+In Step 3 of the formal analysis, we will show that for every vertex v
+that lies on the path from v b to the root, Challenge(Xvgood , Y good ) is statistically
+close to being somewhere random. For technical reasons, we will actually
+need a property that is stronger than this. We will actually show that for
+every vertex v that lies on the path from v b to the root and all low deficiency
+subsources X 0 ⊂ X good , Y 0 ⊂ Y good , Challenge(Xv0 , Y 0 ) is statistically close to
+being somewhere random.
+At this point we will have made a lot of progress in the construction and
+analysis. We have found subsources X good , Y good such that the challenges for all
+the vertices that occur to the left of the path to v b have been fixed. Moreover
+the challenges for vertices on this good path have high min-entropy, even if we
+move to any subsources of small deficiency X 0 , Y 0 . In some sense we will have
+identified the good path that goes to v b in these subsources, though we still do
+not know where v b , v med are on this path. From here we will need to do only a
+little more work to compute the output of the disperser.
+Now let us describe how we compute the challenges and ensure the properties of X good , Y good that we discussed above more concretely. We will need
+the following components:
+1. To generate the challenges, we will need a polynomial time computable
+function
+BExt : ({0, 1}n )c × {0, 1}n → {0,√1}clen that is an extractor for a
+√
+(c, k) block-source and an independent k source. Here think of clen as
+roughly k 0.9 .
+2. The second component is exactly the same as the second component from
+the case of linear min-entropy and will be used to generate the responses.
+We need a polynomial time computable function Response : {0, 1}n ×
+{0, 1}n → ({0, 1}len )` (the output is interpreted as a list of ` nrows × clen
+matrices) with the property that
+Few outputs: ` = poly(n).
+Hitting
+matrices: Given X̂, Ŷ independent sources with min-entropy
+√
+k each and any fixed nrows×clen matrix c, there there exist i and low
+deficiency subsources X 0 ⊂ X̂, Y 0 ⊂ Ŷ such that in these subsources
+Response(X 0 , Y 0 )i = c with probability 1.
+Fixed matrices on low deficiency subsources: Given any independent sources X̂, Ŷ and an index i, (X̂, Ŷ ) is a convex combination
+of low deficiency independent sources such that for every element
+(X 0 , Y 0 ) of the combination, Response(X 0 , Y 0 )i is fixed to a constant.
+As before, we will use the function SE promised by Theorem 4.3 for this
+component.
+For every node v of the tree, we define a relatively small challenge matrix
+Challenge(xv , y) with nrows rows of length clen each. We will set up the size
+of these challenge matrices as roughly len = k 0.9 .
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1515
+
+We let xv1 , . . . , xvt be the division of xv to t sub-parts. Then we let
+Challenge(xv , y) contain one row that is equal to BExt(xvi1 ◦· · ·◦xvic , y) for every
+possible c-tuple 1 ≤ i1 < i2 < · · · < ic ≤ t. If v is a leaf, then Challenge(xv , y)
+has no other rows and we will pad the matrix with 0’s to make it of size
+nrows·clen. If v is a non-leaf, then we let Challenge(xv1 , y), . . . , Challenge(xvt , y)
+be the challenges of all the children of v in the tree. We will append the rows
+of Challenge(xvi , y) to Challenge(xv , y), where i is the smallest index such that
+Challenge(xvi , y) does not equal any of the matrices in Response(xv , y). Again,
+if the matrix we obtain contains fewer than nrows rows, we pad it with 0’s
+to ensure that it is of the right size. Note that in this way, every challenge
+Challenge(xv , y) is indeed only a function of the bits in xv , y. This will be
+crucial for our analysis.
+Step 2 of analysis: ensuring that challenges are responded in left family.
+The following claim is proved in Step 2 of the analysis (Claim 6.12).
+Informal Claim 5.6 (Left family challenges are responded). There are subsources X good ⊂ X̂, Y good ⊂ Y in which for every vertex w to the left of v b whose
+parent par(w) lies on the path from v b to the root, Challenge(Xwgood , Y good ) is
+good
+responded by Response(Xpar(w)
+, Y good ) with probability 1.
+Proof Sketch. Note that for the w that is to the left of v b , X̂w is fixed
+to a constant, so Challenge(X̂w , Y ) is a function only of Y . Since the output length of Challenge is only len bits, this implies (by Lemma 3.13) that
+there exists a subsource Ŷ ⊂ Y of deficiency at most len · t log n such that
+Challenge(X̂w , Ŷ ) is fixed for every such w. Then since X̂v , Ŷ are still high
+entropy sources for every v on the path from v b to the root, we can repeatedly
+use the {Hitting matrices} property of Response to find smaller subsources
+X good ⊂ X̂, Y good ⊂ Ŷ such that for every w to the left of v, there exists l such
+that Pr[Challenge(X̂w , Ŷ ) = Response(X̂par(w) , Ŷ )l ] = 1.
+
+Step 3 of analysis: ensuring that challenges along the good path are somewhere random. We argue that the challenges along the good path are statistically close to being somewhere random in X good , Y good . This is done formally
+in in Lemma 6.13, Step 3. The intuition for this is that first the challenge associated with the vertex v b is somewhere random since v b has children that form
+a block-source. We will then show that with high probability this challenge of
+v b appears in the challenge matrix of every ancestor of v b .
+Informal Claim 5.7 (Challenges along path to v b are somewhere random).
+For all low deficiency subsources X 0 ⊂ X good , Y 0 ⊂ Y good and any vertex v that
+is on the path from v b to the root, Challenge(Xv0 , Y 0 ) is statistically close to
+being somewhere random.
+
+1516
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Proof Sketch. We will prove this by induction on the distance of the vertex
+v from v b on the path. When v = v b , note that Challenge(Xv0 b , Y 0 ) contains
+BExt(xvi1 ◦ · · · ◦ xviu , y) for every c-tuple of children vi1 , . . . , vic of v b . By the
+guarantee on X̂, we know that there exist i1 , . . . , ic such that X̂vi1 , . . . , X̂vic is
+a c-block-source. Since X 0 is a low deficiency subsource of X̂, Xv0 i , . . . , X̂v0 ic
+1
+must also be close to a c block-source by Corollary 3.19. Thus, we get that
+Challenge(Xv0 b , Y 0 ) is statistically close to somewhere random.
+0
+To do the inductive step we show that Challenge(Xpar(v)
+, Y 0 ) is close to
+being somewhere random given that Challenge(Xv00 , Y 00 ) is somewhere random
+for even smaller subsources X 00 ⊂ X 0 , Y 00 ⊂ Y 0 .
+The argument will use the union bound over ` events, one for each of
+the ` strings in the response. We want to ensure that each string in the response is avoided by the challenge. Consider the ith string in the response
+0
+Response(Xpar(v)
+, Y 0 )i . By the {Fixed matrices on low deficiency subsources} property of Response, we know that X 0 , Y 0 is a convex combination
+of independent sources in which the ith string is fixed to a constant.
+Now every element of this convex combination X 00 , Y 00 is a subsource of the
+original sources. The probability that Challenge(Xv00 , Y 00 ) is equal to the ith response is extremely small by the property that the output of Challenge(Xv00 , Y 00 )
+0
+has high min-entropy. Thus, with high probability, Challenge(Xpar(v)
+, Y 0 ) con0
+0
+0
+, Y 0)
+tains Challenge(Xv , Y ) as a substring. This implies that Challenge(Xpar(v)
+is statistically close to being somewhere random.
+
+Step 4 of analysis: ensuring that the disperser outputs both 0 and 1. The
+output for our disperser is computed in a way that is very different from what
+was done for the case of linear min-entropy. The analysis above included the
+following two kinds of tricks:
+• When we encountered a part of the source that had a low amount of
+entropy, we went to a subsource where the part was fixed and the corresponding challenge was responded with probability 1.
+• When we encountered a part of the source that had a high level of
+entropy, we went to a subsource where the corresponding challenge is
+not responded with high probability
+The intuition for our disperser is that if we encounter a part of source
+(such as v med above) that both has high min-entropy and such that fixing that
+part of the source still leaves enough entropy in the rest of the source, we can
+ensure that the challenge is both responded and not responded with significant
+probability. We will elaborate on how to do this later on. This is very helpful
+as it gives us a way to output two different values! By outputting “0” in case
+the challenge is responded and “1” in case it is not, we obtain a disperser. Now
+let us be more concrete.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1517
+
+Definition 5.8. Given two nrows × clen matrices and an integer 1 ≤ q ≤
+clen, we say that one matrix is q-responded by the other if the first q columns
+of both matrices are equal.
+The first observation is the following claim, which is proved formally in
+Step 4 (Lemma 6.14). The claim will be used with q  clen, len.
+Below, we use the symbol <
+∼ to denote an inequality that is only approximate in the sense that in the formal analysis there are small error terms (which
+may be ignored for the sake of intuition) that show up in the expressions.
+Informal Claim 5.9. For every vertex v on the path from v b to the root,
+good
+−q
+Pr[Challenge(Xvgood , Y good ) is q-responded by Response(Xpar(v)
+, Y good )] <
+∼2 .
+Proof Sketch. As before, we will use the {Fixed matrices on low deficiency subsources} property of Response and the fact that Challenge(Xv0 , Y 0 )
+is somewhere random for any low deficiency subsources X 0 ⊂ X good , Y 0 ⊂ Y good
+to argue the probability that for every index q,
+good
+−q
+Pr[Challenge(Xvgood , Y good ) is q-responded by Response(Xpar(v)
+, Y good )q ] <
+∼2 .
+
+Then we just apply a union bound over the poly(n) response strings to
+get the claim.
+
+Next we observe that for the vertex v med , its challenge is responded with
+a probability that behaves very nicely. In particular, note that we get that the
+challenge is both responded and not responded with noticeable probability.
+This is Lemma 6.16 in the formal analysis.
+good
+good
+Informal Claim 5.10. 2−q·nrows <
+) is q-responded
+∼Pr[Challenge(Xvmed , Y
+good
+good
+−q
+by Response(Xpar(vmed ) , Y
+)] <
+∼2 .
+good
+Proof Sketch. The idea is that Xpar(v
+med ) is a convex combination of sources
+0
+0
+Xpar(vmed ) in which Xpar(vmed ) is fixed, but X 0 still has a significant amount of
+entropy. Thus, we are in the situation where we proved Claim 5.6. We can
+then show that X 0 , Y good are a convex combination of sources X 00 , Y 00 such that
+Challenge(Xv00med , Y 00 ) is fixed to a constant. Thus
+
+Pr[Challenge(Xv00med , Y 00 )
+is q-responded by
+00
+00
+−q·nrows
+Response(Xpar(v
+.
+med ) , Y ) >
+∼2
+
+This implies that
+
+good
+Pr[Challenge(Xvgood
+)
+med , Y
+
+is q-responded by
+good
+good
+−q·nrows
+Response(Xpar(v
+)>
+.
+med ) , Y
+∼2
+
+The upper bound is just a special case of Claim 5.9.
+
+
+
+1518
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Given these two claims, we define the output of the disperser as follows:
+1. We define a sequence of decreasing challenge lengths: clen  clen1,0 
+clen1,1  clen1,2  clen2,0  clen2,1  clen2,2  clen3,0 · · · .
+2. If v is not a leaf, let v1 , . . . , vt be v’s t children. Let q be the depth of v.
+If for every i Challenge(xvi , y) is clenq,0 -responded by Response(xvi , y), set
+val(xv , y) = 0. Else let i0 be the smallest i for which this does not happen.
+Then
+(a) If Challenge(xvi0 , y) is clenq,1 -responded by Response(xv , y), then set
+val(xv , y) = 1.
+(b) Else if Challenge(xvi0 , y) is clenq,2 -responded but not clenq,1 -responded
+by Response(xv , y), then set val(xv , y) = 0.
+(c) Else set val(xv , y) = val(xvi0 , y).
+3. The disperser outputs val(x, y).
+Let h be the depth of v med . The correctness is then proved by proving two
+more claims.
+good
+Informal Claim 5.11. The probability that val(Xvgood
+) differs from
+med , Y
+good
+good
+−clen
+h,0
+val(X
+,Y
+) is bounded by 2
+.
+
+Proof Sketch. In fact, we can argue that with high probability,
+good
+good
+good
+val(Xvgood
+) = val(Xpar(v
+)
+med , Y
+med ) , Y
+good
+good
+= val(Xpar(par(v
+) = · · · = val(X good , Y good ).
+med )) , Y
+
+The reason is that by Claim 5.9, for any vertex v on the path from v med to the
+root at depth q,
+good
+−clenq,0
+Pr[val(Xvgood , Y good ) 6= val(Xpar(v)
+)] <
+ 2−clenh,0 .
+∼2
+
+Thus, by the union bound, we get that with high probability all of these are
+in fact equal.
+
+good
+Next, we will argue that val(Xvgood
+) is both 0 and 1 with signifmed , Y
+icant probability. This will complete the proof because this will show that
+val(X good , Y good ) is both 0 and 1 with significant probability.
+
+Informal Claim 5.12.
+good
+−clenh,1
+Pr[val(Xvgood
+)] = 1] >
+,
+med , Y
+∼2
+good
+−clenh,2
+Pr[val(Xvgood
+)] = 0] >
+med , Y
+∼2
+
+Proof Sketch. Informal Claim 5.12 follows from Informal Claim 5.10. The
+good
+probability that val(Xvgood
+) = 1 is lowerbounded by the probability that
+med , Y
+good
+good
+good
+good
+Challenge(Xvmed , Y
+) is clenh,1 -responded by Response(Xpar(v
+) mimed ) , Y
+good
+nus the probability that Challenge(Xvgood
+) is clenh,0 -responded by
+med , Y
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1519
+
+good
+good
+Response(Xpar(v
+). By Claim 5.10, we can ensure that this difference
+med ) , Y
+is significantly large. The argument for the 0 output is very similar.
+
+
+These two claims then ensure that overall Pr[val(X good , Y good ) = 1] >
+∼
+
+2−clenh,1 and Pr[val(X good , Y good ) = 0] > 2−clenh,2 . Thus, val(X, Y ) = {0, 1} as
+∼
+
+required.
+6. Construction and analysis of the disperser
+In this section we present the construction of the new 2-source disperser.
+We also prove that this construction works, thus proving our main theorems
+Theorem 1.10, Theorem 1.3 and Corollary 1.4. The formal presentation below
+closely follows the informal overview in Section 5.
+6.1. Parameters.
+Setting the parameters. We first list the various parameters involved in
+the construction and say how we will set them. See also Table 1.
+• Let n be the length of the samples from the sources.
+0.9
+• Let k be the entropy of the input sources. Set k = 2log n .
+• Let c1 be the
+ä constant from Theorem 4.1.
+Ä error
+n
+that the extractor BExt of
+• Let c = O log
+log k be the number of blocks
+√
+Theorem 4.1 requires to extract from k entropy. (See Corollary 6.2
+below for the precise parameters we use BExt for.) Without loss of
+generality, we assume that c1  1/c.
+4
+• We use t to denote the branching factor of the tree. We set t = n1/c .
+• We use nrows = tc log n to denote the maximum number of rows in any
+challenge matrix.
+• We use clen to denote the length of every row in a challenge matrix. We
+2
+set clen = n1/c .
+• We use len = nrows · clen to denote the total size of the challenge matrices.
+• For r = 0, 1, 2, we use clenq,r to denote smaller challenge lengths and
+1
+
+analogously define lenq,r = nrows · clenq,r . We set clenq,r = n (3q+r)c2 .
+Note that clenq,0  clenq,1  clenq,2 .
+Constraints needed in analysis. Here are the constraints that the above
+parameters need to satisfy in the analysis.
+4
+
+• t1/c ≥ 20c, used in the proofs of Lemmas 6.9 and 6.10.
+• (10tk2 ·c)2 ≥ k 0.9 , used at the end of Step 1 in the analysis.
+• clen3 = o(k 0.9 ), used at the end of Step 1 in the analysis and in the
+proof of Lemma 6.13.
+• clen = o(k c1 ), used in the proof of Lemma 6.15.
+
+1520
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Name
+n
+k
+c
+t
+c1
+nrows
+clen
+
+Description
+Input length
+Entropy
+Number of blocks for
+BExt
+Degree of partition tree
+Error parameter of BExt
+
+Restrictions
+
+Notes
+
+0.9
+
+k ≥ 2log n
+c = O(log n/ log k)
+
+We always invoke
+√ BExt
+with entropy ≥ k
+
+4
+
+t = n1/c
+c1  1/c
+
+Inherited from
+Corollary 6.2.
+
+BExt
+
+No. of rows in challenges nrows ≤ (log n)tc
+and responses
+2
+Length of each row in clen = n1/c
+challenges and responses
+1
+
+clenq,r
+
+Shorter challenge lengths clenq,r = n (3q+r)c2
+
+r ∈ {0, 1, 2}, q ranges
+from 1 to the depth of the
+partition tree.
+
+Table 1. Parameters used in the construction.
+
+• t · len · log n = o(clen2.1 ) ⇔ tc+1 · log2 n = o(clen1.1 ), used at the end of
+Step 2 in the analysis.
+• For any positive integers q, r, nrows = o(clenq,r /clenq,r+1 ) and nrows =
+o(clenq,r+2 /clenq+1,r ), used in the proof of Lemma 6.17.
+The following definition will be useful in our construction.
+Definition 6.1. Given a challenge string Challenge interpreted as a d × len
+boolean matrix with d ≤ nrows, a response string Response interpreted as a
+nrows × len boolean matrix and a parameter q, we say that Challenge is qresponded by Response if the d × q sub-matrix of Challenge obtained by taking
+the first q bits from each row is equal to the d × q sub-matrix of Response
+obtained by taking the first q bits each from the first d rows of Response.
+Note that if a challenge is q-responded, then it is also q 0 -responded for
+every q 0 ≤ q.
+6.2. Formal construction. We now turn to fully describing our disperser
+construction.
+6.2.1. Components. Our construction uses the following components.
+Block extractor: We will use the following corollary of Theorem 4.1.
+Corollary 6.2 (Block extractor). There is a constant c1 and a polynomial-time computable function BExt : {0, 1}cn × {0, 1}n → {0, 1}out such
+that if the parameters c, n, k are as above, then for every independent source
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+X ∈ {0, 1}cn and Y ∈ {0, 1}n with H∞ (Y ) ≥
+block-source,7
+
+√
+
+k and X = X1 ◦ · · · ◦ Xc a
+
+1521
+
+√
+
+k
+
+c1
+
+BExt(X, Y ) − Uclen < 2−k .
+Somewhere extractor with small error: We will use the following corollary of Theorem 4.3 to generate our responses. We will set up SE to be
+a somewhere extractor of√output length clen for inputs of length at most
+n with entropy at least k.8 For every string x of length at most n and
+string y ∈ {0, 1}n , we define Response(x, y) to be the list of strings obtained from SE(x, y), by interpreting each row of the output of SE(x, y) as
+an nrows × clen boolean matrix.
+Corollary 6.3 (Somewhere extractor to generate responses). For every
+n, k, len that satisfies the constraints above, there is a polynomial time computable function Response : ({0, 1}n )2 → ({0, 1}len )` (here the output is inter√
+preted as a nrows × clen matrix ) with the property that for any two (n, k)
+sources X, Y ,
+Few outputs: ` = poly(n).
+Small error: Response(X, Y ) is 2−10len -close to a convex combination of
+somewhere-random distributions and this property is strong with respect
+to both X and Y . Formally,
+Pr [Response(X, y) is 2−10len -close to being SR ] > 1 − 2−10len ,
+
+y←R Y
+
+Pr [Response(x, Y ) is 2−10len -close to being SR ] > 1 − 2−10len .
+
+x←R X
+
+Hitting matrices: Let c be any fixed nrows × clen matrix. Then there are
+deficiency-2len subsources X̂ ⊂ X, Ŷ ⊂ Y such that Pr[c ∈ SE(X̂, Ŷ )] = 1.
+Fixed matrices on low deficiency subsources: Given any particular index i, there are 20len deficiency subsources X̂ ⊂ X, Ŷ ⊂ Y such that
+Response(X̂, Ŷ )i is a fixed matrix. Further, X, Y is 2−10len -close to a convex combination of subsources such that for every X̂, Ŷ in the combination,
+• X̂, Ŷ are independent.
+• Response(X̂, Ŷ )i is constant.
+• X̂, Ŷ are of deficiency at most 20len.
+6.2.2. The tree of parts. We define a degree-t tree Tn,t with depth log n/ log t
+< log n, which we call the n, t partition tree. The nodes of Tn,t are subintervals
+of [1, n] defined in the following way:
+5
+7That is, for every i < c and x , . . . , x ∈ Supp(X
+1
+i
+1,...,i ), H∞ (Xi+1 |x1 , . . . , xi ) > 10clen .
+8Note that although Theorem 4.3 is stated for inputs of length exactly n, we can always
+
+pad a shorter input with zeroes to make it long enough.
+
+1522
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+1. The root of the tree is the interval [1, n].
+2. If a node v is identified with the interval [a, b] of length greater than k 1/3 ,
+we let v1 , . . . , vt denote the t consecutive disjoint length-|v|/t subinterb−a
+th child of
+vals of v. That is, vi = [a + b−a
+t (i − 1), a + t i]. We let the i
+v be vi .
+For a string x ∈ {0, 1}n and a set S ⊆ [1, n], we will denote by xS the
+projection of x onto the coordinates of S. If v is a node in Tn,t , then xv denotes
+the projection of x onto the interval v.
+The following definitions will be useful.
+Definition 6.4 (Path to a vertex). Given a partition tree Tn,t and a vertex v,
+let Pv denote the path from the vertex v to the root in the tree Tn,t ; that is,
+the set of nodes (including v) on the path from v to the root.
+Definition 6.5 (Parent of a vertex). Given a partition tree Tn,t and a vertex v, let par(v) denote the parent of v.
+Definition 6.6 (Left family of v). Given a partition tree Tn,t and a vertex v,
+let Lv denote the left family of v; i.e., if v is the interval [c, d], define Lv =
+{[a, b] ∈ Tn,t : a ≤ c and par(w) ∈ Pv }. Note that for every vertex v, |Lv | =
+O(t log n) since the number of vertices in Pv is at most log n.
+6.2.3. Operation of the algorithm Disp. We now define the operation of
+our 2-source disperser Disp.
+Algorithm 6.7.
+Disp(x, y)
+Inputs: x, y ∈ {0, 1}n , Output: 1 bit.
+1. On inputs x, y ∈ {0, 1}n , the algorithm Disp, working from the leaves
+upwards, will define for each node v in the tree Tn,t a boolean challenge
+matrix (Challenge(xv , y)) with at most nrows rows, each of length clen
+in the following way:
+(a) If v is a leaf, then Challenge(xv , y) is the matrix with a single all 0’s
+row.
+(b) If v is not a leaf, then Challenge(xv , y) is computed as follows. Recall
+that v1 , . . . , vt denote v’s t children.
+(i) For each c-tuple 1 ≤ i1 < i2 < · · · < ic ≤ t, let S = vi1 ∪
+vi2 ∪ · · · ∪ vic and append the row BExt(xS , y) to the matrix
+Challenge(xv , y).
+(ii) If there exists an i such that Challenge(xvi , y) is not clenresponded by Response(xv , y), let i0 be the smallest such i and
+append all the rows of Challenge(xvi0 , y) to Challenge(xv , y).
+2. Next Disp will make a second pass on the tree, again working from the
+leaves upwards. This time it will define for each node v in the tree Tn,t
+a bit val(xv , y) in the following way:
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1523
+
+(a) If v is a leaf, then val(xv , y) = 0.
+(b) If v is not a leaf, let v1 , . . . , vt be v’s t children. Let q be the
+depth of v. If for every i Challenge(xvi , y) is clenq,0 -responded by
+Response(xvi , y), set val(xv , y) = 0. Else let i0 be the smallest i for
+which this does not happen. Then
+(i) If Challenge(xvi0 , y) is clenq,1 -responded by Response(xv , y),
+set val(xv , y) = 1.
+(ii) Else if Challenge(xvi0 , y) is clenq,2 -responded but not clenq,1 responded by Response(xv , y), set val(xv , y) = 0.
+(iii) Else set val(xv , y) = val(xvi0 , y).
+3. The output of Disp is val(x[1,n] , y).
+6.3. Formal analysis. We now prove Theorem 1.10, which is the main
+Theorem of this paper. We need to prove that Disp is a 2-source disperser
+0.9
+for min-entropy k = 2log n . We show that given two independent k-sources
+X and Y over n bits, Disp(X, Y ) outputs both zero and one with positive
+probability.
+The analysis proceeds in several steps. In each step we make a restriction
+on one or both of the input sources. When we are done, we will get the desired
+subsources X good , Y good on which
+Pr[Disp(X good , Y good ) = 1] ∈ 1/2 ± o(1) .
+6.3.1. Step 1: Preprocess X. The first step involves only the first source X.
+We will restrict X to a “mediocre” subsource X med , which will have some attractive properties for us. We will ensure that in X med there are a couple of
+parts that have entropy but do not have all the entropy of the source. We first
+prove a general lemma — Lemma 6.8 — and then use it to prove Lemmas 6.9
+and 6.10 to show that we obtain the desired subsource X med .
+Lemma 6.8 (Two-types lemma.). Let X be a general k source over {0, 1}n
+divided into t parts X = X1 ◦ · · · ◦ Xt . Let c be some positive integer, and let
+k 0 < k be such that (c + 1)k 0 + 4t2 ≤ k. Then there exists a subsource X 0 ⊆ X
+of deficiency at most d = ck 0 + 2t2 that satisfies one of the following properties:
+Either
+Somewhere high source — one high part: There exists i ∈ [t] such
+0 ) are constant, and
+that the first i − 1 parts of X 0 (namely X10 , . . . , Xi−1
+H∞ (Xi0 ) ≥ k 0
+or
+Somewhere block-source — c medium parts: There exist 0 < i1 <
+i2 < · · · < ic ≤ t such that the first i1 − 1 parts of X 0 are constant for
+every j ∈ [c], and Xi01 , Xi02 , . . . , Xi0c is a (C, k 0 /t) block-source.
+
+1524
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Proof. We let τ1 = 0, τ2 = k 0 /t, τ3 = k 0 and τ4 = n and use Lemma 3.20
+to reduce X to a deficiency 2t2 source X 00 such that for every i ∈ [t] and every
+00
+x1 , . . . , xi−1 ∈ Supp(X1,...,i−1
+), the conditional entropy H∞ (Xi00 |x1 , . . . , xi−1 )
+always falls into the same interval of [0, k 0 /t], [k 0 /t, k 0 ] and [k 0 , n], regardless of
+the choice x1 , . . . , xi . We call parts where this conditional entropy falls into the
+interval [0, k 0 /t) “low,” parts where this entropy falls into the interval [k 0 /t, k 0 )
+“med” and parts where it is at least k 0 “high.” We divide into two cases:
+Case 1: If there are at most c − 1 medium parts before the first high part,
+we let i be the position of the first high part and fix the first i − 1
+parts to their most typical values. The conditional entropy X1 given
+this prefix is still at least k 0 . Furthermore, since we fixed at most t
+low parts and at most c medium parts, the overall deficiency is at most
+(c − 1)k 0 + tk 0 /t = ck 0 .
+Case 2: If there are at least c medium parts in the source, we let i be the
+position of the first medium part and fix the first i − 1 parts to their
+most typical value. All medium parts remain medium conditioned on
+this prefix, and the entropy we lose is at most tk 0 /t ≤ k 0 .
+
+We will now use Lemma 6.8 to show that we can restrict the input source
+X to a subsource X sb (for “somewhere block”) satisfying some attractive properties.
+Lemma 6.9. Let X be a source over {0, 1}n with min-entropy k. Let c, t
+4
+be values satisfying t1/c ≥ 20c. Then there exist a deficiency k/10 + 4t2 log n
+subsource X sb of X and a vertex v med of Tn,t with the following properties:
+• For every v in the left family of v Lvmed (see Definition 6.6), Xvsb is fixed
+to a constant.
+k
+sb
+• The source Xpar(v
+)-somewhere block-source.
+med ) is a (c,
+1/c4
+20tcn
+
+sb
+• Xvsbmed is the first block of the block-source in Xpar(v
+med ) .
+
+Proof. We prove the lemma by induction on dlog(n/k)e = dlog n − log ke.
+If n = k, then this is the uniform distribution and everything is trivial. We
+invoke Lemma 6.8 with parameter k 0 = k/(20c) to obtain a deficiency k/20+4t2
+subsource X 0 that is either k 0 -somewhere high or (c, k 0 /t)-somewhere blocksource.
+If X 0 is (c, k 0 /t)-somewhere block-source, then set X sb = X 0 and v med
+corresponding to the first part of the block-source given by Lemma 6.8 (and
+hence par(v med ) = [1, n]). Since k 0 /t = k/(20tc), we see that X sb , v med satisfy
+the properties in the conclusion of the lemma.
+The second possibility is that X 0 is a k 0 -somewhere high source. We let
+i be the index of the high block of entropy k 0 and let vi be the corresponding
+interval. Note that for all j < i, Xv0 j attains some fixed value with probability 1.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1525
+
+sb
+X
+high
+
+par(V med)
+high
+
+Fixed parts
+
+V
+
+med
+med
+
+Figure 2. Finding a medium part in X sb .
+0
+
+n
+0
+0
+Let n0 = |vi | = n/t. Since nk0 = nk 20c
+t < 4k , we have that log(n /k ) <
+log(n/k)−2 and so can assume by the induction hypothesis that the statement
+holds for the source Z = Xv0 i . This means that we have a subsource Z 0 ⊂ Z
+of deficiency k 0 /10 + 4t2 log n0 of Z and a node par(v med ) in the tree Tn0 ,t such
+4
+that (below we use the fact that t1/c ≥ 20c):
+
+• For every v ∈ Lvmed , Zv0 is fixed to a constant.
+Ä
+
+0
+
+1/c4
+
+ä
+
+k
+k
+t
+k
+0
+• The source Zpar(v
+med ) is a c, 20tcn01/c4 = 20tcn1/c4 · 20c ≥ 20tcn1/c4 somewhere block-source.
+0
+• Zv0 med is the first block of the block-source in Zpar(v
+med ) .
+
+We define X sb to be the natural extension of the subsource Z 0 to a subsource of X 0 . (That is, X sb is defined by restricting Xv0 i to X 0 .) Then we see
+that X sb ⊂ X 0 is of deficiency at most k 0 /10+4t2 log n0 . Since log n0 ≤ log n−1
+and k 0 /10 < k/20, k 0 /10 + 4t2 log n0 ≤ k/20 + 4t2 (log n − 1). Hence X sb ⊂ X is
+a source of deficiency at most k/10+4t2 log n. It is clear that X sb and par(v med )
+satisfy our requirements.
+
+Note that by our setting of parameters, the entropy of the medium part
+k
+k
+promised by the above lemma is actually
+4 = 20t2 c .
+20tcn1/c
+Next we show that by invoking the above lemma twice, we can move to a
+subsource X med that has even more structure.
+Lemma 6.10. Let X be a source over {0, 1}n with min-entropy k. Let c, t
+be as above. Then there exists a deficiency k/5 + 8t2 log n subsource X med of
+X and three vertices par(v med ), v med and v b = [a, b] of Tn,t with the following
+properties:
+
+1526
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+X
+
+med
+
+par(V med)
+high
+
+V
+
+med
+
+med
+
+Vb
+high
+
+Fixed parts
+
+med
+
+Figure 3. Finding two related medium parts in X med .
+• v med is an ancestor of v b .
+k
+med
+med
+• The source Xpar(v
+med ) is a (c, 40tcn1/c4 )-somewhere block-source, and Xv med
+is the first medium block
+Ä in this source.
+ä
+k
+-somewhere block-source.
+• The source Xvmed
+is
+a
+c,
+b
+1/c4 2
+(20tcn
+
+)
+
+med
+• There is a value x ∈ {0, 1}a−1 such that X[1,a−1]
+= x with probability 1.
+
+Proof. We prove this lemma by invoking Lemma 6.9 twice. We start with
+our source X and invoke Lemma 6.9 to find a subsource X sb and vertices
+par(v med ), v med as in the conclusion of the lemma. Next we apply the lemma
+again to Xvsbmed .
+k
+Since Xvsbmed is a source on n0 < n bits with min-entropy
+, we
+1/c4
+20tcn
+
+k
+get that there is a subsource X med ⊂ X sb with deficiency at most
+4 +
+400tcn1/c
+2
+b
+sb
+4t log n and a vertex v that is a somewhere block-source. Since X ⊂ X was
+of deficiency at most k/10 + 4t2 log n, we get that X med ⊂ X is a subsource of
+X with deficiency at most k/5 + 8t2 log n. Further, note that
+k
+k
+H∞ (Xvmed
+− 4t2 log n
+med ) ≥
+4 −
+1/c
+20tcn
+400tcn1/c4
+k
+k
+2
+≥
+4 − 4t log n ≥
+1/c
+30tcn
+40tcn1/c4
+by our choice of parameters.
+
+
+We apply Lemma 6.10 to the input source X with our parameters k, t as
+chosen in Section 6.1. We obtain a deficiency-k/4 subsource (since 4t2 = o(k))
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1527
+
+X med of X, and three nodes par(v med ), v med , v b = [a, b] in the tree Tn,t satisfying
+(by our choice of parameters):
+Result of Step 1: A deficiency-k/4 subsource X med ⊂ X satisfying
+med
+v med is the leading block in a block-source: Xpar(v
+med ) is a (c,
+
+k
+4
+40tcn1/c
+
+≥ k 0.9 )-somewhere block-source, with a sub-block Xvmed
+med that is the first
+nonconstant “good” sub-block.
+k
+0.9 )-somemed
+Xvmed
+b has a block-source: The source Xv b is a (c, (10t2 c)2 ≥ k
+where block-source.
+Fixed left family: For every w ∈ Lvb (Definition 6.6), Xwmed is fixed.
+6.3.2. Step 2: Ensuring that challenges from the left family are properly
+responded. Our desired good subsources X good and Y good will be deficiencyclen3 subsources of X med and Y . We will ensure that in the final subsources,
+for every element w ∈ Lvb , Challenge(Xwgood , Y good ) is clen-responded by the
+good
+response Response(Xpar(w)
+, Y good ) with probability 1.
+First we will show that we can move to a subsource where the relevant
+challenges are fixed.
+Claim 6.11. There is a subsource Y 0 ⊂ Y of deficiency at most t·len·log n
+such that every challenge Challenge(Xwmed , Y 0 ) for w ∈ Lvb is fixed to a constant
+string in the subsources X med , Y 0 .
+Proof. By the {Fixed left family} property after Step 1, we have that
+for every w ∈ Lvb , Xwmed is fixed. Note that Challenge(Xwmed , Y ) is a function
+only of Xwmed and Y . Thus, for every w ∈ Lvb , Challenge(Xwmed , Y ) is a function
+only of Y .
+There are at most |Lvb | ≤ t log n challenges to consider, each of length len
+bits. Thus, by Lemma 3.13, we can ensure that there is a deficiency-t·len·log n
+subsource Y 0 ⊂ Y in which all the challenges are also fixed.
+
+Next we will prove that there are even smaller subsources in which each
+of these challenges is responded with probability 1.
+Claim 6.12. There are deficiency-O(t·len·log n) subsources X good ⊂ X med
+and Y good ⊂ Y 0 in which every challenge Challenge(Xwgood , Y good ), w ∈ Lvb is
+good
+clen-responded with probability 1 by the response Response(Xpar(w)
+, Y good ).
+Proof. Let Lvb = {w1 , w2 , . . . , wd }. We will prove the stronger statement
+that for every i with 1 ≤ i ≤ d, there are subsources X 00 ⊂ X med , Y 00 ⊂ Y 0 of
+deficiency at most 2leni in which each Challenge(Xw00 j , Y 00 ) is clen-responded by
+00
+Response(Xpar(w
+, Y 00 ) for 1 ≤ j ≤ i. We prove this by induction on i.
+j)
+For the base case of i = 1, note that Challenge(Xwmed
+, Y 0 ) is fixed to a
+1
+med
+med
+0.9 and
+constant in the source X . Since H∞ (Xpar(w1 ) ) ≥ H∞ (Xvmed
+b ) ≥ k
+med
+H∞ (Y 0 ) ≥ k − t · len · log n ≥ k 0.9 , we get that Xpar(w)
+, Y 0 are sources that
+
+1528
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+have enough entropy for our somewhere extractor SE to succeed. By the
+{Hitting matrices} property of Corollary 6.3, we can then ensure that there
+are deficiency-2len subsources X 00 ⊂ X med , Y 00 ⊂ Y 0 in which Challenge(Xw00 1 , Y 00 )
+00
+is clen-responded by the Response(Xpar(w
+00 with probability 1.
+1 ),Y
+For i > 1, we use the inductive hypothesis to find subsources X̂ ⊂
+X , Ŷ ⊂ Y 0 of deficiency at most 2len(i − 1) on which all the previous challenges are clen-responded. Then since H∞ (X̂par(wi ) ) ≥ H∞ (Xvmed
+b ) − 2len(i − 1)
+0.9
+0.9
+≥ k and H∞ (Ŷ ) ≥ k − t · len · log n − 2len(i − 1) ≥ k , we get that X̂par(w) , Ŷ
+are sources that have enough entropy for our somewhere extractor SE to succeed. Thus, we can find deficiency-2len · i subsources X 00 ⊂ X med , Y 00 ⊂ Y 0
+00
+in which even Challenge(Xw00 i , Y 00 ) is clen-responded by Response(Xpar(w
+, Y 00 ).
+i)
+
+med
+
+Together, the claims give that X good ⊂ X med , Y good ⊂ Y are subsources in
+which all the challenges of the left family are responded with probability 1 and
+are of deficiency at most O(t · len · log n) < clen2.1 by our choice of parameters.
+Since we only went down to a clen2.1 deficiency subsource of X med in all
+of these steps, by Corollary 3.19, we still retain the block-source structure of
+3
+good
+Xvmed
+is 2−19clen close to being
+b . In particular, the corollary implies that Xv b
+a (c, k 0.9 − 20clen3 ≥ k 0.8 )-somewhere block-source.
+3
+med
+0.9 − clen3 ≥ k 0.8 and
+Similarly, H∞ (Xvgood
+med ) ≥ H∞ (Xv med ) − clen ≥ k
+good
+0.9 since X med
+conditioned on any fixing of Xvgood
+was
+med , H∞ (Xpar(v med ) ) ≥ k
+par(v med )
+shown to be a block-source with min-entropy k 0.9 .
+Result of Step 2: At this point we have X good and Y good , which are deficiency-k/4 + clen3 subsources of the sources X and Y satisfying
+good
+0.8 and X good
+Xvgood
+is a block-source: H∞ (Xvgood
+has enmed ◦ X
+med ) ≥ k
+par(v med )
+
+tropy greater than k 0.9 even conditioned on any fixing of Xvgood
+med .
+3
+
+Xvgood
+has a block-source: The source Xvgood
+is 2−19clen close to being a
+b
+b
+(c, k 0.8 )-somewhere block-source.
+Low blocks are correctly identified: For every w ∈ Lvb , Challenge(Xwgood ,
+good
+Y good ) is clen-responded with probability 1 by Response(Xpar(w)
+, Y good ).
+6.3.3. Step 3: Ensuring that challenges along the path are somewhere random. We argue that in X good , Y good , for every w ∈ Pvb , Challenge(Xwgood , Y good )
+2
+c
+is 2log n (2−k 1 + 2−clen )-close to having min-entropy clen. In fact, something
+even stronger is true.
+Lemma 6.13 (The challenges along the good path are somewhere random). Let X 0 ⊂ X good , Y 0 ⊂ Y good be any deficiency-20len subsources. Then
+in these subsources, if w ∈ Pvb is an ancestor of v b , Challenge(Xw0 , Y 0 ) is
+2
+c
+2log n (2−k 1 + 2−clen )-close to being somewhere random.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1529
+
+Proof. We will prove the lemma by induction on the vertices in Pvb , starting from v b and moving up the path. Let h be the depth of v b in the tree. (Note
+that h = O(log n).) Let ` be the number of matrices in the output of Response
+(note that ` = poly(n) by Corollary 6.3). For w ∈ Pvb at a distance of i from
+v b , we will prove that as long as X 0 ⊂ X good , Y 0 ⊂ Y good are of deficiency at
+c
+most (h − i − 1)20len, Challenge(Xw0 , Y 0 ) is (2`)i (2−k 1 + 2−clen )-close to being
+somewhere random.
+3
+3
+For the base case, note that by Corollary 3.19, Xv0 b is 2−19clen +2−20clen <
+√
+3
+2−18clen -close to being a (c, k 0.8 − (h − 1)20len − 20clen3 > k) somewhere
+block-source and Y 0 is √
+an independent source with min-entropy k − (k/4 +
+3
+clen + (h − 1)20len) > k. Thus, in the subsources X 0 , Y 0 , Challenge(Xv0 b , Y 0 )
+3
+
+c
+
+c
+
+is 2−18clen + 2−k 1 < (2−clen + 2−k 1 )-close to being somewhere random by
+Corollary 6.2.
+Now let w be an ancestor of v b and let w0 be its child on the path to v b . We
+want to show that the challenge has entropy even on deficiency-(h − i − 1)20len
+subsources X 0 ⊂ X good , Y 0 ⊂ Y good .
+We will show that with high probability, Challenge(Xw0 , Y 0 ) contains
+Challenge(Xw0 0 , Y 0 ) as a substring. By the induction hypothesis, we will then
+get that Challenge(Xw0 , Y 0 ) must be statistically close to being somewhere random also. By our construction, to ensure that this happens we merely need to
+ensure that Challenge(Xw0 0 , Y 0 ) is clen unresponded by Response(Xw0 , Y 0 ). We
+will argue this using the union bound. Fix an index j and consider the j th
+response string Response(Xw0 , Y 0 )j .
+By the {Fixed matrices on low deficiency subsources} property of
+Corollary 6.3, we get that X 0 , Y 0 is 2−10len close to a convex combination of
+independent sources X̂, Ŷ , where each element of the convex combination is of
+deficiency at most 20len and the j th response string Response(X̂w , Ŷ )j is fixed
+to a constant on these subsources. Each element of this convex combination
+then has a deficiency of at most (h − i − 1)20len + 20len = (h − (i − 1) − 1)20len
+from X good , Y good .
+c
+By induction hypothesis, we get that Challenge(X̂w0 , Ŷ ) is (2`)i−1 (2−k 1 +
+2−clen )-close to being somewhere random. Therefore, the probability that
+Challenge(Xw0 0 , Y 0 ) is responded by Response(Xw0 , Y 0 ) is at most
+2−clen + (2`)i−1 (2−k
+
+c1
+
++ 2−clen ) < 2 · (2`)i−1 (2−k
+
+c1
+
++ 2−clen ).
+
+Thus, by the union bound over the ` response strings, we get that the probac
+bility that the challenge is responded is at most (2`)i (2−k 1 + 2−clen ).
+Note that the length of the path to v b from the root is o(log(n)), so we will
+need to repeat the induction only log(n) times. We get that the challenge is
+2
+c
+c
+(2`)h (2−k 1 +2−clen ) < 2log n (2−k 1 +2−clen )-close to being somewhere random.
+
+
+1530
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Result of Step 3: At this point we have X good and Y good , which are deficiency-k/4 + clen3 subsources of the sources X and Y satisfying
+Challenges along the path are somewhere random, even on subsources: If X 0 ⊂ X good , Y 0 ⊂ Y good are deficiency-20clen subsources,
+2
+c
+Challenge(Xw0 , Y 0 ) is 2log n (2−k 1 + 2−clen ) close to being somewhere
+random in X 0 , Y 0 for every vertex w ∈ Pvmed .
+6.3.4. Step 4: Ensuring that Disp outputs both 0 and 1. We will ensure
+that our disperser outputs both 1 and 0 with significant probability. There are
+two remaining steps:
+• We will ensure that in our good subsources X good , Y good , with high probgood
+good
+ability (say 1 − γ), val(X[1,n]
+, Y good ) = val(Xvgood
+).
+med , Y
+good
+• We will ensure that in our good subsources X good , Y good , val(Xvgood
+)
+med , Y
+1/10
+is both 0 and 1 with significant probability (say γ
+).
+
+By the union bound these two facts imply that the disperser outputs both
+0 and 1 with positive probability.
+Lemma 6.14. For every vertex v on the path from v med to the root and
+for any 1 ≤ q ≤ clen,
+good
+Pr[Challenge(Xvgood , Y good ) is q-responded by Response(Xpar(v)
+, Y good )]
+2
+
+≤ 2−q + 2log n (2−k
+
+c1
+
++ 2−clen ).
+
+Proof. By the {Fixed matrices on low deficiency subsources} property of Corollary 6.3, we get that X good , Y good is 2−10len -close to a convex
+combination of independent sources, where each element X 0 , Y 0 of the convex combination is of deficiency at most 20len and the j th response string
+0
+Response(Xpar(v)
+, Y 0 )j is fixed to a constant on these subsources. Thus, by
+Lemma 6.13,
+0
+Pr[Challenge(Xv0 , Y 0 ) is q-responded by Response(Xpar(v)
+, Y 0 )]
+2
+
+< 2−q + 2log n (2−k
+
+c1
+
++ 2−clen ). 
+
+good
+Lemma 6.15 (val(Xvgood
+) propagates to the root). Let h be the depth
+med , Y
+med
+of v
+in the tree. Then
+
+Pr
+
+X good ,Y good
+
+[val(xvmed , y) 6= val(x[1,n] , y)] < 2−clenh,0 .
+
+Proof. We will show that for every w ∈ Pvmed , w 6= [1, n],
+good
+Pr[val(Xwgood , Y good ) 6= val(Xpar(w)
+, Y good )] < 2−clenh,0 / log2 n.
+
+Then we will apply a union bound over all the edges in the path from the root
+to v med to get the bound for the lemma.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1531
+
+Let h0 be the depth of w in the tree. Now note that by our construction,
+good
+, Y good )]
+Pr[val(Xwgood , Y good ) 6= val(Xpar(w)
+good
+< Pr[Challenge(Xwgood , Y good ) is clenh0 ,2 -responded by Response(Xpar(w)
+, Y good )]
+2
+
+≤ 2−clenh0 ,2 + 2log n (2−k
+
+c1
+
++ 2−clen ),
+
+where the last inequality is by Lemma 6.14. Using the union bound over all
+poly(n) response strings, we then get that the probability that the challenge
+2
+c
+is responded is at most poly(n)(2−clenh0 ,2 + 2log n (2−k 1 + 2−clen ) + 2−10len ) <
+(1/ log2 n)2−clenh,0 by our choice of parameters. Applying a union bound over
+the path from the root of the tree to v med , we get the bound claimed by the
+lemma.
+
+Finally we argue that the probability that val(xvmed , y) is 0 or 1 is significantly higher than 2−clenh,0 . We do this by showing that for any q, the probagood
+good
+good
+bility that Challenge(Xvgood
+) is q-responded by Response(Xpar(v
+)
+med , Y
+med ) , Y
+can be bounded from above and below.
+Lemma 6.16. Let
+good
+good
+good
+p = Pr[Challenge(Xvgood
+) is q-responded by Response(Xpar(v
+)].
+med , Y
+med ) , Y
+
+Then
+2
+
+2−q·nrows − 2−10len − 2−20len ≤ p ≤ 2−q + 2log n (2−k
+
+c1
+
++ 2−clen ).
+
+good
+Proof. In Step 2 of the analysis we showed that Xvgood
+med ◦ Xpar(v med ) is block-
+
+source with block entropy k 0.9 . Thus, X good is a convex combination of sources
+where for every element of the combination X̂,
+• X̂vmed is fixed.
+• X̂par(vmed ) has min-entropy k 0.8 .
+For every such subsource X̂, Challenge(X̂vmed , Y good ) is a function only of
+Y
+. Thus, by Lemma 3.13, for every such subsource X̂, Y good is 2−20len close
+to a convex combination of sources where for each element of the combination,
+Ŷ is of deficiency at most 21len and Challenge(X̂vmed , Ŷ ) is fixed to a constant.
+Thus, overall we get a convex combination of sources where for each element
+of the convex combination,
+good
+
+• In X̂, Ŷ , Challenge(X̂vmed , Ŷ ) is fixed.
+• X̂par(vmed ) , Ŷ are independent sources with min-entropy k 0.8 each.
+By Corollary 6.3, we get that Response(X̂par(vmed ) , Ŷ ) is 2−10len -close to
+being somewhere random, implying that the challenge is q-responded with
+
+1532
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+probability at least 2−q·nrows − 2−10len in these subsources. Thus, we get that
+good
+good
+Pr Challenge(Xvgood
+) is q-responded by Response(Xvgood
+)]
+med , Y
+med , Y
+
+≥ 2−q·nrows − 2−10len − 2−20len .
+The upper bound follows from Lemma 6.14.
+
+
+
+good
+This lemma then implies that val(Xvgood
+) takes on both values with
+med , Y
+significant probability.
+good
+Lemma 6.17 (val(Xvgood
+) is both 0 and 1 with significant probabilmed , Y
+ity). Specifically,
+good
+Pr[val(Xvgood
+) = 1] > (0.5)2−lenh,1 ,
+med , Y
+good
+Pr[val(Xvgood
+) = 0] > (0.5)2−lenh,2 .
+med , Y
+
+Proof. Note that
+good
+Pr[val(X good
+) = 1]
+med , Y
+v
+
+good
+≥ Pr[Challenge(X good
+) is clenh,1 -responded by Response(X good med , Y good )]
+med , Y
+v
+
+par(v
+
+)
+
+good
+− Pr[Challenge(X good
+) is clenh,0 -responded by Response(X good med , Y good )]
+med , Y
+v
+
+par(v
+
+)
+
+≥ 2−clenh,1 ·nrows − 2−10len − 2−20len
+2
+
+− 2−clenh,0 + 2log n (2−k
+
+c1
+
++ 2−clen )
+
+≥ 2−lenh,1 − 2−10len − 2−20len − 2 · 2−clenh,0
+≥ (0.5)2−lenh,1 .
+
+Similarly,
+good
+Pr[val(X good
+) = 0]
+med , Y
+v
+
+good
+good
+≥ Pr[Challenge(X good
+) is clenh,2 -responded by Response(X good
+)]
+med , Y
+med , Y
+v
+
+v
+
+good
+good
+− Pr[Challenge(X good
+) is clenh,1 -responded by Response(X good
+)]
+med , Y
+med , Y
+v
+
+v
+
+≥ 2−lenh,2 − 2−10len − 2−20len − 2 · 2−clenh,1
+> (0.5)2−lenh,2 .
+
+
+
+This concludes the proof that Disp(X, Y ) outputs both zero and one proving
+Theorem 1.10.
+7. Proof of Theorem 4.1
+In this section we prove Theorem 4.1 (which gives an extractor for one
+block-wise source and one general source). Our techniques rely on those of Rao
+[Rao09]. In particular, we will obtain our extractor by reducing the problem to
+the one of constructing an extractor for two independent somewhere-random
+sources, a problem which was solved in [Rao09].
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1533
+
+We first discuss the new ideas that come into obtaining the improvement
+in the error parameter (which can be also be applied directly to Rao’s [Rao09]
+extractor). We then give the full construction for the new extractor.
+7.1. Achieving small error. The lower error is achieved by a careful analysis of our construction. A somewhat similar observation was made by Chung
+and Vadhan [CV], who noted that the construction of Rao can more directly
+be shown to have low error.
+In our construction, we will actually prove the following theorem, which
+gives an extractor for a block-source and an independent somewhere-random
+source.
+Theorem 7.1 (Somewhere random + block-source extractor). There exist
+constants α, β, γ < 1 and a polynomial time computable function SR + BExt :
+{0, 1}cn × {0, 1}tk → {0, 1}m such that for every n, t, k, with k > log10 t, k >
+log t
+1
+c
+log10 n with c = O( log
+k ) such that if X = X ◦ · · · ◦ X is a (k, . . . , k) blocksource and Y is an independent (t × k) (k − k β )-SR-source, then
+|X ◦ SR + BExt(X, Y ) − X ◦ Um | < ε,
+|Y ◦ SR + BExt(X, Y ) − Y ◦ Um | < ε,
+γ
+
+where Um is independent of X and Y , m = k − k α , ε = 2−k .
+Note that we can get an extractor from a block-source and a general independent source from Theorem 7.1 by using the fact that a general source can
+be transformed into a somewhere-random source (Proposition 3.22). However,
+using this transformation spoils the error, since the transformation has only
+polynomially small error. In order to bypass this difficulty, we use a more careful analysis. We first use Theorem 7.1 to prove the following theorem which is
+weaker than Theorem 4.1. We will then obtain Theorem 4.1.
+Theorem 7.2 (Block + arbitrary source extractor ). There exist absolute
+constants c1 , c2 , c3 > 0 and a polynomial time computable function BExt :
+0
+{0, 1}cn × {0, 1}n → {0, 1}m such that for every n, n0 , k, with k > log10 (n + n0 )
+n
+1
+c
+with c = c1 log
+log k , such that if X = X ◦ · · · ◦ X is a k block-source and Y is an
+independent (n0 , k)-source, there is a deficiency-2 subsource Y 0 ⊆ Y such that
+|X ◦ BExt(X, Y 0 ) − X ◦ Um | < ε,
+|Y 0 ◦ BExt(X, Y 0 ) − Y 0 ◦ Um | < ε,
+c
+
+where Um is independent of X and Y , and for m = c2 k and ε = 2−k 3 .
+Proof. The idea is to reduce to the case of Theorem 7.1. We convert
+the general source Y into an SR-source. To do this we will use a strong
+seeded extractor and Proposition 3.22. If we use a strong seeded extractor
+
+1534
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+that requires only O(log n) bits of seed, the SR-source that we get will have
+only poly(n) rows. This adds a polynomial amount of error. By Lemma 3.15,
+we can go to a deficiency-2 subsource Y 0 ⊆ Y that has high entropy in some
+row. This is good enough to use our extractor from Theorem 7.1 and get the
+better error.
+
+Proof of Theorem 4.1. We prove the theorem by showing that any extractor that satisfies the conclusions of Theorem 7.2 (i.e., low strong error on a
+subsource) must satisfy the seemingly stronger conclusions of Theorem 4.1.
+Let BExt be the extractor from Theorem 7.2, set up to extract from a
+k/2 block-source and a k/2 − 2 general source. Then we claim that when this
+extractor is run on a k block-source and a k general source, it must succeed
+with much smaller error.
+0
+Given the source X, let BX ⊂ {0, 1}n be defined as
+BX = {y : |BExt(X, y) − Um | ≥ ε}.
+Then
+Claim 7.3. |BX | < 2k/2 .
+Proof. The argument for this is by contradiction. Suppose |BX | ≥ 2k/2 .
+Then define Z to be the source that picks a uniformly random element of BX .
+By the definition of BX , this implies that |Z 0 ◦ BExt(X, Z 0 ) − Z 0 ◦ Um | ≥ ε for
+any subsource Z 0 ⊂ Z. This contradicts Theorem 7.2.
+
+Thus, Pr[Y ∈ BX ] < 2k/2−k = 2−k/2 .
+This implies that |BExt(X, Y ) − Um | < ε + 2−k/2 , where ε is the ε from
+Theorem 7.2.
+
+Remark 7.4. In fact, the above proof actually implies the extractor from
+Theorem 4.1 is strong with respect to Y ; i.e., |Y ◦ BExt(X, Y ) − Y ◦ Um | <
+ε + 2−k/2 .
+7.2. Extractor for general source and an SR-source with few rows. Here we
+will construct the extractor for Theorem 7.1. The main step in our construction
+is the construction of an extractor for a general source and an independent
+SR-source that has few rows. Once we have such an extractor, it will be
+relatively easy to obtain our final extractor by iterated condensing of SRsources.
+First, we prove the following theorem.
+Theorem 7.5. There are constants α, β < 1 and a polynomial time comγ+1
+putable function BasicExt : {0, 1}n × {0, 1}k
+→ {0, 1}m such that for every
+10
+n, k(n) with k > log n, and constant 0 < γ < 1/2, if X is an (n, k) source
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1535
+
+and Y is a (k γ × k) (k − k β )-SR-source, then
+|Y ◦ BasicExt(X, Y ) − Y ◦ Um | < ε
+and
+|X ◦ BasicExt(X, Y ) − X ◦ Um | < ε,
+α
+
+where Um is independent of X, Y , m = k − k Ω(1) and ε = 2−k .
+Proof. We are trying to build an extractor that can extract from one
+and an independent (n, k) source X. We will reduce
+this to the case of two independent aligned SR-sources with few rows, for which
+we can use Theorem 3.27.
+The plan is to use the structure in the SR-source Y to impose structure
+on the source X. We will first use Y and X to get a list of candidate seeds,
+such that one seed in the list is close to uniformly random and independent of
+both X and Y . Once we have this list, we can readily reduce the problem to
+that of extracting from independent aligned SR-sources with few rows.
+In the following discussion, the term slice refers to a subset of the bits
+coming from an SR-source that takes a few bits of the SR-source from every
+row ( Definition 3.8). We also remind the reader of the following notation: if
+f : {0, 1}r × {0, 1}r → {0, 1}m is a function and a, b are samples from (t × r)
+somewhere sources, f (~a, ~b) refers to the (t×m) matrix whose ith row is f (ai , bi ).
+Similarly, if c is an element of {0, 1}r and b is a sample from a (t×r) somewhere
+source, f (c, ~b) refers to the (t × m) matrix whose ith row is f (c, bi ).
+We first write down the algorithm for our extractor. Then we shall describe the construction in words and give more intuition.
+Algorithm 7.6.
+BasicExt(x, y)
+Input: x, a sample from an (n, k) source and y a sample from a (k γ × k)
+β
+k -somewhere-random source.
+Output: z
+Let w, w0 , w00 , l, d, β1 be parameters that we will pick later. These will
+satisfy w00 > w > k γ and w − k γ > w0 .
+0
+Let Raz1 : {0, 1}n ×{0, 1}w → {0, 1}w be the extractor from Theorem 3.26
+setup to extract w0 bits from an (n, k) source, using a (w, 0.9w) source as seed.
+0
+00
+Let Raz2 : {0, 1}w × {0, 1}w → {0, 1}d be the extractor from Theorem 3.26, setup to extract d bits from a (w0 , w0 ) source and an independent
+(w00 , 0.9w00 ) source.
+β
+1+γ
+Let Ext1 : {0, 1}n × {0, 1}d → {0, 1}k−k 1 and Ext2 : {0, 1}k × {0, 1}d →
+β
+{0, 1}k−2k 1 be strong seeded extractors from Theorem 3.24, each set up to
+Ω(1)
+extract from min-entropy k − k β1 with error 2−k .
+(k γ × k) k β -SR-source Y
+
+1536
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+γ
+
+β
+
+γ
+
+β
+
+Let 2SRExt : {0, 1}k (k−2k 1 ) × {0, 1}k (k−2k 1 ) → {0, 1}m be the extractor
+from Theorem 3.27, setup to extract from two aligned (k γ × k − 2k β1 ) SRsources. Let Slice be the function defined in Definition 3.8.
+1. Set s = Slice(y, w).
+2. Treating s as a list of k γ seeds, use it to extract from x to get q =
+Raz1 (x, ~s). The result is a string with k γ rows, each of length w0 .
+3. Set r = Slice(y, w00 ).
+4. Let h = Raz2 (~q, ~r), i.e., h is a list of k γ strings, where the ith string is
+Raz2 (qi , ri ).
+5. Let x0 = Ext1 (x, ~h), y 0 = Ext2 (y, ~h).
+6. Use 2SRExt to get z = 2SRExt(x0 , y 0 ).
+The first target in the above algorithm is to generate a list of candidate
+seeds (S) from the sources, one of which will be close to uniformly random. To
+generate the list of seeds that we want, we will first take a small slice of the bits
+from Y ; i.e., we take Slice(Y, w), where w is a parameter that we will pick later.
+(Think of w as k µ for small µ.) We will be able to guarantee that at least one
+of the rows of Slice(Y, w) has high entropy. We can then use Raz’s extractor
+Theorem 3.26 with these bits to extract from X. This gives us a (k γ × w0 )
+SR-source Q, where w0 = k θ(1)  w is some parameter that we will pick later.
+The two sources that we have now (Q and Y ) are not independent, but note
+that when we fix the slice of bits (S) that we used, we get two independent
+sources. Y conditioned on the value of S could potentially lose entropy in its
+high entropy row. Still, we can expect this high entropy row to have about
+k − k β − wk γ bits of entropy since we fixed only wk γ bits of Y in S. In the
+next step we take a wider slice of Y and call it R = Slice(Y, w00 ). Note that
+on fixing S to a typical value, we get that Q, R are two independent aligned
+somewhere high entropy sources. We then use Raz’s extractor again to convert
+Q, R into a somewhere-random source H, by applying the extractor to each
+pair of rows from Q, R. Since Raz’s extractor is strong, we will be able to
+guarantee that one of the rows in the resulting SR-source is independent of
+both input sources. Further, we can fix a random variable that determines the
+value of H, yet does not break the independence between X, Y .
+Thus, once we have H, we can use it with a strong seeded extractor to
+extract from both X and Y to get independent aligned SR-sources of the type
+that Theorem 3.27 can handle.
+We will prove the following lemma.
+Lemma 7.7. For every (n, k) source X and a (k γ × k) k β -somewhererandom source Y as in Theorem 7.5, we can pick w, w0 , w00 , l, d, β1 and a conΩ(1)
+stant β such that (X ◦ Y ) is 2−k -close to a convex combination of sources
+such that for any source in the convex combination, (X 0 ◦ Y 0 ) in Step 5 above,
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1537
+
+1. X 0 is independent of Y 0 .
+2. X 0 is a (k γ × k − k β ) SR-source.
+3. Y 0 is a (k γ × k − k β ) SR-source.
+Given the lemma, we have reduced the problem to one of extracting from
+aligned somewhere-random sources. Theorem 7.5 then follows by the properties of 2SRExt.
+Proof of Lemma 7.7. We assume that we have some fixed random variables X, Y that satisfy the hypotheses of the lemma. We will make several
+claims about the various random variables involved in the construction, setting w, w0 , w00 , l, d, β1 along the way to ensure that our lemma is true. In the
+rest of this proof, a capital letter represents the random variable for the corresponding small letter in the construction above.
+Recall that k β (we are allowed to set β < 1 to anything we want) is the
+randomness deficiency of the random row in Y . Note that
+β
+
+Claim 7.8. For any w > 2k β , S is 2−k close to a (k γ × w) (w − 2k β )SR-source
+Proof. This follows from an application of Lemma 3.14.
+
+
+
+We set w = k α1 for some constant α1 such that α1 +γ < 1 and α1 > β and
+set w0 = w/10. Note that Theorem 3.26 does give an extractor for a (w, w−2k β )
+source and an independent (n, k) source with output length w/10.
+Now Q is correlated with both X and Y . However, when we fix S, Q
+becomes independent of Y ; i.e., (X ◦ Q)|S = s is independent of Y |S = s for
+any s. Since Raz1 is a strong extractor, Q still contains a random row for a
+typical fixing of S.
+Claim 7.9. There exists some constant α2 < 1 such that Prs←R S [Q|S =
+α
+α
+s is 2−k 2 close to a (k γ × w0 ) SR-source] > 1 − 2−k 2 .
+Thus, with high probability, Q is independent up to convex combinations
+from Y .
+Next, set w00 = k α3 , where 1 > α3 > α1 + γ is any constant. Now consider
+the random variable R.
+β
+
+Claim 7.10. R is 2−k close to a (k γ × w00 ) (w00 − 2k β )-SR-source.
+Proof. This follows from an application of Lemma 3.14.
+
+
+β
+
+Now we assume that R is in fact a w00 − 2k β -SR-source. (We will add 2−k
+to the final error.) After we fix S, R can lose entropy in its random row, but
+not much. We can expect it to lose as many bits of entropy as there are in S,
+
+1538
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+which is only k α1 +γ . Since we picked w00 = k α3  k α1 +γ , we get that R still
+contains entropy.
+Claim 7.11. Prs←R S [R|S = s is a (k γ × w00 ) (w00 − 2k α3 )-SR-source ] >
+α
+1 − 2−k 3 .
+Proof. By Fact 3.12, we get that
+Pr [R|S = s is a (k γ × w00 ) (w00 − k α1 +β − l)-SR-source ] > 1 − 2l .
+
+s←R S
+
+Setting l = k α3 gives the claim.
+
+
+
+Thus, up to a typical fixing of S, (Q, R) are statistically close to two
+aligned sources, Q a (k γ × w0 ) SR-source, and R an independent (k γ × w00 )
+(0.1w00 )-SR source. If we set d = w0 /10, we see that our application of Raz2
+above succeeds. In the aligned good row, Raz2 gets two independent (after
+fixing S) sources that are statistically close to having extremely high entropy.
+The result of applying Raz2 is the random variable H.
+Claim 7.12. H is 2−Ω(d) close to a (k γ , Ω(d)) SR-source.
+In addition, we argue that the random row of H is independent of both
+X and Y . Without loss of generality, assume that H 1 is the random row of H.
+α
+Let α4 > 0 be a constant such that 2−k 4 is an upperbound on the error of
+Ext1 , Ext2 . Then for a typical fixing of Q, R, we get that X, Y are independent
+sources, and the random row of H (which is determined by (Q, R)) is a good
+seed to extract from both sources.
+Claim 7.13. With high probability, H contains a good seed to extract from
+each of the sources:
+Pr
+
+α4
+
+α4
+
+α4
+
+α4
+
+[|Ext2 ((Y |R = r), h1 (q, r)) − Um | ≥ 2−k ]] < 2−k ,
+
+(q,r)←R (Q,R)
+
+Pr
+
+[|Ext1 ((X|S = s(r), Q = q), h1 (q, r)) − Um | ≥ 2−k ] < 2−k .
+
+(q,r)←R (Q,R)
+
+Sketch of proof. There are two ways in which the claim can fail. Either
+S, Q, R steal a lot of entropy from X, Y , or they produce a bad seed in H
+to extract from X|S = s, Q = q or Y |R = r. Both events happen with small
+probability.
+Specifically, we have that there exist constants β1 , β2 such that
+β
+
+• By Lemma 3.13, Prr←R R [H∞ (Y |R = r) < k − k β1 ] < 2−k 2 .
+β
+• By Lemma 3.13, Pr(q,r)←R R [H∞ (X|R = r, Q = q) < k − k β1 ] < 2−k 2 .
+β
+• By our earlier claims, Prr←R R [H|R = r is 2−k 2 -close to being somewhere random].
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1539
+β
+
+• By our earlier claims, Pr(s,q)←R (S,Q) [H|S = s, Q = q is 2−k 2 -close to
+being somewhere random].
+• By the properties of the strong seeded extractor Ext1 , for any s, q such
+β
+that H∞ (X|S = s, Q = q) ≥ k − k β1 and H|S = s, Q = q is 2−k 2 -close
+to being somewhere random,
+β2
+
+β2
+
+[|Ext1 ((X|S = s, Q = q), (H|S = s, Q = q)) − Um | ≥ 2−k ] < 2 · 2−k .
+
+Pr
+
+h←R H|Q=q,S=s
+
+• By the properties of the strong seeded extractor Ext2 , for any r such that
+β
+H∞ (Y |R = r) ≥ k − k β1 and H|R = r is 2−k 2 -close to being somewhere
+random,
+Pr
+
+h←R H|R=r
+
+β2
+
+β2
+
+[|Ext2 ((Y |R = r), (H|R = r)) − Um | ≥ 2−k ] < 2 · 2−k .
+
+Thus, we can use the union bound to get our final estimate.
+
+
+
+This concludes the proof of Theorem 7.5.
+
+
+
+Proof of Theorem 7.1. As in [Rao09], the theorem is obtained by repeated
+condensing of SR-sources. In each condensing step, we will consume one block
+of X to reduce the number of rows of the SR-source by a factor of k Ω(1) . Thus,
+after O(log t/ log k) steps, we will have reduced the number of rows to just one,
+at which point extraction becomes trivial.
+Algorithm 7.14.
+Cond(x, y)
+Set γ  1/2 to some constant value. Let β be the constant guaranteed
+by Theorem 7.1.
+For these γ, β, let BasicExt be the function promised by Theorem 7.5. Let
+m, ε be the output length and error of BasicExt respectively.
+Input: x = x1 ◦ x2 ◦ · · · ◦ xc , a sample from a block-source and y a sample
+from a (t × k) SR-source.
+Output: z = x2 ◦ x3 ◦ · · · ◦ xc and y 0 a ((t/k γ ) × m) sample that we will
+claim comes from a SR-source.
+1. Partition the t rows of y equally into t/k γ parts, each containing k γ
+rows. Let y (j) denote the j th such part.
+2. For all 1 ≤ j ≤ t/k γ , let yj0 = BasicExt(x1 , y (j) ).
+0
+3. Let y 0 be the string with rows y10 , y20 , . . . , yt/k
+γ.
+Given X = X 1 ◦· · ·◦X c and Y , the above algorithm uses X 1 to condense Y .
+Even though this introduces dependencies between X and Y , once we fix X 1 ,
+the two output distributions are once again independent. Formally, we will
+argue that after applying the condenser, the output random variables Z and
+Y 0 above are statistically close to a convex combination of independent sources,
+where Z is a block-source with one less block than X and Y 0 is an SR-source
+with much fewer rows than Y .
+
+1540
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+Lemma 7.15. Let X, Y be as above. Let ε be the error of BasicExt. Then
+√
+(Z = X 2 ◦ . . . ◦ X c , Y 0 ) is 2 ε-close to a convex combination of sources where
+each source in the combination has
+1. Z is a (k, . . . , k) block-source.
+2. Y 0 is a (t/k γ , m) SR-source.
+3. Z is independent of Y 0 .
+Proof. Let h ∈ [t/k γ ] be such that Y (h) contains the random row. Consider
+√
+the random variable X 1 . We will call x1 good if |BasicExt(Y (h) , x1 )−Um | < ε,
+where m, ε are the output length and error of BasicExt respectively.
+Then we make the following easy claims.
+Claim 7.16. For good x1 ,
+1. Z|X 1 = x1 is a (k, . . . , k) block-source.
+√
+2. Y 0 |X 1 = x1 is a ε-close to being a ((t/k γ ) × m) SR-source.
+3. Z|X 1 = x1 is independent of Y 0 |X 1 = x1 .
+Proof. The first and third property are trivial. The second property is
+immediate from the definition of good.
+
+√
+Claim 7.17. Pr[X 1 is not good ] < ε.
+Proof. This is an immediate consequence of Theorem 7.5.
+
+
+
+These two claims clearly imply the lemma.
+
+
+
+Now we use Cond repeatedly until the second source contains just one row.
+At this point we use the one row with Raz’s extractor from Theorem 3.26 with
+X to get the random bits.
+To see that the bits obtained in this way are strong, first note that Raz’s
+extractor is strong in both inputs. Let O be the random variable that denotes
+the output of our function BExt(X, Y ). Let Q denote the concatenation of
+all the blocks of X that were consumed in the condensation process. Let Um
+denote a random variable that is independent of both X, Y . Then we see
+that these variables satisfy the hypothesis of Lemma 3.2; i.e., on fixing Q to a
+good value, Raz’s extractor guarantees that the output is independent of both
+inputs; thus, we must have that the output is close to being independent of
+both inputs. The dominant error term in BExt comes from the first step, when
+we convert Y to an SR-source.
+
+8. Open problems
+Better Independent Source Extractors: A bottleneck to improving
+our disperser is the block versus general source extractor of Theorem 2.4.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+1541
+
+A good next step would be to try to build an extractor for one blocksource (with only a constant number of blocks) and one other independent source that works for polylogarithmic entropy, or even an extractor
+for a constant number of sources that works for sub-polynomial entropy.
+Simple Dispersers: While our disperser is polynomial time computable,
+it is not as explicit as one might have hoped. For instance the Ramsy
+graph construction of Frankl-Wilson is extremely simple. For a prime p,
+let the vertices of the graph be all subsets of [p3 ] of size p2 − 1. Two
+vertices S, T are adjacent if and only if |S ∩ T | ≡ −1 mod p. It would be
+nice to find a good disperser that beats the Frankl-Wilson construction,
+yet is comparable in simplicity.
+9. Acknowledgements
+We would like to thank David Zuckerman for useful comments.
+References
+[Alo98]
+
+N. Alon, The Shannon capacity of a union, Combinatorica 18 (1998),
+301–310. MR 1721946. Zbl 0921.05039. http://dx.doi.org/10.1007/
+PL00009824.
+[Bar06]
+B. Barak, A simple explicit construction of an nõ(log n) -Ramsey graph,
+2006, Tech. report. arXiv math.CO/0601651.
+[BIW06]
+B. Barak, R. Impagliazzo, and A. Wigderson, Extracting randomness using few independent sources, SIAM J. Comput. 36 (2006), 1095–
+1118, preliminary version in FOCS 2004. MR 2272272. Zbl 1127.68030.
+http://dx.doi.org/10.1137/S0097539705447141.
++
+[BKS 10] B. Barak, G. Kindler, R. Shaltiel, B. Sudakov, and A. Wigderson, Simulating independence: New constructions of condensers, Ramsey graphs, dispersers, and extractors, J. ACM 57 (2010), 52pp, preliminary version in STOC 2005. MR 2677118. Zbl 1192.68468. http:
+//dx.doi.org/10.1145/1734213.1734214.
+[Bou05]
+J. Bourgain, More on the sum-product phenomenon in prime fields and
+its applications, Int. J. Number Theory 1 (2005), 1–32. MR 2172328.
+Zbl 1173.11310. http://dx.doi.org/10.1142/S1793042105000108.
+[BKT04]
+J. Bourgain, N. Katz, and T. Tao, A sum-product estimate in finite fields, and applications, Geom. Funct. Anal. 14
+(2004), 27–57. MR 2053599. Zbl 1145.11306. http://dx.doi.org/10.1007/
+s00039-004-0451-1.
+[CRVW02] M. Capalbo, O. Reingold, S. Vadhan, and A. Wigderson, Randomness conductors and constant-degree lossless expanders, in Proceedings of the Thirty-Fourth Annual ACM Symposium on Theory of Computing, ACM, New York, 2002, pp. 659–668. MR 2121193. Zbl 1192.68475.
+http://dx.doi.org/10.1145/509907.510003.
+
+1542
+
+[CG88]
+
+BOAZ BARAK, ANUP RAO, RONEN SHALTIEL, and AVI WIGDERSON
+
+B. Chor and O. Goldreich, Unbiased bits from sources of weak randomness and probabilistic communication complexity, SIAM J. Comput.
+17 (1988), 230–261. MR 0935339. Zbl 0644.94008. http://dx.doi.org/10.
+1109/SFCS.1985.62.
+[CV]
+K.-M. Chung and S. Vadhan, personal communication.
+[FW81]
+P. Frankl and R. M. Wilson, Intersection theorems with geometric
+consequences, Combinatorica 1 (1981), 357–368. MR 0647986. Zbl 0498.
+05048. http://dx.doi.org/10.1007/BF02579457.
+[Gop06]
+P. Gopalan, Constructing Ramsey graphs from boolean function representations, in Proceedings of the 21st Annual IEEE Conference on Computational Complexity (CCC’06), 2006. http://dx.doi.org/10.1109/CCC.
+2006.14.
+[Gro00]
+V. Grolmusz, Low rank co-diagonal matrices and Ramsey graphs, Electron. J. Combin. 7 (2000), Research Paper 15, 7 pp. MR 1756284.
+Zbl 0939.05060. Available at http://www.combinatorics.org/ojs/index.
+php/eljc/article/view/v7i1r15.
+[Gur04]
+V. Guruswami, Better extractors for better codes?, in Proceedings of
+the 36th Annual ACM Symposium on Theory of Computing, ACM, New
+York, 2004, pp. 436–444. MR 2121629. Zbl 1192.68363. http://dx.doi.
+org/10.1145/1007352.1007422.
+[LRVW03] C.-J. Lu, O. Reingold, S. Vadhan, and A. Wigderson, Extractors:
+optimal up to constant factors, in Proceedings of the Thirty-Fifth Annual ACM Symposium on Theory of Computing, ACM, New York, 2003,
+pp. 602–611. MR 2120441. Zbl 1192.68859. http://dx.doi.org/10.1145/
+780542.780630.
+[MNSW98] P. B. Miltersen, N. Nisan, S. Safra, and A. Wigderson, On data
+structures and asymmetric communication complexity, J. Comput. System
+Sci. 57 (1998), 37–49. MR 1649806. Zbl 0920.68042. http://dx.doi.org/
+10.1006/jcss.1998.1577.
+[PR04]
+P. Pudlák and V. Rödl, Pseudorandom sets and explicit constructions of Ramsey graphs, in Complexity of Computations and Proofs, Quad.
+Mat. 13, Dept. Math., Seconda Univ. Napoli, Caserta, 2004, pp. 327–346.
+MR 2131412. Zbl 1074.05088.
+[Ram30]
+F. P. Ramsey, On a problem of formal logic, Proc. London Math. Soc.
+S2-30 (1930), 264–286. MR 1576401. JFM 55.0032.04. http://dx.doi.
+org/10.1112/plms/s2-30.1.264.
+[Rao09]
+A. Rao, Extractors for a constant number of polynomially small minentropy independent sources, SIAM J. Comput. 39 (2009), 168–194, preliminary version in STOC 2006. http://dx.doi.org/10.1137/060671218.
+[Raz05]
+R. Raz, Extractors with weak random seeds, in STOC’05: Proceedings of
+the 37th Annual ACM Symposium on Theory of Computing, ACM, New
+York, 2005, pp. 11–20. MR 2181597. Zbl 1192.68373. http://dx.doi.org/
+10.1145/1060590.1060593.
+
+2-SOURCE DISPERSERS FOR no(1) ENTROPY
+
+[RRV02]
+
+[RSW00]
+
+[SV86]
+
+[Sha02]
+
+[TSZ04]
+
+[Tre01]
+
+[Vaz85]
+
+[WZ99]
+
+1543
+
+R. Raz, O. Reingold, and S. Vadhan, Extracting all the randomness
+and reducing the error in Trevisan’s extractors, J. Comput. System Sci.
+65 (2002), 97–128. MR 1946290. Zbl 1020.68029. http://dx.doi.org/10.
+1006/jcss.2002.1824.
+O. Reingold, R. Shaltiel, and A. Wigderson, Extracting randomness via repeated condensing, in 41st Annual Symposium on Foundations of Computer Science (Redondo Beach, CA, 2000), IEEE Comput. Soc. Press, Los Alamitos, CA, 2000, pp. 22–31. MR 1931801.
+http://dx.doi.org/10.1109/SFCS.2000.892008.
+M. Sántha and U. V. Vazirani, Generating quasi-random sequences
+from semi-random sources, J. Comput. System Sci. 33 (1986), 75–87.
+MR 0864080. Zbl 0612.94004. http://dx.doi.org/10.1016/0022-0000(86)
+90044-9.
+R. Shaltiel, Recent developments in explicit constructions of extractors, Bull. Eur. Assoc. Theor. Comput. Sci. EATCS (2002), 67–95.
+MR 1920329. Zbl 1051.68070.
+A. Ta-Shma and D. Zuckerman, Extractor codes, IEEE Trans. Inform.
+Theory 50 (2004), 3015–3025. MR 2103480. http://dx.doi.org/10.1109/
+TIT.2004.838377.
+L. Trevisan, Extractors and pseudorandom generators, J. ACM 48
+(2001), 860–879. MR 2144932. Zbl 1127.68403. http://dx.doi.org/10.
+1145/502090.502099.
+U. Vazirani, Towards a strong communication complexity theory or
+generating quasi-random sequences from two communicating slightlyrandom sources (extended abstract), in Proceedings of the 17th Annual ACM Symposium on Theory of Computing, 1985, pp. 366–378.
+http://dx.doi.org/10.1145/22145.22186.
+A. Wigderson and D. Zuckerman, Expanders that beat the eigenvalue bound: explicit construction and applications, Combinatorica 19
+(1999), 125–138. MR 1722214. Zbl 0929.05075. http://dx.doi.org/10.
+1007/s004930050049.
+
+(Received: March 4, 2009)
+Microsoft Research New England, Cambridge, MA
+E-mail : b@boazbarak.org
+University of Washington, Seattle, WA
+E-mail : anuprao@cs.washington.edu
+University of Haifa, Mount Carmel, Haifa, Israel
+E-mail : ronen@cs.haifa.ac.il
+Institute for Advanced Study, Princeton, NJ
+E-mail : avi@math.ias.edu
+
+

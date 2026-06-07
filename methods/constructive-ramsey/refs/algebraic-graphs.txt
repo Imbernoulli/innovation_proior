@@ -1,0 +1,1346 @@
+Ramsey properties of algebraic graphs and hypergraphs
+
+arXiv:2103.05618v2 [math.CO] 17 Mar 2021
+
+Benny Sudakov∗
+
+István Tomon∗
+
+Abstract
+One of the central questions in Ramsey theory asks how small can be the size of the largest
+clique and independent set in a graph on N vertices. By the celebrated result of Erdős from 1947,
+the random graph on N vertices with edge probability 1/2, contains no clique or independent set
+larger than 2 log2 N , with high probability. Finding explicit constructions of graphs with similar
+Ramsey-type properties is a famous open problem. A natural approach is to construct such graphs
+using algebraic tools.
+Say that an r-uniform hypergraph H is algebraic of complexity (n, d, m) if the vertices of H are
+elements of Fn for some field F, and there exist m polynomials f1 , . . . , fm : (Fn )r → F of degree
+at most d such that the edges of H are determined by the zero-patterns of f1 , . . . , fm . The aim of
+this paper is to show that if an algebraic graph (or hypergraph) of complexity (n, d, m) has good
+Ramsey properties, then at least one of the parameters n, d, m must be large.
+In 2001, Rónyai, Babai and Ganapathy considered the bipartite variant of the Ramsey problem
+and proved that if G is an algebraic graph of complexity (n, d, m) on N vertices, then either G or its
+complement contains a complete balanced bipartite graph of size Ωn,d,m (N 1/(n+1) ). We extend this
+result by showing that such G contains either a clique or an independent set of size N Ω(1/ndm) and
+prove similar results for algebraic hypergraphs of constant complexity. We also obtain a polynomial
+regularity lemma for r-uniform algebraic hypergraphs that are defined by a single polynomial, that
+might be of independent interest. Our proofs combine algebraic, geometric and combinatorial tools.
+
+1
+
+Introduction
+
+The quantitative version of Ramsey’s theorem, proved by Erdős and Szekeres [24], tells us that every
+graph on N vertices contains a clique or an independent set of size at least 12 log2 N . In 1947, Erdős [18]
+proved that this bound is best possible up to the constant factor, as the random graph on N vertices
+with edge probability 1/2 contains no clique or independent set of size larger than 2 log2 N , with high
+probability. Since then, it became a central problem in graph theory to find explicit constructions of
+graphs having only logarithmic sized cliques and independent sets. One natural approach to construct
+such graphs is to use algebraic tools.
+Let r, n, d, m be positive integers. Say that an r-uniform hypergraph H is algebraic of complexity
+(n, d, m) if the following holds. The vertex set of H is a subset of Fn , where F is some field, and
+there exist m polynomials f1 , . . . , fm : (Fn )r → F of degree at most d and a Boolean formula φ :
+{false, true}m → {false, true} such that {v1 , . . . , vr } ∈ V (H)(r) is an edge if and only if
+φ([f1 (v1 , . . . , vr ) = 0], . . . , [fm (v1 , . . . , vr ) = 0]) = true,
+
+(1)
+
+i.e., the edges of H are determined by zero patterns of polynomials f1 , . . . , fm . We assume that for
+{v1 , . . . , vr } ∈ V (H)(r) , the left hand side of (1) is invariant under the permutation of {v1 , . . . , vr },
+∗
+
+ETH Zurich, e-mail : {benjamin.sudakov,istvan.tomon}@math.ethz.ch
+
+1
+
+so the edges of H are well defined. Also, say that an r-uniform hypergraph H is strongly-algebraic
+of complexity (n, d), if there exists a single polynomial f : (Fn )r → F of degree at most d such that
+{v1 , . . . , vr } ∈ V (H)(r) is an edge if and only if f (v1 , . . . , vr ) 6= 0. We assume that the statement
+f (v1 , . . . , vr ) = 0 is invariant under the permutation of v1 , . . . , vr . (We could have also defined edges
+by f (v1 , . . . , vr ) = 0, but later it will be more convenient to work with this definition.)
+
+1.1
+
+Ramsey properties of algebraic graphs
+
+One of the most well known explicit constructions of graphs having small cliques and independent
+sets is due to Frankl and Wilson [25]. For a prime p, they consider the graph G, whose vertex set
+is the p2 − 1 element subsets of [n], and the sets A and B are joined by an edge if |A ∩ B| ≡ −1
+(mod p). This graph is strongly-algebraic of complexity (n, 2), as we can identify each set with its
+characteristic vector over Fnp , and two such vectors v and w are joined by an edge if hv, wi 6= −1.
+Note that G is also algebraic of complexity (p2 − 1, 1, (p2 − 1)2 ) over R, as we can identify each set
+2
+of size p2 − 1 with a vector listing its elements, and whether the vectors u, v ∈ Rp −1 are joined by
+an edge can be decided by the (p2 − 1)2 linear equations u(i) = v(j). The number of vertices of G is
+
+N = p2n−1 , and the celebrated Frankl-Wilson theorem on restricted intersections implies that G has
+n 
+no clique or independent set of size larger than p−1
+= Op (N 1/(p+1) ). Choosing n = p3 , the largest
+√
+
+clique and independent set in G has size 2O( log N log log N ) . Another candidate for a graph with good
+Ramsey properties is the Paley-graph. If p = 1 (mod 4) is a prime, the Paley-graph of order p is the
+graph whose vertex set is Fp , and x and y are joined by an edge if x + y is a quadratic residue, that is,
+(x + y)(p−1)/2 6= −1. Such graphs are strongly-algebraic of complexity (1, (p − 1)/2), and it is widely
+believed that Paley-graphs have only polylogarithmic sized cliques or independent sets. For the best
+known explicit constructions of Ramsey graphs, see the recent works of Chattopadhyay, Zuckerman [7]
+and Cohen [11].
+The above two constructions of algebraic graphs have at least one large parameter in their
+complexity. In this paper we show that this is not a coincidence, and if an algebraic graph of complexity
+(n, d, m) has good Ramsey properties, then at least one of the parameters n, d, m must be large. In
+2001, Rónyai, Babai and Ganapathy [35] considered a bipartite version of this problem. A bi-clique
+in a graph G is two disjoint sets A, B ⊂ V (G) such that |A| = |B| and every vertex in A is joined to
+every vertex in B by an edge. Note that if G is the random N -vertex graph with edge probability 1/2,
+then the size of the largest bi-clique in both G and its complement is O(log N ), with high probability.
+In contrast, Rónyai, Babai and Ganapathy [35] proved that if G is an algebraic graph on N vertices
+of complexity (n, d, m), then either G or its complement contains a bi-clique of size at least cN 1/(n+1) ,
+where c = c(n, d, m) > 0. However, the existence of large bi-cliques or their complements does not
+imply the existence of large cliques or independent sets. Our first theorem extends the result of Rónyai,
+Babai and Ganapathy as follows.
+Theorem 1.1. There exists a constant c > 0 such that the following holds. Let n, d, m, N be positive
+integers. Let G be an algebraic graph of complexity (n, d, m) on N vertices. Then G contains either a
+clique or an independent set of size at least c′ N 1/γ , where c′ = c′ (n, d, m) > 0 and
+
+
+n log d
+.
+γ = cnm min d,
+log n
+
+2
+
+I.e., the growth of exponent γ as a function of n is linear, while as a function of d, it is at most
+logarithmic.
+The more general multicolor Ramsey problem considers edge-colorings of the complete graph KN
+with t colors, and asks how small can be the size of the largest monochromatic clique. A coloring
+c : E(KN ) → [t] of the complete graph KN with t colors is algebraic of complexity (n, d, m), if there
+exist m polynomials f1 , . . . , fm : (Fn )2 → F of degree at most d and a function φ : {false, true}m → [t]
+such that c(u, v) = φ({fi (u, v) = 0}i∈[m] ).
+In case t = p + 1, where p is prime, the best known construction (not necessarily explicit) of a
+coloring of KN with t colors having small monochromatic cliques is a recent result of Conlon and
+Ferber [12], which was further improved for t > 3 by Wigderson [41]. In [12], it is proved that if
+n is a positive integer and N = 2n/2 p3n/8+o(n) , then KN has a coloring with t colors containing no
+monochromatic clique of size n. Surprisingly, the coloring they provide is almost algebraic. More
+precisely, first they consider an algebraic (t − 1)-coloring of complexity (n, 2, t − 1), and then they
+recolor the last color class with two new colors randomly.
+We prove the extension of Theorem 1.1, which shows that in an algebraic coloring of complexity
+(n, d, m), at least one of the parameters n, d, m must be large if we want to avoid large monochromatic
+cliques.
+Theorem 1.2. There exists a constant c > 0 such that the following holds. Let n, d, m, t, N be positive
+integers. Every algebraic coloring of KN of complexity (n, d, m) with t colors contains a monochromatic
+clique of size at least c′ N 1/γ , where c′ = c′ (n, d, m) and
+
+
+n log d
+γ = cnm min d,
+.
+log n
+
+1.2
+
+Ramsey properties of algebraic hypergraphs
+
+The Ramsey problem for hypergraphs is also subject of extensive study. For positive integers r and t,
+let Rr (t) denote the smallest N such that any r-uniform hypergraph on N vertices contains either a
+clique or an independent set of size t. Erdős, Hajnal and Rado [21] and Erdős and Rado [22] proved
+that there exist constants c, C > 0 such that
+twr−1 (ct2 ) < Rr (t) < twr (Ct),
+where the tower function twk (x) is defined as tw1 (x) = x and twk (x) = 2twk−1 (x) . For recent
+developments on the topic, see also the works of Conlon, Fox, and Sudakov [14, 15].
+Semi-algebraic graphs and hypergraphs are closely related to algebraic ones and were first studied
+by Alon, Pach, Pinchasi, Radoičić and Sharir [2]. An r-uniform hypergraph H is semi-algebraic of
+complexity (n, d, m) if V (H) ⊂ Rn , and there exist m polynomials f1 , . . . , fm : (Rn )r → R and a
+Boolean formula φ such that {v1 , . . . , vr } ∈ V (H)(r) is an edge if and only if φ({fi (v1 , . . . , vr ) ≥
+0}i∈[m] ) is true.
+Let Rrn,d,m (t) denote the smallest N such that any r-uniform semi-algebraic hypergraph of
+complexity (n, d, m) contains either a clique or an independent set of size t. Conlon et al. [13] studied
+the Ramsey problem for semi-algebraic hypergraphs and proved that there exists c = c(r, n, m, d) > 0
+and C = C(r, n, m, d) > 0 such that
+twr−1 (ct) ≤ Rrn,d,m (t) < twr−1 (tC ).
+3
+
+In the special case of n = 1, Bukh and Matoušek [6] proved that if H is an r-uniform semi-algebraic
+hypergraph of complexity (n, d, m) on N vertices, then one can always find a clique or independent
+set of size at least c′ log log N , where c′ may not only depend on the complexity, but on the defining
+polynomials f1 , . . . , fm as well.
+Quite surprisingly, algebraic hypergraphs behave very differently. We show that such hypergraphs
+of constant complexity contain polynomial sized cliques or independent sets.
+Theorem 1.3. Let r, n, d, m be positive integers, then there exists γ = γ(r, n, d, m) > 0 and c =
+c(r, n, d, m) > 0 such that the following holds. If H is an r-uniform algebraic hypergraph of complexity
+(n, d, m) on N vertices, then H contains either a clique or an independent set of size at least cN 1/γ .
+One can choose
+
+
+
+n+d
+2
+γ = 2r m
++1 .
+d
+Let us remark that the existence of γ (whose dependence on n, d, m is not quite explicit) also follows
+from a model theoretic argument of Malliaris and Shelah, Theorem 3.5 in [34] (see also [9] for a shorter
+proof). They show that if H is a p-stable r-uniform hypergraph on N vertices (see [9] for definitions),
+then H contains either a clique or an independent set of size N γ , where γ = γ(r, p) > 0. They
+also remark that r-uniform algebraic hypergraphs of complexity (n, d, m) are also p-stable for some
+p = p(r, n, d, m).
+Theorem 1.3 might give the feeling that semi-algebraic graphs and hypergraphs have always
+stronger Ramsey-type properties than algebraic ones. In the concluding remarks, we will show that
+this is not always true.
+
+1.3
+
+Erdős-Hajnal conjecture and graphs of bounded VC-dimension
+
+Our results are also closely related to the celebrated Erdős-Hajnal conjecture. It was proved by Erdős
+and Hajnal [19] that if G is a graph on N vertices which contains no induced
+copy of some fixed graph
+√
+H, then G contains a clique or an independent set of size at least ec log N , where c = c(H) > 0 only
+depends on H. They also proposed the conjecture that G contains a clique or an independent set of
+size at least N c for some c = c(H) > 0. This conjecture, referred to as the Erdős-Hajnal conjecture, is
+one of the central open problems in graph theory. Say that a family of graphs G has the Erdős-Hajnal
+property, if there exists a constant c = c(G) > 0 such that every G ∈ G contains a clique or an
+independent set of size at least |V (G)|c . The Erdős-Hajnal conjecture is equivalent to the statement
+that every hereditary family of graphs has the Erdős-Hajnal property, unless it is the family of all
+graphs. Here, we say that a family F of r-uniform hypergraphs is hereditary, if F is closed under
+taking induced subhypergraphs.
+Although the Erdős-Hajnal conjecture is still wide open, its bipartite analog was solved twenty
+years ago by Erdős, Hajnal and Pach [20]. They proved that if an N -vertex graph G contains no
+induced copy of H, then either G or its complement has a bi-clique of size at least N c for some
+c = c(H) > 0. Fox and Sudakov [29] improved this by showing that either G contains a bi-clique of
+size N c , or it contains an independent set of size at least N c . This suggests that finding polynomial
+sized cliques or independent sets is considerably harder than finding bi-cliques, or their complements.
+The aforementioned bound of Erdős and Hajnal was recently improved for graphs of bounded
+VC-dimension. The concept of graphs of bounded VC-dimension extends both algebraic and
+semi-algebraic graphs of bounded complexity (as we shall see later). Let F be a family of subsets
+4
+
+of a base set X. If U ⊂ X, then F |U = {A ∩ U : A ∈ F} is the projection of F to U . Also, for every
+positive integer z, the shatter function of F is defined as
+πF (z) = max |F |U |.
+U ∈X (z)
+
+The VC-dimension (Vapnik-Chervonenkis dimension) of the family F is the largest integer n such that
+πF (n) = 2n , that is, there exists a set U ⊂ X of size n such that F |U = 2U . In this case, we say that U
+is shattered by F. The VC-dimension, introduced by Vapnik and Chervonenkis [40], is one of the most
+widely used measures of complexity of set systems in computer science and computational geometry.
+We say that a graph G has VC-dimension n if the family {N (v) : v ∈ V (G)} has VC-dimension n.
+Ramsey properties of graphs of bounded VC-dimension were recently studied by Fox, Pach and Suk
+[28]. They proved that if G is a graph on N vertices of VC-dimension n, then G contains either a
+1−o(1)
+, where o(1) → 0 as N → ∞ while n is fixed. It is
+clique or an independent set of size e(log N )
+c
+open whether this bound can be improved to N , where c = c(n) > 0, that is, whether the family of
+graphs of VC-dimension at most n has the Erdős-Hajnal property. Theorem 1.1 shows that this holds
+for the family of algebraic graphs of constant complexity.
+Corollary 1.4. Let n, d, m be positive integers. The family of algebraic graphs of complexity (n, d, m)
+has the Erdős-Hajnal property.
+
+1.4
+
+Regularity lemma for algebraic hypergraphs
+
+Graph and hypergraph regularity lemmas are among the most powerful tools in combinatorics. Let H
+be an r-uniform hypergraph, and let V1 , . . . , Vr be disjoint subsets of V (H). The density of (V1 , . . . , Vr )
+1 ,...,Vr )|
+is d(V1 , . . . , Vr ) = |E(V
+|V1 |...|Vr | , where E(V1 , . . . , Vr ) is the set of edges containing exactly one vertex
+from each of V1 , . . . , Vr . A partition of V (H) into parts V1 , . . . , VK is equitable if the sizes of V1 , . . . , VK
+differ by at most 1.
+If G is a graph, and (U, V ) is a pair of disjoint subsets of the vertex set, then (U, V ) is ǫ-regular,
+if |d(U, V ) − d(U ′ , V ′ )| < ǫ for every U ′ ⊂ U , V ′ ⊂ V satisfying |U ′ | ≥ ǫ|U | and |V ′ | ≥ ǫ|V |. The
+regularity lemma of Szemerédi [38] states that if G is a graph and ǫ > 0, then G has an equitable
+partition into K parts with 1/ǫ < K < m(ǫ), where m(ǫ) depends only on ǫ, such that all but ǫ fraction
+of the pairs of parts are ǫ-regular. Unfortunately, the dependence of m(ǫ) on 1/ǫ is Ackermann-type,
+so often this regularity lemma is quite inefficient.
+For certain special families of hypergraphs one can obtain stronger results. Say that the
+r-tuple of sets (V1 , . . . , Vr ) in the r-uniform hypergraph H is ǫ-homogeneous if d(V1 , . . . , Vr ) ≤ ǫ or
+d(V1 , . . . , Vr ) ≥ 1 − ǫ. Also, say that (V1 , . . . , Vr ) is homogeneous if it is 0-homogeneous. It was proved
+in the aforementioned paper of Fox, Pach and Suk [28] that if H has VC-dimension n, then H has an
+equitable partition into K parts with 1/ǫ < K < Or,n ((1/ǫ)2n+1 ) such that all but at most ǫ fraction of
+the r-tuples of parts are ǫ-homogeneous. The authors refer to this as “ultra-strong regularity lemma”
+and their bound on the number of parts has exponent which is optimal up to an absolute constant
+factor. This result improves on a sequence of earlier regularity lemmas for this class of hypergraphs
+[1, 8, 32]. One can do even better for semi-algebraic graphs. Fox, Pach and Suk [27] also proved that
+if H is semi-algebraic of constant complexity, then H has an equitable partition into K parts, where
+K is bounded by a polynomial of ǫ depending only on the complexity, such that all but at most ǫ
+fraction of the r-tuples of parts are homogeneous.
+5
+
+But what can we say about algebraic hypergraphs? It turns out that it is too much to ask for a
+partition in which all but a small fraction of r-tuples of parts are homogeneous. Indeed, if this would
+be true, it would imply that if G is an algebraic graph of complexity (n, d, m), then either G or its
+complement contains a bi-clique of linear size. In the concluding remarks, we present an example
+showing that this does not hold in general. On the other hand, Chernikov and Starchenko [8] showed
+(see Theorem 4.13) that if a hypergraph H is p-stable, then H has an equitable partition into K parts
+with 1/ǫ < K < Op ((1/ǫ)p+1 ) such that all r-tuples of parts are ǫ-homogeneous. Here, we will prove
+the following interesting regularity type lemma for strongly-algebraic hypergraphs, which shows that
+strongly-algebraic hypergraphs are halfway between semi-algebraic hypergraphs, and hypergraphs of
+bounded VC-dimension.
+Theorem 1.5. Let r, n, d be positive integers, then there exists c = c(r, n, d) such that the following
+holds. Let H be a strongly-algebraic r-uniform hypergraph of complexity (n, d). Then V (H) has an
+equitable partition V1 , . . . , VK with 8/ǫ < K < c(1/ǫ)r!(2n+1) parts such that all but at most ǫ-fraction
+of the r-tuples of parts are either empty, or have density at least 1 − ǫ.
+Another regularity lemma in algebraic setting was proved by Tao [39]. This lemma applies to
+graphs and hypergraphs whose vertices and edges are both defined by algebraic varieties of bounded
+complexity over some field F and more generally are definable sets of bounded complexity (see [39]
+for details). For example, the above mentioned, Paley-graph falls into this category. Tao’s lemma
+shows that remarkably one can find an ǫ-regular partition of the vertices of the graph or hypergraph
+in question into constant number of (definable) parts, where ǫ ≈ |F|−1/4 . Interestingly, this seems to
+be quite different from our regularity lemma for strongly-algebraic hypergraphs.
+Let us present an application of Theorem 1.5 to the Ramsey problem for strongly-algebraic
+hypergraphs. The following theorem roughly tells us that finding an independent set of size s for some
+constant s = s(r, n, d) in a strongly-algebraic r-uniform hypergraph of complexity (n, d) is almost as
+‘costly’ as finding a very large independent set. This suggests that the exponent in Theorem 1.3 can
+be improved and in order to do so, it is enough to show that every such hypergraph contains either
+an independent set of size s, or a large clique.
+
+Theorem 1.6. Let r, n, d be positive integers, s = (r − 1) n+d
++ 1, and c, α, β > 0. Let F be a
+d
+hereditary family of strongly-algebraic r-uniform hypergraphs of complexity (n, d). Suppose that each
+H ∈ F on N vertices contains either a clique of size at least cN α , or an independent set of size s.
+Then every H ∈ F on N vertices contains either a clique of size c1 N dαβ/n , or an independent set of
+size at least c2 N 1−β , where c1 , c2 > 0 depend only on the parameters r, n, d, c, α, β, and d = d(r) > 0
+depends only on r.
+Our paper is organized as follows. In the next section, we introduce our notation, and we prepare
+several tools in order to prove our theorems. We also present the proof of Theorem 1.3 in this section.
+Then, in Section 3, we present the proof of Theorems 1.1 and 1.2. We continue with the proof of
+Theorem 1.5 in Section 4, and present the proof of Theorem 1.6 in Section 5. Finally, we provide some
+discussion in the Concluding remarks.
+
+2
+
+Properties of algebraic hypergraphs
+
+In this section, we prepare some tools for the proofs of our main results, and we prove Theorem 1.3.
+First, let us introduce the notation we use throughout the paper, which is mostly conventional.
+6
+
+2.1
+
+Notation and preliminaries
+
+If V is some set and s is a positive integer, V (s) denotes the family of s element subsets of V . Let H
+
+be an r-uniform hypergraph. The density of H is d(H) = |E(H)|/ |V (H)|
+. If X ∈ V (H)(s) for some
+r
+1 ≤ s ≤ r − 1, then
+NH (X) = N (X) = {Y ∈ V (H)(r−s) : X ∪ Y ∈ E(H)}
+is the neighborhood of X.
+The following is a well known result, which tells us that hypergraphs of density very close to 1
+contain large cliques.
+1
+Lemma 2.1. Let N be a positive integer, N r−1
+< α < 12 , and let H be an r-uniform hypergraph on N
+vertices of density at least 1 − α. Then H contains a clique of size at least 41 (1/α)1/(r−1) .
+
+Proof. Select each vertex of H with probability p = (2N α1/(r−1) )−1 < 1, and let U be the set of
+
+selected vertices. Let X be the number of non-edges spanned by U , then E(X) ≤ αpr Nr . Delete a
+vertex of each non-edge in H[U ], and let V be the resulting set, then V is a clique. We have
+ 
+ 
+1 1 1/(r−1)
+N
+pN
+≥
+,
+E(|V |) ≥ E(|U | − X) = pN − αp
+≥
+2
+4 α
+r
+r
+
+where the last two inequalities hold by the choice of p. Hence, there exists a choice for U such that
+|V | ≥ 14 (1/α)1/(r−1) .
+In order to describe hypergraphs defined by a single polynomial, let us introduce directed
+hypergraphs. A directed r-uniform hypergraph (or r-uniform dihypergraph) is a pair H = (V, E),
+where V is the set of vertices, and E is a set of (ordered) r-tuples of distinct elements of V , called
+edges. Given an r-element subset f of V , an orientation of f is an r-tuple containing the elements of
+f . In a directed r-uniform hypergraph, we allow multiple orientations of the same r-element set. Say
+that an r-element set X of a dihypergraph H is complete if all r! orientations of X are edges. Let [H]
+be the hypergraph formed by the complete edges of H. A clique in an r-uniform directed hypergraph
+H is a clique in [H]. Also, an independent set of H is a subset of vertices in which no r-tuple forms
+an edge.
+Given I ⊂ [r] and an |I|-tuple of vertices X = (vi )i∈I , the I-neighborhood of X is NI (X) =
+NH,I (X) = {(vj )j∈[r]\I ∈ V r−|I| : (v1 , . . . , vr ) ∈ E}. Note that the vertices of X appear in the
+corresponding directed edges in the order given by I. In the case of directed graphs, we write simply
+N + (v) and N − (v) for the out- and in-neighborhood of v, respectively. If X is an r-tuple and k ∈ [r],
+then X(k) is the k-th element of X, and X̂(k) = (X(1), . . . , X(k − 1), X(k + 1), . . . , X(r)).
+
+2.2
+
+Linear algebra
+
+In this section, we collect some facts from linear algebra and we introduce the flattening rank of
+tensors. Let T : A1 × · · · × Ar → F be an r-dimensional tensor, where A1 , . . . , Ar are finite sets, and
+F is a field. For i ∈ [r], the i-flattening rank of T , denoted by franki (T ), is defined as follows. Let
+Bi = A1 × · · · × Ai−1 × Ai+1 × · · · × Ar , then T can be viewed as a matrix M with rows indexed
+by Ai , and columns indexed by Bi . Then franki (T ) := rank(M ). Note that franki (T ) = 1 if and
+only if T 6= 0, and there exist two functions f : Ai → F and g : Bi → F such that T (a1 , . . . , ar ) =
+f (ai )g(a1 , . . . , ai−1 , ai+1 , . . . , ar ). Also, the i-flattening rank of T is the minimum t such that T is the
+7
+
+sum of t tensors of i-flattening rank 1. Equivalently, franki (T ) is the dimension of the vector space
+generated by the rows of T in the i-th dimension.
+It is easy to see that the i-flattening rank satisfies the usual properties of rank. It is subadditive,
+and if T ′ is a subtensor of T , then franki (T ′ ) ≤ franki (T ). Here, T ′ : A′1 × · · · × A′r → F is a
+subtensor of T : A1 × · · · × Ar → F if A′i ⊂ Ai for i ∈ [r], and T ′ (a1 , . . . , ar ) = T (a1 , . . . , ar )
+for (a1 , . . . , ar ) ∈ A′1 × · · · × A′r . A detailed discussion of i-flattening rank and its combinatorial
+applications can be found in [17]. In this paper, we use the following property of the i-flattening rank
+of tensors defined by polynomials.
+Lemma 2.2. Let f : (Fn )r → F be a polynomial of degree at most d, and let V ⊂ Fn . Define the
+
+for
+r-dimensional tensor T : V r → F such that T (X) := f (X) for X ∈ V r . Then franki (T ) ≤ n+d
+d
+i ∈ [r].
+P
+Proof. Let Λ = {α ∈ Nn : ni=1 α(i) ≤ d}. For x ∈ Fn and α ∈ Nn , let hα (x) = x(1)α(1) . . . x(n)α(n) .
+Then the polynomial f can be written as
+X
+f (X) =
+hα (X(i))gα (X̂(i)),
+α∈Λ
+
+where X ∈ V r is considered as an r-tuple of elements of V , and gα : F(r−1)n → F is some polynomial for
+
+n+d
+α ∈ Λ. But then T is the sum of |Λ| ≤ n+d
+tensors
+of
+i-flattening
+rank
+1,
+so
+frank
+(T
+)
+≤
+i
+d
+d .
+
+We use this lemma in the next section to define a family of forbidden directed subhypergraphs in
+dihypergraphs defined by a single polynomial. Working with the flattening rank (versus matrix rank)
+is not necessary for this application, but later (see Section 5) we will exploit more of its properties.
+
+2.3
+
+Forbidden subhypergraphs
+
+In this section, we show that algebraic dihypergraphs defined by a single polynomial avoid the following
+simple family of dihypergraphs.
+Definition 2.3. For positive integers r, s, k with k ∈ [r], let M(r, s, k) be the family of r-uniform
+dihypergraphs M having the following form. There are given, not all necessarily distinct, vertices ui,j
+for (i, j) ∈ [s] × [r] forming the vertex set of M. For (i, i′ ) ∈ [s] × [s], let Xi,i′ be the r-tuple (of
+distinct) vertices satisfying Xi,i′ (j) = ui,j for j ∈ [r] \ {k}, and Xi,i′ (k) = ui′ ,k . Then Xi,i is an edge of
+M for i ∈ [s], and Xi,i′ is not an edge for 1 ≤ i < i′ ≤ s. The rest of the r-tuples can be either edges
+or non-edges. Also, let M(r, s) be the union of the families M(r, s, k) for k ∈ [r].
+Lemma 2.4. Let H be an algebraic r-uniform dihypergraph of complexity (n, d, 1). Then H contains
+
+no member of M(r, s) for s > n+d
+d .
+
+Proof. Let V = V (H), and let f be the polynomial defining H. Define the tensor T : V r → F such
+that for X ∈ V r , T (X) := f (X). For k ∈ [r], let Mk : V × V r−1 → F be the matrix defined as
+
+Mk (X(k), X̂(k)) := T (X) for X ∈ V r . Then by Lemma 2.2, we have rank(Mk ) = frankk (T ) ≤ n+d
+d .
+
+Let s > n+d
+n , and suppose that H contains a copy of a member of M(r, s, k) for some k ∈ [r].
+Then there exist ui,j ∈ V for (i, j) ∈ [s] × [r] such that the following holds. For (i, i′ ) ∈ [s] × [s],
+define Ui,i′ ∈ V r such that Ui,i′ (j) = ui,j for j 6= k, and Ui,i′ (k) = ui′ ,k . Then f (Ui,i ) 6= 0 for
+i ∈ [s] and f (Ui,i′ ) = 0 if 1 ≤ i < i′ ≤ s. But then the submatrix of Mk induced by the rows
+8
+
+u1,k , . . . , us,k and columns Û1,1 (k), . . . , Ûs,s (k) is an upper-triangular matrix, which has full rank.
+Therefore, rank(A) ≥ s, which is a contradiction.
+Lemma 2.5. Let H1 , . . . , Hm be r-uniform dihypergraphs on an N element vertex set V . If Hi contains
+no member of M(r, s) for i ∈ [m], then there exists U ⊂ V such that Hi [U ] is either a clique or an
+2
+independent set for i ∈ [m], and |U | ≥ cN 1/2r ms , where c = c(r, s, m) > 0 depends only on r, s, m.
+Proof. We prepare the proof with the following claims.
+Claim 2.6. Let G be a nonempty r-uniform hypergraph on M ≥ 100r vertices, and suppose that the
+density of G is at most 1 − α. Then there exists X ∈ V (G)(r−1) such that 1 ≤ |N (X)| ≤ (1 − α/2r)M .
+
+
+′
+Proof. Let α′ be the unique real number such that |E(G)| = (1−αr )M ≤ (1 − α) M
+r , then one can
+check that α′ ≥ α/2r. We prove by induction on r that G contains an (r − 1)-element set X such that
+1 ≤ |N (X)| ≤ (1 − α′ )M . This is certainly true if r = 1, so suppose that r ≥ 2.
+Let U ⊂ V (G) be the set of vertices with at least 1 neighbour. Then there exists u ∈ U such that
+|N (u)| ≤
+Note that
+
+r|E(G)|
+.
+|U |
+
+|U |
+′
+r ≥ |E(G)| as every edge is contained in U , so |U | ≥ (1 − α )M . But then
+
+ 
+′
+ 
+
+r (1−αr )M
+(1 − α′ )M − 1
+(1 − α′ )M
+=
+<
+.
+|N (u)| ≤
+r−1
+(1 − α′ )M
+r−1
+
+Let G ′ be the link graph of u. Then G ′ is a nonempty (r − 1)-uniform hypergraph such that |E(G ′ )| ≤
+
+(1−α′ )M
+. Therefore, by our induction hypothesis, there exists an (r − 2)-element set X ′ such that
+r−1
+1 ≤ |NG ′ (X ′ )| ≤ (1 − α′ )M . But then X = X ′ ∪ {u} satisfies 1 ≤ |NG (X)| ≤ (1 − α′ )M as well,
+finishing the proof.
+Claim 2.7. Let G be a nonempty r-uniform dihypergraph on M ≥ 100r vertices, and suppose that the
+density of [G] is at most 1 − α. Then there exist ℓ ∈ [r] and Y ∈ V (G)r−1 such that
+
+α 
+M.
+1 ≤ |N[r]\{ℓ} (Y )| ≤ 1 −
+2r · r!
+Proof. First, consider the case that [G] is nonempty. Then by the previous claim, there exists X ∈
+α
+V (G)(r−1) such that 1 ≤ |N[G] (X)| ≤ (1 − α/2r)M . Let U = V (G) \ N[G] (X), and note that |U | ≤ 2r
+M.
+′
+For every u ∈ U , the set X ∪ {u} has an orientation not present in G. Hence, there exist U ⊂ U ,
+ℓ ∈ [r], and an orientation Y of X such that |U ′ | ≥ |U |/r!, and U ′ is disjoint from N[r]\{ℓ} (Y ). But
+α
+)M . Also, N[G] (Y ) ⊂ N[r]\{ℓ} (Y ), so |N[r]\{ℓ} (Y )| ≥ 1 as well.
+then |N[r]\{ℓ} (Y )| ≤ (1 − 2r·r!
+Now consider the case when [G] is empty. Let β = 1/r!. In this case we show that there exist
+ℓ ∈ [r] and Y ∈ V (G)r−1 such that 1 ≤ |N[r]\{ℓ} (Y )| ≤ (1 − β)M . Suppose this is not the case, that
+is, for each W ∈ E(G) and ℓ ∈ [r] we have |N[r]\{ℓ} (Ŵ (ℓ))| > (1 − β)M . We define the sets of edges
+F0 , . . . , Fr of G as follows. Let F0 contain a single edge W0 of G. For i ∈ [r], Fi will have the following
+form. There exist x1 , . . . , xi ∈ V (G) such that Fi contains all r-tuples W for which W agrees with W0
+in exactly (r − i) coordinates, and the rest of the coordinates are a permutation of x1 , . . . , xi . Note
+that then |Fi | = r(r − 1) . . . (r − i + 1). If Fi is already defined satisfying this property, we define
+9
+
+Fi+1 as follows. For each W ∈ Fi , let IW be the set of coordinates ℓ ∈ [r] for which W (ℓ) = W0 (ℓ).
+Consider the set
+\ \
+U=
+N[r]\{ℓ} (Ŵ (ℓ)).
+W ∈Fi ℓ∈IW
+
+Then U is the intersection of (r − i)|Fi | ≤ r! subsets of V (G) of size at least (1 − β)M , hence,
+U is nonempty. Therefore, there exists xi+1 ∈ U . Let Fi+1 be the set of all edges W ′ for which
+Ŵ ′ (ℓ) = Ŵ (ℓ) and W ′ (ℓ) = xi+1 for some W ∈ Fi and ℓ ∈ IW . Then Fi+1 has the desired properties.
+In particular, Fr contains every orientation of {x1 , . . . , xr } contradicting that [G] is nonempty. This
+finishes the proof.
+Let us illustrate the previous argument in case r = 3. Here, F0 contains some edge abc. Then, we
+can find x = x1 such that abx, axc, xbc are all edges, they form F1 . Then, we can find some y = x2
+such that ayx, ybx, axy, yxc, xby, xyc are all edges, they form F2 . Finally, we can find some z = x3
+such that zyx, yzx, zxy, yxz, xzy, xyz are all edges, forming F3 .
+Let α = 2r · r!N −1/2rms . Let U0 = V (H), s0,i,k = s for (i, k) ∈ [m] × [r], and define the nested
+sequence of vertex sets U0 ⊃ U1 ⊃ . . . and sequence of integers sℓ,i,k for ℓ = 1, . . . and (i, k) ∈ [m] × [r]
+as follows. Suppose that Uℓ and sℓ,i,k are already defined for some ℓ ≥ 0 such that Hi [Uℓ ] contains no
+member of M(r, sℓ,i,k , k) for (i, k) ∈ [m] × [r]. Let I ⊂ [m] be the set of indices i such that Hi [Uℓ ] is
+nonempty. For such indices i, we must have sℓ,i > 1, as the family M(r, 1) is composed of a single
+dihypergraph containing a single edge. Consider three cases.
+Case 1. I = ∅. In this case we stop and set U = Uℓ .
+T
+Case 2. For every i ∈ I, the density of [Hi ][Uℓ ] is at least 1 − α. Let HI = i∈I [Hi ], then d(HI [Uℓ ]) ≥
+1 − α|I| ≥ 1 − αm. Therefore, by Lemma 2.1, HI [Uℓ ] contains a clique U of size at least
+1
+1/(r−1) . Note that H [U ] is a clique for every i ∈ I, and H [U ] is an independent set for
+i
+i
+4 (1/αm)
+every i ∈ [m] \ I.
+Case 3. There exists i ∈ I such that the density of [Hi ][Uℓ ] is less than 1 − α. As Hi [Uℓ ] is not empty,
+we get by Claim 2.7 that there exist X ⊂ Uℓr−1 and k ∈ [r] such that
+
+α 
+|Uℓ |.
+1 ≤ |NHi [Uℓ ],[r]\{k}(X)| ≤ 1 −
+2r · r!
+
+Let Uℓ+1 = Uℓ \ NHi [Uℓ ],[r]\{k} (X). Also, set sℓ,i′ ,k′ = sℓ+1,i′ ,k′ if (i′ , k′ ) 6= (i, k), and let sℓ+1,i,k =
+α
+sℓ,i,k − 1. Note that |Uℓ+1 | ≥ 2r·r!
+|Uℓ |, and Hj [Uℓ ] contains no member of M(r, sℓ+1,i′ ,k′ , k) for
+′
+′
+(i , k ) ∈ [m] × [r]. The latter is clear if (i′ , k′ ) 6= (i, k). If (i′ , k′ ) = (i, k), let f be any edge in
+Hi [Uℓ ] with fˆ(k) = X. If Hi [Uℓ+1 ] contains a member of M(r, sℓ+1,i,k , k), then together with f ,
+this forms a member of M(r, sℓ,i,k , k) in Hi [Uℓ ], contradiction.
+
+Pm Pr
+Let L be the index ℓ for which we stop. For ℓ = 1, . . . , L, let sℓ =
+i=1
+k=1 sℓ,i,k . Then
+α
+|Uℓ |, so
+s0 = rms, sL ≥ rm, and sℓ+1 = sℓ − 1, so we get L ≤ rm(s − 1). Also, |Uℓ+1 | ≥ 2r
+L
+rms
+1/2
+|UL | ≥ (α/2r · r!) N ≥ (α/2r · r!) N ≥ N .
+If we stop in Case 1., then U = Uℓ and so |U | ≥ N 1/2 . If we stop in Case 2., then |U | ≥
+1
+1/(r−1) ≥ cN 1/2msr(r−1) , where c = c(r, s, m) > 0 depends only on r, s, m. This finishes the
+4 (1/αm)
+proof.
+
+10
+
+From this, we can immediately deduce Theorem 1.3.
+Proof of Theorem 1.3. Let f1 , . . . , fm : (Fn )r be polynomials of degree at most d and φ be a Boolean
+formula defining H, and let Hi be the algebraic dihypergraph defined by fi on V (H) for i ∈ [m]. By
+
+Lemma 2.4, Hi contains no member of M(r, s) for s = n+d
+n + 1. But then by Lemma 2.5, there exists
+2
+U ⊂ V (H) such that |U | ≥ cN 1/2r ms and Hi [U ] is either a clique or an independent set for i ∈ [m].
+If X ∈ V (H)(r) and Y is an orientation of X, then X is an edge of H if and only if
+φ([Y 6∈ E(Hi )]i∈[m] ) = true.
+By the definition of U , the left-hand side is the same for every Y ∈ U r , so H[U ] is either a clique or
+an independent set.
+Let us remark that the bound in Lemma 2.5 is optimal in the following sense. Let G be a graph,
+which we view as a digraph in which each edge is oriented both ways. Note that if G contains no two
+sets of size ⌊s/2⌋ with no edges between them, then G contains no member of M(2, s) as well. But
+standard probabilistic arguments show that there are graphs G on N vertices containing no two such
+sets, and every clique and independent set in G is of size N O(1/s) . In the next section, we show that
+this bound can be significantly improved if we exploit some other properties of algebraic graphs as
+well.
+
+2.4
+
+Zero-patterns
+
+One of the key results in our proof is the following lemma of Rónyai, Babai and Ganapathy [35] on
+the number of zero-pattern of polynomials.
+Given a sequence of m polynomials f = (f1 , . . . , fm ) in n variables over the field F, a zero-pattern
+of f is a sequence ǫ ∈ {0, ∗}m for which there exists x ∈ Fn such that fi (x) = 0 if and only if ǫ(i) = 0.
+Let Z(f ) denote the number of zero-patterns of f . Using elegant algebraic tools, Rónyai, Babai and
+Ganapathy [35] proved the following.
+Lemma 2.8. Let f1 , . . . , fm : Fn → F be a sequence of polynomials of degree at most d. Then the
+
+number of zero-patterns of f = (f1 , . . . , fm ) is at most md+n
+. In particular, Z(f ) ≤ cmn , where
+n
+c = c(n, d) depends only on n and d.
+
+2.5
+
+Weak-VC-dimension
+
+In this section, we show that algebraic graphs of complexity (n, d, m) behave similarly as graphs
+of VC-dimension n. By the celebrated Sauer-Shelah lemma [36, 37], if a family of sets F has
+VC-dimesnion n, then
+n  
+X
+z
+≤ cz n ,
+πF (z) ≤
+i
+i=0
+
+where c = c(n) depends only on n.
+Let us relax the notion of VC-dimension as follows, and note that we now work with undirected
+hypergraphs. Say that the family F has weak-VC-dimension (c, n), if πF (z) ≤ cz n for every
+positive integer z. Also, an r-uniform hypergraph H has weak-VC-dimension (c, n) if the family
+(r−1)
+has weak-VC-dimension (c, n) (that is, {N (v) : v ∈ V (H)} is viewed
+{N (v) : v ∈ V (H)} ⊂ 2V (H)
+11
+
+as a family of subsets of the base set V = V (H)(r−1) ). Also, say that a family of hypergraphs
+F has weak-VC-dimension n if there exists a constant c = c(F) such that every H ∈ F has
+weak-VC-dimension (c, n).
+Lemma 2.9. Let H be an r-uniform algebraic hypergraph of complexity (n, d, m), and let F = {N (v) :
+v ∈ V (H)}. Then
+
+
+zmd + n
+πF (z) ≤
+≤ cz n ,
+n
+where c = c(n, d, m) depends only on n, d, m.
+Proof. Let f1 , . . . , fm : (Fn )r → F be polynomials of degree at most d, whose zero-patterns determine
+the edges of H.
+Let V = V (H)(r−1) , that is the base set of F. If U ⊂ V such that |U | = z, then each element
+of the family {N (v) ∩ U : v ∈ V (H)} is determined by a zero-pattern of the zm polynomials fi,U :
+Fn → F defined as fi,U (x) = fi (U ′ , x), where i ∈ [m] and U ′ ∈ (Fn )r−1 is a fixed orientation of the
+(r − 1)-element set U ∈ U . Therefore, by Lemma 2.8, we have
+
+
+zmd + n
+πF (z) ≤
+.
+n
+
+
+Solving the inequality zmd+n
+< 2z , Lemma 2.9 shows that an algebraic graph of complexity
+n
+(n, d, m) has VC-dimension at most n log(ndm). Also, the VC-dimension of such graphs cannot be
+bounded by a function of n alone: every graph is as an algebraic graph of complexity (1, d, 1) and
+(1, 1, m) for some positive integers d and m. However, Lemma 2.9 also tells us that the family of
+algebraic graphs of complexity (n, d, m) has weak-VC-dimension at most n.
+Let δ > 0. Say that the family F of subsets of the base set X is δ-separated if |A∆B| ≥ δ|X|
+holds for any two distinct A, B ∈ F. The following packing lemma is due to Haussler [30]. While it is
+originally stated for families of bounded VC-dimension, the same proof implies the following result as
+well.
+Lemma 2.10. Let n be a positive integer and c > 0, then there exists c′ = c′ (c, n) such that the
+following holds. Let F be a δ-separated family of weak-VC-dimension (c, n). Then |F| ≤ c′ (1/δ)n .
+Next, we show that Lemma 2.9 and Lemma 2.10 can be combined to prove that if G is a graph of
+bounded weak-VC-dimension, whose density is not too close to 1, then G contains two large subsets
+with few edges between them. This lemma is inspired by Theorem 1.3 in the paper of Fox, Pach and
+Suk [28], which is a regularity-type result for hypergraphs of bounded VC-dimension. Later, we will
+also make use of this theorem, see Lemma 4.1 for the precise statement.
+Lemma 2.11. Let n be a positive integer and c > 0, then there exists c0 = c0 (c, n) > 0 such that the
+following holds. Let α, β > 0, and let G be a graph of weak-VC-dimension (c, n) on N vertices such
+that d(G) ≤ 1− α. Then G contains two disjoint sets A and B such that |A| ≥ α4 N , |B| ≥ c0 α(αβ)n N ,
+and every vertex in B has at most β|A| neighbors in A.
+
+12
+
+Proof. Let U ⊂ V (G) be the set of vertices v such that |N (v)| ≤ (1 − α/2)N . Then
+ 
+N
+(N − |U |) 
+α
+(1 − α)
+≥ |E(G)| ≥
+1−
+N,
+2
+2
+2
+from which we get
+
+α
+N.
+2
+Let γ = αβ/4, and let Z ⊂ U be maximal such that the family {N (v) : v ∈ Z} is γ separated.
+Then by Lemma 2.10, we have |Z| ≤ c′ (1/γ)n , where c′ = c′ (c, n) depends only on the parameters c
+and n. By the maximality of Z, for every v ∈ U there exists z ∈ Z such that |N (v)∆N (z)| ≤ γN .
+Hence, we can find z0 ∈ Z such that the set B formed by the vertices v such that |N (v)∆N (z0 )| ≤ γN
+satisfies
+αγ n
+|U |
+≥
+N.
+|B| ≥
+|Z|
+2c′
+|U | >
+
+By deleting some elements of B, we can assume that |B| ≤ α4 , and that |B| still satisfies the previous
+inequality. Set A = V (G) \ (B ∪ N (z0 )), then we show that A and B suffices.
+Indeed,
+
+α
+α
+α
+N ≥ N.
+|A| ≥ N − |B| − |N (z0 )| ≥ N − N − 1 −
+4
+2
+4
+Also, every v ∈ B satisfies |N (v)∆N (z0 )| ≤ γN , and z0 has no neighbor in A, so |N (v) ∩ A| ≤ γN ≤
+β|A|.
+
+3
+
+A Ramsey-type result for algebraic graphs
+
+In this section, we prove Theorems 1.1 and 1.2. If G is a directed graph and (A, B) is a pair of disjoint
+subsets of V (G), say that (A, B) is well-directed if either every edge of G between A and B goes from
+A to B, or every edge between A and B goes from B to A. We show that if G is an algebraic digraph
+defined by a single polynomial and A and B are two sets of vertices such that [G] has few edges between
+A and B, then we can find large subset A′ ⊂ A and B ′ ⊂ B such that (A′ , B ′ ) is well-directed. This is
+the consequence of the fact that G contains no member of M(2, s) for some constant s. For simplicity,
+write M− (s) and M+ (s) instead of M(2, s, 1) and M(2, s, 2), respectively. Note that each member
+of M− (s) (and M+ (s)) is composed of s directed edges (u1 , v1 ), . . . , (us , vs ) such that (ui , vj ) is not
+an edge for i > j (j > i, respectively).
+Lemma 3.1. Let n, d be positive integers, then there exists c1 = c1 (n, d) > 0 and c2 = c2 (n, d) > 0
+such that the following holds. Let G be an algebraic digraph of complexity (n, d, 1) on N vertices
+such that d([G]) ≤ 1 − α. Then V (G) contains two disjoint subsets A and B such that |A| ≥ c1 αN ,
+|B| ≥ c2 αn+1 N , and (A, B) is well-directed.
+
+Proof. Let s = n+2d
++ 1 and β = 6·312s . Note that [G] is a strongly-algebraic graph of complexity
+n
+(n, 2d). Indeed, if G is defined by the polynomial f : (Fn )2 → F of degree at most d, then the
+polynomial f ′ (x, y) = f (x, y) · f (y, x) defines [G] and has degree at most 2d. Therefore, by Lemma
+2.9, [G] has weak-VC-dimension (c, n) for some c = c(n, d). Hence, by Lemma 2.11, there exist two
+subsets A0 and B0 of V (G) such that |A0 | ≥ α4 N , |B0 | ≥ c0 α(αβ)n N = c′2 αn+1 N (where c′2 = c′2 (n, d)
+depends only on n and d), and in [G], every vertex in B0 has at most β|A0 | neighbours in A0 . We
+show that c1 = 4·312s and c2 = c′2 /2 suffices.
+13
+
+We define the sequence of sets A0 ⊃ A1 ⊃ . . . and sequence of edges f1 , f2 , · · · ∈ E(G) as follows.
+For i = 1, 2, . . . ,
+• |Ai | ≥ |A0 |3−i ,
+• fi = (ui , vi ) has one vertex in Ai−1 and one vertex in B
+• if vi ∈ B0 , then vi has no in-neighbor in Ai , and if ui ∈ B0 , then ui has no out-neighbor in Ai .
+Suppose that Ai−1 is already defined for some 1 ≤ i < 2s. Consider two cases. First, consider the
+case that for every b ∈ B0 , either N + (b) ∩ Ai−1 = ∅ or N − (b) ∩ Ai−1 = ∅. Then there exists B ⊂ B0
+such that |B| ≥ |B0 |/2 and either every b ∈ B satisfies N + (b) ∩ Ai−1 = ∅, or every b ∈ B satisfies
+N − (b) ∩ Ai−1 = ∅. Set A = Ai−1 , then (A, B) is well-directed. As |Ai−1 | > |A0 |3−2s ≥ c1 αN , and
+|B| ≥ c2 N , the sets A and B satisfy our conditions. In this case, we stop.
+Now consider the case when there exists b ∈ B0 such that both N + (b) ∩ Ai−1 and N − (b) ∩ Ai−1 are
+nonempty. If a ∈ N + (b) ∩ N − (b) ∩ Ai−1 , then {a, b} ∈ E([G]), so |N + (b) ∩ N − (b) ∩ Ai−1 | ≤ β|A0 | <
+1
+2
+2
++
+−
+6 |Ai−1 |. But then, either |N (b) ∩ Ai−1 | ≤ 3 |Ai−1 |, or |N (b) ∩ Ai−1 | ≤ 3 |Ai−1 |. In the first case,
+set Ai = Ai−1 \ N + (b) and fi = (b, a) for some a ∈ N + (b), in the second case Ai = Ai−1 \ N − (b) and
+fi = (a, b) for some a ∈ N − (b). Then Ai and fi satisfy the desired properties.
+Note that we must have stopped for some i ≤ 2s. Indeed, either at least half of the edges f1 , . . . , fi
+goes from A0 to B0 , or at least half of the edges goes from B0 to A0 . In the first case, G contains a
+member of M− (⌈i/2⌉), in the second case G contains a member of M+ (⌈i/2⌉).
+The following theorem will immediately imply Theorem 1.2, which in turn implies Theorem 1.1.
+Theorem 3.2. There exists c > 0 such that the following holds. Let n, d, m, N be positive integers,
+F be a field and 0 < β < 1. Let f1 , . . . , fm : (Fn )2 → F be polynomials of degree at most d, and let
+V ⊂ Fn such that |V | = N . For I ⊂ [m], let GI be the digraph defined on V such that (x, y) is an edge
+if fi (x, y) 6= 0 for i ∈ I, and fi (x, y) = 0 for i 6∈ I. If N is sufficiently large, then either G∅ contains
+a clique of size at least N 1−β , or there exists I ⊂ [m], I 6= ∅ such that GI contains a clique of size at
+1
+N β/γ , where
+least 4m
+
+
+n log d
+γ = cnm min d,
+.
+log n
+T
+Proof. For i = 1, . . . , m, let Gi be the algebraic digraph on V defined by fi . Then GI = ( i∈I Gi ) ∩
+T
+( i∈[m]\I Gi ). Here, Gi is the digraph in which every directed edge is included which is not present
+in Gi .
+
++ 1, and U0 = V . In what comes, we define the nested
+Let 0 < α < 1, s0,1 = · · · = s0,m = n+d
+d
+sequence of sets U0 ⊃ U1 ⊃ . . . and sequence of positive integers sℓ,i for ℓ = 0, 1, . . . and i ∈ [m] such
+that Gi [Uℓ ] contains no member of M+ (sℓ,i ). By Lemma 2.4, this is satisfied for ℓ = 0. Suppose that
+Uℓ and sℓ,i has been already defined for some ℓ ≥ 0.
+Let I ⊂ [m] be the set of indices i such that sℓ,i > 1. Consider three cases.
+Case 1. I = ∅. In this case we stop and set U = Uℓ . Note that Gi [U ] is empty for i = 1, . . . , m, so
+G∅ [U ] is a clique.
+T
+Case 2. For every i ∈ I, we have d([Gi ][Uℓ ]) ≥ 1 − α. Let G∗I = i∈I [Gi ], then d(G∗I [Uℓ ]) ≥ 1 − α|I| ≥
+1
+. Note that
+1 − αm. Therefore, by Lemma 2.1, G∗I [Uℓ ] contains a clique U of size at least 4αm
+14
+
+Gi [U ] is a clique for every i ∈ I, and Gi [U ] is an independent set for every i ∈ [m] \ I, so GI [U ]
+is a clique. In this case, we stop as well.
+Case 3. There exists i ∈ I such that d([Gi ][Uℓ ]) < 1 − α. Then by Lemma 3.1 there exist two disjoint
+sets A and B in Uℓ such that |A| ≥ c1 α|Uℓ |, |B| ≥ c2 αn+1 |Uℓ |, and (A, B) is well-directed in
+Gi . Let t = ⌊sℓ,i /n1/2 ⌋ and u = sℓ,i − t. Note that if Gi [A] contains a member of M+ (u),
+and Gi [B] contains a member of M+ (t), then Gi [Uℓ ] contains a member of M+ (sl,i ). Indeed,
+suppose that the directed edges (x1 , y1 ), . . . , (xu , yu ) form a copy of a member of M+ (u) in
+Gi [A], and (x′1 , y1′ ), . . . , (x′t , yt′ ) form a copy of a member of M+ (t) in Gi [B]. If every edge
+′
+between A and B goes from A to B, then setting x′i+t = xi and yi+t
+= yi for i ∈ [u], the edges
+′
+′
++
+′
+′
+(x1 , y1 ), . . . , (xu+t , yu+t ) form a copy of a member of M (sl,i ). On the other hand, if every edge
+between A and B goes from B to A, then setting xi+u = x′i and yi+u = yi′ for i ∈ [t], the edges
+(x1 , y1 ), . . . , (xu+t , yu+t ) form a copy of a member of M+ (sl,i ).
+Therefore, either Gi [A] contains no member of M+ (u), in which case set Uℓ+1 = A, sℓ+1,i = u,
+and say that ℓ is a small-jump, or Gi [B] contains no member of M(t), in which case set Uℓ+1 = B,
+sℓ+1,i = t, and say that ℓ is a big-jump. For j ∈ [m] \ {i}, set sℓ+1,j = sℓ,j .
+
+Let sℓ = sℓ,1 . . . sℓ,m. Let L be the index ℓ at which we stop, let a be the number of big-jumps, and
+b be the number of small-jumps. Note that if ℓ is a small-jump, then sℓ+1 ≤ sℓ (1 − n−1/2 /2) and
+|Uℓ+1 | ≥ c1 α|Uℓ |, and if ℓ is a big-jump, then sℓ+1 ≤ sℓ n−1/2 and |Uℓ+1 | ≥ c2 αn+1 |Uℓ |. Therefore,
+sL ≤ s0 n−a/2 (1 − n−1/2 /2)b .
+
+As sL ≥ 1 and s0 = ( n+d
++ 1)m ≤ min{ndm , dnm }, we get
+d
+
+
+2 log s0
+n log d
+a≤
+≤ 2m min d,
+log n
+log n
+and
+b ≤ 4n1/2 log s0 ≤ 4n1/2 m min{d log n, n log d}.
+Also, we get
+|UL | ≥ N (c1 α)b (c2 αn+1 )a > c3 α(n+1)a+b N,
+′
+
+where c3 = c3 (n, m, d) > 0. Choosing α = N −β/γ , where γ ′ = 16mn min{d, n log d/ log n}, the left
+hand side is at least N 1−β for sufficiently large N . Therefore, if we stopped in Case 1., then we found
+a set U such that G∅ [U ] is a clique of size |UL | ≥ N 1−β . On the other hand, if we stopped at Case 2.,
+′
+1
+1
+≥ 4m
+N β/γ .
+then we found I ⊂ [m], I 6= [m] and a set U such that GI [U ] is a clique of size at least 4mα
+This finishes the proof.
+Proof of Theorem 1.2. Consider an algebraic coloring of KN of complexity (n, d, m) with t colors. Let
+the polynomials f1 , . . . , fm define the coloring of KN . Apply Theorem 3.2 with β = 1/2, then there
+1
+exists I ⊂ [m] such that GI contains a clique of size at least 4m
+N 1/2γ , where
+
+
+n log d
+γ = cnm min d,
+.
+log n
+Note that for every I ⊂ [m], the graph GI is monochromatic, hence, KN contains a monochromatic
+1
+N 1/2γ .
+clique of size at least 4m
+15
+
+4
+
+Regularity lemma for algebraic hypergraphs
+
+In this section, we prove Theorem 1.5. We remark that in the rest of the paper, we shall only work with
+undirected hypergraphs. We prepare the proof of Theorem 1.5 with several lemmas. The following
+regularity lemma is proved in [28] for hypergraphs of bounded VC-dimension, however, the same proof
+works almost word-by-word for hypergraphs of bounded weak-VC-dimension as well.
+Lemma 4.1. Let r be a positive integer and c, n > 0, then there exists c′ = c′ (r, c, n) > 0 such that
+the following holds. Let 0 < ǫ < 1/4. Let H be an r-uniform hypergraph of weak-VC-dimension (c, n).
+Then V (H) has an equitable partition V1 , . . . , VK with 8/ǫ < K < c′ (1/ǫ)2n+1 parts such that all but
+at most ǫ-fraction of the r-tuples of parts are ǫ-homogeneous.
+Let us restate the definition of M(r, s) for undirected hypergraphs. The hypergraph M is a
+member of M(r, s) if the vertex set of M is the union of (not necessarily disjoint) (r − 1)-element
+sets Z1 , . . . , Zs and s vertices z1 , . . . , zs , Zi ∪ {zi } is an edge of M for i ∈ [s], and Zi ∪ {zj } is not an
+edge for 1 ≤ i < j ≤ s. The rest of the r-tuples can be either edges or non-edges. If Z1 , . . . , Zs and
+z1 , . . . , zs satisfy these properties, say that they define a member of M(r, s).
+In what follows, we show that if in addition we also assume that H contains no member of M(r, s),
+then those r-tuples of parts that have density at most ǫ can be made empty by removing a few vertices.
+We first need the following technical lemma, which can be viewed as a variant of Claim 2.6 for sparse
+hypergraphs.
+Lemma 4.2. Let G be a nonempty r-partite r-uniform hypergraph with vertex classes W1 , . . . , Wr such
+S
+that d(W1 , . . . , Wr ) ≤ ǫ. Then there exist ℓ ∈ [r] and X ∈ i∈[r]\{ℓ} Wi such that |X| = r − 1 and
+1 ≤ |N (X)| ≤ ǫ1/r |Wℓ |.
+Proof. We proceed by induction on r. In case r = 1, the statement is trivial, so assume r ≥ 2.
+Let U ⊂ V (G) be the set of vertices with positive degree, and let Ui = Wi ∩ U for i ∈ [r].
+Then |U1 | · · · |Ur | ≥ ǫ|W1 | · · · |Wr |, so there exists j ∈ [r] such that |Uj | ≥ ǫ1/r |Wj |. Without loss of
+generality, assume that j = r. Then by simple averaging, there exists x ∈ Ur such that
+|N (x)| ≤
+
+|E(G)|
+≤ ǫ(r−1)/r |W1 | . . . |Wr−1 |.
+|Ur |
+
+Let G ′ be the (r−1)-partite (r−1)-uniform hypergraph with vertex classes W1 , . . . , Wr−1 formed by
+S
+the neighborhood of x. By our induction hypothesis, there exists ℓ ∈ [r − 1] and X ′ ∈ i∈[r−1]\{ℓ} Wi
+such that |X ′ | = r − 2 and 1 ≤ |N (X ′ )| ≤ ǫ1/r |Wℓ |. But then ℓ and X = X ′ ∪ {x} satisfy our desired
+properties.
+The next lemma will be the heart of the proof of Theorem 1.5. Before we state it, let us introduce
+a definition. Let H be an r-uniform hypergraph and let (V1 , . . . , VK ) be disjoint subsets of its vertex
+set. Suppose that Z1 , . . . , Zs ∈ V (H)(r−1) and z1 , . . . , zs ∈ V (H) define a member of M(r, s) in H.
+If z1 , . . . , zs belong to the same part Vj , and no two vertices of Zi ∪ {zi } belong to the same part
+S
+for i ∈ [s], then say that si=1 Zi ∪ {z1 , . . . , zs } induces a focused copy of a member of M(r, s), and
+Z1 , . . . , Zs and z1 , . . . , zs defines a focused member of M(r, s).
+Lemma 4.3. Let r, s be positive integers, then there exists c = c(r, s) > 0 such that the following
+holds. Let ǫ0 > 0, let H be an r-uniform hypergraph, and let U1 , . . . , UL be disjoint subsets of V (H).
+16
+
+Suppose that H contains no focused copy of a member of M(r, s). Let G be an r-uniform hypergraph on
+[L] such that if {i1 , . . . , ir } is an edge of G, then dH (Ui1 , . . . , Uir ) ≤ ǫ0 . Then for i ∈ [L], there exists
+1/r!
+Vi ⊂ Ui such that |Vi | ≥ (1 − cǫ0 )|Ui |, and (Ui1 , . . . , Uir ) is empty for every {i1 , . . . , ir } ∈ E(G).
+Proof. We prove this by induction on r. We proceed with the base case r = 2 and the general case r ≥ 3
+1/r
+simultaneously. Let T := ∅, and let ǫ1 = ǫ0 . Let X ∈ [L](r−1) and k ∈ [L] \ X. If X ∪ {k} 6∈ E(G),
+S
+set FX,k = ∅. Otherwise, let FX,k be the (r − 1)-partite (r − 1)-uniform hypergraph on x∈X Ux ,
+whose edges are the (r − 1)-tuples Z ∈ V (H)(r−1) such that Z has one vertex in Ux for x ∈ X, and
+|NH (Z) ∩ Uk | ≥ ǫ1 |Uk |. As dH ({Ux }x∈X , Uk ) ≤ ǫ0 , we have
+dFX,k ({Ux }x∈X ) ≤
+
+ǫ0
+= ǫ1r−1 .
+ǫ1
+
+(2)
+
+Also, define Tk ⊂ Uk as the union of the sets Uk ∩ NH (Z ′ ), where Z ′ ∈ (V (H) \ Uk )(r−1) , has all its
+vertices in different parts and |Uk ∩ NH (Z ′ )| ≤ ǫ1 |Uk |.
+Claim 4.4.
+|Tk | ≤ sǫ1 |Uk |.
+Proof. Suppose that |Tk | > sǫ1 |Uk |. Then we can find greedily Z1 , . . . , Zs ∈ (V (H) \ Uk )(r−1) and
+z1 , . . . , zs ∈ Tk such that zi ∈ N (Zi ) for i ∈ [s] and zi 6∈ N (Zj ) for i > j. But then Z1 , . . . , Zs and
+z1 . . . , zs induces a focused copy of a member of M(r, s), contradiction.
+For k ∈ [L], let Uk′ = Uk \ Tk . Note that if X ∪ {k} ∈ E(G) and Z ∪ {z} is an edge of H for some
+Z having one vertex in every Ux′ , x ∈ X and z ∈ Uk′ , then Z ∈ E(FX,k ). Remove every edge Z from
+S
+FX,k which has no neighbor in Uk′ . Let FX = k∈[L]\X FX,k .
+Now let us consider the base case r = 2. Then every FX,k is a just a subset of UX , which by (2)
+has size at most ǫ1 |UX |. This implies that |FX | ≤ sǫ1 |UX | for X ∈ [L]. Indeed, otherwise, by a simple
+greedy argument, we can find z1 , . . . , zs ∈ FX and k1 , . . . , ks such that zi ∈ FX,ki and zi 6∈ FX,kj for
+i > j. Choose an arbitrary vertex wi ∈ N (zi ) ∩ Uk′ i , then w1 , . . . , ws and z1 , . . . , zn define a focused
+copy of a member of M(2, s), contradiction. For i ∈ [L], set Vi = Ui′ \ Fi . Then |Vi | ≥ |Ui |(1 − 2sǫ1 ),
+and there are no edges between Vi and Vj for {i, j} ∈ E(G). Therefore, choosing c(2, s) = 2s proves
+this case. Now consider the general case r ≥ 3.
+Claim 4.5.
+dFX ({Ux }x∈X ) < 3rsǫ1 .
+Proof. Let F := FX , let Wx := Ux′ for x ∈ X. In what follows, step-by-step, we define |X| sequences
+S
+of pairs (Zi,x , zi,x ) ∈ ( y∈X\{x} Uy′ )(r−1) × Ux′ for x ∈ X and i = 0, 1, . . . , while removing elements
+from Wx and edges from F . Suppose that jx is the largest index i for which (Zi,x , zi,x ) is already
+defined. If ({Wx }x∈X ) spans no edge in F , then stop. Otherwise, there exists k ∈ [L] such that FX,k
+is not empty on ({Wx }x∈X ). By applying Lemma 4.2 to the (r − 1)-tuple ({Ux }x∈X ) and hypergraph
+S
+FX,k ∩ F (which by (2) has density at most ǫ1r−1 ), there exist x ∈ X and Z ∈ y∈X\{x} Wy such
+that 1 ≤ |NFX,k ∩F (Z) ∩ Wx | ≤ ǫ1 |Ux |. Let zjx +1,x be an arbitrary element of NFX,k ∩F (Z) ∩ Wx .
+Furthermore, remove the elements of NFX,k ∩F (Z) from Wx , and remove the edges of FX,k from F .
+Also, let Zjx +1,x := Z and define kjx +1,x := k.
+After we stop, let sx be the largest index i such that (Zi,x , zi,x ) is defined. Note that for every
+x ∈ X and i ≤ sx , Z1,x , . . . , Zi,x and z1,x , . . . , zi,x define a focused copy of a member of M(r − 1, i).
+17
+
+Let ui,x be an arbitrary element of Uk′ i,x ∩ NH (Zi,x ∪ {zi,x }). Then Z1,x ∪ {u1,x }, . . . , Zi,x ∪ {ui,x }
+and z1,x , . . . , zi,x define a focused copy of a member of M(r, i) in H. Therefore, we have sx < s.
+Also, at each step when we modify Wx , we remove at most ǫ1 |Ux | elements, so after we stop, we have
+|Wx | ≥ |Ux′ | − sx ǫ1 |Ux |.
+Let us bound dFX ({Ux }x∈X ). Recall that dFX,ki,x ({Ux }x∈X ) ≤ ǫ1r−1 by (2). Let F ∗ =
+S
+S
+x∈X
+i∈[sx ] FX,ki,x . Then
+dF ∗ ({Ux }x∈X ) <
+
+X X
+
+x∈X i∈[sx ]
+
+dFX,ki,x ({Ux }x∈X ) < s(r − 1)ǫ1r−1 .
+
+If k 6= ki,x for every x ∈ X and i ∈ [sx ], then every edge of Fk,X touches Ux \ Wx for some x ∈ X.
+x|
+< 2sǫ1 . Therefore, we have
+Note that |Ux \ Wx | = |Ux \ Ux′ | + |Ux′ \ Wx | ≤ 2sǫ1 |Ux |. Hence |Ux|U\W
+x|
+dFX \F ∗ ({Ux }x∈X ) < 2(r − 1)sǫ1 .
+Finally, by our construction, ({Wx }x∈X ) spans no edges. Thus, dFX ({Ux }x∈X ) < 3rsǫ1 .
+Q
+Q
+Q
+Since |Ux′ | ≥ (1 − sǫ1 )|Ux |, we can write x∈X |Ux′ | ≥ (1 − sǫ1 )r−1 x∈X |Ux | ≥ 12 x∈X |Ux |, assuming
+sǫ1 < 1/10r. Therefore, from the last claim we have that dFX ({Ux′ }x∈X ) ≤ 6rsǫ1 .
+S
+Let H′ = X∈[L](r−1) FX . We show that H′ contains no focused copy of a member of M(r − 1, s)
+with respect to the disjoint sets U1′ , . . . , UL′ . Otherwise, there exists W1 , . . . , Ws ∈ V (H′ )(r−2) and
+w1 , . . . , ws ∈ Uj′ for some j ∈ [L] defining a focused member of M(r − 1, s). Let Zi = Wi ∪ {wi }. But
+then for i ∈ [s], there exists ki ∈ [L] and Xi ∈ [L](r−1) such that Zi ∈ FXi ,ki . Picking zi ∈ NH (Zi ) ∩ Ui′
+arbitrarily, {Wi ∪ {zi }}i∈[s] and {wi }i∈[s] define a focused member of M(r, s) in H, contradiction.
+But then we can apply our induction hypothesis with the following parameters: the (r − 1)-uniform
+hypergraph H′ instead of H, the disjoint sets U1′ , . . . , UL′ instead of U1 , . . . , UL , 6rsǫ1 instead of ǫ0 ,
+and the complete (r − 1)-uniform hypergraph on [L] instead of G. Recalling that |Ui′ | ≥ (1 − sǫ1 )|Ui |
+1/r
+and ǫ1 = ǫ0 , we conclude that for i ∈ [L], there exists Vi ⊂ Ui′ such that
+1/r!
+
+|Vi | ≥ (1 − c(r − 1, s)(6rsǫ1 )1/(r−1)! )|Ui′ | ≥ (1 − c(r, s)ǫ0
+
+)|Ui |
+
+for some suitable c(r, s) > 0, and (Vi1 , Vi2 , . . . , Vir−1 ) is empty for (i1 , . . . , ir−1 ) ∈ [L](r−1) . But note
+that then (Vi1 , . . . , Vir ) is also empty in H if {i1 , . . . , ir } ∈ E(G). This finishes the proof.
+Now everything is set to prove the main theorem of this section.
+Proof of Theorem 1.5. Let ǫ0 > 0, which we shall specify later as a function of ǫ. By Lemma 2.9 and
+Lemma 4.1, there exists an equitable partition of V (H) into L parts U1 , . . . , UL such that 8/ǫ0 < L <
+c′ (1/ǫ0 )2n+1 and all but at most ǫ0 -fraction of the r-tuples of parts are ǫ0 -homogeneous.
+
+Let s = n+d
++ 1, then H contains no member of M(r, s) by Lemma 2.4. In particular, H contains
+d
+no focused copy of a member of M(r, s) with respect to the partition U1 , . . . , UL . Let c0 = c(r, s) be
+the constant given by Lemma 4.3. Then for every i ∈ [L], there exists Vi′ ⊂ Ui such that
+ 
+N
+1/r!
+1/r!
+′
+|Vi | ≥ (1 − c0 ǫ0 )|Ui | ≥ (1 − c0 ǫ0 )
+,
+L
+and (Vi′1 , . . . , Vi′r ) is empty if d(Ui1 , . . . , Uir ) < ǫ0 . Let K be a minimal positive integer such that
+1/r!
+
+N/K < mini∈[L] |Vi′ |, then K < L + 2c0 ǫ0
+
+L < 2L. In particular, when we choose ǫ0 it will satisfy
+18
+
+1/r!
+
+c0 ǫ0 < 1/2. Let V1 , . . . , VK be any equitable partition of V (H) such that Vi ⊂ Vi′ for i ∈ [L], this
+clearly exists by the definition of K.
+Say that an r-tuple {i1 , . . . , ir } ∈ [K](r) is good if d(Vi1 , . . . , Vir ) > 1 − 2r ǫ0 , or (Vi1 , . . . , Vir ) is
+empty. Otherwise, say that {i1 , . . . , ir } is bad. Note that if {i1 , . . . , ir } ∈ [L]r , then {i1 , . . . , ir } is good
+if (Ui1 , . . . , Uir ) is ǫ-homogeneous. Indeed, if d(Ui1 , . . . , Uir ) > 1 − ǫ0 , then
+d(Vi1 , . . . , Vir ) > 1 −
+
+|Ui1 | . . . |Uir |
+ǫ0 ≥ 1 − 2r ǫ0 ,
+|Vi1 | . . . |Vir |
+
+and if d(Ui1 , . . . , Uir ) < ǫ0 , then (Vi1 , . . . , Vir ) is empty by definition. The number of r-tuples
+{i1 , . . . , ir } ∈ [K](r) having a nonempty intersection with {L + 1, . . . , K} is less than (K − L)K r−1 .
+Hence, the total number of bad r-tuples is at most
+ 
+ 
+ 
+L
+K
+1/r! r
+1/r! K
+r−1
+ǫ0
++ (K − L)K
+< ǫ0
++ 2c0 ǫ0 K ≤ c1 ǫ0
+,
+r
+r
+r
+1/r!
+
+where c1 = c1 (r, s) > c0 depends only on r and s. Choose ǫ0 such that both c1 ǫ0 , 2r ǫ0 ≤ ǫ <
+1/4. Then V1 , . . . , VK is an equitable partition of H such that 8/ǫ < 8/ǫ0 < K ≤ 2c′ (1/ǫ0 )2n+1 <
+c(1/ǫ)r!(2n+1) for some c = c(r, s) > 0, and all but at most an ǫ-fraction of the r-tuples of parts
+(Vi1 , . . . , Vir ) satisfy that either d(Vi1 , . . . , Vir ) > 1 − 2r ǫ0 > 1 − ǫ, or (Vi1 , . . . , Vir ) is empty.
+
+5
+
+A Ramsey-type result for algebraic hypergraphs
+
+In this section, we prove Theorem 1.6. First, let us extend the list of forbidden hypergraphs in algebraic
+hypergraphs of constant complexity. In order to do this, we use a result about the maximum flattening
+rank of tensors which are almost diagonal. Let T : A1 × · · · × Ar → F be an r-dimensional tensor. Let
+the max-flattening rank of T , denoted by mfrank(T ), be the maximum of franki (T ) for i ∈ [r]. Say
+that an r-dimensional tensor T : Ar → F is semi-diagonal if the following holds. Let a1 , . . . , ar ∈ A,
+then T (a1 , . . . , ar ) = 0 if a1 , . . . , ar are pairwise distinct, and T (a1 , . . . , ar ) 6= 0 if a1 = · · · = ad . If
+a1 , . . . , ar are neither all equal or all distinct, there is no restriction on T (a1 , . . . , ar ). We prove the
+following result in the companion note [17].
+Theorem 5.1. Let T : Ar → F be an r-dimensional semi-diagonal tensor. Then
+mfrank(T ) ≥
+
+|A|
+.
+r−1
+
+Let Nr,s be the family of r-uniform hypergraphs N having the following form. There are s disjoint
+edges fi = {ui,1 , . . . , ui,r } for i ∈ [s], whose union is the vertex set of N , and the r element set
+{ui1 ,1 , . . . , uir ,r } is not an edge for any r-tuple (i1 , . . . , ir ) ∈ [s]r , where i1 , . . . , ir are pairwise distinct.
+The rest of the r element subsets of the vertex set can be either edges or non-edges.
+Lemma 5.2. Let H be a strongly-algebraic r-uniform hypergraph of complexity (n, d). Then H contains
+
+no member of Nr,s for s > (r − 1) n+d
+d .
+
+Proof. Let V = V (H) ⊂ Fn , and let f : (Fn )r → F be the polynomial defining H. Define tensor
+
+T : V r → F to be T (x1 , . . . , xr ) = f (x1 , . . . , xr ). Then by Lemma 2.2 mfrank(T ) ≤ n+d
+d .
+19
+
+
+Suppose that H contains a member of Nr,s for some s > (r − 1) n+d
+n , then there exists ui,j ∈
+Fn for (i, j) ∈ [s] × [r] such that f (ui,1 , . . . , ui,r ) 6= 0 for i ∈ [s], and f (ui1 ,1 , . . . , uir ,r ) = 0 for
+(i1 , . . . , ir ) ∈ [s]r for which i1 , . . . , ir are pairwise distinct. Let T ′ be the subtensor of T induced on
+{u1,1 , . . . , us,1 } × · · · × {u1,r , . . . , us,r }. Identifying ui,j by i, the tensor T ′ : [s]r → F is semi-diagonal,
+so
+s
+mfrank(T ) ≥ mfrank(T ′ ) ≥
+r−1
+by Theorem 5.1. This is a contradiction, finishing the proof.
+Now everything is set to prove the main theorem of this section.
+Proof of Theorem 1.6. Let H ∈ F and let N = |V (H)|. Then H is an r-uniform strongly-algebraic
+hypergraph of complexity (n, d). Let ǫ = N −β/r!(2n+1) , then by Theorem 1.5, there is an equitable
+partition of V (H) into parts V1 , . . . , VK for some 8/ǫ < K < c′ (1/ǫ)r!(2n+1) such that all but at
+most ǫ-fraction of the r-tuples of parts are either empty, or have density at least 1 − ǫ. Here,
+c′ = c′ (r, n, d) > 0.
+For i ∈ [K], pick a vertex vi ∈ Vi randomly with uniform distribution. Let H′ be the hypergraph
+induced on the vertex set {v1 , . . . , vK }, then H′ ∈ F as well. Define the r-uniform hypergraph G on
+vertex set [K] as follows. The r-element set {i1 , . . . , ir } ∈ [K](r) is an edge of G if and only if either
+{vi1 , . . . , vir } ∈ E(H) and d(Vi1 , . . . , Vir ) ≥ 1 − ǫ, or {vi1 , . . . , vir } 6∈ E(H) and (Vi1 , . . . , Vir ) is empty.
+Note that if (Vi1 , . . . , Vir ) is ǫ-homogeneous, then {i1 , . . . , ir } is an edge with probability at least 1 − ǫ.
+Therefore, E(d(G)) ≥ 1 − 2ǫ, so there is a choice for v1 , . . . , vK such that d(G) ≥ 1 − 2ǫ. Fix such a
+choice. By Lemma 2.1, G contains a clique J of size at least 18 ǫ−1/(r−1) . Let H∗ be the subhypergraph
+of H induced on the vertex set {vj : j ∈ J}. As H∗ ∈ F, H∗ contains either an independent set of
+size s, or a clique of size c|J|α = c1 N αβ/r!(r−1)(2n+1) for some c1 = c1 (r, n, d, c, α, β) > 0. In the latter
+case, we are done, so assume that H∗ contains an independent set {vi : i ∈ I} of size s.
+We finish the proof by noting that at least one of Ui , i ∈ I is an independent set in H. Otherwise,
+S
+if Ui contains an edge fi for every i ∈ I, then i∈I fi spans a member of Nr,s in H, contradicting
+Lemma 5.2. Therefore, H contains an independent set of size at least 12 ⌊N/K⌋ > c2 N 1−β , where
+c2 = c2 (r, n, d, c, α, β) > 0.
+
+6
+
+Concluding remarks
+
+Following Fox and Pach [26], we say that a family of graphs G has the strong-Erdős-Hajnal property, if
+there exists a constant c = c(G) > 0 such that for every G ∈ G, either G or its complement contains a
+bi-clique of size at least c|V (G)|. In [2], it is proved that the strong-Erdős-Hajnal property implies the
+Erdős-Hajnal property in hereditary graph families, and that the family of semi-algebraic graphs of
+complexity (n, d, m) has the strong-Erdős-Hajnal property. On the other hand, it is known that this is
+not the case for algebraic graphs. For infinitely many N , one describe a strongly-algebraic graph G of
+complexity (3, 2) such that the size of the largest bi-clique in both G and its complement is O(N 3/4 ).
+If q is a prime power, the Erdős-Rényi graph ERq , is defined as follows. The vertices of ERq are
+the elements of the projective plane over Fq , and (x0 , x1 , x2 ) and (y0 , y1 , y2 ) are joined by an edge if
+x0 y0 + x1 y1 + x2 y2 = 0. The graph ERq has N = q 2 + q + 1 vertices, is (q + 1)-regular and has at most
+√
+2(q + 1) vertices with loops. This graph contains no copy of K2,2 and has eigenvalues ± q and q + 1,
+where the multiplicity of q + 1 is 1, see e.g. [31]. By the expander mixing lemma (see, e.g., Theorem
+20
+
+2.11 in [31]), one can bound the number of the edges/non-edges of ERq between two disjoint subsets
+of vertices using its eigenvalues. This lemma implies that both ERq and its complement contains no
+bi-clique of size larger than
+√
+N q
+= O(N 3/4 ).
+q+1
+Note that the complement of ERq is strongly-algebraic of complexity (3, 2). Indeed, we can view
+the vertices of ERq as elements of F3q , by replacing each (x0 , x1 , x2 ) ∈ PF2q with one element of the
+equivalence class C(x0 ,x1 ,x2 ) = {(λx0 , λx1 , λx2 ) : λ ∈ Fq \ {0}} ⊂ F3q . For a variant of this construction,
+see e.g. [10], Section 6.1.
+Finally, let us mention that although algebraic graphs of bounded complexity do not have strong
+Ramsey properties (as we proved in this paper), they are one of the main sources of best examples for
+so called Turán-type questions. Given an r-uniform hypergraph H, the extremal number (or Turán
+number) of H, denoted by ex(N, H) is the maximum number of edges in an r-uniform hypergraph on
+N vertices which contains no copy of H as a subhypergraph. If H is a graph, the asymptotic value
+of the extremal number of H is known by the Erdős-Stone theorem, unless H is bipartite. The case
+of bipartite graphs is notoriously hard. In many cases when the order of ex(N, H) is known for some
+bipartite graph H, the construction achieving the right order of magnitude is an algebraic graph of
+bounded complexity, see e.g. [3, 4, 5, 23]. Algebraic hypergraphs of bounded complexity also appear
+in connection to Turán type results, see e.g. [33, 16].
+Acknowledgements. We would like to thank Jacob Fox, János Pach, and Artem Chernikov for
+pointing out the related references and results. Both authors were supported by the SNSF grant
+200021 196965. István Tomon also acknowledges the support of Russian Government in the framework
+of MegaGrant no 075-15-2019-1926, and the support of MIPT Moscow.
+
+References
+[1] N. Alon, E. Fischer, and I. Newman. “Efficient testing of bipartite graphs for forbidden induced
+subgraphs.” SIAM Journal on Computing 37(3) (2007): 959–976.
+[2] N. Alon, J. Pach, R. Pinchasi, R. Radoičić, and M. Sharir. “Crossing patterns of semi-algebraic
+sets.” J. Combin. Theory Ser. A 111 (2005): 310–326.
+[3] W. G. Brown. “On graphs that do not contain a Thomsen graph.” Canad. Math. Bull. 9 (1966):
+281–285.
+[4] B. Bukh. “Random algebraic construction of extremal graphs.” Bulletin of the London Math. Soc.
+47(6) (2015): 939–945.
+[5] B. Bukh, D. Conlon. “Rational exponents in extremal graph theory.” J. of European Math. Society
+20(7) (2018): 1747–1757.
+[6] B. Bukh, J. Matoušek. “Erdős-Szekeres-type statements: Ramsey function and decidability in
+dimension 1.” Duke Mathematical Journal 163(12) (2012): 2243–2270.
+[7] E. Chattopadhyay, D. Zuckerman. “Explicit two-source extractors and resilient functions.”
+Proceedings of the forty-eighth annual ACM symposium on Theory of Computing. 2016.
+21
+
+[8] A. Chernikov, S. Starchenko. “Definable regularity lemmas for NIP hypergraphs.” arXiv preprint,
+arXiv:1607.07701.
+[9] A. Chernikov, S. Starchenko. “A note on the Erdős-Hajnal property for stable graphs.” Proceedings
+of the AMS 146.2 (2018): 785–790.
+[10] A. Chernikov, S. Starchenko. “Regularity lemma for distal structures.” J. Eur. Math. Soc. 20
+(2018): 2437–2466.
+[11] G. Cohen. “Two-source dispersers for polylogarithmic entropy and improved Ramsey graphs.”
+SIAM Journal on Computing 0 (2019): STOC16–30.
+[12] D. Conlon, A. Ferber. “Lower bounds for multicolor Ramsey numbers.” Advances in Mathematics
+378 (2021): 107528.
+[13] D. Conlon, J. Fox, J. Pach, B. Sudakov, and A. Suk. “Ramsey-type results for semi-algebraic
+relations.” Trans. Amer. Math. Soc. 366 (2014): 5043–5065.
+[14] D. Conlon, J. Fox, and B. Sudakov. “Hypergraph Ramsey numbers.” J. Amer. Math. Soc. 23(1)
+(2010): 247–266.
+[15] D. Conlon, J. Fox, and B. Sudakov. “An improved bound for the stepping-up lemma.” Discrete
+Appl. Math. 161(9) (2013): 1191–1196.
+[16] D. Conlon, C. Pohoata, and D. Zakharov. “Random multilinear maps and the Erdős box problem.”
+arXiv prerpint (2020), arXiv:2011.09024.
+[17] D. Correia, B. Sudakov, I. Tomon. “Flattening rank and its combinatorial applications.” arXiv
+preprint, arXiv:2103.03217.
+[18] P. Erdős. “Some remarks on the theory of graphs.” Bull. Amer. Math. Soc. 53 (1947): 292–294.
+[19] P. Erdős, A. Hajnal. “Ramsey-type theorems.” Discrete Appl. Math. 25 (1989): 37–52.
+[20] P. Erdős, A. Hajnal, and J. Pach. “Ramsey-type theorem for bipartite graphs.” Geombinatorics
+10 (2000): 64–68.
+[21] P. Erdős, A. Hajnal, and R. Rado. “Partition relations for cardinal numbers.” Acta Math. Acad.
+Sci. Hungar. 16 (1965): 93–196.
+[22] P. Erdős, R. Rado. “Combinatorial theorems on classifications of subsets of a given set.” Proc.
+London Math. Soc. 3 (1952): 417–439.
+[23] P. Erdős, A. Rényi, and V. T. Sós. “On a problem of graph theory.” Studia Sci. Math. Hungar.
+1 (1966): 215–235.
+[24] P. Erdős, G. Szekeres. “A combinatorial problem in geometry.” Compos. Math. 2 (1935): 463–470.
+[25] P. Frankl, R. M. Wilson. “Intersection theorems with geometric consequences.” Combinatorica 1
+(1981): 357–368.
+
+22
+
+[26] J. Fox and J. Pach. “Erdős–Hajnal-type results on intersection patterns of geometric objects.”
+Horizons of combinatorics, Bolyai Soc. Math. Stud., 17, Springer (2008): 79–103
+[27] J. Fox, J. Pach, and A. Suk. “A polynomial regularity lemma for semi-algebraic hypergraphs and
+its applications in geometry and property testing.” SIAM J. Comput. 45 (2016): 2199–2223.
+[28] J. Fox, J. Pach, and A. Suk. “Erdős-Hajnal conjecture for graphs with bounded VC-dimension.”
+Discret. Comput. Geom. 61(4) (2019): 809–829.
+[29] J. Fox, B. Sudakov. “Density theorems for bipartite graphs and related Ramsey-type results.”
+Combinatorica 29 (2009): 153–196.
+[30] D. Haussler. “Sphere packing numbers for subsets of the Boolean n-cube with bounded
+Vapnik-Chervonenkis dimension.” J. Combin. Theory Ser. A 69 (1995): 217–232.
+[31] M. Krivelevich and B. Sudakov. “Pseudo-random graphs.” in: More Sets, Graphs and Numbers,
+Bolyai Society Mathematical Studies 15, Springer (2006): 199–262.
+[32] L. Lovász and B. Szegedy. “Szemerédi’s lemma for the analyst.” Geometric and Functional
+Analysis 17(1) (2007): 252–270.
+[33] J. Ma, X. Yuan and M. Zhang. “Some extremal results on complete degenerate hypergraphs.” J.
+Combin. Theory Ser. A 154 (2018): 598–609.
+[34] M. Malliaris and S. Shelah. “Regularity lemmas for stable graphs.” Trans. of the AMS 366(3)
+(2014): 1551–1585.
+[35] L. Rónyai, L. Babai, and M. K. Ganapathy. “On the number of zero-patterns of a sequence of
+polynomials.” Journal of the AMS 14(3) (2001): 717–735.
+[36] N. Sauer. “On the density of families of sets.” Journal of Combinatorial Theory Ser. A 13 (1972):
+145–147.
+[37] S. Shelah. “A combinatorial problem; stability and order for models and theories in infinitary
+languages.” Pacific Journal of Mathematics 41 (1972): 247–261.
+[38] E Szemerédi. “Regular partitions of graphs.” Problémes combinatoires et théorie des graphes
+(Colloq. Internat. CNRS, Univ. Orsay), 260, CNRS, Paris, (1978): 399–401.
+[39] T. Tao. “Expanding polynomials over finite fields of large characteristic, and a regularity lemma
+for definable sets.” Contrib. Discrete Math. 10 (2015), 22–98. See also his blog on this topic:
+terrytao.wordpress.com/2013/10/29/a-spectral-theory-proof-of-the-algebraic-regularity-lemma/
+[40] V. Vapnik, A. Chervonenkis. “On the uniform convergence of relative frequencies of events to
+their probabilities.” Theory Probab. Appl. 16 (1971): 264–280.
+[41] Y. Wigderson. “An improved lower bound on multicolor Ramsey numbers.” arXiv preprint,
+arXiv:2009.12020.
+
+23
+
+

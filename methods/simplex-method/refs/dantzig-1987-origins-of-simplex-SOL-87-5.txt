@@ -1,0 +1,773 @@
+        w
+    -~~~~-   V   FrW'         -   'i             -   o   on V I WIM
+
+
+
+
+                                                               1)
+
+
+
+
+                 00                    Systems
+    0                                  Optimization
+    N
+    CO                                 Laboratory
+
+*   0
+        I
+
+
+
+
+                                       ORIGINS OF THE SIMPLEX METHOD
+
+                                                      by
+                                               George B. Dantzig
+
+                                         TECHNICAL REPORT SOL 87-5
+                                                     May 1987
+
+
+
+                        1..
+
+
+
+
+                                                                               JUL 091987
+
+
+            Department of Operations Research
+            Stanford University
+            Stanford, CA 94305
+                                                                      87   7   8   013
+                            SYSTEMS OPTIMIZATION LABORATORY
+                           DEPARTMENT OF OPERATIONS RESEARCH
+                                  STANFORD UNIVERSITY
+                              STANFORD. CALIFORNIA 94305-4022
+
+
+
+
+                              ORIGINS OF THE SIMPLEX METHOD
+
+                                                by
+                                         George B. Dantzig
+
+                                  TECHNICAL REPORT SOL 87-5
+                                              May 1987
+
+
+
+
+                                                                                    DTIC
+                                                                                     ELECTE
+                                                                                      JUL 0 9 1987
+
+                                                                                            E
+Research and reproduction of this report were partially supported by the National Science Foundation
+Grants DMS-8420623. ECS-8312142 and SES-8518662: U.S. Department of Energy Contract DE-FG03-
+87-ER25028; Office of Naval Research Contract N00014-85-K-0343.
+
+Any opinions, findings, and conclusions or recommendations expressed in this publication are those of
+the author(s) and do NOT necessarily reflect the views of the above sponsors.
+
+Reproduction in wL )le or in part is permitted for any purposes of the United States Government. This
+document has been approved for public release and sale; its distribution is unlimited.
+                                                                                 Accession For
+
+                                                                                 DTIC TAB
+                                                                                 Unannounced            0
+                                                                                 Just if oat1
+
+                                                                 '.)/
+
+
+
+                                                                                 ltDtritbution/
+                                                                                   TAvailability Codes
+
+
+                         ORIGINS OF THE SIMPLEX METHOD Dist                              Spscial
+                                                                                         S   1a
+                                    by George B. Dantzig
+                                       Stanford University
+
+
+     Abstract
+         In the summer of 1947, when I fiist began to work on the simplex method for
+         solving linear programs, the first idea that occurred to me is one that would
+         occur to any trained mathematician, namely the idea of step by step descent
+         (with respect to the objective function) along edges of the convex polyhedral
+         set from one vertex to an adjacent one. I rejected this algorithm outright
+         on intuitive grounds - it had to be inefficient because it proposed to solve
+         the problem by wandering along some path of outside edges until the optimal
+         vertex was reached. I therefore began to look for other methods which gave
+         more promise of being efficient, such as those that went directly through the
+         interior, [1].
+         Today we know that before 1947 that four isolated papers had been published
+         on special cases of the linear programming problem by Fourier (1824) [5], de la
+         Vallde Poussin (1911) [6], Kantorovich (1939) [7] and Hitchcock (1941) [8]. All
+         except Kantorovich's paper proposed as a solution method descent along the
+         outside edges of the polyhedral set which is the way we describe the simplex
+         method today. There is no evidence that these papers had any influence on each
+         other. Evidently they sparked zero interest on the part of other mathematicians
+         and were unknown to me when I first proposed the simplex method. As we
+         shall see the simplex algorithm evolved from a very different geometry, one in
+         which it appeared to be very efficient.
+
+
+
+         The linear programming problem is to find
+
+                         minz, x > 0 such that Ax = b, cx = z(min),                               (1)
+
+     where x = (X, ... ,X,),A is an m by n matrix, and b and c are column and row vectors.
+V6
+
+
+
+
+                                                1                       i:,::,
+                    Curiously enough up to 1947 when I first proposed that a model based on linear
+            inequalities be used for planning activities of large-scale enterprises, linear inequality theory
+            had produced only forty or so papers in contrast to linear equation theory and the related
+            subjects of linear algebra and approximation which had produced a vast literature, [4].
+            Perhaps this disproportionate interest in linear equation theory was motivated more than
+            mathematicians care to admit by its practical use as an important tool in engineering and
+            physicis, and by the belief that linear inequality systems would not be practical to solve
+            unless they had three or less variables, [5].
+
+                    My proposal served as a kind of trigger -    ideas that had been brewing all through
+            World War II but had never found expression burst forth like an explosion. Almost two
+            years to the day that I first proposed that L.P. be used for planning, Koopmans organized
+            the 1949 conference (now referred to as The Zero-th Symposium on Mathematical Pro-
+            gramming) at the University of Chicago. There mathematicians, economists, and statis-
+            ticians presented their research and produced a remarkable proceedings entitled Activity
+            Analysis of Production and Allocation, [2]. L.P. soon became part of the newly developing
+            professional fields of Operations Research and Management Science. Today thousands of
+            linear programs are solved daily throughout the world to schedule industry. These involve
+            many hundreds, thousands and sometimes tens of thousands of equations and variables.
+            Some mathematicians rank L.P. as "the newest yet most potent of mathematical tools"
+            [16].
+
+                    John von Neumann, Tjalling C. Koopmans, Albert W. Tucker, and others well known
+-"          today, some just starting their careers back in late 1940's, played important roles in L.P.'s
+            early development. A group of young economists associated with Koopmans (R. Dorfman,
+            K. Arrow, P. Samuelson, H. Simon and others) became active contributors to the field.
+            Their research on L.P. had a profound effect on economic theory leading to Nobel Prizes.
+            Another group led by A.W.Tucker, notably D. Gale and H. Kuhn, began the development
+            of the mathematical theory.
+
+                    This outpouring between the years of 1947-1950 coincided with the first building of
+            digital computers.     The computer became the tool that made the application of linear
+            programming possible. Everywhere we looked, we found practical applications that no
+            one earlier could have posed seriously as optimization problems because solving them by
+            hand computation would have been out of the question. By good luck, clever algorithms
+            in conjunction with computer development gave early promise that linear programming
+            would become a practical science. The intense interest by the Defense Department in the
+            linear programming application also had an important impact on the early construction
+
+,d                                                          2
+
+S.,
+
+      'AL
+       of computers [17]. The U.S. National Bureau of Standards with Pentagon funding became
+       a focal point for computer development under Sam Alexander; its Mathematics Group
+       under John Curtis began the first experiments on techniques for solving linear programs
+       primarily by Alan Hoffman, Theodore Motzkin, and others [3].
+
+           Since everywhere we looked, we could see possible applications of linear programs, it
+       seemed only natural to suppose that there was extensive literature on the subject. To my
+       surprise, I found in my search of the contemporary literature of 1947 only a few references
+C..    on linear inequality systems and none on solving an optimization problem subject to linear
+       inequality constraints.
+
+           T.S. Motzkin in his definitive 1936 Ph.D. thesis on linear inequalities [4] makes no
+       mention of optimizing a function subject to a system of linear inequalities. However, 15
+       years later at the First Symposium on Linear Programming (June 1951), Motzkin declared:
+       "there have been numerous rediscoveries [of LP] partly because of the confusingly many
+       different geometric interpretations which these problems admit". He went on to say that
+       different geometric interpretations allows one "to better understand and sometimes to
+       better solve cases of these problems as they appeared and developed from a first occurrence
+       in Newton's Methodus Fluxionim to right now".
+
+           The "numerous rediscoveries" that Motzkin referred to probably were to two or three
+       papers we have already cited concerned with finding the least sum of absolute deviations, or
+       minimizing the maximum deviation of linear systems, or determining whether there exists
+       a solution to a system of linear inequalities. Fourier pointed out as early as 1824 these were
+       all equivalent problems, [5]. Linear Programs, however, had also appeared in other guises.
+       In 1928, von Neumann [19] formulated the zero-sum matrix game and proved the famous
+1%     Mini-Max Theorem, a forerunner of the famous Duality Theorem of Linear Programming
+       (also due to him) [11]. In 1936, Neyman-Pearson considered the problem of finding an
+       optimal critical region for testing a statistical hypothesis. Their famous Neyman-Pearson
+       Lemma is a statement about the Lagrange Multipliers associat,'d with an optimal solution
+       to a linear program, [20].
+
+
+ 2         After I had searched the the contemporary literature of 1947 and found nothing, I
+       made a special trip to Chicago in June 1947 to visit T.J. Koopmans to see what economists
+ ...   knew about the problem. As a result of that meeting, Leonid Hurwicz, a young colleague
+       of Koopmans, visited me in the Pentagon in the summer and collaborated with me on
+       my early work on the simplex algorithm, a method which we described at the time as
+       "climbing up the bean pole" - we were maximizing the objective.
+
+                                                     3
+
+ .
+             Later I made another special trip, this one to Princeton in the fall of 1947, to visit the
+         great mathematician Johnny von Neumann to learn what mathematicians knew about the
+         subject. This was after I had already proposed the simplex method but before I realized
+         how very efficient it was going to be, [1].
+
+             The origins of the simplex method go back to one of two famous unsolved problems
+         in mathematical statistics proposed by Jerzy Neyman which I mistakenly solved as a
+         homework problem; it later became part of my Ph.D. thesis at Berkeley, [9].               Today we
+         would describe this problem as proving the existence of optimal Lagrange multipliers for a
+         semi-infinite linear program with bounded variables. Given a sample space f] whose sample
+         points u have a known probability distribution dP(u) in fl, the problem I considered was to
+         prove the existence of a critical region w in fl that satisfied the conditions of the Neyman-
+         Pearson Lemma.      More precisely, the problem concerned finding a region w in fl that
+         minimized the Lebesgue-Stieltjes integral defined by (4) below, subject to (2) and (3):
+
+                                                     ]dP(u)         = a,                                 (2)
+
+
+. %%
+                                          .t     f f(u)dP(u)        = b,                                 (3)
+
+                                              a - f g(u)dP(u) = z(min),                                  (4)
+
+         where 0 < a < 1 is the specified "size" of the region; f(u) is a given vector function of u
+         with m - 1 components whose expected value over w is specified by the vector b; and g(u)
+         is a given scalar function of u whose unknown expected value z over w is to be minimized.
+              Instead of finding a critical region, we can try to find the characteristic function O(u)
+         with the property that O(u) = 1 if u E w and O(u) = 0 if u 0 w. The original problem can
+         then be restated as:
+
+         Find min z and a function 4(u) for u E fl such that:
+
+                                          ,EOq.(u)dP(u) = a,               0 < 4(u) < 1,                 (5)
+
+                                a-' f         4(u) f(u)dP(u) = b,                                        (6)
+
+
+                                a-1f          ¢(u)g(u)dP(u) = z(min).                                    (7)
+                                        .EO
+
+
+             A discrete analog of this semi-infinite linear program can be obtained by selecting
+         n representative sample points u l,...u,.        .   ,u'    in     and replacing dP(ui) by discrete
+
+$,,:,4
+               point probabilities A3 > 0 where n may be finite or infinite. Setting
+
+                                         i! = (A/C) -(W),            0 <   3   Aj/a,                      (8)
+
+""             the approximation problem becomes the bounded variable LP:
+
+                   Find min z, 0 < x     _ Ai/ai:
+
+                                                           n
+ SZzxj                                                             = 1                                    (9)
+         ,7I
+                                                       n
+
+                                                           A.jx3 = b                                     (10)
+
+                                                      n
+                                                            cjxz   = z(min)                              (11)
+
+
+               where f (ui)    A.3 are m - 1 component column vectors, and g(u y )       cj.
+                    Since n the number of descrete j could be infinite, I found it more convenient to
+               analyze the L.P. problem in the geometry of the finite (m+ 1) dimensional space associated
+               with the coefficients in a column.     I did so initially with the convexity constraint (9)
+               but with no explicit upper bound on the non-negative variables xi, [10], [2], [11]. Since
+               the first coefficient in a column (the one corresponding to (9)) is always 1, my analysis
+               omitted the initial 1 coordinate. Each column (A. 3 , cj) becomes a point (y, z) in R ' where
+               y= (yt, . . . , ym-1) has m- 1 coordinates.
+                    The problem can now be interpreted geometrically as one of assigning weights x > 0
+               to the n points (y, z3) = (A.j, cj) in R' so that the "center of gravity" of these points,
+               see Figure 1, lies on the vertical "requirement" line (b, z) and such that its z coordinate is
+               as small as possible.
+
+
+               Simplex Algorithm
+
+                   Step t of the algorithm begins with an m - 1 simplex, see Figure 1, defined by some
+               m points (A.y,,c,) for i = (1,.    ,m) and m weights x° > 0 (in the non-degenerate case)
+               such that E A.i, zy, = b. In the figure, the vertices of the m - 1 = 2 dimensional simplex
+               correspond to j, = 1, j2 = 2, j3 = 3. The line (b, z) intersects the plane of the simplex
+               (the triangle in the figure) ir an interiorpoint (b, zt). A point (A.,, c.) is then determined
+               whose vertical distance below this "solution" plane of the simplex is maximum.
+
+                          I5
+                     S      X      (A         )A-2'C
+
+        :                                          \I     (b,z,)                ,,/
+
+                                          x                        d   .0         Solution Plane
+                                                                                  of (rn-I) Simplex
+-,
+                                               ,
+                                  (A.s'Cs3         ._.-
+                                                             -
+                                                            (b'zt +1)s x"
+                                                                                                      y
+
+
+
+                           0X
+
+
+
+
+                                         Figure 1. The m Dimensional Simplex
+
+                Algebraically the equation z = 7ry + 7ro of the plane associated with the simplex, is
+            found by solving the system m equations irA.,, + 7re = c,, ji = (jl,...,jm). Next, let
+ y-'j         = s be the index of (A.,,c,) the point most below this plane, namely
+
+                                                   s = argmin[c - (irA., + ro)].                          (12)
+
+
+                If [c, - (7rA., +7ro)]   turns out to be non-negative, the iterative process stops, otherwise
+            the m simplex, the tetrahedron in Figure 1,isformed as the convex combination of the
+            point A ,,c,) and the (m-1)simplex. The requirement line (b,z) intersects this m-simplex
+            ina segment (b, zt+1), (b, zt) where zt+t < zt. The face containing (b, zt+1) is then selected
+            as the new (m - 1)-simplex. Operationally the point (A.,c.) replaces A.., cj, for some r.
+            The index r isnot difficult to determine algebraically.
+
+                Geometrical insight as to why the simplex method isefficient can be gained by viewing
+            the algorithm in two dimensions, see Figure 2. Suppose a piecewise linear function y = f(x)
+            is defined by the underbelly of the convex hull of the points (yi, zi) = (A.j, c.). We wish
+
+                                                                            6
+
+
+J%
+                to solve the equation y = f(b) and to find two points (y, z ), (yk, Zk) and the weights
+                (A, 1)     0 on these two points such that Ayj + Ayk = b, A + /i = 1, Azi + Azk = f(b). In
+                the two dimensional case, the simplex method resembles a kind of secant method in which,
+                given any slope a, it is cheap to find a point (y',z') of the underbelly such that the slope
+                (actually the slope of a support) at ya is c, but where it is not possible given b to directly
+             compute y          f(b).
+
+
+                                   z            X×                                    4 4
+
+                    z                           × (y,zfy)
+
+[,                                                                      l..:p                    .Xz
+
+
+
+
+.
+
+                                                                                      (y    ty
+         D(b,
+
+
+
+
+                    0                                       (b,O)
+
+
+
+
+    -"                                  Figure 2. The Under-belly of the Convex Hull
+
+
+                        In Figure 2, the algorithm is initiated (in Phase II of the simplex method) by two
+                points, say (y',z') and (y 6 , z 6 ), on opposite sides of the requirement line. The slope of the
+                "solution" line joining them is or. Next, one determines that the point (yh, z 5 ) is the one
+                most below the line joining (y', z') to (y 6 , z 6 ) with slope or.
+                                                                              This is done algebraically by
+                simply substituting the coordinates (y, zj ) into the equation of the solution line z - zG =
+                aI(y - y 6 ) and finding the point j = s such that a (yj - y 6 ) - (zi - z 6 ) is maximum. For
+                the example above, s = 5 and thus (ys, z 5 ) replaces (y 6 , z 6 ). The steps are then repeated
+                with (y',z1) and (y 5 , z 5 ). The algorithm finds the optimum point (b, z*) in two iterations
+                with the pair (y3 z 3 ), (y, Z5 ).
+
+                                                                    7
+
+94
+ V(                     In practical applications, one would expect that most of the points (A.j,cj) would
+                 lie above the underbelly of their convex hull. We would therefore expect that very few
+                 j would be extreme points of the underbelly. Since the algorithm only chooses (A.,, c.)
+   .             from among the latter and these typically would be rare, I conjectured that the algorithm
+                 would have very few choices and would take about m steps in practice.
+
+                        It is, of course, not difficult to construct cases that take more than m iterations so let
+                 me make some remarks about the rate of convergence of zt to z*, the minimum value of
+                 z, in the event that the method takes more than m interations.
+
+                 Convergence Rate of the Simplex Method
+
+                        Assume there exists a constant 0 > 0 such that for every iteration r, the values of all
+       .         basic variables x', satisfy
+S.7.                                                              > 0> 0         for allj 1 ,                          (13)
+
+                 At the start of iteration t, by eliminating the basic variables from the objective equation,
+                 we obtain
+                                                           z'"-      z                                                 (14)
+
+                        3,- = 0 for all basic j =j. If (-
+                 where C.                                   )   max(-.) < 0, the iterative process stops
+                 with the current basic feasible solution optimal. Otherwise, we increase non-basic x, to
+                 x., = t > 0 and adjust basic variables to obtain the basic feasible solution to start iteration
+ tt               + 1.
+
+                        Let z* = min z and xj = x! > 0 be the corresponding optimal x3 . We define At
+                 Zt -   Z*.
+
+
+                 Theorem. Independent of n the number of variables,
+                                                                                                -
+                                     (A-/AO) < (1 - 01)(1 - 02) ..               (1 - 0t)   <       E° r < e - 0 t .   (15)
+                 where Ot > 0> 0 is the value of the incoming basic variable x, on iteration t.
+
+                 Proof.
+                                          A-     t1-       *         (cj)xj       <_ (-C4) EXi = (-el).                (16)
+
+                                    At-    -   At = Zt-.       - Zt = (-t-)x        = (-)0t         > At-      "O,     (17)
+                 where the inequality between the last two terms is obtained by multiplying (16) by Ot.
+                 Rearranging terms,
+                                               At < (1 - 0t)At_          <        A         < e-At_1                   (18)
+                 and (15) follows. I
+
+                                                                             8
+
+
+           .A.
+Corollary. Assuming Or has "on the average" the same average value as any other xj1 ,
+namely (1/m), then the expected number of iterations t required to affect an e-k fold
+decrca::m in ~o will be less than km iterations, i.e.
+
+                                                                                         (19)
+
+     Thus, under the assumption that the value of the incoming variable is 1/m on the
+average, a thousand-fold decrease in ~t = Zt - z* could be expected to be obtai.ned in less
+that 7m iterations because e- 7 < .001.
+    It was considerations such ~__these that led me back in 1947 to believe that the simplex
+method would be very efficient.
+    It is fortunate back in 1947 when algorithms for solving linear programming were first
+being developed, that the column geometry and not the row geometry was used. As we
+have seen, the column geometry suggested a very different algorithm, one that promised to
+be very efficient. Accordingly, I developed a variant of the algorithm without the convexity
+constraint (9) and arranged in the fall of 1947 to have the Bureau of Standards test it on
+George Stiegler's nutrition problem [14). Of course, I soon observed that what appeared
+in the column geometry to be a new algorithm was, in the row geometry, the vertex
+descending algorithm that I had rejected earlier.
+     It is my opinion that any well trained mathematician viewing the linear programming
+problem in the row geometry of the variables would have immediately come up with the
+idea of solving it by a vertex descending algorithm as did Fourier, de la Vallee Poussin,
+and Hitchcock before me- each of us proposing it independently of the other. I believe,
+however, that if anyone had to consider it as a practical method, as I had to, he would
+have quickly rejected it on intuitive.:grounds as a very stupid idea without merit. My
+own contributions towards the discovery of the simplex method were (1) independently
+proposing the algorithm, (2) initiating the development <;>f the software necessary for its
+practical use, and (3) observing by viewing the problem in the geometry of the columns
+rather than the rows that, contrary to geometric intuition, following a path on the outside
+of the convex polyhedron, might be a very efficient procedure.
+
+
+The Role of Sparsity in the Simplex Method
+
+     To determine .s = arg min;[c;- (1r A.,.+1ro}] requires forming the scalar product of two
+vectors 1r and A.; for each j. This "pricing out" operation~ it is called is usually very
+cheap because the vectors   A.,-
+                               are sparse, i.e., they typically have few non-zero coefficients
+
+                                              9
+                       (perhaps on the average 4 or 5 non-zeros).      Nevertheless if the number of columns n is
+                       large, say several thousand, pricing can use up a lot of CPU time. (Parallel processors
+                       could be used very effectively for pricing by assigning subsets of the columns to different
+N       .processors,               [18].)
+
+                           In single processors, various partialpricing schemes are used. One scheme used in
+                       MINOS software system is to partition the columns into subsets of some k columns each,
+                       [12]. The choice of s is restricted to columns that price out negative among the first k
+                       until there are none and then moving on to the next k, etc. Another scheme used is to
+                       price out all the columns and rank them as to how negative they price out. A subset of j,
+                       say the fifty most negative in rank, are then used to iteratively select s until this subset no
+                       longer has a column that prices out negative. Then a new subset is generated for selecting
+                       s and the process is repeated. The use of partial pricing schemes are very effective when n
+                       is large especially for matrix structures that contain so called "GUB" (Generalized Upper
+                       Bound) rows, [13].
+
+                           Besides the pricing-out of the columns, the simplex method requires that the current
+                       basis B, i.e. the columns (j.,... j,,) used to form the simplex in Figure 1 be maintained
+                       from iteration t to t + 1 in a form that makes it easy to compute two vectors v and 7r where
+                       By = A., and 7rB = (c.,... ,c,).       The matrix B is typically very sparse. In problems
+                       where the number of rows m > 1,000, the percent of non-zeros may be less than -2 of one
+                       percent. Even, for such B, it is not practical to maintain B       explicitly because it could
+                       turn out to be 100% dense. Instead B is often represented as the product of a lower and
+                       upper triangular matrix where each is maintained as a product of elementary matrices
+                       with every effort being made to to keep the single non-unit column of these elementary
+                       matrices as sparse as possible. Maintaining this sparsity is important otherwise for the
+- ~.                   case of m = 1,000 the algorithm would have to manipulate data sets with millions of
+                       non-zero numbers. Solving systems By = A.. in order to detrmine which variable leaves
+                       the basis would become too costly.
+
+
+*.                     The Role of Near Triangularity of the Basis
+
+                           The success of the simplex method in solving very large problems encountered in
+                       practice depends on two properties found in almost every practical problem. First, the
+                       basis is usually very sparse. Second, one can usually rearrange the rows and columns of
+                       the various bases encountered in the course of solution so that they are nearly triangular.
+                       Near triangularity makes it a relatively inexpensive operation to represent it as a product
+                       of a lower and upper triangular matrices and to preserve much of the original sparsity.
+
+                                                                     10
+
+    4
+       Even if the bases were very sparse but not nearly triangular, solving systems By = A,
+       could be too costly to perform.
+            The success of solving linear programming therefore depends on a number of factors:
+       (1) the power of computers, (2) extremely clever algorithms; but it depends most of all
+       upon (3) a lot of good luck that the matrices of practical problems will be very very sparse
+       and that their bases, after rearrangement, will be nearly triangular.
+             For forty years the simplex method has reigned supreme as the preferred method for
+       solving linear programs. It is historically the reason for the practical success of the field.
+ -'.   As of this writing, however, the algorithm is being challenged by new interior methods
+       proposed by N. Karmarkar [15] and others, and by methods that exploit special structure.
+       If these new methods turn out to be more successful than the simplex method for solving
+       certain practical classes of problems, I predict it will not be because of any theoretical
+       reasons having to do with polynomial time but because they can more effectively exploit
+       the sparsity and near triangularity of practical problems than the simplex method is able
+       to do.
+
+
+
+
+  ..
+
+
+
+
+-I,
+
+
+
+
+       ,                                             11
+                    N.,i
+
+
+
+                                                   References
+
+            [1] G.B. Dantzig, "Reminiscences about the Origins of Linear Programming," Mathe-
+                matical Programming (R.W. Cottle, M.L. Kelmanson, B. Korte, eds.), Proceedings
+                of the International Congress on Mathematical Programing, Rio de Janeiro, 1984, pp.
+                105-112.
+            [2] T.C. Koopmans (ed). Actively Analysis of Production and Allocation, John Wiley &
+                Sons, Inc., New York, 1951, 404 pages.
+    •"[3]       A.J. Hoffman, M. Mannos, D. Sokolousky, and N. Wiegmann, "Computational
+                                                                                           Expe-
+                rience in Solving Linear Programs," J. Soc. Indus. Appli. Math., Vol. 1, No 1, 1953,
+                pp. 17-33.
+            [4] T.S. Motzkin, "Beitrage zur Theorie der Linearen Ungleichungen," Jerusalem, 1936
+                (Doctoral Thesis, University of Zurich).
+            [51 J.B.J. Fourier, "Solution d'une question particuliere du calcul des inegalities," original
+                1826 paper with an abstract of an 1824 paper reprinted in Oeuvres de Fourier, Tome
+'               II Olms, Hildesheim 1970, pp. 317-319.
+
+            [6] Ch. de ]a Valle Poussin, "Sur la Methode de l'approximation minimum," Annales de
+                la Societe de Bruxelles, 35 (2) 1910-1, pp. 1-16.
+             [7] L.V. Kantorovich, "Mathematical Methods in the Organization and Planning of Pro-
+                 duction," Publication House of the Leningrad State University, 1939, 68 pp. Trans-
+                 lated in Management Science, Vol. 6, 1960, pp. 366-422.
+             [8] F.L. Hitchcock, "The Distribution of a Product from Several-Sources to Numerous
+                 Localities," J. Math. Phys., Vol. 20, 1941, pp. 224-230.
+            [91 G.B. Dantzig and A. Wald, "On the Fundamental Lemma of Neyman and Pearson,"
+                Ann. Math. Statist., Vol. 22, 1951, pp. 87-93.
+            ri0] G.B. Dantzig, "Linear Programming," in Problems for the Numerical Analysis of the
+                Future, Proceedings of Symposium on Modern Calculating Machinery and Numeri-
+                cal Methods, UCLA, July 29-31, 1948, Appl. Math., Series 15, National Bureau of
+                Standards, June 1951, pp. 18-21.
+            11] G.B. Dantzig, Linear Programming and Extensions, Princeton University Press,
+                Princeton, NJ, 1963, 627 pages.
+
+
+
+-V
+                                                         12
+    [12] B.A. Murtagh and M.A. Saunders, "MINOS 5.0 User's Guide" Technical Report SOL
+         83-20, Systems Optimization Laboratory, Department of Operations Research, Stan-
+         ford University, 1983.
+"   [13] G.B. Dantzig and R.M. Van Slyke, "Generalized Upper Bounding Techniques", J.
+         Computer and System Sciences, Vol 1, No. 3, October 1967, pp. 213-226.
+    [14] G.J. Stigler, "The Cost of Subsistence", J. of Farm Econ., Vol. 27, No. 2, May 1945,
+         pp. 303-314.
+    [15] N. Karmarkar, "A New Polynomial Algorithm for Linear Programmir-g," Combina-
+        torica, Vol. 4, 1984.
+    [16] R. Coughlin and D.E. Zitarelli, The Ascent of Mathematics, McGraw-Hill, 1984, p.
+         265.
+    [17] G.B. Dantzig, "Impact of Linear Programming on Computer Development", Technical
+
+        Report SOL 85-7, Department of Operations Research, Stanford University, Stanford,
+        June 1985.
+    [18] G.B. Dantzig, "Planning Under Uncertainty Using Parallel Computing," Technical
+         Report SOL-87-1, Department of Operations Research, Stanford University, Stanford,
+         January 1987.
+    [19] J. von Neumann, "Zur Theorie de Gesellschaftsspiele," Math. Ann., Vol. 100, 1928,
+         pp. 295-320. Translated by Sonya Bargmann in A.W. Tucker and R.D. Luce (eds),
+         Contributionsto the Theory of Games, Vol IV, Annals of Mathematics Study No. 40,
+         Princeton University Press, Princeton, New Jersey, 1959, pp. 13-42.
+    [20] J. Neyman and E.S. Pearson, "Contributions to the Theory of Testing Statistical
+         Hypotheses," Statist. Res. Mem., Parts I and I, 1936, 1938.
+    [21] G. Monge, "Debla et Remblai," Mem. de L' Ac. Sciences, 1781.
+    [22] P. Appello, "Le Probleme Geometrique des Deblai et Remplai," Mem. des Sciences
+         Math., 27 Paris, 1928.
+
+
+
+
+                                               13
+                             UNCLASSIFIED
+     SECURITY CLASSIFICATION OF THIS PAGE (Whom Dmb_                                                  __      ___N
+
+                   -~                                                                                   READ DSSTWICTIOUIS
+                                REPORT DOCUMETAYTN PAGE                                              BEFORE COMPLETMn FORM
+                            MUMMER
+                             OT                                  LVT      ACCESSION NO. & RECIPIENT*S CATALOG NUMUER
+
+              SOL-87-5
+     4. TITLE               w   ,bas.)                                                       S. TYPE OF REPORT A PERoOD COVERED
+
+ j            Origins of the Simplex Method                                                         Technical Report
+          a.'.6.                                                                                  PERFORIING ORo. REPORT NUMBER
+
+
+     7.    AUTHOR( )                                                                         S. CONTRACT o        GRANT NUMSER(s)
+
+
+              George B. Dantzig                                                                       N00014-85-K-0343
+
+     9.    P7ORMIrNNm           ORGANIZATION NAME AND ADDRESS                                SO. PROGRAM ELEMENT. PROJECT, TASK
+             Department of Operations Research                     -   SOL                       AREA & WORK UNIT NUNERS
+
+             Stanford University                                                                      NR-047-064
+             Stanford, CA 94305
+     I.     Cou TOLLIMO     NEAN A   FFIC             RES                                    I.     REPORT ItTL
+                  cO      arcn                       lept.
+                                                      --   of the Navy                            May 1987
+             800 N. Quincy Street                                                            ,S.NUSROPAGE
+             Arlington, VA 22217                                                                 ifpp
+     14. MONITORING AGENCY NAME S ADDRESS(Di dlieten Ilium CM100lldf OUfoe)                  IS. SECURITY CLASS. (of Okl. npoe)
+
+                                                                                                    UNCLASSIFIED
+
+                                                                                             I".    DEC ASIFICATION/DOWNoGRADIN
+
+
+     IS. DISTRIBUTION STATEMENT (of Oio RAtO)
+
+                   This document has been approved for public release and sale;
+                   its distribution is unlimited.
+
+
+     17. DISTRIBUTION STATEMENT (.5 M              6*.rac mle   in 35.6k 20. II Etheame9      *mf
+
+
+
+
+     IS. SUPPLEMENTARY NOTES
+
+
+
+
+     IS. KEY WORDS (C&mm.. on tewmam old* IIUeaeeor
+                                                 awl Idw                  AWea k imber)
+                                                                          b
+             linear programming                                                    simplex method origins
+             simplex method geometry                                               simplex method convergence rate
+             sparse matrices                                                       near triangular bases
+
+
+     20. ABSTRACT (Conme on roweee Wdl ItNemoom              and Idomnift b   bleek s.obo)
+
+
+
+                                                        Please see attached.
+
+
+
+',
+
+
+
+
+     DD                 n    1473      EDITION OF I NOVe lI OSOLT.E
+                                                                          SECURITY CLASSIFICATION OF THIS PAGE (Whm           DaEin0e10
+ p.
+
+
+
+
+                  SECURITY CLASSIFICATION OF THIS PA@IM(Phlm DoafteeM
+                                                                    lD
+
+
+
+
+                       q/                                                                                                    .
+
+
+
+
+                                In the summer of 1947, when j first began to work on the simplex method for
+ *'                             solving linear programs, the first idea that occurred to -ne is one that would
+                                occur to any trained mathematician, namely the idea of step by step descent
+                                (with respect to the objective function) along edges of the convex polyhedral
+                                set from one vertex to an adjacent one. I rejected this algorithm outright
+                                on intuitive grounds - it had to be inefficient because it proposed to solve
+                                the problem by wandering along some path of outside edges until the optimal
+                                vertex was reached. I therefore began to look for other methods which gave
+                                more promise of being efficient, such as those that went directly through the
+                                interior, Ill.
+                                Today we know that before 1947 that five isolated papers had been published
+                                on special cases of the linear programming problem by Monge (1781), 211, '
+                                Fourier (1824) [64, de la Vall~e Poussin (1911),O], Kantorovich (1939),471 and
+                                Hitchcock (1941). [8}. Fourier, Poussin, and Hitchcock proposed as a solution
+                                method descent along the outside edges of the polyhedral set which is the way
+                                we describe the simplex method today. There is no evidence that these papers
+                                had any influence on each other. Evidently they sparked zero interest on the
+                                part of other mathematicians, an exception being a paper by Appell (1928) 1221*-
+                                on Monge's translocation of masses problem. These references were unknown
+                                to me when I first proposed the simplex method. As we shall see the simplex
+                                algorithm evolved from a very different geometry, one in which it appeared to
+                                be very efficient.
+
+
+
+
+.L
+
+
+
+
+.p,-
+
+
+
+
+1%
+
+
+
+
+                                                                                              |I[CuRIT'Y CL.ASUPIFCAY)Ol   OFr '.*,   PAOI[Itt.        .v.* 3.,Iwd)
+
+       ;','   ~~~~~~~~....'."
+              ......          ...................
+                     '.-. .,.. .           .....    .   .          ........
+                                                            ....-....         '"   .".."...           ..   .   "....'....'..........."..          ..         .
+

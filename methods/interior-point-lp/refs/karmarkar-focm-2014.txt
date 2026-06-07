@@ -1,0 +1,1273 @@
+                                        TRANSACTIONS OF THE
+                                        AMERICAN MATHEMATICAL SOCIETY
+                                        Volume 00, Number 0, Pages 000–000
+                                        S 0002-9947(XX)0000-0
+
+
+
+
+                                        TOWARDS A BROADER VIEW OF THEORY OF COMPUTING -
+                                                             PART 1
+
+
+                                                                        NARENDRA KARMARKAR
+
+
+
+
+arXiv:1412.3335v1 [cs.NA] 10 Dec 2014
+                                                Abstract. Beginning with the projectively invariant method for linear pro-
+                                                gramming, interior point methods have led to powerful algorithms for many
+                                                difficult computing problems, in combinatorial optimization, logic, number
+                                                theory and non-convex optimization. Algorithms for convex optimization ben-
+                                                efitted from many pre-established ideas from classical mathematics, but non-
+                                                convex problems require new concepts.
+
+                                                Lecture series I am presenting at the conference on Foundations of Compu-
+                                                tational Mathematics, 2014, outlines some of these concepts– computational
+                                                models based on the concept of the continuum, algorithms invariant w.r.t.
+                                                projective , bi-rational , and bi-holomorphic transformations on co-ordinate
+                                                representation, extended proof systems for more efficient certificates of opti-
+                                                mality, extensions of Grassmanns extension theory, efficient evaluation meth-
+                                                ods for the effect of exponential number of constraints , theory of connected
+                                                sets based on graded connectivity, theory of curved spaces adapted to the
+                                                problem data, and concept of relatively algebraic sets in curved space.
+
+                                                Since this conference does not have a proceedings, the purpose of this arti-
+                                                cle is to provide the material being presented at the conference in more widely
+                                                accessible form.
+
+
+
+
+                                                                            1. Introduction
+                                           In Part 1 of this lecture series we discuss two topics :
+                                              • Computational models based on the concept of the continuum
+                                              • Extended proof systems for more efficient certificates of optimality
+                                        In the part 2 of this lecture series, we describe efficient evaluation methods for
+                                        the effect of exponential number of constraints in the context of continuum based
+                                        algorithms.We illustrate these ideas by considering concrete examples of finding
+                                        maximum independent set in a graph and the satisfiability problem. Objective
+                                        function for these problems is treated by non-convex optimization methods covered
+                                        in part 3.
+
+                                                                     2. Models of Computation
+                                        2.1. Introduction. A model of computation provides mathematical abstractions
+                                        of basic data objects and operations on those objects, available as building blocks.
+                                        This effectively decouples design of algorithms for complex tasks from lower level
+
+                                          Received by the editors December 8, 2014 .
+
+                                                                                                    c XXXX American Mathematical Society
+
+                                                                                       1
+2                            NARENDRA KARMARKAR
+
+
+details of how the underlying hardware implements the basic primitives. The Tur-
+ing machine model uses strings of 0s and 1s and finite state machines. Careful study
+of the work of early pioneers Turing,Von Neumann and Godel shows that they
+were acutely aware of the limitations of this model for comprehensive understand-
+ing of the fundamental aspects of computation. BSS model(Blum, Shub, Smale)
+uses real or complex numbers as data objects and algebraic operations ( including
+comparisons in real case ). This is more natural for many algorithms in numerical
+analysis, whereas Turing Machine model might seem more appropriate for discrete
+applications.
+2.2. Applications of computing. Various applications of computing come in
+both flavours- discrete and continuous. e.g. Many business and information tech-
+nology applications of computing clearly use discrete models.
+   At the same time, there are many areas of scientific and engineering applications
+based on continuous models. A few such examples are :
+      • Numerical simulation of natural phenomena or engineered systems based
+        on differential equations
+      • Estimation of probabilities, assessing strength of association between vari-
+        ous entities in social networks
+      • Interior point algorithms in optimization which are based on embedding
+        discrete configurations in a multidimensional continuous space and con-
+        structing trajectories converging to the solution
+Ideas presented in this paper are primarily motivated by such applications. A model
+of computation is used to map applications of interest on physical machines
+
+
+2.3. Examples of physical computers.
+      • Standard digital computers
+      • Analog computers explored in the past e.g. Shannon’s differential analyzer
+      • Quantum computers
+      • Biological systems that appear to do information processing / computing
+      • Computers inspired by biological systems and partially mimicking some
+        aspects of those systems
+        e.g. neural networks, neuromorphic computing, etc.
+2.4. The need for a broader approach – Early Pioneers’ views .
+      • Alan Turing was interested in understanding the origin of intelligence in
+        biological systems He believed it is due to some form of computing happen-
+        ing in these systems. However, there doesn’t seem to be anything similar
+        to Turing machines in these systems. Many years after developing the
+        discrete model of computation, Turing started exploration of partial differ-
+        ential equations modelling biological functions These are clearly continuum
+        based models of biological systems.
+      • Von Neumann defined architecture of a digital computer using many ideas
+        from Turing Machine model. However, he was particularly critical of the
+        limitations imposed on the theory of automata by its foundations in formal
+        logic, combinatorics. He articulated the need for a detailed, highly math-
+        ematical, and more specifically, analytical theory of computation based on
+        mathematical analysis.
+       TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                        3
+
+
+• Shannon worked on analog computer called differential analyzer. However,
+  direct implementation of differentiation in analog system is highly error
+  prone as it involves subtraction of two nearly equal continuous quantities.
+4                               NARENDRA KARMARKAR
+
+
+2.5.   Physical devices that process information in continuum form.
+       • Role of Integration and Integral Transform
+          – It’s well known that for certain non-linear differential equations which
+             are difficult to solve numerically, it helps to convert them into equiva-
+             lent integral equations.
+          – Biological systems seem to use integral transform. e.g. Human ear
+             essentially computes the magnitude of Fourier Transform of speech
+             signal.The transform of the derivative is then obtained by scaling, a
+             simpler algebraic operation than differentiation in analog setting.
+          – Some optical computers are implementing Fourier Transform directly
+             for computing differential operators required in computational fluid
+             dynamic
+          – Form of integration or convolution restricted to non-negative real func-
+             tions is easier to provide in a physical system.
+       • Robustness
+          – In digial systems, the mapping from
+
+              Physical states / quantities −→ information states/quantities
+
+             is many to one, In fact, each information state has infinite pre im-
+             ages.
+           – This is to gain robustness in the face of small variations in physical
+             states, due to noise, thermal effects, variations in manufacturing etc.
+           – However, this does not necessarily require information states to be
+             discrete. e.g. An ideal low pass filter also provides infinity to one
+             mapping but the output signal still belongs to the continuum.
+   It is important to include these two mechanisms when constructing machines
+that support continuum computing
+
+
+2.6. Intertwining of discrete and continuous models. Logical and physical
+processes underlying computation involves several levels of abstractions, both con-
+tinuous and discrete. Let us examine a specific application – Solution of a non-linear
+differential equation.
+       • This application and algorithm used for solution are both based on contin-
+         uous model.
+       • Real numbers in the continuous model are approximated by floating point
+         arithmetic for mapping onto the discrete Turing machine model.
+       • The computer implementing discrete Turing Machine model is actually a
+         network of transistors. As a circuit, it is modeled by a system of non-linear
+         differential equations. Restricted interpretation is applied to continuous
+         quantities. e.g. Continuous time is divided into clock cycles bigger than
+         settling time of the transient solution to the differential equations, to create
+         discrete time steps.Voltage greater than certain threshold voltage represents
+         logical one. In this way, the discrete logical model is supported by the
+         underlying circuit-level continuous model.
+       • This continuous circuit model is itself approximating underlying discrete
+         phenomenon :
+              TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                          5
+
+
+          – Continuous, fluid-like model of current flow, for approximating the
+             statistical mechanics of large number of discrete particles (electrons
+             and holes in a semiconductor)
+          – Continuous energy bands( valence and conduction bands) representing
+             large number of closely spaced quantized energy levels
+     • The underlying quantum mechanical phenomenon is modelled mathemat-
+       ically by the concept of Hilbert space which is based on the continuum
+       concept. Similarly, more recent and on-going model of physics is based on
+       string theory, which again requires the concept of the continuum.
+2.7. Towards a broader view of theory of computing.
+ Given this intertwining of discrete and continuous models from top to bottom, it
+would be more illuminating to take a broader view of theory of computing. In ad-
+dition to the discrete Turing machine model, one also needs to explore continuous
+models for a comprehensive understanding of the fundamental aspects of compu-
+tation. BSS model uses real or complex numbers as data objects and algebraic
+operations ( including comparisons in real case ). This is more natural for many
+algorithms in numerical analysis.
+ Various computing models can be organized in a similar way as Cantor had or-
+ganized infinite sets – by cardinal number of the set of all possible machines and
+data objects in the model. Staying within the same cardinal number, a more pow-
+erful approach is to use further extension, e.g real analytic functions or algebraic
+closure of meromorphic functions over suitable domains. Operations include alge-
+braic as well as analytic operations. i.e. integration and differentiation regarded as
+binary operations. ( specification of the contour of integration is one of the input
+operands).
+ All such models that use both algebraic and analytical operations on continuous
+data objects are collectively referred to as continuum computing.Our research pro-
+gram is aimed at exploration of what a continuum view of computing might suggest
+for science of algorithms, relative difficulty of various computing tasks etc.
+2.8. Abstract Continuum Computing Model AC 2 M or CM for short . The
+basic data objects and operations in this model are as follows :
+      • Basic data objects
+        algebraic closure of meromorphic functions (over suitable domain)
+     • Basic unit operations
+          – field operations: +, −, ×, ÷
+            and additionally for real quantities comparison (<, =)
+          – analytic operations R
+               ∗ integration: C f (z)dz this is a binary operation, function f
+                 and specification contour C are the two operands
+                                    ∂f
+               ∗ differentiation: ∂z  i
+                                        is also a binary operation with inputs f
+                 and zi .
+(a word of caution when comparing with TM - there is no such thing as “conserva-
+tion of difficulty” across the models.)
+6                              NARENDRA KARMARKAR
+
+
+2.9.   Extension of P 6= N P conjecture from TM theory.
+       • Computing models can be organized in the same way as Cantor organized
+         infinite sets i.e. according to the cardinal number
+         of set of all possible data objects and machines in the model.
+       • At each cardinal number in the sequence i0 < i1 < i2 < . . ., you have
+         models of computation, and corresponding P 6= N P question
+                       TM     −→ i0 ,     cardinalnumber(Q)
+                       CM     −→ i1 ,     cardinalnumber(R)
+
+       • It appears that P 6= N P problem for TM is just the first member in a
+         sequence of strict inclusions
+              P (T M ) ( N P (T M ) ( P (CM ) ( N P (CM ) ( P (i2 ) . . .
+
+       • An interesting question across adjacent level:
+            N P (T M ) ( P (CM )
+         i.e., is non-determisitic computing at any one level no more powerful than
+         deterministic computing at the next level ?
+2.10. Our Research Program. Is aimed at understanding the following:
+       • how to construct physical machines supporting Continuum Computing ?
+       • Can non-deterministic computing at the TM level be simulated by deter-
+         ministic computing at next level i.e. by Continuum Computing ?
+          and a harder question:
+       • to what extent can one approximate deterministic Continuum Computing
+         by deterministic computing in TM?
+       • initially, approximate cross-simulation was meant to be ”stop-gap” mea-
+         sure, but now it appears that building continuum machine may take many
+         years, hence simulation becomes more important.
+       • Floating Point numbers allows approximation of reals by rationals
+       • Similarly, one can approximate functions by other simpler functions
+       • In this investigation, length of ”binary encoding” of data object does not
+         have the same fundamental significance as in TM theory. Instead, other
+         properties of the problem space seem more important
+              TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                              7
+
+
+     3. Extensions of proof systems for more efficient proofs of
+                    optimality and non-satisfiability
+3.1. Introduction. We are interested in converting results of continuum based
+algorithms so that proofs of optimality or non-existence of solutions can be verified
+on the standard model.
+  Both involve proofs of non-negativity of functions.
+    • Optimality:
+           Proving that xmin is a global minimum of f (x1 , x2 , . . . , xn ) is equivalent
+        to showing that for fmin = f (xmin ), we have
+
+                            f (x) − fmin ≥ 0     ∀x ∈ Rn
+     • Non-satisfiability: Each variable xi = ±1
+       let V denote the variety defined by x2i = 1 ∀i
+       For each clause associate a polynomial. e.g.
+       C = xi ∨ x¯j ∨ xk , associated pc (x) = [1 − xi ] · [1 + xj ] · [1 − xk ]
+                                          (
+                                            0 if x is a satisfying assignment
+          For a ±1 vector x, pc (x) =
+                                            8 otherwise
+                   P
+       Define f = C∈Clauses pc (x).
+           Then f (x) > 0       ∀x ∈ V gives proof of non-satisfiability.
+3.2. Relation of Positivity Proofs to Hilbert’s 17th problem.
+3.2.1. introduction.
+      • One approach to proving positivity of a polynomial is to express it as sums
+        of squares of other functions
+      • Using polynomials:
+           Hilbert (1888) realized that it is not always possible , but gave a non-
+        constructive proof of the existence of a counter example.
+      • Using rational functions:
+           Is always possible – Artin’s (1926) solution of Hilbert’s 17th problem.
+        But exponentially many terms of high degree required (Pfister).
+      • Concrete examples of Hilbert’s result took long time to construct.
+             First counter example - Motzkin
+                       f (x, y, z) = z 6 + x4 y 2 + x2 y 4 − 3x2 y 2 z 2
+            Further examples - Lam, Robinson and others.
+     • Computational results:
+          For these “counterexamples”, we have computed expressions as sums of
+       squares of polynomials, with a modified interpretation.
+       Algorithm underlying the solver was described in previous lecture [Kar-
+       markar, MIT91, IPCO92]
+8                              NARENDRA KARMARKAR
+
+
+3.2.2. Computational approach to positivity proofs.
+      • Consider a homogeneous polynomial f (x1 , x2 , . . . , xn ) of degree d in n real
+        variables x1 , x2 , . . . , xn , which is non-negative everywhere.
+      • To show that a function is non-negative on a compact set, it is enough to
+        show that the function is non-negative at all its critical points.
+           (note we have homogeneous polynomials over projective space). There-
+        fore non negativity at set of infinite number of points in IRn is implied by
+        non-negativity at a finite subset of points viz the critical points.
+      • This can be achieved if we
+
+                (1) construct a variety containing all critical points of the func-
+          tion and
+                 (2) construct an expression of the function as sums of squares
+                 of polynomials in the coordinate ring of that variety, instead of
+                 the polynomial ring <(x1 , . . . , xn ).
+      • Additionally, without loss of generality, we impose a spherical constraint
+
+(3.2.1)                          x21 + x22 + . . . + x2n = 1
+
+      • Each point in the real projective space is covered twice (by a pair of an-
+        tipodal points) in this representation.
+      • A critical point of the function satisfies
+
+
+
+                                 ∂f
+(3.2.2)                              = λxi , i = 1, ..., n
+                                 ∂xi
+            where λ is the Lagrange multiplier.
+
+      • We now work in <n+1 , and points in this expanded space will be denoted
+        by (x1 , x2 , ..., xn , λ)
+      • The equations (1) and (2) define an algebraic variety U (i.e an algebraic
+        set – in our terminology a variety does not have to be irreducible).
+
+      • Our approach is to construct a variety V such that U ⊆ V ⊆ <n+1
+        and in the co-ordinate ring of V , construct an expression for f as sums of
+        squares
+                                 P 2
+                                    i Si (x1 , x2 , . . . , xn , λ)
+
+      • We also produce an explicit expression for
+
+                                                 2
+                                           P
+                                   f −        i Si (x1 , x2 , . . . , xn , λ)
+                                   P
+                         as           j   aj (x, λ) gj (x1 , x2 , . . . , xn , λ)
+                         where     gj (x1 , x2 , . . . , xn , λ) = 0
+            are the defining equations for V .
+                TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                                              9
+
+
+3.2.3. Samples of computer generated proofs. For small examples, the proofs
+are short enough to be displayed on viewgraphs :
+Motzkin’s first counter example
+
+                     f (x, y, z)   =     z 6 + x4 y 2 + x2 y 4 − 3x2 y 2 z 2
+                                           1                          3
+                              f    ≡     ( S12 + S22 + S32 + S42 + S52 ) mod V
+                                           4                          4
+                             S1    =     xy(x2 − y 2 )
+                             S2    =     x4 + y 4 − 2x2 − 2y 2 + x2 y 2 + 1
+                             S3    =     xz(x2 + 2y 2 − 1)
+                             S4    =     yz(2x2 + y 2 − 1)
+                             S5    =     xy(3x2 + 3y 2 − 2)
+
+  Robinson’s counter example
+
+        f   =    x6 + y 6 + z 6 − (x4 y 2 + x2 y 4 + y 4 z 2 + y 2 z 4 + z 4 x2 + z 2 x4 ) + 3x2 y 2 z 2
+                        3       1
+        f   ≡    (S12 + S22 + S32 + S42 + S52 ) mod V
+                        4       4
+       S1   =    −x3 y + xy 3
+       S2   =    −1 + 3x2 − 2x4 − 4x2 y 2 + 2y 2
+       S3   =    1 − x2 − 2x4 + 4x2 y 2 − 4y 2 + 4y 4
+       S4   =    −2x3 z − xy 2 z + xz
+       S5   =    −x2 yz − 2y 3 z + yz
+
+
+
+
+3.3. Rules for positivity proofs.
+3.3.1. Basic Rules.
+    (1) Starting primitives:
+        (a) Constant functions
+            Let α ∈ R+ be a positive scalar.
+            If f (x) = α, then f > 0.
+        (b) Square functions
+           If f (x) = g 2 (x), then f ≥ 0.
+   (2) Algebraic operations preserving positivity:
+                                   If f ≥ 0 and g ≥ 0, then f + g ≥ 0
+                             If f ≥ 0 and g ≥ 0, then f · g ≥ 0
+   (3) Positivity restricted to variety defining constraints:
+          Suppose there are integrality constraints, x2i = 1, or other constraints
+       like Ax = b etc. They define an algebraic set or subvariety V of Rn . It is
+       understood that algebraic operations are to be interpreted upto equivalence
+       classes of functions on V .
+   There has been extensive exploration of application of rules of this type along
+with rules for cuts based on integrality constraints. see e.g. Lovaśz, Schrijver,
+Grigoriev,Chlamatac,Schoenebeck, Tulsiani,Worah, and references therein
+10                                   NARENDRA KARMARKAR
+
+
+3.3.2. New rules. We strengthen the previous proof systems by adding the fol-
+lowing new rules.
+    (1) Substitution or Composition rule:
+           Let f (x1 , . . . , xn ) and gi (y1 , . . . , ym ) for 1 ≤ i ≤ n be real polynomials
+           Let h(y1 , . . . , ym ) = f (g1 (y1 , . . . , ym ), . . . , gn (y1 , . . . , ym )).
+         (a) If f (x1 , . . . , xn ) ≥ 0 for all x ∈ Rn , then h(y1 , . . . , ym ) ≥ 0.
+         (b) If f (x1 , . . . , xn ) ≥ 0 for all x ∈ Rn+ and gi (y1 , . . . , ym ) ≥ 0 for all
+             y ∈ Rm , then h(y1 , . . . , ym ) ≥ 0.
+     (2) Division rule: In some sense, this rule is not new, since Artin’s approach
+         uses rational functions. However, number of rational terms in that approach
+         can be exponential, but having a separate rule enables selective application
+         for more efficient proof.
+         Suppose g(x) > 0, f (x) ≥ 0 and g(x) | f (x).
+                             If f (x) = g(x) · h(x), then h(x) ≥ 0.
+         This rule reduces the degree.
+     (3) Odd Radical rule:
+            Suppose f (x) is a perfect odd ((2k + 1)th ) power. Let g(x) be the
+         (2k + 1)th root of f (x), i.e. f (x) = g 2k+1 (x).
+                                  If f (x) ≥ 0, then g(x) ≥ 0.
+         This is one of the rare rules that reduces the degree.
+
+           Notes:
+         (a) Certain inequalities ( e.g. Cauchy-Schwartz ) are proved symbolically,
+             and have proof-length O(1), independent of n. When invoking such
+             inequalities during application of the composition rule, only length
+             involved in specifying the substitution should be counted as addition
+             to the length of the proof.
+         (b) Lower bounds based on proof system without these rules don’t show
+             intrinsic difficulty of any problem, but only show intrinsic limitations
+             of the proof system used
+
+                              4. Maximum Independent Set
+4.1. Introduction.
+      • Let G = (V, E) be a graph with vertex set V and edge set E.
+      • A subset U ⊆ V of nodes is called independent if for every edge (i, j) ∈ E,
+        either i ∈
+                 / U or j ∈
+                          /U
+      • Problem: Find the largest independent set.
+      • ±1 integer programming formulation
+           Constraints:
+                                    wi = ±1; i = 1, . . . , n
+                             wi + wj ≤        0; ∀(i, j) ∈ E
+                              P
+        Objective: Maximize      wi
+      • Relaxation of the feasible set allows −1 ≤ wi ≤ 1
+      • Each extreme pointPof an LP has co-ordinates that are ±1 or 0.
+      • For a ±1 solution, i wi2 = n.
+              TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                             11
+
+
+
+
+                                                   wi2
+                                  P            P
+      • Non-convex objective:         wi + β
+
+
+4.2. Defining a sharper polytope. There are additional inequalities
+      • that hold for the solution points, i.e. feasible points with ±1 solution
+      • but cannot be expressed as non-negative linear combinations of basic in-
+        equalities
+      • number of such inequalities grows exponentially with n
+      • significant effort in polyhedral combinatorics is aimed at identifying such
+        constraints (e.g. see Schrijver[3]).
+
+4.3. Example: odd cycle inequalities.
+      • Consider an odd cycle in the graph, having 2k + 1 vertices. At most k of
+        the 2k + 1 vertices can be in an independent set.
+      • Let i1 , i2 , . . . , i2k+1 be the vertices in the cycle; hence wi1 + wi2 + . . . +
+        wi2k+1 ≤ −1.
+      • This inequality is sharper, since the previous inequalities only imply :
+        wi1 + wi2 + . . . + wi2k+1 ≤ 0.
+      • Number of odd cycles, and hence the corresponding number of inequalities,
+        can grow exponentially with n.
+
+4.4. Inequalities for other subgraphs.
+      • Similar to odd cycles, there are constraints based on other types of sub-
+        graphs.
+      • Let                       X
+                                      ai · wi ≤ b
+                                      i∈G0
+        be a constraint based on a fixed graph G0 .
+      • Let Ge be a graph obtained by an odd sub-division of the edges of G0 , i.e.
+        replace an edge by an odd path.
+                                                                     P
+      • Then sum of newly added vertices is always non-positive, i.e. i∈New vertex wi ≤
+        0.
+                                               P
+      • Furthermore, to achieve the equality, i∈New vertex wi = 0,there are
+        only two ways to assign values to new vertices and each corresponds to a
+        particular feasible assignment to the end points of the original edge.
+12                             NARENDRA KARMARKAR
+
+
+
+
+     • Using this observation, it is easy to show that the inequality for G0 implies
+       a similar inequality for G,
+                                 e i.e.
+                         X                    X
+                             ai · wi ≤ b ⇒       aei · wi ≤ b
+                        i∈G0                 i∈G
+                                               e
+     • In this context, we are using a more restricted notion of homeomorphism.
+     • Specifically, in order for two paths to be homeomorphic
+       both must have odd length or both must have even length.
+     • We call this “parity-respecting” homeomorphisms, and denote it by
+                                   Ge∼
+                                     = G0 (mod2)
+       (different authors use different terminology/notation, e.g. see [])
+     • Given a fixed graph G0 and an input graphs G,
+       an inequality for G0 ⇒ an inequality for each subgraph G     e of G that is
+       homeomorphic to G0 .
+     • Number of such subgraphs can grow exponentially with n.
+     • As an example, let G0 be a triangle and G be a given graph.
+       Then the subgraphs of G that are homeomorphic to G0 respecting parity,
+       are exactly the odd cycles of G.
+       All odd cycle inequalities for G are obtained from inequalities for G0 .
+     • We will use this example to show how the combined effect of all odd cycle
+       inequalities can be computed in polynomial time in the continuum model.
+     • Observe that all the inequalities in this example are linear, which simplifies
+       our exposition.
+     • However, these techniques are not limited to the linear case. Later, we will
+       show an example of non-linear, non-convex inequalities as well.
+             TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                          13
+
+
+       5. Combining Effect of Exponential Number of Inequalities
+5.1. Projectively Invariant Metric.
+      • Consider the projectively invariant metric we use in linear programming
+        algorithm. Let
+                               n            X        o
+                         4 = xi | xi ≥ 0,      xi = 1
+         be the simplex used in the algorithm.
+     • Let x, y  int (4) be two interior points in the simplex.
+       Projectively invariant distance between x and y, based on p-norms :
+                                       X  xi         p ! p1
+                                  1                yi
+                        d(x, y) = ·             −
+                                  2     i
+                                             yi    xi
+     • The infinitesimal version of d gives the Riemannian metric g(x) for p = 2
+       and Riemann-Finsler metric for p > 2.
+                            p
+                                            X  dxi p
+                           gij (x)dxi dxj =
+                                            i
+                                                 xi
+           The performance of the algorithm depends on curvature in this metric.
+       Karmarkar [4]
+     • For inequalities in the form Ax ≤ b, let x, y be two interior points, and let
+       s, t be the corresponding slack variables i.e.
+                             Ax + s = b, Ay + t = b
+          Then projectively invariant distance between x and y is given by
+                                   X  1  si        p
+                         p                        ti
+                        d (x, y) =        ·     −
+                                    i
+                                        2    ti   si
+     • Let s0 = slack variable for the current interior point x0 (constant)
+       and s = slack variable for the next (unknown) interior point x.
+     • Observe the particular “distributive“ form of the function dp (x, x0 ).
+         If S is the set of all slack variables, then dp distributes linearly over S.
+                                              X
+                                dp (x, x0 ) =    ψ(s)
+                                            sS
+
+          where the ψ(s) for the individual slack variable is
+                                                p
+                                     1    s    s0
+                         ψ(s) =        ·     −
+                                     2   s0     s
+5.2. Computing exponential sums efficiently.
+      • Note that the potential function ψ used in the interior point methods also
+        has the same distributive form,
+        where ψ could be a non-linear rational or transcendental function of indi-
+        vidual slack variable.
+      • We are interested in the case when S is exponentially large.
+      • Such sums can be evaluated efficiently for
+14                             NARENDRA KARMARKAR
+
+
+           – Large class of problems involving exponential number of inequalities,
+
+           – when ψ(s) belongs to certain special parametric family of functions
+             such as exponential function, e.g ψ(s) = e−zs .
+      • While the actual function ψ(s) of interest is not of this form,
+        it can be expressed as a linear superposition of functions of this form.
+      • E.g. techniques such as
+        Laplace transform or Fourier transform and their inverse transforms enable
+        expressing ψ as (infinite)superposition of (real or complex) exponentials.
+      • For approximate cross-simulation on the standard model,
+        we use a suitable finite superposition.
+
+     6. Combined Effect of Inequalities for all Odd Cycles in a Graph
+6.1. introduction. Contribution of an individual slack variable s: ψ(s) = e−zs
+where z C.
+ Goal: We want to find closed form meromorphic function for
+total contribution of all slack variables.
+ Edge Matrix
+                                    wi + wj
+      • For a single edge, we have            ≤0
+                                         2
+        Note: since each node in a cycle has degree 2, we are dividing by 2
+        For more general graph minors, the weighting factors are different.
+                                                wi + wj
+      • Introducing slack variable sij , we get         + sij = 0. Then,
+                                                   2
+                                        wi + wj
+                           sij = −
+                                           2
+                                                        wi +wj
+                                                 n      o
+                                                    z
+                             ψ    =   e−z·sij = e          2
+
+
+      • Define edge matrix A(z, w) over the field of meromorphic functions as
+                                ( z
+                                 e 2 {wi +wj } if (i, j) is an edge
+                   Aij (z, w) =
+                                 0             otherwise.
+      • For a single slack variable s, there is a relation between the derivative
+                    ∂       ∂
+        operators      and
+                   ∂s       ∂z
+                                       ∂ψ     ∂ψ
+                                     s    =z
+                                       ∂s     ∂z
+      • For the edge matrix A(z, w), derivative with respect to wi , the co-ordinates
+        of the interior point, are expressed in terms of the “J-products”.
+                                                       
+                            ∂A      z
+                                 =      I J A+A J I
+                            ∂wp     2     p         p
+
+      • This gives an autonomous differential equation for A,
+        which allows us to create recurrence relation connecting
+
+           – higher powers of A to lower powers and
+           – higher derivatives of A to lower order derivatives.
+              TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                           15
+
+
+      • These recurrence relations lead to closed form expressions for higher deriva-
+        tives and higher powers.
+6.2. Permitting additional inequalities. We are interested in all odd cycles in
+the graph.
+  A odd cycle is a special case of a closed odd walk.
+
+   Since a closed odd walk contains an odd cycle as a subgraph, a sharper version
+of inequality is also valid for closed odd walk.
+  However this inequality is implied by the odd cycle inequalities.
+   Therefore, from the point of view of formulation, these additional inequalities
+are superfluous:
+  useless → since they are implied by other inequalities but
+harmless → they are still valid.
+   However from the point of view of obtaining a closed form expression that can
+be evaluated in polynomial time, they are essential.
+
+    7. Getting the closed form expression for the combined effect of
+                               inequalities
+7.1. Introduction. Steps:
+
+  (1) Get expressions for the effect of the implied inequalities for the following:
+   (a) For a given walk W of length l : ψW
+   (b) For a given pair of nodes i and j , all walks of length l : ψij
+   (c) In the entire graph, all closed walks of length l : ψl
+   (d) In the entire graph, all closed odd walks of length at most n : ψ
+
+  (2) Transitioning from expressions for implied inequalities to expressions for
+sharper inequalities for the following:
+   (a) All closed odd walks of length at most n in the entire graph : ψe
+7.2. Closed form expression: Step (1a)
+. Single walk W of length l:
+  Consider a walk W with l edges i1 , i2 , . . . , il+1 . Summing the edge inequalities,
+we have
+                        1                       1
+                          w1 + w2 + . . . + wl + wl+1 ≤ 0
+                        2                       2
+  Let sw be a slack variable for the “implied” inequality for walk W .
+                               X
+                     sw =           se
+                                  e∈W
+                                                  P               Y
+                  ψW (sw )   = e−z·sw = e−z          e∈W se   =         e−z·se
+                                                                  e∈W
+                      ψW     = Ai1 i2 Ai2 i3 · · · Ail il+1
+16                                NARENDRA KARMARKAR
+
+
+7.3. Closed form expression: Steps (1b) & (1c)
+. Between given pair of nodes i and j effect of all walks of length l :
+     Let i1 = i and il+1 = j.
+                                             X
+                           ψij    =                       Aii2 Ai2 i3 · · · Ail j
+                                         i2 ,i3 ,...,il
+
+                           ψij    = Alij
+     All closed walks of length l in the entire graph:
+                                        X
+                                 ψl =        Alii = tr{Al (z, w)}
+                                         i
+However, a closed walk of length l is counted 2l times in the expression above,
+
+       • Due to l vertices of the walk and
+
+       • The two senses of traversal along the walk.
+
+     Compensating for this repetition, we have
+
+                                                tr{Al (z, w)}
+                                        ψl =
+                                                     2l
+7.4. Closed form expression: Step (1d)
+. All closed odd walks of length at most n in the entire graph:
+     Let kmax = b n−1
+                   2 c.
+                                  kX
+                                   max
+
+                       ψ   =             ψ2k+1
+                                  k=1
+                                  kX
+                                   max
+                                               1
+                           =                          tr{A2k+1 (z, w)}
+                                         2 · (2k + 1)
+                                  k=1
+                           = tr{B(z, w)}
+where
+                                                 kX
+                                                  max
+                                                               A2k+1
+                                 B(z, w) =
+                                                            2 · (2k + 1)
+                                                  k=1
+
+7.5. Transitioning from effect of implied inequalities to sharper ones
+. Let i1 , i2 , . . . , il+1 be a walk of length l; its implied inequality is given by
+                                 wi1                      wi
+                                     + wi2 + . . . + wil + l+1 ≤ 0
+                                  2                          2
+   If il+1 = i1 , we have a closed walk with the implied inequality given by
+                                  wi1 + wi2 + . . . + wil ≤ 0
+     For closed odd walks ( l = 2k + 1), we get the following sharper inequality.
+                                 wi1 + wi2 + . . . + wil ≤ −1
+     since at most k nodes can be in an independent set.
+              TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                             17
+
+
+   If s is the slack variable for the implied inequality, let se denote the slack variable
+for the corresponding sharper inequality.
+                                        se = s − 1
+                                      −z·e
+                                  e      s
+                                             = ez · e−s
+                                       ψel   = ez ψl
+
+
+7.6. Closed form expression: Step (2a)
+. Transitioning from the expression for implied inequality for a closed odd walk to
+the sharper inequality involves multiplication by ez , which is independent of the
+length of the walk.
+   Therefore, for l odd, ψel is given by
+                                                  l
+                                           tr{A (z, w)}
+                                ψel = ez ·
+                                                2l
+   And ψe is given by
+                                  ψe =       ez · B(z, w)
+  It is trivial to see that this can be evaluated in polynomial time in the continuum
+model.
+      • Straightforward evaluation of ψe as written, will take O(n4 ) operations. But
+         with some rearrangement, it is possible to evaluate it with O(n3 ) operations.
+18                                     NARENDRA KARMARKAR
+
+
+
+
+                                              8. Join Product
+8.1. Introduction. We split the tensor product involving contraction into two
+steps The first step is similar to join operation on relations in a relational data base
+ Simple examples of J-products –
+
+     (1) Matrix Multiplication :
+                                                                      X
+                                   C = A.B, Cpr =                             Apq Bqr
+                                                                         q
+
+        corresponding ”join” product (definition):
+                                                Cpqr = Apq Bqr
+        without the summation (contraction) over q
+        corresponding ”join” product (notation):
+                                                  C=A J B
+                                                                 q
+
+     (1) Dot Product of vectors :
+                                                                 X
+                                             c = a.b =                       ai bi
+                                                                     i
+
+           Corresponding join product (definition) :
+                                                     ci = ai bi
+           Corresponding join product (notation) :
+                                                   c=a J b
+                                                                 i
+
+     (2) Hadamard Product of matrices :
+         is an example of J-product with two repeated indices
+
+                                                 Apq = Bpq Cpq
+
+                                                 A=B J                   C
+                                                               p, q
+
+8.2. Tensor contraction
+. input tensors : A, B, with repeated covariant and contravarient indices , and
+output tensor : C with summation over repeated indices r1 , r2 , ...rm .
+                                               X
+            Cqp11qp22...q
+                      ...pk s1 s2 ...sn
+                         l t1 t2 ...tu
+                                        =                 Aqp11qp22...q
+                                                                   ...pk
+                                                                       l r1 r2 ...rm
+                                                                                     Btr11tr22...t
+                                                                                               ...rm s1 s2 ...sn
+                                                                                                  u
+                                            r1 r2 ...rm
+
+If there are m repeated indices, rank(C) = rank(A) + rank(B) - 2.m
+Corresponding join operator :
+               TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                                              19
+
+
+     • There is no summation over repeated indices
+
+     • One copy of such indices is present in the output, enclosed in round ()
+
+     • They don’t have significance as tensor indices but simply denote
+       an indexed family of tensors of the same rank as above
+
+
+       [Cqp11qp22...q
+                  ...pk s1 s2 ...sn
+                     l t1 t2 ...tu
+                                    ]( r1 r2 ...rm ) = Apq11qp22...q
+                                                                ...pk
+                                                                    l r1 r2 ...rm
+                                                                                     r r ...r s s ...s
+                                                                                  J Bt11t22...tum 1 2 n
+
+  Notation :
+                                              C=A J B
+Sometimes, the repeated indices are noted below                           J   as shown :
+
+
+
+                                          C=A              J          B
+                                                      r1r2...rm
+
+   Tensor Product as composition of join and summation operation :
+                                                X
+                                  A.B =                    A      J           B
+                                                               r1r2...rm
+                                             r1 r2 ...rm
+
+8.3. Properties of join product.
+      • Linear in both arguments :
+        If α and β are scalars
+
+                       {αA + βB} J C = α(A J C) + β(B J C)
+       If A, B, X are matrices of compatible dimensions,
+
+                                    X(A J B) = {XA} J B
+
+
+                                    (A J B)X = A J {BX}
+           Similar rule applies for general compatible tensor multiplication.
+
+     • Associative :
+
+                                A J [B J C] = [A J B] J C
+     • Derivative rule :
+
+          ∂                                        ∂A           ∂
+             {A(x1 x2 ...xn ) J B(x1 x2 ...xn )} =     J B+A J     B
+         ∂xi                                       ∂xi         ∂xi
+     • Transpose :
+
+                                               T
+                                              Cijk = Ckji
+20                                NARENDRA KARMARKAR
+
+
+                                  [A J B]T = [B T J AT ]
+             For symmetric A,B
+
+
+                                   [A J B] = [B J A]
+       • Transpose of triple product :
+
+
+                          [A J B J C]T = C T J B T J AT
+                              p      q                    q       p
+
+             Note the reversal of p, q
+
+
+8.4. Application of J-product in the present context. Derivative of Edge
+Matrix w.r.t. co-ordinates of interior point can be expressed in terms of J-product
+, which reduces derivative to an algebraic operation :
+                                                                 
+                              ∂A    z
+                                  =              I J A+A J I
+                              ∂wp   2             q           q
+
+   Recurrence relation for derivative of kth power of the Edge Matrix in terms of
+J-products of lower powers :
+
+                                       ( k            )
+                             ∂Ak  z     X
+                                             i    k−i
+                                 = sym      A J A
+                             ∂wp  2     i=1
+                                               q
+
+
+   Recurrence relation for kth derivative of the Edge Matrix in terms of derivatives
+of lower order e.g. second derivative in terms of first derivative :
+
+                          ∂2A
+                                                                     
+                                   z         ∂A           ∂A
+                                 =               J I +I J
+                         ∂wp ∂wq   2         ∂wp q      q ∂wp
+
+
+8.5. Solution of recurrence relations for higher derivatives.
+                  ∂Ak
+                                                   
+                          z     k,1       α1     α2
+(8.5.1)                =      Wrank(α)· A    J A
+                  ∂wp     2                  p
+
+              ∂ 2 Ak      z2 1
+                                            
+                                     k,2
+                       =     ·      Wrank(α)  Aα1 J Aα2 J Aα3
+             ∂wp ∂wq       4 2!                    p    q
+                                               
+(8.5.2)                    +Aα1 J Aα2 J Aα3
+                                             q        p
+
+where
+                     α   =    (α1 , α2 ) α1 + α2 = k, αi ≥ 0 for (1)
+                     α   =    (α1 , α2 , α3 ) α1 + α2 + α3 = k, αi ≥ 0 for (2)
+              rank(α)    =    number of non-zero αi0 s
+              k,m
+             Wrank(α)    =    fixed weights depending on rank
+     Similar formulas hold for higher derivatives.
+             TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                       21
+
+
+           9. Approximate Evaluation on the Standard Model
+    • We want to illustrate how a function of distributive type over the set of all
+      slack variable can be approximated by superposition of exponentials, for
+      various ψ(s).
+    • For simplicity of exposition consider
+                                          1
+                                  ψ(s) = , s > 0
+                                       Z ∞s
+                                  1
+                                     =      e−sx dx
+                                  s     0
+    • In the problem of interest,
+         all slack variable lie in a bounded interval of real axis.
+    • Upper bound : trivial since −1 ≤ wi ≤ 1. Hence |aT w| < |a|1 ≤ n for
+      closed walks of length at most n.
+    • Lower bound: at each iteration we round the interior point to nearest valid
+      ±1 solution by a simple method, until optimal solution is identified.
+    • Hence the minimum value of the slack variable remains bounded away from
+      zero.
+  Consider the following nested regions
+
+                  Ri = {x ∈ R | e−i ≤ x ≤ ejmax } for i = 1, . . . , L
+so that
+                              R1 ⊂ R2 ⊂ R3 · · · ⊂ RL
+   Note: L is not known in advance; we increment it dynamically based on the
+number of iterations so far.
+   Projective invariance of the algorithm implies invariance w.r.t. simple uniform
+scaling transformations Tk : s → ek s, k ∈ Z.
+  To get an efficient approximation exploiting the scale invariance, we make further
+substitution
+                                     x = e−at
+  in the integral for 1s .
+                               Z ∞
+                           1                       −at
+                             =      a · e−at · e−[e .s] dt
+                           s    −∞
+  Approximate the integral by sum, with integer nodes in a bounded range [−m, M ],
+m, M ∈ N.
+                                i=M
+                            1                      −ia
+                                    a · e−ia · e−[e .s]
+                                 X
+                              ∼
+                            s i=−m
+  Let λi = e−ia
+                                  i=M
+                              1    X
+                                ∼     a · λi · e−λi s (∗)
+                              s i=−m
+  As an example, suppose the region of interest is
+
+                                    e−30 < s < e1
+22                            NARENDRA KARMARKAR
+
+
+   Taking a = 12 , m = a1 = 2, M = 30   a = 60, we have 63 terms and this gives the
+l.h.s. and r.h.s. of (∗) which are close when evaluated in standard double precision
+(64-bit) arithmetic.
+
+                      10. Superposition of Exponentials
+      • By similar techniques approximation to the function ψ(s) of interest is
+        expressed as sum of exponential
+                                      X
+                               ψ(s) =    ci e−λi s
+                                                  i
+
+      • The main function φ (either metric or potential) is expressed in terms of
+        ψ(s) in distributive form
+                                X
+                           φ=     ψ(s),
+                                 sS
+                                 XX
+                             =              ci e−λi s
+                                 sS    i
+                                            (                     )
+                                 X              X
+                                                          −λi s
+                             =         ci             e
+                                  i             sS
+                                 X
+                             =         ci · ez · tr{B(z)}|z=λi
+                                  i
+
+      • Note that the number of terms is O(L), and evaluation of each term is
+        polynomial in n.
+
+     11. An example of application to non-convex, non-linear problem
+
+      • Consider set of inequalities of the form
+                            (aTi x)2 − (bTi x)2 ≤ c, c > 0
+        The set defined by these inequalities is (2, 2)-connected. Karmarkar [2]
+        slack variable si = c − (aTi x)2 + (bTi x)2
+      • With the function ψ(s) : R → R of interest, we associate another function
+        ψ̃ : R2 → R as follows
+                              ψ̃(u, v) = ψ(c − u2 + v 2 )
+        Let R be the region of interest in the (u, v) plane.
+          Note: due to the symmetries based on flipping signs of u and v, we can
+        consider only one quarter of the plane.
+      • Let χR : Characteristic function of R. By considering 2-D inverse Laplace
+        transform of χ̃R ψ̃(u, v), (or by other means) we can obtain finite approxi-
+        mation based on exponentials functions in the plane
+                                       X
+                             χR ψ̃ ∼        ck e−[µk u+λk v]
+                                       (µk ,λk )
+
+      • Since u = aTi x and v = bTi x are linear in x, the above expression is of the
+        same type as considered before.
+             TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                        23
+
+
+                 12. Extension to the satisfiability problem
+
+12.1. Introduction to SAT.
+      • We have boolean variables x1 , . . . , xn .
+      • A literal d is a variable or its complement: d = x or d = x̄
+      • A clause is an OR of literals. Eg. C = x ∨ y ∨ z̄. In 3-SAT, each clause has
+        3 literals.
+      • A satisfiability formula f = C1 ∧ C2 ∧ . . . ∧ Cm
+      • Problem (SAT): Find truth assignments to the variables x1 , . . . , xn such
+        that f is true, or prove that no such assignment exists.
+
+12.2. Generation of implied clauses.
+      • Consider the following pair of clauses
+                                 C1   =   a ∨ b ∨ c̄
+                                 C2   =   c∨d∨e
+     • Together they imply the clause C3 = a ∨ b ∨ d ∨ e.
+     • We refer to this operation as the “join” operation on clauses.
+     • This operation is fundamental in resolution or elimination methods for solv-
+       ing the SAT problem.
+     • It is known that the number of such new clauses generated during the
+       resolution process grows exponentially with n for almost all instances of
+       the problem with parameters in a certain range Chvátal and Szemerédi[1].
+12.3. Continuum based approach.
+     • Associate real variables taking ±1 values with the boolean variables.
+     • Embedding the problem in Rn , allow the variables to take on values in the
+       interval [−1, 1], i.e. −1 ≤ xi ≤ 1.
+     • For a literal l,                (
+                                         x  if l = x
+                                v(l) =
+                                         −x if l = x̄
+     • Each clause corresponds to an inequality
+                  C = l1 ∨ l2 ∨ l3 −→ v(l1 ) + v(l2 ) + v(l3 ) ≥ -1
+       Explanation: Sum of three ±1 variables can be -3, -1, 1 or 3 of which the
+       value -3 is forbidden since it corresponds to all literals being false.
+12.4. Interpreting the join operation in the continuum model
+          Clauses                Inequalities
+          a ∨ b ∨ c̄   (C1 ) −→ a + b − c      ≥ -1 (1)
+.
+          c∨d∨e        (C2 ) −→ c + d + e      ≥ -1 (2)
+   Join: a ∨ b ∨ d ∨ e (C3 ) −→ a + b + d + e ≥ -2 (3)
+     • Observe that the inequality (3) corresponding to the newly generated clause
+       is just the sum of (1) and (2).
+     • Imposition of constraint (3) does not change the feasible set, hence it is
+       superfluous.
+     • This is the first reason why the continuum approach is more economical
+       than resolution.
+24                               NARENDRA KARMARKAR
+
+
+12.5. A thought experiment.
+      • Run the resolution algorithm.
+      • For each new clause generated, ask if the corresponding inequality is super-
+        fluous or essential (i.e. not derivable as a non-negative combination of the
+        previous inequalities).
+      • Unless the previous inequalities have only vectors with all ±1 co-ordinates
+        as extreme points, an essential constraint must get generated during the
+        course of the algorithm since resolution is a complete method.
+      • This leads us to the following question: Which sequence of clauses when
+        joined, yields an essential constraint, and is such that no subsequence has
+        the same property?
+      • To understand this, we introduce the concepts of paths, walks, cycles, etc.
+        formed by subformulas in a SAT problem.
+
+                      13. Paths, Cycles and Mobius cycles
+
+13.1. (Open) Path. :
+     • Consider a sequence of clauses of the following type:
+         l1 ∨ l2 ∨ l3 , l3 ∨ l4 ∨ l5 , l5 ∨ l6 ∨ l7 , . . . , l2k−1 ∨ l2k ∨ l2k+1
+         where each li is a literal based on a distinct variable.
+     • For any two consecutive clauses in the sequence, the last literal of the earlier
+       clause and the first literal of the latter clause are complementary.
+     • The above sequence yields the following joined clause:
+                  l1 ∨ l2 ∨ l4 ∨ l6 ∨ . . . ∨ l2k ∨ l2k+1
+         and the corresponding inequality is superfluous.
+13.2. (Ordinary) Cycle. :
+     • If l2k+1 = l1 above, then we can join the two ends by normal rules of joining,
+       but the joined clause of the sequence is a tautology (always true) due to
+       the presence of l1 and l1 .
+13.3. Mobius cycles.
+     • Consider the above sequence of clauses again:
+          l1 ∨ l2 ∨ l3 , l3 ∨ l4 ∨ l5 , l5 ∨ l6 ∨ l7 , . . . , l2k−1 ∨ l2k ∨ l2k+1
+     • If l2k+1 = l1 , then the joined clause of the sequence contains two copies
+       of l1 , but we need only one. Hence, the joined clause is equivalent to
+       l1 ∨ l2 ∨ l4 ∨ l6 ∨ . . . ∨ l2k .
+     • Corresponding inequality
+                          v(l1 ) + v(l2 ) + v(l4 ) + . . . + v(l2k ) ≥ −k + 1
+       where                               (
+                                             x      if l = x
+                                   v(l) =
+                                             −x if l = x̄
+     • This is sharper than the inequality implied by the sum of the constituent
+       inequalities, namely
+                       2 · v(l1 ) + v(l2 ) + v(l4 ) + . . . + v(l2k ) ≥ −k
+           TOWARDS A BROADER VIEW OF THEORY OF COMPUTING                                      25
+
+
+  • We call the cycles of the kind referred to above as “mobius cycles”.
+  • The mobius cycles are the only mechanism giving rise to new sharper in-
+    equalities.
+  • If there were no mobius cycles, then solving the L.P. corresponding to the
+    SAT problem is sufficient to solve the latter.
+  • In other words, the special classes of SAT formulas in which mobius cycles
+    are forbidden as subformulas, can be solved in polynomial time.
+
+14. Computing the effect of mobius cycles in the continuum model
+  • The total number of mobius cycles in the original formula can be exponen-
+    tially large, but we can compute their net effect in polynomial time.
+  • The method is similar to the one used for odd cycles in the maximum
+    independent set problem, except that we construct a directed graph as
+    explained below.
+  • 2n nodes corresponding to the literals x1 , x1 , x2 , x2 , . . . , xn , xn .
+  • Let C = l1 ∨ l2 ∨ l3 be a clause.
+  • Inequality corresponding to this clause C
+                              v(l1 ) + v(l2 ) + v(l3 ) ≥ −1
+  • Slack variable s = 1 + v(l1 ) + v(l2 ) + v(l3 )
+
+                     ψC (s) = e−z·s = e−z · ez[v(l1 )+v(l2 )+v(l3 )]
+  • Corresponding to C, put the following 6 edges in the graph.
+                                      (l1 , l2 ), (l1 , l3 ), (l2 , l3 )
+                                      (l1 , l2 ), (l1 , l3 ), (l2 , l3 )
+  • Each of the 6 edges corresponding to clause C is labelled with ψC (s).
+  • Construct a “clause matrix” A(z, x)
+
+               
+               sum of all ψC (s) of all parallel edges
+               
+          Aij = between i and j                         if any
+               
+                0                                       otherwise
+               
+
+  • Note that the clause matrix is not symmetric
+                                    A(i, j) 6= A(j, i)
+    but it has another kind of symmetry
+                                    A(i, j) = A(j̄, ī)
+
+15. Closed form expression for combined effect of all mobius cycles
+  • As before, we permit self-intersecting, directed, closed walks and thereby
+    include the effect of “useless but harmless” inequalities. This leads to closed
+    form expression for the combined effect as before.
+  • Consider a mobius cycle l1 ∨ l2 ∨ l3 , l3 ∨ l4 ∨ l5 , l5 ∨ l6 ∨ l7 , . . . , l2k−1 ∨ l2k ∨ l1
+26                               NARENDRA KARMARKAR
+
+
+      • Let s and se be the slack variables for the implied and sharper inequalities
+                        s            = k + 2 · v(l1 ) + v(l2 ) + v(l4 ) + . . . + v(l2k )
+                        se           = k − 1 + v(l1 ) + v(l2 ) + v(l4 ) + . . . + v(l2k )
+        respectively. s − se         = 1 + v(l1 )
+                        ez·(s−es) = ez[1+v(l1 )]
+                        ψ(es)        = e−z·es = e−z·s · ez[1+v(l1 )] = ez[1+v(l1 )] · ψ(s)
+                     z[1+v(l1 )]
+      • The factor e             is associated with a special edge from l1 to l1 . Travers-
+        ing this edge differentiates mobius cycles from ordinary cycles.
+      • Construct “mobius completion matrix” Mc from special edges as follows:
+                        MC (z, x)i,ī   =   ez[1−xi ]
+                        MC (z, x)ī,i   =   ez[1+xi ]
+                        MC (z, x)i,j    =   0 if j 6= ī {Note:ī¯ = i}
+      • Define walk matrix B(z, x) as before, except that we include all walks (odd
+        and even) upto length kmax , where kmax = number of clauses.
+                                            k=k
+                                             X  max
+                                                      Ak (z, x)
+                                B(z, x) =
+                                                         2k
+                                              k=2
+      • For each walk, there is a “mirror-image” walk obtained by complementing
+        all the nodes in t he walk, hence factor of 2 in the denominator
+      • Multiplication by Mc also achieves the transition from implied to sharper
+        inequalities. The combined effect is given by
+
+                             φ(z, x) = tr{Mc (z, x) · B(z, x)}
+      • Lengths of mobius cycles have expontential effect on resolution. In con-
+        trast, we are able to include the effect of mobius cycles of all lengths in
+        polynomial number of operations.
+
+            The remaining part of computation is similar to the case of maximum
+         independent set problem.
+
+                                        References
+1. V. Chvatal and E. Szemeredi. Many hard examples for resolution. Journal of the ACM,
+   35(4):759768, Oct 1988.
+2. N. K. Karmarkar. Beyond convexity: New perspectives in computa- tional optimization. In Pro-
+   ceedings of Simulated Evolution and Learning (SEAL) - 8th International Conference, Kanpur,
+   India, pages 123, December 1-4, 2010.
+3. A. Schrijver. Combinatorial Optimization: Polyhedra and Efficiency, volume 24 of Algorithms
+   and Combinatorics. Springer Verlag, 2003.
+4. Karmarkar N., Riemannian Geometry Underlying Interior Point Methods for LP,
+   AMS,Contemporary Mathematics 114,5175,Summer Research Conference 1988.
+
+   Department of Electrical Engineering, Indian Institute of Technology, Bombay,
+India
+   E-mail address: narendrakarmarkar@yahoo.com
+

@@ -1,0 +1,1186 @@
+Bootstrap Methods: Another Look at the Jackknife
+
+         B. Efron
+
+         The Annals of Statistics, Vol. 7, No. 1. (Jan., 1979), pp. 1-26.
+
+Stable URL:
+http://links.jstor.org/sici?sici=0090-5364%28197901%297%3A1%3C1%3ABMALAT%3E2.0.CO%3B2-6
+
+The Annals of Statistics is currently published by Institute of Mathematical Statistics.
+
+
+
+
+Your use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use, available at
+http://www.jstor.org/about/terms.html. JSTOR's Terms and Conditions of Use provides, in part, that unless you have obtained
+prior permission, you may not download an entire issue of a journal or multiple copies of articles, and you may use content in
+the JSTOR archive only for your personal, non-commercial use.
+
+Please contact the publisher regarding any further use of this work. Publisher contact information may be obtained at
+http://www.jstor.org/journals/ims.html.
+
+Each copy of any part of a JSTOR transmission must contain the same copyright notice that appears on the screen or printed
+page of such transmission.
+
+
+
+
+JSTOR is an independent not-for-profit organization dedicated to and preserving a digital archive of scholarly journals. For
+more information regarding JSTOR, please contact support@jstor.org.
+
+
+
+
+                                                                                                          http://www.jstor.org
+                                                                                                      Thu Apr 5 14:22:43 2007
+ The Annals of Slarisrics
+ 1979, Vol. 7, No. 1, 1-26
+
+
+
+
+                             THE 1977 RIETZ LECTURE
+
+         BOOTSTRAP METHODS: ANOTHER LOOK AT THE JACKKNIFE
+
+
+                                           Stanford University
+                    We discuss the following problem: gven a random sample X =
+               (X,, X2, . . . , Xn) from an unknown probability distribution F, estimate the
+               sampling distribution of some prespecified random variable R(X, F), on the
+               basis of the observed data x. (Standard j a c w e theory giyes an approximate
+               mean and variance in the case R(X, F ) = O(F) - 6'(F), 6' some parameter of
+               interest.) A general method, called the "bootstrap," is introduced, and shown to
+               work satisfactonly on a variety of estimation problems. The jackknife is shown
+               to be a linear approximation method for the bootstrap. The exposition proceeds
+               by a series of examples: variance of the sample median, error rates in a linear
+               discriminant analysis, ratio estimation, estimating regression parameters, etc.
+
+     1. Introduction. The Quenouille-Tukey jackknife is an intriguing nonparamet-
+  ric method for estimating the bias and variance of a statistic of interest, and also
+  for testing the null hypothesis that the distribution of a statistic is centered at some
+  prespecified point. Miller [14] gives an excellent review of the subject.
+    This article attempts to explain the jackknife in terms of a more primitive
+ method, named the "bootstrap" for reasons which will become obvious. In princi-
+ ple, bootstrap methods are more widely applicable than the jackknife, and also
+ more dependable. In Section 3, for example, the bootstrap is shown to (asymptoti-
+ cally) correctly estimate the variance of the sample median, a case where the
+jackknife is known to fail. Section 4 shows the bootstrap doing well at estimating
+ the error rates in a linear discrimination problem, outperforming "cross-valida-
+ tion," another nonparametric estimation method.
+    We will show that the jackkmfe can be thought of as a linear expansion method
+ (i.e., a "delta method") for approximating the bootstrap. Thls helps clarify the
+theoretical basis of the jackkmfe, and suggests improvements and variations likely
+to be successful in various special situations. Section 3, for example, discusses
+jackknifing (or bootstrapping) when one is willing to assume symmetry or smooth-
+ness of the underlying probability distribution. This point reappears more emphati-
+cally in Section 7, which discusses bootstrap and jackkrufe methods for regression
+models.
+    The paper proceeds by a series of examples, with little offered in the way of
+general theory. Most of the examples concern estimation problems, except for
+Remark F of Section 8, which discusses Tukey's original idea for t-testing using the
+
+  Received June 1977; revised December 1977.
+  AMS 1970 subject clmsifications. Primary 62G05, 62615; Secondary 62H30, 62T05.
+  Key words andphraes. Jackknife, bootstrap, resampling, subsample values, nonparametric variance
+estimation, error rate estimation, &scriminant analysis, nonlinear regression.
+                                       B. EFRON
+
+
+jackknife. The bootstrap results on this point are mixed (and won't be reported
+here), offering only slight encouragement for the usual jackkmfe t tests.
+   John Hartigan, in an important series of papers [5, 6 , 71, has explored ideas
+closely related to what is called bootstrap "Method 2" in the next section, see
+Remark I of Section 8. Maritz and Jarrett [13] have independently used bootstrap
+"Method 1" for estimating the variance of the sample median, deriving equation
+(3.4) of this paper and applying it to the variance calculation. Bootstrap "Method
+3," the connection to the jackknife via linear expansions, relates closely to Jaeckel's
+work on the infinitesimal jackknife [lo]. If we work in a parametric framework, this
+approach to the bootstrap gives Fisher's information bound for the asymptotic
+variance of the maximum llkellhood estimator, see Remark K of Section 8.
+  2. Bootstrap methods. We discuss first the one-sample situation in which a
+random sample of size n is observed from a completely unspecified probability
+distribution F,
+
+
+In all of our examples F will be a distribution on either the real line or the plane,
+but that plays no role in the theory. We let X = (X,, X,, . . . , X,,) and x =
+(x,, x,, . . . , x,) denote the random sample and its observed realization, respec-
+tively.
+   The problem we wish to solve is the following. Given a specified random
+variable R(X, F), possibly depending on both X and the unknown distribution F,
+estimate the sampling distribution of R on the basis of the observed data x.
+   Traditional jackknife theory focuses on two particular choices of R. Let O(F) be
+some parameter of interest such as the mean, correlation, or standard deviation of
+F, and t(X) be an estimator of O(F), such as the sample mean, sample correlation,
+or a multiple of the sample range. Then the sampling distribution of
+
+
+
+or more exactly its mean (the bias of t) and variance, is estimated using the
+standard jackknife theorykas described in Section 5. The bias and variance
+              &
+estimates say Bias (t) and Var (t), are cleverly constructed functions of X obtained
+by recomputing t(.) n times, each time removing one component of X from
+consideration. The second traditional choice of R is
+                                            n
+                                    t(X) - Bias (t) - B(F)
+                        R(X, F ) =          A        I
+                                           (Var (t))?
+
+Tukey's ,original suggestion was to treat (2.3) as having a standard Student's t
+distribution with n - 1 degrees of freedom. (See Remark F, Section 8.) Random
+variables (2.2), (2.3) play no special role in the bootstrap theory, and, as a matter of
+fact, some of our examples concern other choices of R.
+                                 BOOTSTRAP METHODS                                     3
+
+  The bootstrap method for the one-sample problem is extremely simple, at least in
+principle:
+  1. Construct the sample probability distribution I;', putting mass l / n at each
+point x,, x,x,, . . . , x,.
+  2. With F fixed, draw a random sample of size n from I;', say
+(2.4)                          Xi* = xi*, Xi*
+                                                     ,.              i = l,2,'. . - , n .
+Call this the bootstrap sample, X* = (XT, X,*, - - . , X:), x* = (x:, x,*, . . , x:).
+Notice that we are not getting a permutation distribution since the values of X* are
+selected with replacement from the set {x,, x,, . . . , x,). As a point of comparison,
+the ordinary jackknife can be thought of as drawing samples of size n - 1 without
+replacement.
+   3. Approximate the sampling distribution of R(X, F ) by the bootstrap distribution
+of
+ (2.5)                            R* = R(X*, I;'),
+i.e., the distribution of R* induced by the random mechanism (2.4), with I;' held
+fixed at its observed value.
+   The point is that the distribution of R*, which in theory can be calculated
+exactly once the data x is observed, equals the desired distribution of R if F = I;'.
+Any nonparametric estimator of R's distribution, i.e., one that does a reasonably
+good estimation job without prior restrictions on the form of F, must give close to
+the right answer when F = I;', since I;' is a central point amongst the class of likely
+F's, having observed X = x. Making the answer exactly right for F = I;' is Fisher
+consistency applied to our particular estimation problem.
+   Just how well the distribution of R* approximates that of R depends upon the
+form of R. For example, R(X, F ) = t(X) might be expected to bootstrap less
+successfully than R(X, F ) = [t(X) - ~,t]/(Var,t)+. This is an important question,
+related to the concept of pivotal quantities, Barnard [2], but is discussed only
+briefly here, in Section 8. Mostly we will be content to let the varying degrees of
+success of the examples speak for themselves.
+   As the simplest possible example of the bootstrap method, consider a probability
+distribution F putting all of its mass at zero or one, and let the parameter of
+interest be B(F) = Prob,{X = 1). The most obvious random variable of interest is
+(2.6)              R(X, F) = X - B(F)       X= (2~=   ,xi/.).
+   Having observed X = x, the bootstrap sample X* = (X:, X,*, . . . , X): has each
+component independently equal to one with probability X = @I;'), zero with
+probability 1 - Z.Standard binomial results show that
+P a 7 ]
+                             R* =R(X*, I;') = X* - Z
+has mean and variance
+4                                      B. EFRON
+
+(Notations such as "E,," "Var,," "Prob,," etc. indicate probability calculations
+relating to the bootstrap distribution of X*, with x and fixed.) The implication
+that     is unbiased for 8, with variance approximately equal to jS(1 - X)/n, is
+universally familiar.
+  As a second example, consider estimating 8(F) = Var,X, the variance of an
+arbitrary distribution on the real line, using the estimator t(X) = 2;=,(Xi -
+Fl2/(n - 1). Perhaps we wish to know the sampling distribution of
+(2.9)                        R(X, F ) = t(X) - 8(F).
+Let pk(F) indicate the kth central moment of F, pk(F) = EF(X - E,x)~, and
+fik = pk(F), the kth central moment of F. Standard sampling theory results, as in
+Cramer [3], Section 27.4, show that
+                           R* = R(x*, F ) = t(x*) - e(F)
+has
+
+
+
+The approximation Var,t(X)       Var,R* is (almost) the jackknife estimate for
+Var, t .
+  The difficult part of the bootstrap procedure is the actual calculation of the
+bootstrap distribution. Three methods of calculation are possible:
+  Method 1. Direct theoretical calculation, as in the two examples above and the
+example of the next section.
+  Method 2. Monte Carlo approximation to the bootstrap distribution. Repeated
+realizations of X* are generated by taking random samples of size n from F, say
+x*', x*,, . , . , x * ~ ,and the histogram of the corresponding values
+~(x*', F), R(x*,, k),, . . , R ( x * ~ ,F ) is taken as an approximation to the actual
+bootstrap distribution. This approach is illustrated in Sections 3, 4 and 8.
+   Method 3. Taylor series expansion methods can be used to obtain the ap-
+proximate mean and variance of the bootstrap distribution of R*. This turns out to
+be the same as using some form of the jackknife, as shown in Section 5.
+  In Section 4 we consider a two sample problem where the data consists of a
+random sample X = (XI, X,, . . . , X,) from F and an independent random sample
+Y = (Y,, Y, . . . , Y,) from G, F and G arbitrary probability distributions on a
+given space. In order to estimate the sampling distribution of a random variable
+R((X, Y), (F, G)), having observed X = x, Y = y, the one-sample bootstrap method
+can be extended in the obvious way: fi and 6, the sample probability distributions
+corresponding to F and G, are constructed; bootstrap samples Xi* F, i =      -
+1,2, . . . , m, I;.* -- G, j = 1, 2, . . . , n, are independently drawn; and finally the
+                      A
+
+
+
+
+bootstrap distribution of R* = R((X*, Y*), (F, 6)) is calculated, for use as an
+approximation to the actual distribution of R. The calculation of the bootstrap
+distribution proceeds by any of the three methods listed above. (The third method
+                                BOOTSTRAP METHODS                                   5
+
+makes clear the correct analogue of the jackknife procedure for nonsymmetric
+situations, such as the two sample problem; see the remarks of Section 6.)
+   So far we have only used nonparametric maximum likelihood estimators, 3 and
+(3, 6),to begin the bootstrap procedure. This isn't crucial, and as the examples of
+Sections 3 and 7 show, it is sometimes more convenient to use other estimates of
+the underlying distributions.
+
+  3. Estimating the median. Suppose we are in the one-sample situation (2.1),
+with F a distribution on the real line, and we wish to estimate the median of F
+using the sample median. Let 8(F) indicate the median of F, and let t(X) be the
+sample median,
+(3.1)                              t(X) = X,,),
+where X(,, < X(,, <    . < X(,, is the order statistic, and we have assumed an odd
+sample size n = 2m - 1 for convenience. Once again we take R(X, F ) = t(X) -
+8(F), and hope to say something about the sampling distribution of R on the basis
+of the observed random sample.
+   Having observed X = x, we construct the bootstrap sample X* = x* as in (2.4).
+Let
+(3.2)                            Ni* = #{Xi* = xi),
+the number of times xi is selected in the bootstrap sampling procedure. The vector
+N* = (NT, N,*, . . , N,*) has a multinomial distribution with expectation one in
+each of the n cells.
+  Denote the observed order statistic x(,, < x(,, < x(,, <          < x(,,, and the
+corresponding N* values N;,, N&, . , N&. (Ties xi = xi, can be broken by
+assigning the lower value of i, i' to the lower position in the order statistic.) The
+bootstrap value of R is
+(3.3)                    R* = R(X*, fi) = X(m)*- x(,).
+We notice that for any integer value I, 1 < I < n,
+
+
+
+                                     {
+                              = Prob Binomial n, -
+                                                  ( : ) - -<l )
+Therefore
+
+(3.5)                                     {         -
+        Prob, {R* = x(/, - x(,,) = Prob Binomial n, ' ~(l)<rn-l)
+
+
+                                              i
+                                     - Prob Binomial n, -
+a result derived independently by Maritz and Jarrett [13].
+                                                           (A)< I m-1 ,
+6                                     B. EFRON
+
+    The case n = 13 (m = 7) gives the following bootstrap distribution for R*:
+
+
+
+For any given random sample of size 13 we can compute
+
+
+and use this number as an estimate of E,R~ = E,[t(X) - 8 ( ~ ) ] ~     the, expected
+squared error of estimation for the sample median. Standard asymptotic theory,
+applied to the case where F has a bounded continuous density f(x), shows that as
+the sample size n goes to infinity, the quantity ~ E , ( R * ) ~
+                                                               approaches 1/4f2(8),
+where f(8) is the density evaluated at the median 8(F). This is the correct
+asymptotic value, see Kendall and Stuart [ll], page 237. The standard jackknife
+applied to the sample median gives a variance estimate which is not evenxymptot-
+ically consistent (Miller [14], page 8, is incorrect on this point): n Var (R)
+(1/4f 2(8))[Xi/2]2.The random variable [x;/2l2 has mean 2 and variance 20.
+   Suppose we happened to know that the probability distribution F was symmet-
+ric. In that case we could replace fi by the symmetric probability distribution
+obtained from fi by reflection about the median,
+           A                              1
+(3.8)     FsyM:     probability mass -at X ( , ) , X(2), . . . , X(,)     and
+                                      2n - 1
+
+This is not the nonparametric maximum likelihood estimator for F, but has similar
+asymptotic properties, see Hinkley [8]. Let z(,, < z(,, < . . < z(,,-,, be the
+ordered values appearing in the distribution of fisy,.The bootstrap procedure start-
+           A
+
+ing from FsyM    gives
+
+(3.9)                                       (         (
+          Prob,{R* = z(,) - x(,)) = Prob Binomial n, - < m - 1
+                                                     inlll)                  ]
+                                                (     -
+                                                         I
+                                                          (
+                                    -Prob Binomial n, 2 n - 1)<m-1)9
+
+by the same argument leading to (3.5). For n = 13 the bootstrap probabilities (3.9)
+equal
+
+
+
+
+The corresponding estimate of E,R, would be X:~,[z(,, - x(,,12 Prob,{R* = z(,,
+- ~(7)).
+   Usually we would not be willing to assume F symmetric in a nonparametric
+estimation situation. However in dealing with continuous variables we might be
+                                                               **   .
+                                 BOOTSTRAP METHODS                                    7
+
+willing to attribute a moderate amount of smoothness to F. This can be incorpo-
+rated into the bootstrap procedure at step (2.4). Instead of choosing each X;
+randomly from the set {x,, x,, . . . , x,), we can take
+
+
+where the I; are chosen independently and randomly from the set (1, 2, . . . , n),
+and the 4 are a random sample from some fixed distribution having mean 0 and
+variance a$, for example the uniform distribution on [ - i , i], whch has a$ =
+ 1/12. The most obvious choice is a normal distribution for the Z;, but this would
+be self-serving in the Monte Carlo experiment which follows, where the Xi
+themselves are normally distributed. The quantities 2, 8, and c appearing in (3.11)
+are the sample mean, sample standard deviation (= (h)$,     and [ l + ail-;, respec-
+tively, so that X: has mean 2 and variance 82 under the bootstrap sampling
+procedure. In using (3.1 1) in place of (2.4), we are replacing k' with a smoothed
+"window" estimator, having the same mean and variance as k'.
+   A small Monte Carlo experiment was run to compare the various bootstrap
+methods suggested above. Instead of comparing the squared error of the sample
+median, the quantity bootstrapped was
+
+
+
+
+the absolute error of the sample median relative to the population standard
+deviation. (This quantity is more stable numerically, because the absolute value is
+less sensitive than the square and also because R* = It@*) - 0(E)1/8 is scale
+invariant, which eliminates the component of variation due to 8 differing from
+a(F). The stability of (3.12) greatly increased the effectiveness of the Monte Carlo
+trial.)
+   The Monte Carlo experiment was run with n = 13, Xi                   %(O, l), i =
+1, 2, . . . , n. In this situation the true expectation of R is
+
+
+
+The first two columns of Table 1 show EFR* for each trial, using the bootstrap
+probabilities (3.6), and then (3.10) for the symmetrized version. It is not possible to
+theoretically calculate E,R* for the smoothed bootstrap (3.1 I), so these entries of
+Table 1 were obtained by a secondary Monte Carlo simulation, as described in
+"Method 2" of Section 2. A total of N = 50 replications x*J were generated for
+each trial. This means that the values in the table are only unbiased estimates of
+the actual bootstrap expectations E,R* (which could be obtained by letting
+N -+ oo); the standard error being about .15 for each entry. The effect of this
+approximation is seen in the column "d = 0," which would exactly equal column
+"(3.6)" if N + oo. (Within each trial, the same set of random numbers was used to
+generate the four different uniform distributions for Z;, d = 0, .25, .5, 1.)
+                                               B. EFRON
+
+                                               TABLE 1
+                  Unsmoothed                        Smoothed Bootstrap (3.11)
+                    Bootstrap             Zi uniform dist. on [ - d/2, d/2]           Zi triangular
+     Trial #     (3.6)    (3.10)     d =0       d = .25      d = .5       d=1       dist., ug = 1/12
+          1       1.07      1.18      1.09          1.10         1.12     1.11        1.16
+          2        .96       .74      1.10          1.10         1.08     1.09        1.15
+          3       1.22       .74      1.36          1.35         1.33     1.43        1.52
+          4       1.38      1.51      1.44          1.41         1.38     1.28        1.30
+          5       1.00       .83      1.03          1.05         1.09     1.14        1.17
+          6       1.13      1.21      1.27          1.26         1.23     1.20        1.26
+          7       1.07       .98      1.01           .94          .83      .79         .92
+          8       1.51      1.40      1.40          1.45         1.47     1.51        1.50
+          9        .56       .64       .69           .71          .74      .80         .81
+         10       1.05       .86      1.14          1.17         1.20     1.13        1.22
+      Ave.        1.09      1.01      1.15          1.15         1.15    ' 1.15       1.20
+       S.D.        .26       .30       .23           .23          .23      .23         .22
+   *Ten Monte Carlo trials of Xi    -,,                      .
+                                          a ( 0 , l), i = 1, 2, . . , 13 were used to compare different
+   bootstrap methods for estimating the expected value of random variable (3.12). The true
+   expectation is 0.95. The quantities tabled are E,R*, the bootstrap expectation for that trial. The
+   values in the first two columns are for the bootstrap as described originally, and for the
+   symmetrized version (3.8)-(3.10). The smoothed bootstrap expectations were approximated using
+   a secondary Monte Carlo simulation for each trial, N = 50, as described in "Method 2," Section
+   2. Each of these entries estimates the actual value of E,R* unbiasedly with a standard error of
+   about .15. The column "d = 0" would exactly equal column "(3.6)" if N + co.
+
+
+  The most notable feature of Table 1 is that the simplest form of the bootstrap,
+"(3.6)," seems to do just as well as the symmetrical or smoothed versions. A larger
+Monte Carlo investigation of the same situation as in Table 1, 200 trials, 100
+bootstrap replications per trial, was just a little more favorable to the smoothed
+bootstrap methods:
+                 (3.6) (3.10) d = 0 d = .25 d = .5          d=1        d =2
+      AVE.:       1.01 1.00    1.00      1.01      1.00       .99       .93
+       S.D.:      .31    .33 .32 [.31] .32 [.30] .32 [.30] .30 [.29] .26 [.25].
+(The figures in square brackets are estimated standard deviations if N were
+increased from 100 to co, obtained by a components of variance calculation.)
+Remembering that we are trying to estimate the true value E,R = .95, these seem
+like good performances for a nonparametric method based on a sample size of just
+13.
+   The symmetrized version of the bootstrap might be expected to do relatively
+better than the unsymmetrized version if R itself was of a less symmetric form than
+(3.12), e.g., R(X, F ) = exp{X(,, - 8(F)). Likewise, the smoothed versions of the
+bootstrap might be expected to do relatively better if R itself were less smooth, e.g.,
+R(X, F ) = Prob{X(,, > 0(F) + a(F)). However no evidence to support these
+guesses is available at present.
+                                BOOTSTRAP METHODS                                   9
+
+   4. Error rate estimation in discriminant analysis. This section discusses the
+estimation of error rates in a standard linear discriminant analysis problem. There
+is a tremendous literature on this problem, nicely summarized in Toussaint [17]. In
+the two examples considered below, bootstrap methods outperform the commonly
+used "leave-one-out," or cross-ualidation, approach (Lachenbruch and Mickey [12]).
+   The data in the discriminant problem consists of independent random samples
+from two unknown continuous probability distributions F and G on some k-dimen-
+sional space Rk,
+
+
+
+
+On the basis of the observed data X = x, Y = y we use some method (linear
+discriminant analysis in the examples below) to partition R k into two complemen-
+tary regions A and B, the intent being to ascribe a future observation z to the F
+distribution if z E A , or to the G distribution if z E B.
+  The obvious estimate of the error rate, for the F distribution, associated with the
+partition (A, B) is
+
+                              error, = # { x i ~ B ,}
+                                             m
+which will tend to underestimate the true error rate
+
+(4.3)                        error, = Prob,{X E B } .
+(In probability calculation (4.3), B is considered fixed, at its observed value, even
+though it is originally determined by a random mechanism.) We will be interested
+in the distribution of the difference
+                                                         n
+(4.4)                   R ( ( X , Y), (F, G)) = error, - error,,
+and the corresponding quantity for the distribution G. We could directly consider
+the distribution of A
+                    error,, but concentrating on the difference (4.4) is much more
+efficient for comparing different estimation methods. This point is discussed briefly
+at the end of the section.
+  Given x and y, we define the region B by
+
+
+
+where 2 = 2xi/m,       = 2yj/n, and S = [2(xi - @(xi - 3' + 2(yj - a ( y j -
+y3']/(m + n). This is the maximum likelihood estimate of the optimum division
+under multivariate normal theory, and differs just slightly (in the definition of S )
+from the estimated version of the Fisher linear discriminant function discussed in
+Chapter 6 of Anderson [I].
+ 10                                                B. EFRON
+
+  "Method 2," the brute force application of the bootstrap via simulation, is
+implemented as follows: given the data x, y, bootstrap random samples
+
+                                        Xi* = xi*,       Xi*   Wind   k?               i = 1,2, . . . , m
+                                        7 = r;",         q*    Wind   6                j = 1,2, . . . , n
+are generated, k? and 6 being the sample probability distributions corresponding to
+F and G. This yields a region B* defined by (4.5) with X*,y*, S* replacing 2,y, S.
+The bootstrap random variable in this case is
+                                               #{xi E B*) - #{xi* E B * )
+(4.7)           R* = R((x*, Y*), (F, 6 ) ) =
+                                                    m              m
+In other words, (4.7) is the difference between the actual error rate, actual now
+being defined with respect to the "true" distribution k?, and the apparent error rate
+obtained by counting errors in the bootstrap sample.
+   Repeated independent generation of (X*, Y*) yields a sequence of independent
+realizations of R*, say R*', R * ~., . . , R * ~ ,
+                                                which are then used to approximate the
+actual bootstrap distribution of R*, this hopefully being a reasonable estimate of
+the unknown distribution of R. For example, the bootstrap expectation E,R* =
+ZjN=, R*j/N can be used as an estimate of the true expectation E ,
+  To test out this theory, bivariate normal choices of F and G were investigated,
+
+
+
+
+Two sets of sample sizes, m = n = 10 and m = n = 20, were looked at, with the
+results shown in Table 2. (The entries' of Table 2 were themselves estimated by
+averaging over repeated Monte Carlo trials, which should not be confused with the
+
+
+                                                   TABLE 2*
+                                    m=n=10                        m=n=20
+      Random Variable           Mean (S.E.) S.D.              Mean (S.E.) S.D.       Remarks
+Error Rate Diff. (4.4) R         .062     (.003)     .I43     .028     (.002)  .I03 Based on 1000 trials
+Bootstrap Expectation E, R*      .057     (.002)     .026     .029     (.001)  .015 Based on 100 trials;
+                                                                                     N = 100 Bootstrap
+                                                     [.0231                   [.011] Replications per
+                                                                                     trial. (Figure in
+Bootstrap Standard SD,(R*)       .I31     (.0013)    .016     .097     (.002) .010 brackets is S.D. if
+   Deviation                                                                         N = co.)
+Cross-Validation Diff. k         .054     (.009)     .078     .032     (.002) .043 Based on 40 trials
+*The error rate difference (4.4) for linear discriminant analysis, investigated fos bivariate normal samples
+(4.8). Sample sizes are m = n = 10 and m = n = 20. The values for the bootstrap method were
+obtained by Method 2, N = 100 bootstrap replications per trial. The bootstrap method gives useful
+estimates of both the mean and standard deviation of R. The cross-validation method was nearly
+unbiased for the expectation of R, but had about three times as large a standard deviation. All of the
+quantities in this table were estimated by repeated Monte Carlo trials; standard errors are given for the
+                                    BOOTSTRAP METHODS                                 11
+
+Monte Carlo replications used in the bootstrap process. "Replications" will always
+refer to the bootstrap process, "trials" to repetitions of the basic situation.) Because
+situation (4.8) is symmetric, only random variable (4.4), and not the corresponding
+error rate for G, need be considered.
+   Table 2 shows that with m = n = 10, the random variable (4.4) has mean and
+standard deviation approximately (.062, .143). The apparent error rate underesti-
+mates the true error rate by about 6%, on the average, but the standard deviation of
+the difference is 14% from trial to trial, so bias is less troublesome than variability
+in this situation. The bootstrap method gave an average of ,057 for E,R*, which,
+allowing for sampling error, shows that the statistic E,R* is nearly an unbiased
+estimator for EF, .R. Unbiasedness is not enough, of course; we want E,R* to
+have a small standard deviation, ideally zero, so thit we can rely on it as an
+estimate. The actual value of its standard deviation, ,026, is not wonderful, but
+does indicate that most of the trials yielded E,R* in the range [.02, ,091, which
+means that the statistician would have obtained a reasonably informative estimate
+of the true bias E, .R = .062.
+   As a point of comparison, consider the cross-validation estimate of R, say R",
+obtained by: deleting one x value at a time from the vector x; recomputing B using
+(4.5), to get a new region B" (it is important not to change m to m - 1 in
+recomputing B-doing so results in badly biased estimation of R); seeing if the
+deleted x value is correctly classified by B"; counting the proportion of x values
+                                                                   h/
+misclassified in this way to get a cross-validated error rate error,; and finally,
+defining R" = error, - n
+               h/
+                        error,. The last row of Table 2 shows that R" has mean and
+standard deviation approximately (.054, .078). That is, R" is three times as variable as
+E,R* as an estimator of E,, .R.
+   The bootstrap standard deviation of R*, SD,(R*) = {X~',[R*~ - E*R*]*/(N
+ - l));, can be used as an estimate of S D , .(R), the actual standard deviation of
+R. Table 2 shows that SD,(R*) had mean and standard deviation (.131, .016)
+across the 100 trials. Remembering that S D , ,(R) = .143, the bootstrap estimate
+SD,(R*) is seen to be a quite useful estimator of the actual standard deviation
+of R.
+   How much better would the bootstrap estimator E,R* perform if the number of
+bootstrap replications N were increased from 100 to, say, 10,000? A components of
+variance analysis of all the data going into Table 2 showed that only moderate
+further improvement is possible. As N + GO, the trial-to-trial standard deviation of
+E,R* would decrease from .026 to about ,023 (from .015 to .011 in the case
+m = n = 20).
+   The reader may wonder which is the best estimator of the error rate error, itself,
+rather than of the difference R. In terms of expected squared error, the order of
+              error, + E,R* (the bias-corrected value based on the bootstrap),
+preference is A
+a, ,
+  and
+                    h/
+      lastly error , but the differences are quite small in the two situations of
+Table 2. The large variability of   a,,compared to its relatively small bias, makes
+ 12                                   B. EFRON
+
+
+bias correction an almost fruitless chore in these two situations. (Of course, this
+might not be so in more difficult discriminant problems.) The bootstrap estimates of
+EF,.R and S D ,.(R) considered together make it clear that this is the case, which is
+a good recommendation for the bootstrap approach.
+
+   5. Relationship with the jackknife. This section concerns "Method 3" of ap-
+proximating the bootstrap distribution, Taylor series expansion (or the delta
+method), which turns out to be the same as the usual jackknife theory. To be
+precise, it is the same as Jaeckel's infinitesimal jackknife [lo, 141, a useful mathe-
+matical device which differs only in detail from the standard jackknife. Many of
+the calculations below, and in Remarks G-K of Section 8, can be found in
+Jaeckel's excellent paper, which offers considerable ins!ght into the workings of
+jackknife methods.
+   Returning to the one-sample situation, define Pi* = N,*/n, where N,* = #{Xi* =
+xi) as at (3.2), and the corresponding vector
+(5.1)                       P* = (PT, P;, . , P,*).
+By the properties of the multinomial distribution, P* has mean vector and covari-
+ance matrix
+ (5.2)              E,P* = e/n,        Cov,P* = 1/n2 - e'e/n3
+under the bootstrap sampling procedure, where I is the identity matrix and
+e = ( l , l , l , . . . , I).
+  Given the observed data vector X = x, and therefore f , we can use the
+abbreviated notation
+(5.3)                              R(P*) = R(X*, f )
+for the bootstrap realization of R corresponding to P*. In malung this definition we
+assume that the random variable of interest, R(X, F), is symmetrically defined in
+the sense that its value is invariant under any permutation of the components of X,
+so that it is sufficient to know N* = nP* in order to evaluate R(X*, i ) . This is
+always the case in standard applications of the jackknife.
+   We can approximate the bootstrap distribution of R(X*, i ) by expanding R(P*)
+in a Taylor series about the value P* = e/n, say
+
+(5.4)    R(P*) = R(e/n)     + (P* - e/n)U + f (P* - e/n)V(P* - e/n)'.
+Here
+                                 BOOTSTRAP METHODS                                   13
+Expansion (5.4), and definitions (5.5), assume that the definition of R P * ) can be
+smoothly interpolated between the lattice point values originally contemplated for
+P*. How to do so will be obvious in most specific cases, but a general recipe is
+difficult to provide. See Remarks G and H of Section 8.
+   The restriction EPi* = 1 has been ignored in (5.4), (5.5). This computational
+convenience is justified by extending the definition of R P * ) to all vectors P*
+having nonnegative components, at least one positive, by the homogeneous exten-
+sion
+
+
+
+It is easily shown that the homogeneity of definition (5.63 implies
+(5.7)                eU = 0,      eV = - nu',     eve' = 0.
+  From (5.2) and (5.4) we get the approximation to the bootstrap expectation
+
+
+
+
+where
+
+
+Ignoring the last term in (5.4) gives a cruder approximation for the bootstrap
+variance,
+
+
+ (Both (5.8) and (5.10) involve the use of (5.7).)
+    Results (5.8) and (5.10) are essentially the jackknife expressions for bias and
+ variance. The usual jackknife theory considers R(X, F ) = ~ ( f -) Q(F), the dif-
+ ference between the obvious nonparametric estimator of some parameter 8(F) and
+                                                        f*being the empirical distribu-
+ 8(F) itself. In this case R(X*, F ) = Q ( P ) - ~ ( f ) ,
+ tion of the bootstrap sample, so that R(e/n) = ~ ( f -) ~ ( f =) 0. Then (5.8)
+ becomes E,[Q(F) - Q(P)] = (1/2n) v, suggesting E,[Q(~) - 8(F)] w (1/2n) F;
+ likewise (5.10) becomes ~ar,[Q(+) - ~ ( f ) =    ] 2 q2/n2, suggesting varF8(f) w
+ E v2/n2.
+    The approximations
+                          -       1 -
+                   Bias, Q(F) w - V,        Var, ~ ( f =   ) 27=,u,'/n2
+                                 2n
+ exactly agree with those given by Jaeckel's infinitesimal jackknife [lo], which
+themselves differ only slightly from the ordinary jackkmfe expressions. Without
+going into details, which are given in Jaeckel [lo] and Miller [14], the ordinary
+jackknife replaces the derivatives 4 = aR(P*)/aPi with finite differences
+14                                    B. EFRON
+
+
+where R(7, = R(e(,/(n - I)), e(,, being the vector with zero in the ith coordinate
+and ones elsewhere, and R,* = 2?=,R &/n. Expansion (5.4) combines with (5.7) to
+give
+                       -=
+                      u; - n-2 q -          1
+                                                          v),
+                           n-l         2(n - 1) ( ~ -i
+so that q/ U, = 1 + O(l/n). The ordinary jackknife estimate of variance is
+2?= q 2 / n . (n - I), differing from the variance expression in (5.1 1) by a factor
+  +
+1 O(l/n), the same statement being true for the bias. (In the familiar case
+R = 0(k) - O(F), definition (5.12) becomes    = (n - I)($ - d(,), where d(, is the
+estimate of 0 with xi removed from the sample, and d, = Z i d(,)/n; the jackknife
+                      +
+estimate of 0 is 8 = 6 (n - 1)(8 - d,), and = 8 + q,.is the ithpseudo-ualue, to
+use the standard terminology.)
+  As an example of Method 3, consider ratio estimation, where the Xi are bivariate
+observations, say Xi = (Y,,Zi), and we wish to estimate O(F) = E,Y/E,Z.     (Take
+Y, Z > 0 for convenience.) Let t(X) = F/Z, and R(X, F ) = t(X)/O(F). It is easily
+verified that
+
+
+
+and that (5.8), (5.10) gve
+
+
+
+
+The biased corrected estimate for O(F) is t(X)/ E,R*, with approximate variance
+(d/n)22[yi/P - zi/,TI2. If the statistician feels uneasy about expressions (5.15) for
+any particular data set, perhaps because of outlying values, Method 2 can be
+invoked to check the bootstrap distribution of t(X*) directly.
+   The infinitesimal jackknife and the ordinary jackknife can both be applied
+starting from gSy,, ( 3 . Q rather than from k. It is easiest to see how for the
+infinitesimal jackknife. Expansion (5.4) is still valid except that U is now a
+(2n - I) x 1 vector, V is a (2n - 1) x (2n - 1) matrix, and P* has bootstrap
+mean e/(2n - I), covariance matrix (I/n)[I/(2n - 1) - e'e(2n - I)']. The vari-
+ance approximation corresponding to (5.10) is
+
+
+
+
+  6. Wilcoxon's statistic. We again consider the two-sample situation (4. l), this
+time with F and G being continuous probability distributions on the real line. The
+                                BOOTSTRAP METHODS
+
+
+parameter of interest will be
+(6.1)                       O(F, G) = P ,.(X     < Y),
+estimated by Wilcoxon's statistic
+
+
+
+where
+(6.3)
+
+
+   The bootstrap variance of d can be calculated directly by Method 1, and will
+turn out below to be the same as the standard variance approximation for
+Wilcoxonys statistic. The comparison with Method 3, the infinitesimal jackknife,
+illustrates how this theory works in a two-sample situation. More importantly, it
+suggests the correct analogue of the ordinary jackknife for such situations.
+   There has been considerable interest in extending the ordinary jackknife to
+"unbalanced" situations, i.e., those where it is not clear what the correct analogue
+of "leave one out" is, see Miller [15], Hinkley [9]. In the two-sample problem, for
+example, should we leave out one xi at a time, then one yj at a time, or should we
+leave out all mn pairs (xi, yj) one at a time? (The former turns out to be correct.)
+This problem ,gets more crucial in the next section, where we consider regression
+problems.
+   Let R((X, Y), (F, G)) be d itself, so that the bootstrap value of R corresponding
+to (x*,Y*) is R((x*, Y*), (3, 6 ) ) = &,
+                            1 =-
+                           o*
+(6.4)                            mn Z i Xj I(xi*, q * ) .
+Letting J? = I(X,*, y), straightforward calculations familiar from standard non-
+parametric theory, give
+
+
+and
+
+
+
+                                                                             i # i'.
+
+Using these results in (6.4) gives
+
+
+
+which is the usual estimate for the variance of the Wilcoxon statistic, see Noether
+[16], page 32.
+16                                      B. EFRON
+
+
+  Method 3, the Taylor series or infinitesimal jackknife, proceeds as in Section 5,
+with obvious modifications for the two-sample situation. Let N; =
+(N:,, N:2, . . , NFm) be the numbers of times x,, x,,           , x, occur in the
+bootstrap sample X*, likewise NT; = (N;,, N;,          , N&) for Y*, and define
+PF* = Ng/m, PT; = NT;/n, these being independent random vectors with mean
+and covariance as in (5.2). The expansion corresponding to (5.4) is
+(6.8)     R(P& PT;) = R(e/m, e/n) + (P:         - e/m)UF     + (PT;- e/n)U,
+
+
+
+                        + (PT; - e/n) V,(PT; - e l n ) ' ] , '
+where
+
+
+all the derivatives being evaluated at (PF, PT;) = (elm, e/n), analogous definitions
+applying to U, and V,.
+   The results corresponding to (5.8) and (5.10) are
+
+
+
+and
+
+
+-
+VF = Pi VFii/m,   vG = 2, VGj/n. For R = 0($, 8)- O(F, G), the approximations
+corresponding to (5.1 1) are
+
+
+
+
+For the case of the Wilcoxon statistic (6.1 1) (or (6.12)) gives
+
+
+
+which should be compared with (6.7).
+   How can we use the ordinary jackknife to get results like (6.12)? A direct analogy
+of (5.12) can be carried through, but it is simpler to change definitions slightly,
+letting
+(6.14)            D(i, ) = R(e/m, e/n) - R(e(i)/ (m - I), e/n)
+                  D( ,j)= R(e/m, e/n) - R(e/m, e(,,/ (n - I)),
+                                 BOOTSTRAP METHODS                                   17
+
+ the difference from R((x, y), (8,6))obtained by deleting xi from x or yj from y.
+ Expansion (6.8) gives
+
+
+
+
+  From (6.15) it is easy to obtain approximations for the bias and variance
+expressions in terms of the D's:
+
+
+
+which, as m and n grow large, approaches. the second term in (6.10). (For
+                                                              +
+R = - 8, this gives the bias-corrected estimate 8 = (m n - l)d - 2,    -       Bci, ,
+Z j d( ,j,.) Likewise, just using the first line of (6.8) gives
+
+
+
+
+which approaches (6.11) as m, n + co.
+  The advantage of the D's over expressions like (5.12) is that no group averages,
+such as R,*, need be defined. Group averages are easy enough to define in the
+two-sample problem, but are less clear in more complicated situations such as
+regression. Expressions (6.16) and (6.17) are easy to extend to any situation (which
+doesn't necessarily mean they give good answers-see the remarks of the next
+section!).
+  7. Regression models. A reasonably general regression model is
+(7.1)                            xi =      + ei                i = l , 2, . . . , n,
+the g(.) being known functions of the unknown parameter vector P, and
+(7.2)                                4 wind                     i = l , 2, . . . , n.
+All that is assumed known about F is that it is centered at zero in some sense,
+perhaps EFe = 0 or MedianF€ = 0. Having observed X = x, we use some fitting
+technique to estimate P, perhaps least squares,
+
+
+and wish to say something about the sampling distribution of ,8.
+   Method 2, the brute force application of the bootstrap, can be carried out by
+         >
+defining as the sample probability distribution of the residuals ti,
+                               1
+(7.4)                 3 : mass-n      at 2 = xi - gi( j ) ,       i = 1 , 2, . . . , n.
+18                                    B. EFRON
+
+(If one of the components of p is a translation parameter for the functions g(.),
+then k has mean zero. If not, and if the assumption EFc = 0 is very firm, one might
+still modify k by translation to achieve zero mean.) The bootstrap sample, given
+(A   b, is
+
+(7.5)                   Xi'= gi(b) r:, +       ci* -,in* k     i = 1 , 2 , . . . , n.
+Each realization of (2.5) yields a realization of p* by the same minimization
+process that gave b,
+
+(7.6)                      ,6* : minp Ey=l[x,? - gi(p)]2.
+Repeated independent bootstrap replications give a random sample
+                    b*N
+p*', b*', b*3,. . . ,    which can be used to estimate the bootstrap distribution of
+p*.
+   A handy test case is the familiar linear model, gi(P) = ciP, ci a known 1 X p
+vector, with first coordinate cil = 1 for convenience. Let C be the n X p matrix
+whose ith. row is ci, and G the p X p matrix C'C, assumed nonsingular. Then the
+least squares estimator ,d = G-'C'X has mean P and covariance matrix U ~ G - 'by
+the usual theory.
+   The bootstrap values q* used in (7.5) are independent with mean zero and
+variance 6' = E;=' [xi - g(p)12/n. This implies that b* = G-'C'X* has bootstrap
+mean and variance
+
+
+ The implication that is unbiased for P, with covariance matrix approximately
+ equal to 6'GP', agrees with traditional theory, except perhaps in using the estimate
+6' for u2.
+    Miller [15] and Hinkley [9] have applied, respectively, the ordinary jackkmfe and
+ infinitesimal jackknife to the linear regression problem. They formulate the situa-
+tion as a one-sample problem, with (c,, xi) as the ith observed data point, essen-
+ tially removing one row at a time from the model X = CP + r . The infinitesimal
+jackknife gives the approximation
+
+
+(and the ordinary jackknife a quite similar expression) for the estimated covariance
+matrix. This doesn't look at all like (7.7)!
+  The trouble lies in the fact that the jackknife methods as used above ignore an
+important aspect of the regression model, namely that the errors ci are assumed to
+have the same distribution for every value of i. To make (7.8) agree with (7.7) it is
+only necessary to "symmetrize" the data set by adding hypothetical data points,
+corresponding to all the possible values of the residual t, at each value of i, say
+                                   x..
+                                    I/
+                                       = c,p + ;j
+
+                                                 j = l , 2 , . . . ,n   ( i = 1 , 2, . . . , n).
+                                 BOOTSTRAP METHODS                                    19
+
+Notice that the bootstrap implicitly does this at step (7.5). Applying the infinitesimal
+jackknife to data set (7.9), and remembering to take account of the artificially
+increased amount of data as at step (5.16), gives covariance estimate (7.7).
+   Returning to the nonlinear regression model (7.1), (7.2), where bootstrap-jack-
+ knife methods may really be necessary in order to get estimates of variability for ,L?,
+ we now suspect that jackknife procedures like "leave out one row at a time" may
+ be inefficient unless preceded by some form of data symmetrization such as (7.9).
+ To put things the other way, as in Hinkley [9], such procedures tend to give
+ consistent estimates of Cov ,L? without assumption (7.2) that the residuals are
+ identically distributed. The price of such complete generality is low efficiency.
+ Usually assumption (7.2) can be roughly justified, perhaps after suitable transfor-
+ mations on X, in which case the bootstrap should give a better estimate of Cov ,L?.
+
+  8. Remarks.
+  REMARKA. Method 2, the straightforward calculation of the bootstrap distri-
+bution by repeated Monte Carlo sampling, is remarkably easy to implement on the
+computer. Given the original algorithm for computing R, only minor modifications
+are necessary to produce bootstrap replications R*', R*', . . . , R*N. The amount of
+computer time required is just about N times that for the original computations.
+For the discriminant analysis problem reported in Table 2, each trial of N = 100
+replications, m = n = 20, took about 0.15 seconds and cost about 40 cents on
+Stanford's 370/ 168 computer. For a single real data set with m = n = 20, we might
+have taken N = 1000, at a cost of $4.00.
+   REMARKB. Instead of estimating B(F) with t p ) , we might make a transforma-
+tion C+ = g(B), s = g(t), and estimate +(F) = g(B(F)) with SO() = g(t(X)). That is,
+we might consider the random variable SO(, F) = SO() - +(F) instead of R(X, F)
+= tO() - B(F). The effect of such a transformation on the bootstrap is very
+simple: a bootstrap realization R* = R*(X*, F) = tO(*) - B(F) transforms into
+S = SO(*, k ) = g(t(X*)) - g(B(&)), or more simply
+(8.1)                          S* = g ( ~ +  * 8) - g(8),
+so the bootstrap distribution of R* transforms into that of S*by (8.1).
+   Figure 1 illustrates a simple example. Miller [14], page 12, gives 9 pairs of
+numbers having sample Pearson correlation coefficient 6 = .945. The top half of
+Figure 1 shows the histogram of N = 1000 bootstrap replications of 6* - 6, the
+bottom half the corresponding histogram of tanh-' fi* - tanh-' 6. The first dis-
+tribution straggles off to the left, the second distribution to the right. The median is
+above zero, but only slightly so compared to the spread of the distributions,
+indicating that bias correction is not likely to be important in this example.
+   The purpose of making transformations is, presumably, to improve the inference
+process. In the example above we might be willing to believe, on the basis of
+normal theory, that t a d - ' 6 - tanh-' p is more nearly pivotal than 6 - p (see
+                                                  B. EFRON
+
+
+
+
+-1.4   -1.2 -1.0 -.8    -.6   -.4   :2        0        .2   .4   .6   .8   1.0   1.2   1.4   1.6
+                                         -1
+                                                  p - tonh-I *p
+                                                  A*
+                                    tanh
+        FIG. 1. The top histogram shows N = 1OOO bootstrap replications of p* - for
+        the nine data pairs from Miller [lo]: (1.15, 1-38), (1.70, 1.72), (1.42, 1.59),
+        (1.38, 1.49, (2.80, 1.66), (4.70, 3.45), (4.80, 3.89, (1.41, 1.31), (3.90, 3.75). The
+        bottom histogram shows the corresponding replications for tanh-' i* -
+        tanh-' i.The 1/6, 1/2, and 5/6 quantiles are shown for both distributions. AU
+        quantiles transform according to equation (8.1).
+                                 BOOTSTRAP METHODS                                    21
+
+Remark E) and so more worthwhile investigating by the bootstrap procedure. This
+does not mean that the bootstrap gives more accurate results, only that the results
+are more useful. Notice that if g(.) is monotone, then any quantile of the bootstrap
+distribution of R* maps into the corresponding quantile of S* via (8.1), and
+vice-versa. In particular, if we use the median (rather than the mean) to estimate
+the center of the bootstrap distribution, then we get the same answer working
+directly with 6* - 8 (c* - in the example), or first transforming to $* - $
+(tanh-' @*- tanh-' b), talung the median, and finally transforming back to the
+original scale.
+   REMARKC. The bias and variance expressions (5.11) suggested by the infinites-
+imal jackknife transform exactly as in more familiar applications of the "delta
+                                                          *n
+                     +
+method." That is, if = g(8), C$ = g(8) as above, and GF                ,
+                                                         8, Var 8 are as given
+in formula (5.1 l), then it is easy to show that
+
+
+
+
+In the context of this paper, the infinitesimal jackknife is the delta method; starting
+from a known distribution, that of P*, approximations to the moments of an
+arbitrary function R(P*) are derived by Taylor series expansion. See Gray et al. [4]
+for a closely related result.
+  REMARKD. A standard nonparametric confidence statement for the median
+8(F), n = 13, is
+
+
+If we make the continuity correction of halving the end point probabilities, (3.6)
+gives
+(8.4)                      rob, {x(,) < 8* < x ( , ~ ) )= .914,
+where 8' = X&,, the bootstrap value of the sample median. The agreement of (8.4)
+with (8.3) looks strhng, until we try to use (8.4) for inference about 0; (8.4) can be
+rewritten as Prob,{x(, - x, < 8' - 8 < x,,, - x,,) (remembering that 8 =
+x(,,), which suggests
+
+
+The resulting confidence interval statement for 8, again using d = x(,,, is
+(8.6)              Prob,{2~(~)   - x(,,, < 8 < 2x(,) - x(,,) w .914,
+which is the reflection of interval (8.3) about the median!
+   The trouble here has nothing in particular to do with the bootstrap, and does not
+arise from the possibly large approximation error in statement (8.5), but rather in
+the inferential step from (8.5) to (8.6), which tries to use d - 8 as apivotal quantity.
+22                                     B. EFRON
+
+
+The same difficulty can be exhibited in parametric families: suppose we know that
+F is a translation of a standard exponential distribution (density e-", x > 0). Then
+there exist two positive numbers a and b, a < b, such that ProbF{ - a < 8 - B <
+b) = .91. The corresponding interval statement ProbF{x(,) - b < 0 < xo + a ) =
+.91 will tend to look more like (8.6) than (8.3).
+   REMARKE. The difficulty above is a reminder that the bootstrap, and the
+jackknife, provide approximate frequency statements, not approximate likelihood
+statements. Fundamental inference problems remain, no matter how well the
+bootstrap works. For example, even if the bootstrap expectation E,(B* - B)2 very
+accurately estimates E,(B - 8)2, the resulting interval estimate for B given 8 will be
+useless if small changes in F (or more exactly, in B(F)), result in large changes in
+E,(B - el2.
+   For the correlation coefficient, as discussed in Remark B, Fisher showed that
+ tanh-' 6 - t a d - ' p is nearly pivotal when sampling from bivariate normal popu-
+lations. That is, its distribution is nearly the same for all bivariate normal popula-
+tions, at least in the range -.9 < p < .9. This property tends to ameliorate
+inference difficulties, and is the principal reason for transforming variables, as in
+Remark B. The theory of pivotal quantities is well developed in parametric
+families, see Barnard [2], but not in the nonparametric context of this paper.
+   REMARKF. The classic pivotal quantity is Student's t-statistic. Tukey has
+suggested using the analogous quantity (2.3) for hypothesis testing purposes, relying
+on the standard t tables for significance points. This amounts to treating (2.3) as a
+pivotal quantity for all choices of F, B(F), and t(X). The only theoretical justifica-
+tions for this rather optimistic assumption apply to large samples, where the
+Student t effect rapidly becomes negligible, see Miller [14]. Given the current state
+of the theory, one is as well justified in comparing (2.3) to a %(O, I) distribution as
+to a Student's t distribution (except when t(X) = F).
+   An alternative approach is to bootstrap (2.3) by Method 2 to obtain a direct
+estimate of its distribution, instead of relying on the t distribution, and then
+compare the observed value of (2.3) to the bootstrap distribution.
+  REMARKG. The rationale for bootstrap methods becomes particularly clear
+when the sample space % of the Xi is a finite set, say
+(8.7)                              % = { 1 , 2 , 3 , . . . , L}.
+The distribution F can now be represented by the vector of probabilities f =
+(fl, f2, . . . :fL),4 = ProbF{Xj = I). For a given random sample X l e t j = #{Xi =
+I)/n and f = (fl,f2, . . . ,IL)',), so that if R(X, F ) is symmetrically defined in the
+components of X we can write it as a function of i and f, say
+(8.8)                            R(X, F ) = ~ ( if).
+                                                  ,
+Likewise R(X*, 2)= ~ ( i * ,i), where          j* = #{Xi* = I ) / n      and i* =
+(h,
+  &, . . . ,fL*).
+                                  BOOTSTRAP METHODS                                 23
+
+   Bootstrap methods estimate the sampling distribution of ~ ( if),    , given the true
+distribution f, by the conditional distribution of ~ ( i *1), given the observed value
+of i. This is plausible because
+
+(8.9)                ilf -- a L ( n , f)   and i*li -- 91LL(n,i),
+where 9RL(n, f) is the L-category multinomial distribution with sample size n,
+probability vector f. In large samples we expect i to be close to f, so that for
+reasonable functions Q(., .) (8.9) should imply the approximate validity 'of the
+bootstrap method.
+   The asymptotic validity of the bootstrap is easy to verify in this framework,
+assuming some regularity conditions on Q(., .). Suppose that Q(f, f) = 0 for all f
+(as it does in the usual jackknife situation where R(X, F ) = @(E)- 8(F)); that the
+vector u(i*, i) with Ith component equal to aQ(i*, i ) / a j exists continuously for
+(i*, i) in an open neighborhood of (f, f); and that u = u(f, f) does not equal zero.
+By Taylor's theorem, and the fact that i* and 1 converge to f with probability one,
+
+(8.10)    ~ ( if), = (1 -i)(u   + c,)      and ~ ( i *f,) = (f* - i)(u + in),
+both c, and Cn converging to zero with probability one. From (8.9) and the fact that
+i converges to f with probability one, we have
+(8.11)     ni(i -f)Jf -+ 9LL(0, Zf)        and     ni(i* - i)li -+ %L(O, Zf),
+
+where 2, is the matrix with element (I, m) equal to f,($ - fm). Combining (8.10)
+and (8.1 1) shows that the bootstrap distribution of niQ(f*, i),given i, is asymptoti-
+cally equivalent to the sampling distribution of n+Q(i, f), given the true probability
+distribution f. Both have the limiting distribution %(O, ulZfu).
+  The argument above assumes that the form of Q(., .) does not depend upon n.
+More careful considerations are necessary in cases like (2.3) where Q(., .) does
+depend on n, but in a minor way. Some nondifferentiable functions such as the
+sample median (3.3) can also be handled by a smoothing argument, though direct
+calculation of the limiting distribution is easier in that particular case.
+   REMARKH. Taylor expansion (5.4) looks suspicious because the dimension of
+the vectors involved increases with the sample size n. However in situation (8.7),
+(8.8), it is easy to verify that (5.4) is the same as the second order Taylor expansion
+           i), for i* near 1,
+of ~ ( i * ,
+
+
+
+Here e has Ith element aQ(i*, i)/ai:~~,,~ and f has 1,mth element
+a2Q(i*, i)/a$a~l~.,~. The dimension of the vectors in (8.12) is L, and does not
+increase with sample size n. Expressions (5.8), (5.10) are the standard delta theory
+approximation for the mean and variance of ~ ( i *i),, given i, obtained from (8.12)
+and the distributional properties of i*li-- 9RL(n, i).
+24                                     B. EFRON
+
+   REMARKI. Hartigan [5, 71 has suggested using subsample values to obtain
+confidence statements for an estimated parameter. His method consists of choosing
+a vector x* whose components are a nonempty subset of the observed data vector
+X = x (so each component xi appears either zero or one time in x*). This process is
+repeated N times, where N is small compared to 2", giving vectors
+x*', x*,, . . . , x * ~
+                      and corresponding subsample values t(x*'), t(x*,), . . . , t ( ~ * ~ )
+for some symmetric estimator t ( * )defined for samples of an arbitrary size. By a
+clever choice of the vectors x*], and for certain special estimation problems, the
+t(x*]) can be used to make precise confidence statements about an unknown
+parameter. More importantly in the context of t h s paper, Hartigan shows that by
+choosing the x*' randomly, without replacement, from the 2" - 1 possible non-
+empty subsamples of x, asymptotically valid confidence statements can be made
+under fairly general conditions. This is very similar to bootstrap Method 2, except
+that the x*' are selected by subsampling rather than bootstrapping.
+   In the finite case (8.7), let x* be a randomly selected subsample vector, and, let
+   = #{xi* = I)/(number of components of x*), so i* =        (fi,&,     . . . ,&), as be-
+fore, is the vector of proportions in the artificially created sample. It is easy to show
+that ni(i* - hli -t 9ZL(0, Zf), as at (8.1 I), which is all that is needed to get the
+same asymptotic properties obtained for the bootstrap. (Conversely, it can be
+shown that bootstrap samples have the same asymptotic "typicality" properties
+Hartigan discusses in [5, 71.) The bootstrap may give better small sample perfor-
+mance, because the similarity in (8.9), which is unique to the bootstrap, is a
+stronger property than the asymptotic equivalence (8.1 l), and also because the
+artificial samples used by the bootstrap are the same size as the original sample.
+However, no evidence one way or the other is available at the present time.
+   Hartigan's 1971 paper [6] introduces another method of resampling, useful for
+construct.ing prediction intervals, which only involves artificial samples of the same
+size as the real sample. Let {xr, x:, . . . , x,*) be a set of size n, each element of
+which is selected with replacement from {x,, x,, . , x,). There are (2iI;)
+distinct such sets, not counting differences in the order of selection. (For example
+{x,, x,} yields the three sets {x,, x,), {x,, x,), {x,, x,).) The random version of
+Hartigan's second method selects x*, or more exactly the set of components of x*,
+                                           ('" ')
+with equal probability from among these n --1 possible choices. It can be shown
+that this results .in ni(i* - hli -+ x ( 0 , 2Zi), so that the asymptotic covariance
+matrix is twice what it is in (8.11). Looking at (8.10), one sees that for this
+resampling scheme, 2 - i ~ ( i *i), has the same asymptotic dstribution as ~ ( if).
+                                                                                 ,
+  It is not difficult to construct other resampling schemes which gve correct
+asymptotic properties. The important question, but one whch has not been
+investigated, is which scheme is most efficient and reliable in small samples.
+  REMARKJ. In situation (8.7), (8.8), the ordinary jackknife depends on evaluat-
+ing ~ ( i *i), for vectors i* of the form i(*,,,
+                                  BOOTSTRAP METHODS                                     25
+
+el = (0, 0, . . . , 1, 0, . . . , O), 1 in the lth place. (The values of 1 needed are those
+occurring in the observed sample (x,, x,, . . . , x,,); a maximum of min(n, L)
+different 1 values are possible.) Notice that
+
+
+The "resampling" vectors    8,;   are distance O(l/n) away from i, as compared to
+O , ( n i ) for the bootstrap vectors i*, as seen in (8.1 1). In the case of the median,
+(3.3), the jackknife fails because of its overdependence on the behavior of ~ ( i *f'),
+for i*very near i. In this case the derivative of the function Q(. , .) is too irregular
+for the jackknife's quadratic extrapolation formulas to work. The grouped jack-
+knife, in which the i* vectors are created by removing observations from x in
+groups of size g at a time, see page 1 of Miller [14], overcomes this objection if g is
+sufficiently large. (The calculations above suggest g = ~ ( n i ) . )As a matter of fact,
+the grouped jackknife gives the correct asymptotic variance for the median. If g is
+really large, say g = n/2, and the removal groups are chosen randomly, then this
+resampling method is almost the same as Hartigan's subsampling plan, discussed in
+Remark I.
+   REMARKK. We have applied the bootstrap in a nonparametric way, but there
+is no reason why it cannot be used in parametric problems. The only change
+necessary is that at (2.4), fi is chosen to be the parametric m.1.e. for F, rather than
+the nonparametric m.1.e. As an example, suppose that F is known to be normal,
+with unknown mean and variance, and that we are interested in the expectation of
+R(X, F ) = I [ ,,](F),i.e., the probability that X occurs in a prespecified interval
+[a, b]. Then the nonparametric bootstrap estimate is E,R* = 6in)(b) - 6(")(a),
+where 6(") is the cdf of Ey=, X,*/n, obtained by convoluting the sample distribu-
+tion     n times and then rescaling by division by n. The parametric bootstrap
+estimate is E,R* = @((b - %)/ (6 - ni)) - @((a - T)/ (Blnt)), where B =
+and @(.) is the standard normal cdf. If F is really normal and if n is moderately
+large, n > 20 according to standard Edgeworth series calculations, then the two
+estimates will usually be in close agreement.
+   It can be shown that the parametric version of Method 3 of the bootstrap,
+applied to estimating the variance of the m.1.e. in a one parameter family, gives the
+usual approximation: one over the Fisher information. The calculation is almost
+the same as that appearing in Section 3 of Jaeckel [lo].
+  Acknowledgments. I am grateful to Professors Rupert Miller and David
+Hinkley for numerous discussions, suggestions and references, and to Joseph
+Verducci for help with the numerical computations. The referees contributed
+several helpful ideas, especially concerning the connection with Hartigan's work,
+and the large sample theory. I also wish to thank the many friends who suggested
+names more colorful than Bootstrap, including Swiss Army Knife, Meat Axe,
+Swan-Dive, Jack-Rabbit, and my personal favorite, the Shotgun, which, to para-
+phrase Tukey, "can blow the head off any problem if the statistician can stand the
+resulting mess."
+                                               B. EFRON
+
+                                            REFERENCES
+
+ [l] ANDERSON,  T. W. (1958). An Introduction to Multivariate Statistical Analysis. Wiley, New York.
+ [2] BARNARD,  B. (1974). Conditionality, pivotals, and robust estimation. Proceedings of the Conference
+          on Foundational Questions in Statistical Inference. Memoirs No. 1, Dept, of Theoretical
+          Statist., Univ. of Aarhus, Denmark.
+ [3] C ~ RH. ,(1946). Mathematical Method in Statistics. Princeton Univ. Press.
+ [4] GRAY,H., SCHUCANY,     W. and WATKINS,     T. (1975). On the generalizedjackknife and its relation to
+          statistical differentials. Biometrika 62 637-642.
+ [5] HARTIGAN,   J. A. (1969). Using subsample values as typical values. J. Amer. Statist. Assoc. 64
+          1303-1317.
+ [6] HARTIGAN,  J. A. (1971). Error analysis by replaced samples. J. Roy. Statist. Soc. Ser. B 33 98-110.
+ [7] HARTIGAN,  J. A. (1975). Necessary and sufficient conditions for asymptotic joint normality of a
+          statistic and its subsample values. Ann. Statist. 3 573-580.
+ [8] HINKLEY, D. (1976a). On estimating a symmetric distribution. Biometrika 63 680.
+ [9] HINKLEY,D. (1976~).On jackknifing in unbalanced situations. Tbchnical Report No. 22, Division
+          of Biostatistics, Stanford Univ.
+[lo] JAECKEL, L. (1972). The infinitesimal jackknife. Bell Laboratories Memorandum #MM 72-1215-11.
+[ll] KENDALL,M. and STUART,A. (1950). The Advanced Theory of Statistics. Hafner, New York.
+[12] LACHENBRUCH,    P. and MICKEY,R. (1968). Estimation of error rates in discriminant analysis.
+          Technometrics 10 1- 11.
+[13] MARITZ, J. S. and JARRETT,R. G. (1978). A note on estimating the variance of the sample median.
+          J. Amer. Statist. Assoc. 73 194-196.
+[14] MILLER,R. G. (1974a). The jackknife-a review. Biometrika 61 1-15.
+[15] MILLER,R. G. (1974~).An unbalanced jackknife. Ann. Statist. 2 880-891.
+[16] NOETHER,  G. (1967). Elements of Nonparametric Statistics. Wiey, New York.
+[17] TOUSSAINT,  G. (1974). Bibliography on estimation of misclassification. IEEE Trans. Information
+          Theory 20 472-479.
+

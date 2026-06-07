@@ -1,0 +1,570 @@
+                                                               A constructive proof of the Lovász Local Lemma
+                                                                                             Robin A. Moser∗
+
+                                                                             Institute for Theoretical Computer Science
+                                                                                  Department of Computer Science
+                                                                               ETH Zürich, 8092 Zürich, Switzerland
+                                                                                     robin.moser@inf.ethz.ch
+
+                                                                                              October 2008
+
+
+
+
+arXiv:0810.4812v2 [cs.DS] 29 Oct 2008
+                                                                                                 Abstract
+                                                      The Lovász Local Lemma [EL75] is a powerful tool to prove the existence of combinatorial objects
+                                                  meeting a prescribed collection of criteria. The technique can directly be applied to the satisfiability
+                                                  problem, yielding that a k-CNF formula in which each clause has common variables with at most 2k−2
+                                                  other clauses is always satisfiable. All hitherto known proofs of the Local Lemma are non-constructive
+                                                  and do thus not provide a recipe as to how a satisfying assignment to such a formula can be efficiently
+                                                  found. In his breakthrough paper [Bec91], Beck demonstrated that if the neighbourhood of each clause
+                                                  be restricted to O(2k/48 ), a polynomial time algorithm for the search problem exists. Alon simplified and
+                                                  randomized his procedure and improved the bound to O(2k/8 ) [Alo91]. Srinivasan presented in [Sri08]
+                                                  a variant that achieves a bound of essentially O(2k/4 ). In [Mos08], we improved this to O(2k/2 ). In
+                                                  the present paper, we give a randomized algorithm that finds a satisfying assignment to every k-CNF
+                                                  formula in which each clause has a neighbourhood of at most the asymptotic optimum of 2k−5 − 1 other
+                                                  clauses and that runs in expected time polynomial in the size of the formula, irrespective of k. If k is
+                                                  considered a constant, we can also give a deterministic variant. In contrast to all previous approaches,
+                                                  our analysis does not anymore invoke the standard non-constructive versions of the Local Lemma and
+                                                  can therefore be considered an alternative, constructive proof of it.
+
+                                        Key Words and Phrases. Lovász Local Lemma, derandomization, bounded occurrence SAT instances,
+                                        hypergraph colouring.
+
+
+                                        1        Introduction
+                                        We use the notational framework introduced in [Wel08]. We assume an infinite supply of propositional
+                                        variables. A literal L is a variable x or a complemented variable x̄. A finite set D of literals over pairwise
+                                        distinct variables is called a clause. We say that a variable x occurs in D if x ∈ D or x̄ ∈ D. A finite set F
+                                        of clauses is called a formula in CNF (Conjunctive Normal Form). We say that F is a k-CNF formula if
+                                        every clause has size exactly k. We write vbl(F ) to denote the set of all variables occurring in F . Likewise,
+                                        vbl(D) is the set of variables occurring in a clause D. For a literal L, let vbl(L) ∈ vbl(F ) refer directly to
+                                        the underlying variable.
+                                             A truth assignment is a function α : vbl(F ) → {0, 1} which assigns a boolean value to each variable.
+                                        A literal L = x (or L = x̄ is satisfied by α if α(x) = 1 (or α(x) = 0). A clause is satisfied by α if it contains
+                                            ∗
+                                                Research is supported by the SNF Grant 200021-118001/1
+
+
+                                                                                                      1
+a satisfied literal and a formula is satisfied if all of its clauses are. A formula is satisfiable if there exists a
+satisfying truth assignment to its variables.
+    Let k ∈ N and let F be a k-CNF formula. The dependency graph of F is defined as G[F ] = (V, E)
+with V = F and E = {{C, D} ⊆ V | C 6= D, vbl(C) ∩ vbl(D) 6= ∅}. The neighbourhood of a given clause
+C in F is defined as the set ΓF (C) := {D | D 6= C, vbl(D) ∩ vbl(C) 6= ∅} of all clauses sharing common
+variables with C. It coincides with the set of vertices adjacent to C in G[F ]. The inclusive neighbourhood
+of C is defined to be Γ+
+                       F (C) := ΓF (C) ∪ {C}.
+     Suppose U ⊆ vbl(F ) is an arbitrary subset of the variables occurring in F , then we will denote by
+F(U ) := {C ∈ F | vbl(C) ∩ U 6= ∅} the subformula that is affected by these variables.
+    If α is any assignment for F , we write vlt(F, α) to denote the set of clauses which are violated by α.
+    The Lovász Local Lemma was introduced in [EL75] as a tool to prove the existence of combinatorial
+objects meeting a prescribed collection of criteria. A simple, symmetric and uniform version of the Local
+Lemma can be directly formulated in terms of satisfiability. It then reads as follows.
+
+Theorem 1.1. [EL75] If F is a k-CNF formula such that all of its clauses C ∈ F satisfy the property
+|ΓF (C)| ≤ 2k−2 , then F is satisfiable.
+
+     The hitherto known proofs of this statement are non-constructive, meaning that they do not disclose
+an efficient (polynomial-time) method to find a satisfying assignment. Whether there exists any such
+method was a long-standing open problem until Beck presented in his breakthrough paper [Bec91] an
+algorithm that finds a satisfying assignment in polynomial time, at least if |ΓF (C)| ≤ 2k/48 . Using various
+guises of the tools introduced by Beck, there have been several attempts to improve upon the exponent
+[Alo91, Mos06, Sri08, Mos08], but a significant gap always remained. In the present paper we will close
+that gap to the asymptotic optimum. While the tools applied in the analysis are still derived from the
+original approach by Beck and also significantly from the randomization and simplification contributed
+by Alon, the algorithm itself now looks substantially different. An interesting new aspect of the present
+analysis is that the standard non-constructive proofs of the Local Lemma are not invoked anymore. The
+algorithm we present and its proof of correctness can be therefore considered a constructive proof of the
+Local Lemma, or at least of its incarnation for satisfiability. We conjecture that the methods proposed can
+be seamlessly translated to most applications covered by the framework by Molloy and Reed in [MR98],
+however, this remains to be formally checked. Our main result will be the following.
+
+Theorem 1.2. If F is a k-CNF formula such that all clauses C ∈ F satisfy the property |Γ+   F (C)| ≤ 2
+                                                                                                      k−5 ,
+
+then F is satisfiable and there exists a randomized algorithm that finds a satisfying assignment to F in
+expected time polynomial in |F | (independent of k).
+
+    If we drop the requirement that the algorithm be of polynomial running time for asymptotically growing
+k, then we can also derandomize the procedure.
+
+Theorem 1.3. Let k be a fixed constant. If F is a k-CNF formula such that all clauses C ∈ F satisfy
+the property |Γ+F (C)| ≤ 2
+                          k−5 , then F is satisfiable and there exists a deterministic algorithm that finds a
+
+satisfying assignment to F in time polynomial in |F |.
+
+    In the sequel we shall prove the two claims.
+
+
+2    A randomized algorithm based on local corrections
+The algorithm is as simple and natural as it can get. Basically, we start with a random assignment, then we
+check whether any clauses are violated and if so, we pick one of them and sample another random assignment
+
+                                                         2
+for the variables in that clause. We continue doing this until we either find a satisfying assignment or if the
+correction procedure takes too much time, we give up and restart with another random assignment. This
+very basic method turns out to be sufficiently strong for the case of formulas with small neighbourhoods,
+the only thing we need to do so as to make a running time analysis possible is to select the clauses to be
+corrected in a somewhat systematic fashion.
+     As in the theorem, let F be a k-CNF formula over n variables with m clauses, such that ∀C ∈ F :
+|Γ+
+  F (C)|  ≤ d, with d := 2k−5 . We impose an arbitrary, globally fixed ordering upon the clauses of F , let us
+call this the lexicographic ordering. We define a recursive procedure which takes the formula F , a starting
+assignment α and a clause C ∈ F which is violated by α as input, and outputs another assignment that
+arises from α by performing a series of local corrections in the proximity of C.
+
+
+                   function locally correct(F, α, C)
+                       α ← α with the assignments for vbl(C) replaced by random values (u.a.r.);
+                       while vlt(Γ+
+                                  F (C), α) 6= ∅ do
+                           D ← lexicographically first clause in vlt(Γ+
+                                                                      F (C));
+                          α ← locally correct(F, α, D);
+                       return α;
+
+
+                          Algorithm 2.1: recursive procedure for local corrections
+
+
+    As you immediately notice, this recursion has the potential of running forever. We will however see that
+long running times are unlikely to occur. If we are unlucky enough to encounter such a case, we interrupt
+the algorithm prematurely. The following algorithm now uses the described recursive subprocedure in
+order to find a satisfying assignment for the whole formula.
+
+
+
+                  function solve lll(F )
+                     α ← an assignment picked uniformly at random from {0, 1}vbl(F ) ;
+                     while vlt(F, α) 6= ∅ do
+                        D ← lexicographically first clause in vlt(F, α);
+                         α ← locally correct(F, α, D);
+                            keep track of the number of recursive invocations done by locally correct;
+                             if the number exceeds log m + 2, then abort the whole loop and
+                           restart, sampling another α.
+                     return α;
+
+
+                                     Algorithm 2.2: the complete solver
+
+
+    If the algorithm terminates, the result clearly constitutes a satisfying assignment. We however have
+to check that the expected running time is polynomial. The remainder of the proof is to establish this
+property.
+     In order to be able to talk about the behaviour of the algorithm we need to control the randomness
+injected. Let us formalize the random bits used in a way that will greatly simplify the analysis. Let us say
+that a total function A : vbl(F ) × N0 → {0, 1} is a table of assignments for F . Let us extend the notion to
+
+                                                          3
+literals in the natural manner, i.e. A(x̄, i) := 1 − A(x, i). Furthermore call a total function α : vbl(F ) → N0
+an indirect assignment. Given a fixed table of assignments, an indirect assignment automatically induces
+a standard truth assignment ⋆ α which is defined as ⋆ α(x) := A(x, α(x)) for all x ∈ vbl(F ). Let us now,
+just for the analysis, imagine that the algorithm works with indirect assignments instead of standard ones.
+That is, instead of sampling a starting assignment uniformly at random, solve lll(...) could sample a table
+of assignments A uniformly at random by randomly selecting each of its entries. It will then hand over the
+pair (A, α) to locally correct(...), where α is an indirect assignment this time which takes zeroes everywhere.
+Note that this is equivalent since ⋆ α is uniformly distributed. Each time the value of a variable is supposed
+to be resampled inside locally correct(...), we instead increase its indirect value by one. Note that this
+equally completely corresponds to sampling a new random value since the corresponding entry of the table
+has never been used before. In the sequel, we will adopt this view of the algorithm and its acquisition of
+randomness.
+    We need to be able to record an accurate journal of what the algorithm does. A recursion tree τ
+is an (unordered) rooted tree together with a labelling στ : V (τ ) → F of each vertex with a clause of
+the formula such that if for u, v ∈ V (τ ), u is the parent node of v, then στ (v) ∈ Γ+  F (στ (u)). We can
+record the actions of the recursive procedure in terms of such a recursion tree, where the root is labelled
+with the clause the procedure was originally called for and all descendant nodes representing the recursive
+invocations and carrying as labels the clauses handed over in those. Let now a table of assignments be
+globally fixed and let α be any indirect assignment and C ∈ F some clause violated under ⋆ α. Suppose
+that locally correct(...) halts on inputs α and C. Then we say that the complete recursion tree on the given
+input is the complete representation of the recursive process up to the point where it returns. Even if the
+process does not return or does not return in the time we allot, we can capture the tree representing the
+recursive invocations made in any intermediate step and we call these intermediate recursion trees.
+    Let τ be any recursion tree. The size |τ | of τ is defined to be the number of vertices. In order to
+simplify notation, we will write [v] := στ (v) for any v ∈ V (τ ) to denote the label of vertex v. Let us say
+that a variable x ∈ vbl(F ) occurs in τ if there exists a vertex v ∈ V (τ ) such that x ∈ vbl([v]). We write
+vbl(τ ) to denote the set of variables that occur in τ .
+    We are now ready to make a first statement about the correctness of the algorithm.
+
+Lemma 2.1. Let F and A be globally fixed. Let α be any indirect assignment and C ∈ F a clause violated
+under ⋆ α. Suppose locally correct(...) halts on input α and C and let τ be the complete recursion tree for
+this invocation. Then the assignment α′ which the function outputs satisfies the subformula F(vbl(τ )) .
+
+Proof. Assume that α′ violates any clause D ∈ F(vbl(τ )) . Suppose furthermore that during the process we
+have recorded the ordering in which the recursive invocations were made. Now let v ∈ V (τ ) be the last
+vertex (according to that ordering) of which the corresponding label [v] shares common variables with D.
+Since any invocation on input [v] can only return once all clauses in Γ+ F ([v]) are satisfied, it cannot return
+              +
+before D ∈ ΓF ([v]) is. Since after that no changes of the assignments for the variables in D have occured
+(by choice of v), D is still satisfied when the function returns, a contradiction.
+
+     In the proof we had to assume having remembered the ordering in which the process generated the
+vertices. However, from the statement of the lemma we can now infer that this is not necessary since that
+ordering can be reconstructed by just looking at the shape and the labels. For any recursion tree τ , let
+us define the natural ordering πτ : V (τ ) → [|V (τ )|] to be the ordering we obtain by starting a depth-first
+search at the root and at every node, selecting among the not-yet traversed children the one with the
+lexicographically first label (we use the notation [n] := {1, 2, . . . , n} for n ∈ N). We claim the following.
+Lemma 2.2. Let τ be any (intermediate) recursion tree produced by any (possibly non-terminating) call to
+locally correct(...). The ordering in which the process made recursive invocations coincides with the natural
+ordering of τ and in particular, there is no node with two identically labelled children.
+
+
+                                                       4
+Proof. Note that a recursive procedure naturally generates a recursion tree in depth-first search order.
+What we have to check is merely that the children of every node are generated according to the lexicographic
+ordering of the their labels. We proceed by induction. The recursion tree τ has a root r labelled [r] and a
+series of children. Assume as induction hypothesis that the subtrees rooted at the children have the required
+property. We have to prove that on the highest invocation level where the loop checks for unsatisfied clauses
+in Γ+F ([r]), no clause is either picked twice or is picked despite the fact that it precedes a clause already
+picked during the same loop in the lexicographic ordering. Both possibilities are excluded by Lemma 2.1,
+which readily implies that after a recursive invocation returns, the set of violated clauses is a strict subset
+of the set of clauses violated before and in particular the clause we made the call for is satisfied ever after.
+It can easily be verified that the fact that we allow intermediate trees does not harm.
+
+     Lemma 2.1 also implies that the maximum number of times the outer loop (in solve lll(...)) needs to
+be repeated is bounded by O(m) since the total number of violated clauses cannot be any larger and each
+call to the correction procedure eliminates at least one. Since we abort the recursion whenever it takes
+more than logarithmically many invocations, clearly the whole loop terminates after a polynomial number
+of steps. The only thing left to prove is that it is not necessary to abort and jump back to the beginning
+more often than a polynomial number of times. In the sequel, we will show that in the expected case, this
+has to be done at most twice.
+
+3    Consistency and composite witnesses
+Suppose that we fix an assignment table A and an indirect assignment α and we call locally correct(...)
+for some violated clause C and wait. Suppose that the function does not return within the log(m) + 2
+steps allotted and we abort. Now let τ be the recursion tree that has been produced up to the time of
+interruption. τ has at least log(m) + 2 vertices (up to some rounding issues it has exactly that many).
+Suppose that somebody were to be convinced that it was really necessary for the process to take that long,
+then we can present them the tree τ as a justification. By inspecting τ together with α, they can verify that
+for the given table A, the correction could not have been completed any faster. Such a certification concept
+will now allow us to estimate the probability of abortion. We have to introduce some formal notions.
+    Let v ∈ V (τ ) be any vertex and x ∈ vbl([v]) a variable that occurs there. We define the occurrence
+index of x in v to be the number of times that x has occurred before in the tree, written
+
+                          idxτ (x, v) := |{v ′ ∈ V (τ ) | πτ (v ′ ) < πτ (v), x ∈ vbl([v ′ ])}|.
+
+    If δ is any indirect assignment, we say that τ is consistent with A offset by δ if the property
+
+                           ∀v ∈ V (τ ) : ∀L ∈ [v] : A(L, idxτ (vbl(L), v) + δ(x)) = 0
+
+holds. Furthermore, let us define the offset assignment induced by τ as
+
+                                        δτ (x) := |{v ∈ V (τ ) | x ∈ vbl([v])}|
+
+for all x ∈ vbl(F ). Recall now what the recursion procedure does; it starts with a given indirect assignment
+and performs recursive invocations in the natural ordering of the produced recursion tree and in each
+invocation, the indirect assignments of the variables in the corresponding clause are incremented. This
+immediately yields the following observation.
+Observation 3.1. If τ is any (intermediate) recursion tree of an invocation of the recursive procedure for
+a table A and an indirect starting assignment α, then τ is consistent with A offset by α.
+
+    Let a collection W := {τ1 , τ2 , . . . , τt } of recursion trees be given of which the roots have pairwise distinct
+labels. Consider an auxiliary graph HW of which those trees are the vertices and two distinct vertices τi , τj
+
+                                                            5
+are connected by an edge if the corresponding two trees share a common variable, i.e. vbl(τi ) ∩ vbl(τj ) 6= ∅.
+If HW is connected, then W is said to be a composite witness for F . The vertex set of a composite witness
+is defined to be V (W ) := {(τ, v) | τ ∈ W, v ∈ V (τ )}, i.e. it is the set of all vertices in any of the separate
+trees, each annotated by its tree of origin. To shorten notation, we access the label of such a vertex by
+writing [w] := [v] for each w = (τ, v) ∈ V (W ). The size of a composite witness is defined to be |V (W )|.
+     There is a natural way of traversing the vertices in V (W ). Consider that each of the recursion trees
+τi has a distinctly labelled root. Now order the trees according to the lexicographic ordering of the root
+labels. Traverse the first tree according to its natural ordering, then the second one, and so forth. We call
+this the natural ordering for a composite witness and we write πW : V (W ) → [|V (W )|] to denote it. Let
+v ∈ V (W ) be any vertex of the composite witness and x ∈ vbl([v]) any variable that occurs there. We
+define the occurrence index of x in v to be the number of times that x has occurred before in the witness,
+written
+                        idxW (x, v) := |{v ′ ∈ V (τ ) | πW (v ′ ) < πW (v), x ∈ vbl([v ′ ])}|.
+We say that a composite witness is consistent with A if the property
+
+                             ∀v ∈ V (W ) : ∀L ∈ [v] : A(L, idxW (vbl(L), v)) = 0
+
+holds. The definitions immediately imply the following.
+Observation 3.2. If W = {τ1 , τ2 , . . . , τt } is a composite witness with the recursion trees ordered according
+                                   P root labels, then W is consistent with A if and only if for all 1 ≤ i ≤ t,
+to the lexicographical ordering of their
+τj is consistent with A offset by j<i δτj .
+
+    Moreover, note that for vertices v ∈ V (W ) and literals L ∈ [v], the mapping
+
+                                       (v, L) 7→ (vbl(L), idxW (vbl(L), v))
+
+is, by definition of idxW , an injection. This implies that if we are given a fixed composite witness W and
+we want to check whether W is consistent with a table A, then for each pair (v, L) to be checked, we
+have to look up one distinct entry in the table. In total, we have to look up k|V (W )| entries and W can
+be consistent with A exclusively if each of those entries evaluates exactly as prescribed. This yields the
+following.
+Observation 3.3. If A is a random table of assignments where each entry has been selected uniformly at
+random from {0, 1}, then the probability that a given fixed composite witness W becomes consistent with A
+is exactly 2−k|V (W )| .
+
+      In fact, we will now see that whenever the superintending procedure has to interrupt the recursion
+because it has made too many invocations, then the bad luck at the origin of this behaviour can be certified
+by means of a large composite witness which occurs very rarely. We say that a composite witness is large
+if it has size at least log m + 2. We claim the following.
+Lemma 3.4. Let an assignment table A be fixed and now run the loop in solve lll(...), i.e. starting
+with the indirect all-zero assignment, repeatedly call the correction procedure on the lexicographically first
+clause violated by the current assignment and replace the assignment by the returned one. If the procedure
+fails, that is if any of the local correction steps have to be interrupted because it needed at least log m + 2
+invocations, then there exists a large composite witness for F that is consistent with A.
+
+Proof. Let τ1 , τ2 , . . . , τt be the sequence of recursion trees that certify the recursive processes we started.
+Note that since the last step had to be interrupted, τt is intermediate and of size at least log m + 2. The
+other trees are complete recursion trees. Moreover, note that by Lemma 2.1, every completed recursion
+
+
+                                                        6
+process cannot have introduced any new violated clauses and therefore, the root labels of the trees are
+ordered lexicographically.
+     Let now H be an auxiliary graph of which {τ1 , τ2 , . . . , τt } is the vertex set and two trees are connected
+by an edge if there is a variable that occurs in both of them. Let us identify the connected components of
+H and let W ⊆ {τ1 , τ2 , . . . , τt } be the connected component of which τt is part. Note that all trees τ ′ that
+are not in W do not have any variables in common with any tree in W , therefore all their induced offset
+assignments δτ ′ are zero on all of vbl(W ). By Observation 3.1, it follows that if W = {τi1 , τi2 , . . . , τir = τt },
+where
+P      the indices preserve the ordering, then for all 1 ≤ j ≤ r, the tree τij is consistent with A offset by
+  j <j τi ′ . By Observation 3.2, this yields the claim.
+   ′   δ
+          j
+
+     Since we already know that a fixed composite witness is unlikely to become consistent with a random
+table, it just remains to count the number of composite witnesses that can possibly exist for F . This
+will yield a bound on the probability that there is no large composite witness consistent with the table
+at all and thence also on the probability that each local correction will go through without the need for
+premature interruption.
+
+
+4    Encoding and counting composite witnesses
+In order to give an upper bound on the number of composite witnesses for a given formula, we will think
+about how they can be encoded efficiently. The most obvious way of just encoding each recursion tree
+separately by giving the shape of the tree and its labels does unfortunately not suffice. There are two
+properties of witnesses that we can exploit. Firstly, the labellings of the separate trees are not arbitrary
+but follow the rule that the label of a child is always either a neighbour in G[F ] to the label of the parent
+or identical to that label. Moreover, the fact that the auxiliary graph that describes the interconnectivity
+of the recursion trees inside the composite witness has to be connected yields that those trees have to lie
+in proximity of one another such that only one root vertex for the whole composite witness will have to be
+stored.
+     More formally. Let I be the infinite rooted (2d)-ary tree. Note that every node in that tree has
+at least twice as many children as there can be clauses in Γ+          F (C) for any C ∈ F . Let now R ∈ F be
+any clause. We will ’root’, so to speak, I at R and starting from there, ’embed’ the nodes of I into
+G[F ] in the following fashion. Let σR : I → G[F ] be a labelling of the vertices of I such that the
+root r is labelled σR (r) = R and whenever a node v ∈ V (I) is labelled by σR (v) = D ∈ F , then the
+2d children of v, call them c1 , c2 , . . . , c2d , are labelled as follows: for 1 ≤ i ≤ |Γ+F (D)| ≤ d, we label
+                                                          +                               +
+σ(ci ) := (the lexicographically i − th clause of ΓF (D)). For d + 1 ≤ i ≤ d + |ΓF (D)| ≤ 2d, we label
+σ(ci ) := σ(ci−d ) in the same ordering. If there are remaining children then these are not labelled, that is
+the map σR is partial. We will call the first d children of every node the low children and the remaining d
+children the high children of that node.
+    Let us now say that a triple hC, T, ci, where C ∈ F is a clause, T is a subtree of I containing the
+root and c is a 2-colouring (or 2-partition) of the edges of T is a witness encoding. The size of a witness
+encoding is defined to be the number of vertices in the tree, |V (T )|. We will see that we can reversibly
+encode each composite witness as such a triple and this will yield a bound that is strong enough for our
+purposes.
+Lemma 4.1. Let u ∈ N. There is an injection from the set of composite witnesses of size exactly u for F
+into the set of witness encodings of size u. The total number of distinct composite witnesses of size exactly
+u that exist for F is upper bounded by m · 2u(k−1) .
+
+Proof. Let W be any composite witness for F . To prove the claim, we have to transform W into a triple
+hC, T, ci as described above in a reversible fashion.
+
+
+                                                           7
+      To begin with, we will show that any recursion tree τ can be encoded as a subtree of size |τ | of I which
+is rooted at any vertex v of I which carries a label that also occurs in τ , i.e. σR (v) ∈ Im(στ ). The encoding
+is reversible for any choice of R and any choice of such vertex v. We proceed as follows. Let R and v be
+chosen arbitrarily and let then u ∈ V (τ ) be any vertex such that σR (v) = [u]. Let u = u0 , u1 , . . . , uj be
+the succession of vertices that we encounter on the shortest path from u to the root, where uj is the root
+of τ . We now start producing a subtree of I that is rooted at v. We add the unique high child c1 of v with
+σR (c1 ) = [u1 ]. This child exists because obviously [u1 ] is a neighbour of [u0 ] in G[F ]. To c1 as the parent,
+we then add the unique high child c2 such that σR (c2 ) = [u2 ], and so forth. We have built a path from v
+to a vertex cj that is labelled [uj ], just like the root of τ . Now, in the most natural fashion, attach to v all
+subtrees of u in such a way that each descendant is labelled the same way in I as the corresponding vertex
+is labelled in τ . Always use the uniquely defined low children for this kind of embedding. Attach then to
+c1 all the subtrees of u1 except for the one rooted at u0 that we have already handled, using the same type
+of embedding. Do the same for c2 , . . . , cj . The result is a subtree of I of size |τ | which is rooted at v with
+a one-to-one correspondence of its vertices to the vertices of τ and such that every vertex is labelled under
+σR in the same way as the corresponding vertex is labelled in τ . Note that this transformation is reversible.
+Whenever we are given such a subtree, we can start at its root vertex and follow the unique high child
+of every node until not possible anymore. The vertex we end up at corresponds to the original root of
+τ . It is clear that from there, we can perform the same succession of ’rotations’ backwards to completely
+reconstruct τ .
+    Consider the composite witness now. Let W = {τ1 , τ2 , . . . , τt }. Let HW be, as usual, the auxiliary
+graph where those recursion trees are the vertices and an edge exists between any two trees if a common
+variable occurs in both of them. By the definition of composite witnesses, HW is connected. This means
+that we can easily exhibit an ordering of the vertices of HW such that each vertex in that ordering is
+connected to at least one of the vertices listed previously. W.l.o.g., let the ordering τ1 , τ2 , . . . , τt have this
+property. It need of course not coincide with the lexicographic ordering of the root labels.
+     Define both C and R to be the label of the root of τ1 . This is going to be the root vertex of the whole
+construction. The labellings of I will now be σR . We encode the recursion trees as subtrees of I in the
+ordering just devised and we glue them together to form one large tree. Start with τ1 and encode it in the
+way described above as a subtree of I which is rooted at the root of I. This is possible because we have
+just labelled the root in this way. Now assume we have added all trees up to 1 ≤ i ≤ t, producing so far a
+subtree Ti of I and now we have to add τi+1 . By the way we have ordered the trees, there exists a variable
+x ∈ vbl(τi+1 ) ∩ vbl(τj ) for some j < i + 1. Since the encoding as Ti has preserved all the labels, there
+is also at least one vertex in Ti of which the label contains x. Let g be a deepest such vertex in Ti , i.e.
+x ∈ vbl(σR (g)) but no descendant of g in Ti has a label which contains x. Let ri+1 ∈ V (τi+1 ) be any vertex
+in τi+1 which contains x. Clearly, [ri+1 ] and σR (g) are either identical or neighbours in G[F ], therefore
+there exists a unique low child cg of g (in I) which is labelled σR (cg ) = [ri+1 ]. Note that by choice of g, cg
+is not present in Ti . Use the procedure described before to produce a representation of τi+1 as a subtree of
+I which is rooted at cg . Add this representation to Ti and connect the root cg to the parent g by an edge.
+Mark this edge as a special glueing edge by means of the colouring c. All other edges are marked regular
+by that colouring. Continue the process until all trees are added. Note that the tree T := Tt produced
+contains exactly |V (W )| vertices.
+    It can easily be seen that the construction is reversible. If any such subtree, the root label C = R
+and the colouring are given, simply reconstruct all the labels of I as σR , then delete all glueing edges to
+produce a disjoint subforest of I. Each of the subtrees can be retransformed into the original recursion
+trees with the correct roots by the reversal process described above.
+     Now that we have found such an encoding, determining the numbers is not difficult anymore. There are
+m choices to select C ∈ F . According to a simple counting exercise by Donald Knuth in [Knu69], the number
+of rooted subtrees of size exactly u in I does not exceed (2ed)u . There are less than 2u distinct 2-colourings of
+
+
+                                                          8
+the edges of such a tree. Therefore, the total number is upper bounded by m(4ed)u < m(16d)u = m(2k−1 )u ,
+as claimed.
+    Since the composite witnesses are little in number, we can now infer that their occurrence is sufficiently
+unlikely.
+Lemma 4.2. Consider an assignment table A produced by selecting each entry from {0, 1} uniformly and
+independently at random. The probability that there exists in F a large composite witness which is consistent
+with A is at most 1/2.
+
+Proof. Let Xu be the random variable that counts the number of composite witnesses of size exactly u
+which are consistent with A. We have already derived that the probability that a fixed composite witness
+of size u becomes consistent with A is 2−ku . Combining this with the previous lemma yields the following
+bound on the expected value of Xu :
+
+                                      E(Xu ) ≤ 2−ku · m · 2u(k−1) = m2−u .
+
+If X denotes the random variable that counts the total number of large composite witnesses which are
+consistent with A, then for the expected value of X we obtain
+                                            X                             X             1
+                               E(X) =                 Xu ≤ m · 2− log m         2−u =     .
+                                                                                        2
+                                         u≥log(m)+2                       u≥2
+
+If the number of such witnesses is at most 1/2 on average, then for at least half of the assignment tables,
+there is no consistent such witness at all.
+    This concludes the proof of Theorem 1.2.
+
+
+5    A deterministic variant
+In this section we demonstrate that there is nothing inherently randomized to our procedure. If we assume
+k to be a constant, we can give a determinstic polynomial-time algorithm for the problem. The key idea will
+be that we enumerate all possible large composite witnesses and then instead of sampling an assignment
+table at random and hoping that it will avoid all of them, we deterministically search for a table that does.
+Since we can only enumerate a polynomial number of composite witnesses, we have to more carefully check
+which of them are really relevant. The following lemma says that it is not necessary to check arbitrarily
+large witnesses.
+Lemma 5.1. Let u ∈ N and let A be a fixed table of assignments. If there exists a composite witness of
+size at least u for F that is consistent with A, then there exists also a composite witness of a size in the
+range [u, ku + 1] which is equally consistent with A.
+
+Proof. Assume that the claim is fallacious for a fixed value u ∈ N. Then assume that W is a composite
+witness that constitutes a smallest counterexample, i.e. W is a composite witness of size at least u which
+is consistent with A, but there exists no witness of a size in the range [u, ku + 1] which is consistent with
+A and W is smallest with this property. Clearly, this implies that W has size larger than ku + 1.
+    Let W = {τ1 , τ2 , . . . , τt } be the list of recursion trees contained in W , sorted according to the lexi-
+cographic ordering of the root vertices. Now let us remove the very last vertex according to the natural
+                               −1
+ordering, i.e. the vertex πW       (|V (W )|). If τt consists of a singleton vertex, this amounts to deleting τt from
+the witness, in all other cases it amounts to removing the last vertex in the natural ordering from τt . Let
+in both cases W ∗ be the modified collection of recursion trees. Now check the auxiliary graph HW ∗ with
+W ∗ being the vertex set and edges in case of common variables. Due to the deletion of the last vertex
+
+                                                          9
+and therefore possibly of a clause from the set of labels of W ∗ , the graph HW ∗ might have fallen apart
+into several connected components. However, considering that in the removed clause there were exactly k
+variables and the variable sets of the connected components are disjoint, the number of such components
+cannot exceed k. If we now select the largest component W ′ of HW ∗ , where large in this case means having
+the maximum number of vertices summed over the trees in that component, then W ′ is by definition again
+a composite witness and by choice of W ′ , |V (W ′ )| ≥ (|V (W )| − 1)/k ≥ u. Note also that W ′ is consistent
+with A because neither the removal of the last vertex in the natural ordering, nor the removal of any
+trees covering variable sets disjoint from the set of variables covered by W ′ can influence the consistency
+property.
+    In total, we have found a composite witness W ′ which is strictly smaller than W and also consistent
+with A. Either the size of W ′ is in the range [u, ku + 1], a contradiction, or it is a smaller counterexample,
+a contradiction as well.
+    The lemma implies that if we want to check whether a given assignment table A has the potential
+to provoque a premature interruption of some correction step, then it suffices to check that no composite
+witness with a size in the range [log m + 2, k(log m + 2) + 1] exists that is consistent with A. The number
+of composite witnesses with a size in that range is, by Lemma 4.1, bounded by
+                      X
+                  k(log m+2)+1
+                                 m · 2j(k−1) < ((k − 1)(log m + 2) + 2) · m · 2(k(log m+2)+1)(k−1)
+                   j=log m+2
+
+which is in turn bounded by a polynomial in m. This polynomially large set of critical composite witnesses
+can obviously be enumerated by a polynomial time algorithm.
+     Assume now that we do not simply want to check tables for consistency with certain witnesses but we
+would like to directly produce an assignment table with which no large composite witness is consistent.
+Note that during the algorithm, no variable’s indirect assignment is incremented more than m · (log m + 2)
+times and therefore at most this number of rows in the assignment table is used. Let us then define boolean
+variables zi,x for all i ∈ [0, m · (log m + 2)] and all x ∈ vbl(F ) to represent the entry A(x, i) of the table. If
+W is any fixed composite witness, then we can in the obvious way translate the consistency property for
+W into a clause CW over the variables zi,x such that a truth assignment β to the variables zi,x violates CW
+if and only if the corresponding table with A(x, i) = β(zi,x ) for all i and x is consistent with W . Clearly,
+the clause CW has size exactly k|V (W )|.
+     Let now a determinstic algorithm enumerate all composite witnesses for F with a size in the range
+[log m + 2, k(log m + 2) + 1], for each of them, generate a corresponding clause and collect all those clauses
+in a CNF formula G of length polynomial in m. By the same calculation as in the proof of Lemma 4.2, the
+expected number of violated clauses in G if we sample a truth assignment β for G uniformly at random, is
+smaller than 1/2. It is well-known that a formula with this property can be solved by a polynomial-time
+determinstic algorithm using the method of conditional expectations (see, e.g., [Bec91]). We can therefore
+obtain, deterministically and in polynomial time, an assignment β that satisfies G. The values of β provide
+us with a corresponding assignment table A with which no composite witness with a size in the range
+[log m + 2, k(log m + 2) + 1] and by Lemma 5.1 therefore no large composite witness at all is consistent. If
+we now invoke our algorithm, replacing all random values by the fixed table A, we are guaranteed that no
+interruption will occur and all corrections will go through to produce a satisfying assignment of F .
+    This concludes the proof of Theorem 1.3.
+
+
+Acknowledgements
+Many thanks go to Dominik Scheder for various very helpful comments and to my supervisor Prof. Dr.
+Emo Welzl for the continuous support.
+
+                                                          10
+References
+[Knu69]   Donald E. Knuth. The Art of Computer Programming, Vol. I, Addison Wesley, London, 1969,
+          p. 396 (Exercise 11).
+
+[EL75]    Paul Erdös and László Lovász. Problems and results on 3-chromatic hypergraphs and some
+          related questions. In A. Hajnal, R. Rado and V.T. Sós, editors, Infinite and Finite Sets (to Paul
+          Erdos on his 60th brithday), volume II, pages 609-627. North-Holland, 1975.
+
+[Bec91]   Jószef Beck. An Algorithmic Approach to the Lovász Local Lemma. Random Structures and
+          Algorithms, 2(4):343-365, 1991.
+
+[Alo91]   Noga Alon. A parallel algorithmic version of the local lemma. Random Structures and Algo-
+          rithms, 2(4):367-378, 1991.
+
+[KST93]   Jan Kratochvı́l and Petr Savický and Zsolt Tuza. One more occurrence of variables makes
+          satisfiability jump from trivial to NP-complete. SIAM J. Comput., Vol. 22, No. 1, pp. 203-210,
+          1993.
+
+[MR98]    Michael Molloy and Bruce Reed. Further Algorithmic Aspects of the Local Lemma. In Pro-
+          ceedings of the 30th Annual ACM Symposium on the Theory of Computing, pages 524-529,
+          1998.
+
+[CS00]    Artur Czumaj and Christian Scheideler. Coloring non-uniform hypergraphs: a new algorithmic
+          approach to the general Lovasz local lemma. Symposium on Discrete Algorithms, 30-39, 2000.
+
+[Mos06]   Robin A. Moser. On the Search for Solutions to Bounded Occurrence Instances of SAT. Not
+          published. Semester Thesis, ETH Zürich. 2006.
+
+[Sri08]   Aravind Srinivasan. Improved algorithmic versions of the Lovász Local Lemma. Proceedings of
+          the nineteenth annual ACM-SIAM symposium on Discrete algorithms (SODA), San Francisco,
+          California, pp. 611-620, 2008.
+
+[Wel08]   Emo Welzl. Boolean Satisfiability - Combinatorics and Algorithms. Lecture notes, Version Fall
+          2008.
+
+[Mos08]   Robin A. Moser. Derandomizing the Lovász Local Lemma more Effectively. Eprint,
+          arXiv:0807.2120v2, 2008.
+
+
+
+
+                                                    11
+

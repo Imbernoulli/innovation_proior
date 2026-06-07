@@ -1,0 +1,813 @@
+ON SUPREMA OF AUTOCONVOLUTIONS
+WITH AN APPLICATION TO SIDON SETS
+
+arXiv:1403.7988v3 [math.CO] 22 Apr 2016
+
+ALEXANDER CLONINGER AND STEFAN STEINERBERGER
+Abstract. Let f be a nonnegative function supported on (−1/4, 1/4). We show
+!2
+Z 1/4
+Z
+,
+f (x)dx
+f (t)f (x − t)dt ≥ 1.28
+sup
+x∈R
+
+R
+
+−1/4
+
+where 1.28 improves on a series of earlier results. The inequality arises naturally in additive
+combinatorics in the study of Sidon sets. We derive a relaxation of the problem that reduces
+to a finite number of cases and yields slightly stronger results. Our approach should be able to
+prove lower bounds that are arbitrary close to the sharp result. Currently, the bottleneck in our
+approach is runtime: new ideas might be able to significantly speed up the computation.
+
+1. Introduction
+1.1. Sidon sets. A subset A ⊂ {1, 2, . . . , N } is called g−Sidon if
+
+| {(a, b) ∈ A × A : a + b = m} | ≤ g
+
+for every m. How large can g−Sidon sets possibly be? Denote the answer by
+βg (n) :=
+
+max
+
+A⊂{1,2,...,N }
+
+A is g-Sidon
+
+|A|.
+
+There has been a lot of research activity on bounding these quantities: we only deal with the
+asymptotic case as g becomes large. Cilleruelo, Ruzsa & Vinuesa [2] have recently shown that the
+maximal cardinality of a g−Sidon set satisfies
+√
+√
+σ(g) gn(1 − o(1)) ≤ βg (n) ≤ σ(g) gn(1 + o(1)),
+where the o(1) is with respect to n and
+lim σ(g) = σ = lim σ(g)
+g→∞
+
+g→∞
+
+for some universal constant σ ∈ R.
+1.2. An equivalent continuous problem. As proven by Cilleruelo, Ruzsa & Vinuesa [2], the
+constant σ has an alternative representation as the solution of a continuous problem involving the
+autoconvolution f ∗ f which was first considered by Schinzel & Schmidt [11]. Throughout this
+paper, we will use
+Z
+f (t)g(x − t)dt
+(f ∗ g)(x) =
+R
+
+to denote the convolution. Consider all nonnegative functions f supported on [0, 1] satisfying
+Z
+kf ∗ f kL∞ (R) = sup f (t)f (x − t)dt ≤ 1,
+x∈R
+
+then we have
+
+Z
+
+R
+
+f (x)dx ≤ σ
+
+R
+
+and this inequality is sharp.
+
+A rephrasing of the statement is as follows: let f be a nonnegative function supported on the
+interval [−1/4, 1/4]. Then we have that
+!2
+Z 1/4
+Z
+2
+f (x)dx .
+sup f (t)f (x − t)dt ≥ 2
+σ
+x∈R R
+−1/4
+1
+
+2
+
+ALEXANDER CLONINGER AND STEFAN STEINERBERGER
+
+We abbreviate henceforth c = 2/σ 2 . As for the lower bound, we have
+c≥1
+
+trivial
+
+≥ 1.151
+
+Cilleruelo, Ruzsa & Trujillo [3]
+
+≥ 1.183
+
+Martin & O’Bryant [7]
+
+≥ 1.263
+
+Martin & O’Bryant [8]
+
+≥ 1.178
+
+Green [5]
+
+≥ 1.251
+
+Yu [12]
+
+≥ 1.274
+
+Matolcsi & Vinuesa [10]
+
+Work on the upper bound has been carried out by Cilleruelo, Ruzsa & Trujillo [3], Kolountzakis
+[6], Martin & O’Bryant [7] and Cilleruelo & Vinuesa [4]. The current state of the art is
+1.2749 ≤ c ≤ 1.50992
+with both bounds coming from Matolcsi & Vinuesa [10]. The upper bound 1.50992 is conjectured
+to be almost thight and disproves the conjecture c = π/2 due to Schinzel & Schmidt [11]. The
+upper bound comes from an explicit example; the lower bound is established using Fourier methods
+and earlier arguments of Martin & O’Bryant [9] and Yu [12]. Matolcsi & Vinuesa also claim the
+theoretical limit of their approach for the lower bound to be at 1.276.
+1.3. The result. The purpose of this paper is to improve on the lower bound by proving that there
+is a relaxed problem which can be dealt with computationally. The actual improvement is small
+(though comparable to previous improvements). We believe the true merit of our contribution to
+be in demonstrating a new approach to the problem that might prove quite effective.
+Theorem. Let f : R → R≥0 be supported in [−1/4, 1/4]. Then
+sup
+x∈R
+
+Z
+
+R
+
+f (t)f (x − t)dt ≥ 1.28
+
+Z 1/4
+
+f (x)dx
+
+−1/4
+
+!2
+
+.
+
+Our method seems to only be limited by our ability to do large-scale computations and we consider
+it likely that variants of our idea might be much faster and able to drastically improve on the result
+outlined here. There are two main ingredients: the first is to regard convolution as a bilinear
+operator that respects spatial decompositions via
+supp(f ∗ g) ⊆ supp(f ) + supp(g)
+
+and acts nicely with respect to the L1 −norm via
+Z
+ Z
+
+Z
+(f ∗ g)(x)dx =
+f (x)dx
+g(x)dx
+R
+
+R
+
+R
+
+for sufficiently regular functions. The second ingredient is the pigeonhole principle stating that
+for any h : I → R
+Z
+1
+|h(x)|dx.
+khkL∞ ≥
+|I| I
+2. Some intuition
+
+There is a trivial proof of c ≥ 1: since f is supported on (−1/4, 1/4), the function f ∗ f must be
+supported on (−1/2, 1/2). Furthermore, by Fubini, we have that
+Z
+2
+Z Z
+Z
+f (t)f (x − t)dtdx =
+(f ∗ f )(x)dx =
+f (x)dx
+R
+
+R
+
+R
+
+R
+
+and thus, trivially
+
+Z
+
+R
+
+f (x)dx
+
+2
+
+= kf ∗ f kL1 (−1/2,1/2) ≤ kf ∗ f kL∞ (−1/2,1/2) .
+
+3
+
+This argument inspired our approach: instead of trying to show that kf ∗ f kL∞ (R) has to be large
+by showing that f ∗ f has to be large in a single point, we show that there has to exist an interval
+I ⊂ (−1/2, 1/2) such that kf ∗ f kL1 (I) is large and then use
+1
+kf ∗ f kL1 (I) ≤ kf ∗ f kL∞ (I) ≤ kf ∗ f kL∞ (R) .
+|I|
+Indeed, this also implies that we will actually be able to deduce slightly stronger results. Our
+main result reads as follows and clearly implies the bound c ≥ 1.28.
+
+Theorem (Full result). Let f : R → R≥0 be supported in [−1/4, 1/4]. Then there exists an
+interval J ⊂ (−1/2, 1/2) of length |J| ≥ 1/48 such that
+!2
+Z
+Z 1/4
+(f ∗ f )(x)dx ≥ 1.28|J|
+f (x)dx .
+J
+
+−1/4
+
+We will now describe the argument in greater detail: let us decompose the interval (−1/4, 1/4)
+into four intervals I1 , I2 , I3 , I4 of equal size in the canonical way, i.e.
+
+
+−3 + j −2 + j
+for j = 1, 2, 3, 4.
+,
+Ij =
+8
+8
+Denoting the characteristic function of an interval I by χI , we define
+fj = f χIj
+and use the linearity of the convolution to write
+
+ 
+
+4
+4
+X
+X
+f ∗f = 
+fj  ∗ 
+fj 
+j=1
+
+=
+
+4
+X
+
+j,k=1
+
+− 41
+
+I1
+
+j=1
+
+fj ∗ fk
+
+− 81 I2
+
+0
+
+I3
+
+1
+8
+
+I4
+
+1
+4
+
+Figure 1. A nonnegative function supported on (−1/4, 1/4).
+It is easy to see that fj ∗ fk is supported on Ij + Ik , where + is interpreted as the Minkowski sum
+of sets. This property allows now to deduce precisely the location of the support of each term.
+We have, additionally, by Fubini, that
+Z
+ Z
+
+Z
+(fj ∗ fk )(x)dx =
+fj (x)dx
+fk (x)dx .
+R
+
+R
+
+R
+
+This allows now to deduce, for example, the pointwise inequality
+(f1 ∗ f1 )(x) + (f1 ∗ f2 )(x) + (f2 ∗ f1 )(x) ≤ (f ∗ f )(x)
+
+on the interval (−1/2, −1/8).
+
+Integrating the inequality on both sides yields
+Z
+2
+Z
+ Z
+ Z −1
+8
+3
+(f ∗ f )(x)dx ≤ kf ∗ f kL∞ (R) .
+f1 (x)dx + 2
+f1 (x)dx
+f2 (x)dx ≤
+1
+8
+−2
+R
+R
+R
+
+This corresponds to certain restrictions on the distribution of the L1 −mass of the function over the
+intervals assuming kf ∗ f kL∞ (R) to be small, or, arguing conversely, shows that any function with
+
+4
+
+ALEXANDER CLONINGER AND STEFAN STEINERBERGER
+
+kf ∗ f kL∞ (R) small must induce a partition of its L1 −mass that satisfies the particular inequality.
+The idea behind our approach is mainly to check whether it is at all possible for a function to
+satisfy a long list of such inequalities. Note that the approach is quite insensitive as to what the
+function actually looks like – the only information used is the integral over a small interval: this
+implies that it suffices to check the chain of inequalities for all step functions.
+3. Details and Proofs
+3.1. Step functions. This section is devoted to a simple Lemma capturing the main idea on a
+single length scale. It is part of the argument that we do not use any information on the function
+excepts its integral over certain intervals – the actual shape of the function over that interval plays
+no role. This has the effect that we may later restrict ourselves to step functions.
+Lemma 1. For any n ∈ N let
+(
+An =
+
+2n
+
+n−1
+X
+
+(a−n , a−n+1 , . . . , an−1 ) ∈ (R+ )
+
+:
+
+1
+a∈An 2≤ℓ≤2n −n≤k≤n−ℓ 4nℓ
+
+X
+
+and
+
+an := min max
+
+max
+
+where k, l ∈ Z. Then
+
+ai = 4n
+
+i=−n
+
+)
+
+ai aj ,
+
+k≤i+j≤k+ℓ−2
+
+c ≥ an .
+
+Proof. Let ε > 0 be arbitrary and let f be a nonnegative function supported on the interval
+(−1/4, 1/4) with normalized mean
+Z 1/4
+f (x)dx = 1
+−1/4
+
+such that
+
+sup
+x∈R
+
+Z
+
+R
+
+f (t)f (x − t)dt ≤ c + ε.
+
+Consider the decomposition of the interval into 2n equally sized intervals
+
+
+
+
+n−1
+[
+j j+1
+1 1
+Ij
+where Ij =
+=
+.
+,
+− ,
+4 4
+4n 4n
+j=−n
+
+We denote the restriction of f to the interval Ij by fj and define the average on that region by
+Z
+Z
+1
+aj =
+f (x)dx = 4n fj (x)dx.
+|Ij | Ij
+R
+Trivially, since f ≥ 0, we have aj ≥ 0 as well as
+Z 1/4
+n−1
+1 X
+aj =
+f (x)dx = 1
+4n j=−n
+−1/4
+
+and thus (a−n , a−n+1 , . . . , an−1 ) ∈ An . Let 2 ≤ ℓ ≤ 4n be an arbitrary integer and let −2n ≤ k ≤
+2n − ℓ be another arbitrary integer. A simple computation yields
+1
+4nℓ
+
+X
+
+k≤i+j≤k+ℓ−2
+
+4n
+ai aj =
+ℓ
+=
+
+≤
+
+4n
+ℓ
+4n
+ℓ
+
+X
+
+k≤i+j≤k+ℓ−2
+
+X
+
+k≤i+j≤k+ℓ−2
+
+Z k+l
+4n
+k
+4n
+
+4n
+ai aj
+=
+4n 4n
+ℓ
+Z
+
+X
+
+Z
+
+f (x)dx
+
+Z k+l
+4n
+
+(f ∗ f )(x)dx
+
+k≤i+j≤k+ℓ−2
+
+4n
+(fi ∗ fj )(x)dx ≤
+|{z}
+ℓ
+R
+(⋄)
+
+Ii
+
+k
+4n
+
+kf ∗ f kL∞ (R) dx = kf ∗ f kL∞ ≤ c + ε,
+
+ Z
+
+Ij
+
+f (x)dx
+
+!
+
+5
+
+where (⋄) is the only nonobvious step, which follows from the fact that k ≤ i + j ≤ k + ℓ − 2
+implies that
+
+
+k k+l
+.
+,
+Ii + Ik ⊆
+4n 4n
+Since ε was arbitrary, the compactness of An now implies
+X
+4n
+min max
+max
+ai aj ≤ c.
+a∈An 2≤ℓ≤2n −n≤k≤n−ℓ ℓ
+k≤i+j≤k+ℓ
+
+
+3.2. Approximation of the simplex. We will now see that the simplex An can be suitably
+discretized. This problem has been considered at a greater level of generality in the literature [1],
+however, we only require a special case and can thus provide a simpler self-contained argument.
+Lemma 2. For any n, m ∈ N let
+(
+An =
+
+Bn,m =
+
+2n
+
+(a−n , a−n+1 , . . . , an−1 ) ∈ (R+ )
+
+(
+
+(b−n , b−n+1 , . . . , bn−1 ) ∈
+
+
+
+1
+N
+m
+
+Then Bn,m is a 1/m−net of An in the ℓ∞ −norm, i.e.
+
+:
+
+n−1
+X
+
+2n
+
+:
+
+n−1
+X
+
+)
+
+bi = 4n .
+
+i=−n
+
+ka − bkℓ∞ ≤
+
+∀a ∈ An ∃ b ∈ Bn,m
+
+ai = 4n
+
+i=−n
+
+)
+
+1
+.
+m
+
+Proof. We give an explicit construction rule for b. First, for all −n ≤ i ≤ n − 1 with
+
+1
+N we set bi = ai .
+m
+Since ai ≥ 0, this implies that all entries not of that form are positive and therefore we can either
+round up or round down and choose either
+ai ∈
+
+bi =
+
+⌊mai ⌋
+m
+
+or
+
+bi =
+
+⌈mai ⌉
+m
+
+without violating the desired bound |ai − bi | ≤ m−1 . We now need to define an explicit rule that
+tells us whether to round up or round down in every single instance. This choice is decided as
+follows: the first time we have to decide, we round down. Note that if we have to decide once, we
+have to decide at least twice. We define a variable
+X
+(bj − aj ).
+ti =
+j<i
+
+Since we round down in the first instance, the first nonzero value in the variable t is going to be
+negative but bigger than −1/m. We will then, in each instance −n ≤ i ≤ n − 1 where a decision
+about rounding up or down is required, proceed in a way that ensures −1/m < ti+1 ≤ 0. This is
+always possible: if rounding up ai were to lead to
+ti+1 > 0,
+then, by definition,
+⌈mai ⌉
+⌊mai ⌋
+1
+− a i = ti +
++
+− ai
+m
+m
+m
+in which case, we see that rounding down leads to a value
+
+
+1
+⌊mai ⌋
+>− .
+−
+a
+ti+1 = ti +
+i
+m
+m
+0 < ti+1 = ti +
+
+6
+
+ALEXANDER CLONINGER AND STEFAN STEINERBERGER
+
+This construction rule now proceeds a series of nonnegative rationals that satisfy |ai − bi | ≤ m−1 .
+It remains to see why the rule ends up selecting a series of rationals that add up to the same
+number 4n. Clearly, this requires us to set
+bn−1 := 4n −
+
+n−2
+X
+
+bj
+
+j=−n
+
+but it is not a priori clear whether this guarantees bn−1 ≥ 0 or |bn−1 − an−1 | ≤ m−1 . Multiplying
+the definition of bn−1 by m implies immediately that mbn−1 ∈ N and we will now show the two
+remaining properties to be satisfied. First we remark that, again by construction,
+−
+
+n−1
+X
+1
+(bj − aj ) ≤ 0
+≤
+m
+j=1
+
+which implies
+bn−1 = 4n −
+
+n−2
+X
+
+bj = an−1 +
+
+n−2
+X
+
+j=−n
+
+j=−n
+
+aj −
+
+n−2
+X
+
+j=−n
+
+bj = an−1 − tn−1 .
+
+This yields bn−1 ≥ an−1 ≥ 0 as well as |bn−1 − an−1 | ≤ |tn−1 | < m−1 .
+Lemma 3 (Discretization). For any n, m ∈ N let
+(
+Bn,m =
+
+(b−n , b−n+1 , . . . , bn−1 ) ∈
+
+
+
+1
+N
+m
+
+2n
+
+:
+
+n−1
+X
+
+
+
+bi = 4n
+
+i=−n
+
+)
+
+and
+1
+b∈Bn,m 2≤ℓ≤2n −n≤k≤n−ℓ 4nℓ
+
+bn,m := min
+
+max
+
+X
+
+max
+
+bi bj .
+
+k≤i+j≤k+ℓ−2
+
+Then
+c ≥ bn,m −
+
+1
+2
+.
+−
+m m2
+
+Proof. The first Lemma allows us to replace a general function by a vector a ∈ An , which - in
+turn - we interpret as a step function f . The second Lemma guarantees the existence of b ∈ Bn,m
+approximating a which we interpret as another step-function g satisfying
+kf − gkL∞ (R) ≤
+
+1
+.
+m
+
+Alternatively, we can write that f (x) = g(x) + ε(x), where ε(x) is a third step function that is
+uniformly bounded by m−1 . By associativity of the convolution, we have that
+(g ∗ g) = (f ∗ f ) − 2(f ∗ ε) + (ε ∗ ε).
+We have
+|(ε ∗ ε)(x)| =
+
+Z 14
+
+1
+ε(x − y)ε(y)dy ≤
+1
+m
+−4
+
+Z 14
+
+− 41
+
+|ε(x)|dx ≤
+
+1
+.
+m2
+
+As for the other term, we have the inequality
+Z 14
+Z 14
+1
+1
+|(f ∗ ε)(x)| =
+f (x − y)ε(y)dy ≤
+f (y)dy ≤ .
+1
+1
+m
+m
+−4
+−4
+Using Lemma 1, this proves the result.
+
+
+
+

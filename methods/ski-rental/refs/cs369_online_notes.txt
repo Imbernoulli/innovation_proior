@@ -1,0 +1,2894 @@
+        CS369 - Online Algorithms
+Lecture Notes for 2012-2013 Academic Year
+
+                ⃝Serge Plotkin
+                c
+
+                  April 2013
+
+
+
+
+                      1
+Contents
+
+1 Online Algorithms                                                                                             4
+
+  1.1   Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    4
+
+  1.2   The Competitive Ratio: Renting vs. Buying Skis . . . . . . . . . . . . . . . . . . . . . . .            4
+
+  1.3   Paging . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    5
+
+        1.3.1   Upper Bound using LRU . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .           5
+
+        1.3.2   Lower Bound using LFD . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .         6
+
+  1.4   Oblivious Adversary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       6
+
+  1.5   Marking Algorithm: MARK . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .           6
+
+        1.5.1   Deterministic MARK . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .          6
+
+        1.5.2   Randomized MARK . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .             7
+
+
+2 Online Steiner Tree Algorithms                                                                                9
+
+  2.1   Oﬄine 2-Approximation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .         9
+
+  2.2   Online log n-Approximation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+
+  2.3   Lower Bound . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+
+
+3 Online Load Balancing                                                                                        13
+
+  3.1   Identical Machines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+
+  3.2   Related Machines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+
+
+4 Yao’s Minimax Theorem from LP duality                                                                        19
+
+
+5 One-Inﬁnity Case                                                                                             21
+
+  5.1   The Greedy Algorithm . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+
+  5.2   Lower bound . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+
+
+6 On-line scheduling on unrelated machines                                                                     26
+
+
+7 Application of this algorithm to on-line network routing                                                     30
+
+
+8 Online Load Balancing of Temporary Tasks                                                                     32
+
+  8.1   Identical Machines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32
+
+
+                                                      2
+  8.2   Related Machines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32
+
+  8.3   1/∞ scheduling of temporary tasks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34
+
+  8.4   Unrelated Machines with Known Durations . . . . . . . . . . . . . . . . . . . . . . . . . . 38
+
+
+9 Oﬀ-line Routing                                                                                            40
+
+
+10 Multicommodity Flow and Lagrangian Relaxation                                                             41
+
+  10.1 Intuition behind the iterative approach . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41
+
+  10.2 Approximation algorithm for multi-commodity ﬂow . . . . . . . . . . . . . . . . . . . . . . 41
+
+  10.3 Proof of Convergence . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 42
+
+        10.3.1 The approximation inequalities . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 42
+
+        10.3.2 The potential function . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 43
+
+  10.4 ϵ scaling . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 44
+
+  10.5 Integer ﬂows     . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 44
+
+
+11 Throughput Model                                                                                          45
+
+  11.1 Simple Example      . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+
+        11.1.1 The Algorithm . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+
+  11.2 General Case . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 47
+
+        11.2.1 Problem Statement and Deﬁnitions . . . . . . . . . . . . . . . . . . . . . . . . . . . 47
+
+        11.2.2 The Admission Control and Routing Algorithm . . . . . . . . . . . . . . . . . . . . 48
+
+
+12 Online Bipartite Matching Made Simple                                                                     51
+
+
+
+
+                                                      3
+1      Online Algorithms
+
+1.1      Introduction
+
+An online problem is one where not all the input is known at the beginning. Rather, the input is
+presented in stages, and the algorithm needs to process this input as it is received. As the algorithm
+does not know the rest of the input, it may not be able to make optimum decisions. Online algorithms
+were ﬁrst studied in [14],[23] in the context of bin-packing problems. They gained importance after the
+path breaking work in [22].
+
+
+1.2      The Competitive Ratio: Renting vs. Buying Skis
+
+A simple example of an online problem is the ski-rental problem. A skier can either rent skis for a day
+or buy them once and for all. Buying a pair of skis costs k times as much as renting it. Also, skis once
+bought cannot be returned. Whenever the skier goes skiing, she does not know whether she will ski
+again or how many times. This makes the problem an online one.
+
+    Consider the following scenario. A malicious Weather God lets the skier ski as long as she is renting
+skis, but does not let her go on any skiing trips after she has bought them. Suppose the skier decides
+to rent skis on the ﬁrst k ′ trips and buys them on the next trip. The total cost incurred by the skier
+is k ′ + k. But the optimum cost is k if k ′ + 1 ≥ k and k ′ + 1 otherwise. Therefore, the skier ends up
+paying a factor of (k ′ + k)/min(k, k ′ + 1) as much as the optimum. Choosing k ′ = k − 1, this factor
+equals 2 − 1/k.
+            12
+
+
+            10
+
+
+             8
+
+
+                                                                                        OPT
+             6
+                                                                                        2 1 k OPT
+
+
+             4
+
+
+             2
+
+
+             0
+                 0      2       4       6         8        10
+
+
+
+Figure 1: A plot for k = 5. Our algorithm starts with points on OPT, but must eventually contain a
+point on the dotted line. This tells us the minimum multiple of OPT we can achieve.
+
+    This factor is called the Competitive Ratio of the algorithm. Note that while calculating this factor,
+we used the worst possible input sequence. More formally, an online algorithm A is α-competitive if for
+all input sequences σ,
+
+
+                                       CA (σ) ≤ α · COP T (σ) + δ
+
+   where CA is A’s cost function, COP T is the optimum’s cost function, and δ is some constant. We
+can look upon the competitive ratio as the inherent cost of not knowing the future.
+    0 Edited by Lucas Garron.
+
+
+
+
+                                                      4
+    For the ski problem, 2 − 1/k is both a lower and an upper bound on the best competitive ratio – no
+online algorithm can do better than this, and there is an online algorithm that achieves this.
+
+
+1.3     Paging
+
+Paging [22] is a more realistic example of an online problem. We have some number of pages, and a
+cache of k pages. Each time a program requests a page, we need to ensure that it is in the cache. We
+incur zero cost if the page is already in the cache. Otherwise, we need to fetch the page from a secondary
+store and put it in the cache, kicking out one of the pages already in the cache. This operation costs one
+unit. The online decision we need to make is “which page to kick out when a page fault occurs”. The
+initial contents of the cache are the same for all algorithms.
+
+   Some online strategies are:
+
+LIFO (Last In First Out)
+
+FIFO (First In First Out)
+LRU (Least Recently Used - the page that has not been requested for the longest time is kicked out)
+
+LFU (Least Frequently Used)
+
+We now show that k is a lower bound on the competitive ratio of any deterministic online strategy for
+the paging problem. This lower bound can actually be matched by both LRU and FIFO.
+
+
+1.3.1   Upper Bound using LRU
+
+Theorem 1.1 LRU is k-competitive for the online paging problem [22].
+
+
+Proof Sketch: Deﬁne a phase as a sequence of requests during which LRU faults exactly k times. All
+we need to show is that during each phase, the optimal algorithm (OPT) must fault at least once.
+
+Case 1 LRU faults at least twice on some page σi during the phase. In this case, σi must have been
+    brought in once and then kicked out again during the phase. When σi is brought in, it becomes
+    the most recently used page. When it is later kicked out, σi must be the least recently used page.
+    Therefore, each of the other k − 1 pages in the cache at this time must have been requested at least
+    once since σi was brought in. Counting σi and the request that causes σi to be evicted, at least
+    k + 1 distinct pages have been requested in this phase. Therefore, OPT must fault at least once.
+
+Case 2 LRU faults on k diﬀerent pages. If this is the ﬁrst phase, then OPT must fault at least once
+    since OPT and LRU start oﬀ with the same pages in their cache. Else, let σi be the last page
+    requested in the previous phase. This page has to be in both LRU’s and OPT’s cache at the start
+    of the phase. If LRU does not fault on σi , then the k pages on which LRU faults cannot all be
+    present in OPT’s cache at the beginning of the phase. Therefore, OPT must fault at least once.
+    The case when LRU does fault on σi is very similar to Case 1.
+
+
+
+
+                                                    5
+1.3.2   Lower Bound using LFD
+
+Let A be an algorithm for the paging problem. Consider a malicious program that uses only k + 1 pages.
+At each step, the program requests the one page that is not in A’s cache. So the cost incurred by A is
+|σ|.
+
+    LFD (Longest Forward Distance) is a strategy that kicks out the page that is going to be requested
+furthest in the future 1 . When LFD kicks out a page σi , the next page fault can occur only when this
+page is requested again, since there are only k + 1 pages. But by the deﬁnition of LFD, each of the
+k − 1 pages that was not kicked out at the ﬁrst page fault must be requested before σi is requested
+again. Thus, page faults are at least a distance k away and the cost of LFD is at most (|σ| − 1)/k + 1.
+Therefore A can be no more than k-competitive. This is not a good competitive ratio at all, since cache
+sizes can typically be very large. However, LRU performs very well in practice.
+
+
+1.4     Oblivious Adversary
+
+For randomized online algorithms, we need to deﬁne our adversary carefully. An oblivious adversary is
+one that does not know the coin tosses of the online algorithm – it knows the “source code” of the online
+algorithm, without access to its random source during execution. An online algorithm A is α-competitive
+against oblivious adversaries if for all inputs σ,
+
+                                         [      ]
+                                        E CA (σ) ≤ α · COP T (σ) + δ ,
+
+   where δ is a ﬁxed constant, and the expectation is taken over the random coin tosses.
+
+
+1.5     Marking Algorithm: MARK
+
+We now present MARK, the Marking algorithm for randomized paging and show that it is O(log k)-
+competitive against oblivious adversaries. The result is due to [12], where they also give a (nearly)
+matching lower bound.
+
+   When a request for a page p comes in, MARK does the following :
+
+   • If the page p is not in the cache
+        – If all pages are marked, unmark them all.
+        – Randomly choose an unmarked page for eviction.
+   • Mark p.
+
+
+1.5.1   Deterministic MARK
+
+Note that LRU is a deterministic version of MARK, where one uses a speciﬁc deterministic rule to
+choose which one of the unmarked pages to evict 2 . Let us consider an intermediate version of MARK
+  1 LFD is actually an optimum strategy for paging - unfortunately it assumes knowledge of future requests.
+  2 In practice, it is useful to implement LRU more like MARK by ignoring the diﬀerence between suﬃciently old
+
+/unmarked slots.
+
+
+                                                          6
+where we choose an unmarked page for eviction deterministically.
+
+  We will consider a phase to be the time between two unmarking resets by deterministic MARK.
+During one phase, we bring in k new pages.
+
+  To be a little more general, suppose OPT has a cache of size h. OPT can prepare h − 1 slots (1 slot
+must be taken by the previous request) before the phase, and must fault on the remaining k − (h − 1).
+                                  k
+Thus, the competitive ratio is k−(h−1) . For k = 2h, this is 2-competitive.
+
+   However, when k = h, we get competitive ratio of k for MARK using a deterministic rule. We need
+randomization to do better.
+
+
+1.5.2   Randomized MARK
+
+Let a phase be a sequence during which k diﬀerent pages are requested. At the beginning of each phase,
+all pages in MARK’s cache are marked. Since a page requested during a phase is never evicted again
+during the phase, we need to consider only the ﬁrst time a page is requested within a phase. Let Si be
+the set of pages in MARK’s memory at the beginning of phase i. A request p during a phase is “old”
+if p ∈ Si and “new” otherwise.
+
+                                                    i               i+1
+                                        1     1     1       1   1    7
+                                        2     8     8       8   8    8
+                                        3     3     3       3   4    4
+                                        4     4     6       6   6    6
+                                        5     5     5       5   5    5
+Figure 2: A k = 5 example of a phase i with Si = {1, 2, 3, 4, 5}, Si+1 = {4, 5, 6, 7, 8}, and li = |Si+1 −Si | =
+3. Page 4, is accidentally kicked out and brought back in, resulting in 1 more fault than the minimum,
+li .
+
+   Let li be the number of new requests during phase i. Each new request must cost us one unit, so
+we need to calculate the costs of requests for old pages during the phase (i.e. the number of times we
+accidentally kick out an old request and have to bring it back in). Consider the point during phase i
+where we’ve served s requests for old pages, and are we are serving request number s + 1 for an old page.
+The s previously requested old pages are already in memory, in addition to (at most) li new pages. So
+at most li old pages have been kicked out, and they have been chosen randomly from the (k − s) old
+pages not yet requested. The probability that p was one of these is (at most) li /(k − s). Summing over
+s going from 0 to k − li − 1, the expected total cost of all the old requests in a phase is at most
+                                    (                                    )
+                                      1    1                    1
+                                 li     +      + ... +
+                                      k k−1             k − (k − li − 1)
+
+which is no more than li (Hk − 1), where Hk is the k th harmonic
+                                                          ∑      number. Adding the cost of all new
+requests, the expected total cost of MARK is bounded by i li · Hk .
+
+                                                                       ∑
+Lemma 1.2 The cost of OP T on an input sequence is at least 12            i li .
+
+
+
+
+                                                        7
+   The main idea is to show that if an oﬄine algorithm does not fault on many new requests during
+phase i then it must evict a lot of pages in the previous and following phases. Even though it is variable,
+we can take the performance of MARK as a baseline and compare OPT against it.
+
+    Let ϕi be the number of pages in Si (MARK’s cache) that are not in OPT’s cache at the beginning
+of phase i. Then the following two conditions hold:
+
+
+COP T (phasei ) ≥ li − ϕi . During phase i, li of the pages requested are not in Si . But OPT’s cache diﬀers
+     from Si in at most ϕi pages. Therefore, OPT must pay li − ϕi .
+COP T (phasei ) ≥ ϕi+1 . Each of the k pages requested in the ith phase is present in Si+1 . Also each of
+     these pages was present in OPT’s cache at some time during phase i. But OPT’s cache at the
+     start of the next phase does not have ϕi+1 of these pages - so there must have been at least ϕi+1
+     evictions by OPT during the ith phase.
+
+                                                             (∑                   )
+Adding the two together over all phases, we get COP T ≥ 1/2      i (li ) − ϕ0 + ϕn , where n is the numbers
+of phases. Since ϕ0 is 0, this completes the proof of the lemma.
+
+    We can now conclude that MARK is 2Hk competitive against oblivious adversaries. And since
+Hk = O(log k), the result follows. Notice that if the adversary were not oblivious, it could have chosen
+a freshly evicted page for all old requests.
+
+
+
+
+                                                     8
+2      Online Steiner Tree Algorithms
+
+We will discuss online and oﬀ-line approximation algorithms for calculating Steiner trees on metric
+spaces [2]. Using Eulerian walks, we will show a log-competitive on-line algorithm, and a planar ”jellyﬁsh”
+graph show log-competitive is also the lower bound. In particular, we will use Q−disks to discretize the
+plane and express by a node covering argument that either (1) our existing tree T costs a lot, or (2) it
+will cost a lot to add nodes to it.
+
+Def. 1 (Steiner Tree Problem) Given a graph G = (V, E) and a subset U ⊆ V (“red” nodes), ﬁnd
+the tree of A of minimal cost that connects all nodes of U .
+
+   Connecting these nodes optimally is an NP-complete problem, with many good approximations for
+undirected graphs and has a practical application in handling multicast routing.
+
+
+2.1      Oﬄine 2-Approximation
+
+Connecting “red” Nodes
+
+Algorithm 2.1 The following steps describe an approximate oﬄine algorithm for Steiner tree.
+
+    • Generate a complete graph on “red” nodes (edge cost equal to the minimum cost path on the
+      original graph, G). Let us call this complete graph KG .
+    • Calculate the MST of KG ; the sum of edge costs is the tree’s weight W(MST).
+    • Reinterpret this MST on the original graph. Note that this may require pruning redundant edges.
+      Thus the weight of the resulting tree, W (result), is at most W (M ST ).
+
+Lemma 2.2 Algorithm 2.1 gives a 2-approximation, due to: W (result) ≤ W (M ST ) ≤ 2OP T .
+
+Consider the Eulerian walk on the optimal Steiner tree. The walk visits
+each edge exactly twice, or exactly once from either direction. The cost of
+this walk, We , is simply 2OP T .
+If we take shortcuts in this walk by replacing a path between each pair of
+consecutive red nodes a, b by their shortest path, we do not increase the cost
+(because dist(a, b) is no greater than any path from a to b); by consecutive
+red nodes, we mean the two nodes a and b are visited one after another in
+the walk. Using such shortcuts, we could transform the Eulerian walk into a
+cycle on all red nodes, whose cost is no greater than We . Now if we remove      Eulerian Walk: a b c d
+any edge from this cycle, it becomes a path that connects all red nodes
+(which is a spanning tree), whose cost is at least W (M ST ). Thus we have
+We ≥ Wcycle ≥ Wpath ≥ W (M ST ), and in particular We ≥ W (M ST ).                               c
+The resulting tree of Algorithm 2.1 has the weight W (result) which is by                                 d
+deﬁnition no greater than W (M ST ), because the resulting tree could only
+decrease the weight by pruning unnecessary/redundant edges in the MST.
+Altogether, we have the following:
+                                                                                            b
+                     W (result) ≤ W (M ST ) ≤ We = 2OP T                           a
+    2 Edited by Hooyeon Lee.
+
+
+
+
+                                                     9
+2.2    Online log n-Approximation
+
+Now, assume that nodes of the graph may become “red” on-line. The problem becomes one of main-
+taining the Steiner tree as more “red” nodes are revealed. Note that the underlying graph G is given to
+begin with, while the set of red nodes, U , is revealed one node by one node.
+
+
+Algorithm 2.3 Suppose we have red nodes U ′ and we want to connect in a new red node u′ ̸∈ U ′ . Then,
+we ﬁnd v ′ ∈ U ′ s.t. dist(u′ , v ′ ) is minimal and add all edges connecting u′ and v ′ into our set. Note that
+v ′ is a red node as well (since v ′ ∈ U ′ ). We denote the cost of adding u′ as c(u′ ), which is the weight of
+newly added edges on the path between u′ and v ′ .
+
+
+   We show that the resulting Steiner tree of this algorithm is log-competitive with the optimal solution.
+
+Lemma 2.4 For any ﬁxed L ≥ 0, let SL ⊆ U be the set of “red” nodes whose cost is at least L, or
+formally SL = {v ∈ U : c(v) ≥ L}. Then we have |SL | ≤ 2OP T /L where OP T is the weight of the
+optimal Steiner tree that connects all nodes in U . Equivalently, we also have L ≤ 2OP T |SL |.
+
+Proof : Since each node in SL incurred the cost at least L when it was added to the Steiner tree (by
+Algorithm 2.3), the distance between any two nodes in SL is at least L. Thus, any Hamiltonian cycle
+on SL costs at least |SL |L. Now consider the optimal Steiner tree, TL , on SL whose cost is denoted by
+OP TL (to distinguish from OP T ). Note that OP TL ≤ OP T (since OP TL is the cost of the optimal
+Steiner tree on a subset of U , namely SL ). If we take the Eulerian walk on TL , the cost of this walk is
+exactly 2OP TL (since each edge is visited twice). Using the same technique from our previous lemma,
+we can turn this Eulerian walk into a Hamiltonian cycle of nodes in SL such that its net cost is no greater
+than 2OP TL . That is, if WH is the cost of this Hamiltonian cycle constructed out of the Eulerian walk
+on TL , then we have WH ≤ 2OP TL . We earlier showed that any Hamiltonian cycle on SL costs at least
+|S|L, so we have |SL |L ≤ WH ≤ 2OP TL ≤ 2OP T . This proves the desired inequality |SL | ≤ 2OP T /L.
+
+
+   Using this lemma, we can easily show that the online algorithm is O(log n)-competitive with the
+optimal solution (where n = |U |). Let us denote Li = c(vi ) where vi ’s are red nodes in U that are
+ordered by their costs, c(vi ), from largest to smallest. The net cost of the Steiner tree given by our online
+                     ∑|U |
+algorithm is simply i=1 Li . For each Li , we know from the lemma above that Li ≤ 2OP T /|SLi | ≤
+                                                        ∑|U |
+2OP T /i. Summing all these up over i, we get that i=1 Li ≤ O(OP T log |U |).
+
+
+2.3    Lower Bound
+
+The lower bound is due to [2]. To prove the lower bound, we will consider a “square-grid” graph with
+(n + 1) × (n + 1) nodes in the Euclidean (L2 ) plane. The graph is complete, with weights on edges equal
+to the Euclidean distance between the endpoints. The adversary constructs layers of “red” nodes and
+presents them to the online algorithm layer-by-layer. The lowest layer consists of 2 red nodes. Second
+layer has more nodes, third layer more than the second one, and so on such that the highest layer consists
+of (n + 1) red nodes.
+
+    The adversary is going to reveal a layer of red nodes from lowest to highest such that total x+1 layers
+of red nodes will be revealed to the online algorithm. More precisely, we consider the following setting:
+
+
+
+                                                      10
+   • Construct a grid graph with (n + 1) × (n + 1) nodes. This is the
+     underlying graph. The adversary will reveal total x + 1 layers of
+     “red” nodes among (n+1)2 nodes in the graph. n is parameterized
+     by x with n = x2x .
+                                                                                     Construction for lower bound proof
+   • For layer i (with 0 ≤ i ≤ x), let ai be the horizontal distance
+     between red nodes in layer i. We set a0 = n and ai = ai−1 /x2 =
+     a0 /x2i for all i ≥ 1.
+                                                                                              .
+                                                                                              .
+   • Let ci be the vertical distance between two adjacent layers i and                   c2
+                                                                                              .
+                                                                                                                          n
+     i + 1 (with 0 ≤ i < x). ci is parameterized by an integer ki x+1                    c1       a2
+     such that ci = ki ai+1 where 1 ≤ ki ≤ x (ki is chosen by the                                 a1
+                                                                                         c0
+     adversary, based on behavior of the online algorithm). Notice
+     that 1 ≤ ki ≤ x ⇒ ai+1 ≤ ci ≤ ai /x.                                                              a0
+
+
+   Several helpful observations:
+
+   • Each layer has total (n/ai ) + 1 red nodes. In particular, layer 0 has two red nodes and layer x has
+     n + 1 red nodes.
+   • Given x, the adversary’s only freedom is to choose ki in this construction. Choosing larger values
+     of ki , the adversary “stretches out” the set of red nodes. Conversely, using small values of ki for
+     each layer, the adversary reduces the vertical dimension of the region that has red nodes.
+
+   • The position of the top red layer in the underlying graph is determined by the choices of k-values
+     for all the layers.
+
+
+Lemma 2.5 The optimal Steiner tree can connect all red nodes in this example with O(n) cost.
+
+
+Proof : We begin by describing simple Steiner tree that achieves O(n) to connect all red nodes in this
+example. First, we connect all (n + 1) red nodes in the top layer (or layer x), which costs n. Then, we
+connect layer i + 1 and i (for decreasing i from x − 1 to 0) such that the red nodes in the lower layer i are
+“hooked” up to the red nodes in the upper layer i. We use this scheme because ci (the distance between
+two layers) is always smaller than ai (recall that ci ≤ ai /x), which means we are better oﬀ if we connect
+red nodes in layer i vertically to red nodes in layer i + 1, instead of connecting them horizontally. Since
+layer i contains n/ai + 1 red nodes, hooks between layer i + 1 and i cost exactly ci (n/ai + 1). The total
+cost of this Steiner tree is given by:
+                                                        (                         )
+                                ∑
+                                x−1                            ∑
+                                                               x−1
+                           n+       ci (n/ai + 1) = n 1 +         (ci /ai + ci /n)
+                               i=0                            i=0
+                                                          (                      )
+                                                              ∑
+                                                              x−1
+                                                 ≤ n 1+             2(ci /ai )
+                                                              i=0
+                                                          (               )
+                                                              ∑
+                                                              x−1
+                                                 ≤ n 1+             2/x       = 3n
+                                                              i=0
+
+The ﬁrst inequality is due to ai ≤ n, and the second inequality is due to ci /ai ≤ 1/x. This Steiner tree
+is intuitively optimal (while we are not going to formally prove that it is optimal), thus we know that
+the optimal Steiner tree can achieve O(n).
+
+
+                                                     11
+    Now suppose we (the adversary) have the freedom of choosing integers ki with 1 ≤ ki ≤ x (for i with
+0 ≤ i ≤ x − 1), from k0 to kx−1 , one by one. The following lemma says that we can always choose the
+right value for ki such that the online algorithm cannot be better than log-competitive.
+
+
+Lemma 2.6 Let W (Ti ) be the weight (or cost) of the current Steiner tree of the online algorithm before
+the adversary reveals layer i + 1. We (the adversary) can choose ki such that either (1) layer i costs at
+least n/8, or (2) the total cost, W (Ti ), is at least nx/8.
+
+
+Proof : We focus out attention to the case where the adversary has revealed the ﬁrst i layers (from layer
+0 to layer i − 1), and is trying to choose the right value for ki . The online algorithm has constructed its
+Steiner tree that connects red nodes up to layer i − 1.
+
+    Recall that ci = ki ai+1 with 1 ≤ ki ≤ x. We have x possible values for ki , which determines how
+far layer i + 1 is placed from layer i. Since there are x possible locations, we can imagine this as a
+grid of x candidate layers (vertically distanced by ai+1 between layers). Since layer i + 1 would contain
+(n/ai+1 + 1) red nodes, the grid of our interest consists of x × (n/ai+1 + 1) candidate nodes. For each
+candidate node in the grid, consider a P -disk of radius ai+1 /2 and a Q-disk of radius ai+1 /4, both of
+which are centered at the candidate node. That is, each candidate node has P -disk at its center inside
+which a Q-disk is placed. Note that all P -disks are disjoint because each candidate node is at least ai+1
+apart from its horizontally/vertically adjacent nodes.
+
+   For these x candidate layers of Q-disks, let Ql be the set of Q-disks (on layer
+                                                                                 ∑l) that do not have any
+                                                                                   x
+points in the existing tree of the online algorithm, Ti . Let rl = |Ql | and r = l=1 rl . Our intuition is
+that if r is small, then the cost of adding layer i + 1 to the existing tree Ti should be relatively small,
+but the cost of this preparation should be too large. We consider the following two cases.
+
+   Case 1) r > x2 (n/ai+1 + 1)
+
+   In this case, there must exist some l such that rl ≥ (n/ai+1 + 1)/2 (if no such l exists, then r cannot
+be greater than x2 (n/ai+1 + 1)). The adversary will choose this layer l, and the cost of adding all red
+nodes in this layer would cost the online algorithm at least (ai+1 /4) · (n/ai+1 + 1)/2 ≥ n/8.
+
+   Case 2) r ≤ x2 (n/ai+1 + 1)
+
+    In this case, the current tree Ti must touch at least x2 (n/ai+1 + 1) Q-disks (because the total number
+of Q-disks is x(n/ai+1 + 1)). To touch each Q-disk, the tree must penetrate the surrounding “halo” of
+the Q-disk (which is the area between the Q-disk and its co-centered P -disk), which would cost the tree
+at least ai+1 /4 (the diﬀerence between the radii of the two disks). Hence, the total cost of current tree
+is at least x2 (n/ai+1 + 1) · ai+1 /4 ≥ nx/8.
+
+   Due to the lemma, we know either (1) that all x layers would cost the online algorithm at least n/8
+each, or (2) that the total cost of the online algorithm exceeds nx/8 at some point. In the case of (1),
+the total cost of the online algorithm is at least nx/8 because there are x layers (thus, O(nx)). In the
+case of (2), the adversary can stop at that point because the online algorithm is already O(nx). Since
+O(nx) = O(n log n), this completes our proof for a lower-bound for online Steiner tree algorithm.
+
+   Note: It is possible to extend the result to oblivious adversaries by observing that we can transform
+both cases into a form with an expected value. (In the ﬁrst case we choose a random l, and use the
+property of linearity of expectation.)
+
+
+
+
+                                                    12
+3      Online Load Balancing
+
+In this chapter, we will consider the problem of Online Load Balancing, deﬁned as follows: There are n
+parallel machines and a number of independent jobs. The jobs arrive one by one, where each job has
+an associated load vector and has to be assigned to exactly one of the machines. thereby increasing the
+load on this machine by an amount speciﬁed by the corresponding coordinate of the load vector. Once
+a job is assigned, it cannot be re-assigned. The objective is to minimize the maximum load.
+
+    It is important to note that load in this context is not equivalent to termination time. In a model
+based on termination time, the release time of jobs becomes important. The model used here can be
+understood by thinking of jobs such as services (eg. DNS server, Web server, etc) that add some amount
+of load to a machine, but have no expected termination time.
+
+   Formally, each job j is represented by its load vector p⃗(j) = (p1 (j), p2 (j), . . . pn (j)), where pi (j) ≥ 0.
+Assigning job j to machine i increases the load on this machine by pi (j). Let li (j) denote the load on
+machine i after we have already assigned jobs 1 through j:
+                                         {
+                                           lk (j − 1) + pk (j) if k = i
+                                lk (j) =
+                                           lk (j − 1)           otherwise
+
+    Consider a sequence of jobs deﬁned by σ = (⃗p(1), p⃗(2), . . . p⃗(k)). Denote by li∗ (j) the load on machine
+                                        ∗
+i achieved by the oﬀ-line algorithm A after assigning jobs 1 through j in σ. The goal of both the
+oﬀ-line and on-line algorithms is to minimize L∗ (k) = maxi li∗ (k) and L(k) = maxi li (k), respectively.
+More precisely, we measure the performance of the on-line algorithm by the supremum over all possible
+sequences of L(k)/L∗ (k) (of arbitrary length k).
+
+   The load balancing problems can be categorized into three classes according to the properties of the
+load vector.
+
+Identical machines: All the coordinates of a load vector are the same. In other words, for a particular
+     job, all machines would incur the same load as a result of running that job.
+                                                          ∀i, i′ , j : pi (j) = pi′ (j)
+
+Related machines: The ith coordinate of each load vector is equal to wj /vi where the weight wj
+     depends only on the job j and the speed vi depends only on the machine i.
+                                                                    pi (j)    pi (j ′ )
+                                               ∀i, i′ , j ′ j ′ :           =            = vi′ /vi
+                                                                    pi′ (j)   pi′ (j ′ )
+
+Unrelated machines: This includes all other cases. This class could include, for example, load balanc-
+    ing problems in which some machines have a advantage (beyond raw speed) in executing particular
+    jobs, due to factors such as architectural diﬀerences, software diﬀerences, etc. A special case of
+    the unrelated machines class of problems is the 1/∞ model, in which some machines get 1 unit of
+    load if assigned a job, while others cannot execute the job at all.
+
+
+3.1      Identical Machines
+
+We use a greedy algorithm for identical machines [13] 3 .
+    2 Edited by Alex Churchill and Brett Wines.
+    3 Strictly less than 2 competitive ratio is achievable - see [1]
+
+
+
+
+                                                                      13
+                                        2L∗                                     2L∗
+2L∗                                                  J
+              J
+                                         L∗                                      L∗
+  L∗
+                                              .                                       .
+       .
+
+                                       Figure 4: Then all machines             Figure 5: But this means the
+Figure 3: Assume some job J
+                                       must have been loaded above             total load must be greater than
+takes us above 2L∗
+                                       L∗                                      nL∗ , which is a contradiction
+
+
+Algorithm 3.1 put new job on least loaded machine
+
+
+Lemma 3.2 Greedy algorithm is 2-competitive
+
+
+   • Consider a machine i, which when receiving a new job, has Li > 2L∗ .
+   • ⇒ all current loads > L∗ (as pi (s) ≤ L∗ , ∀i∀s)
+        ∑
+   • ⇒ i Li > nL∗ ⇒ contradiction! (as the total load cannot be redistributed by the optimal oﬄine
+     algorithm so that each machine has load ≤ L∗ )
+
+   • ⇒ Li < 2L∗
+
+
+    To be precise, the load Q of our busiest machine is such that n(Q − l) + l ≤ nL∗ . Therefore,
+Q ≤ l(n − 1)/n + L∗ ⇒ Q ≤ (1 + (n − 1)/n)L∗ = (2 − 1/n)L∗ . This demonstrates there exists a bound
+strictly less than two. Proofs of the (2 − ϵ) bounds for a small constant ϵ have appeared in [10, 15, 1].
+
+
+3.2        Related Machines
+
+This section mostly follows discussion in [3].
+
+
+The greedy algorithm The simple greedy load balancing algorithm due to Graham [13] achieves a
+competitive ratio of 2 − n1 for the identical machines case. It is easy to see that applying it “as is” to
+related machines case is not going to work. In particular, if there is an extremely slow machine with very
+low current load, we might decide to use it for the next job, which in turn might cause a very signiﬁcant
+increase in load on this machine, arbitrary larger than L∗ .
+
+    A straightforward modiﬁcation to avoid the above case is to assign every job to the machine that
+will execute it with the lowest resulting load. In other words, when assigning job j, instead of looking
+for machine i that minimizes li (j − 1), look for i that minimizes li (j − 1) + pi (j). In this section we will
+refer to the resulting algorithm as “greedy”.
+
+
+Algorithm 3.3 Put new job on machine which minimizes max load after assigning the job
+
+
+   First we prove a lower bound on the greedy algorithm:
+
+
+                                                      14
+Theorem 3.4 The greedy algorithm has a competitive ratio Ω(log n) for related machines.
+
+Proof : For simplicity, ﬁrst we assume that whenever adding a job to two diﬀerent machines will result
+in the same maximum load, the job is assigned to the faster machine. At the end of the proof we will
+show how this assumption can be avoided.
+
+   Consider a collection of machines with speeds of the form 2−i where i ∈ {0, 1, . . . , k} (the relation
+between k and n will become clear below). Let ni be the number of machines with speed 2−i and suppose
+n0 = 1, n1 = 2, and in general
+                                                   ∑
+                                                   i−1
+                                          ni 2−i =     nj 2−j .                                        (1)
+                                                      j=0
+
+These values are chosen so that the sum of the speeds of all machines with speed 2−i is equal to the sum
+of the speeds of all the faster machines. Thus, a collection of jobs that would add 1 to the load of each
+machine with speed 2−i could instead be assigned to add 1 to the loads of all the faster machines. The
+total number of machines n = 1 + 32 (4k − 1).
+
+   Now consider the following sequence of jobs. First we generate nk jobs of size 2−k , followed by nk−1
+jobs of size 2−(k−1) , and so forth, until at last we generate a single job of size 1. For every machine with
+speed 2−j there is a corresponding job of size 2−j . By simply assigning each job to the corresponding
+machine, the oﬀ-line algorithm can schedule all the jobs with a resulting maximum load of 1.
+
+    However, we claim that the greedy algorithm assigns each group of jobs to machines that are “too
+fast”. Assume, by induction, that before the jobs of size 2−i are assigned, the load on machines with
+speed 2−j is equal to min(k − i, k − j). (In the base case, when i = k, this condition simply corresponds
+to each machine having zero load.) By Equation 1, the greedy algorithm can assign the jobs of size
+2−i to all machines with speed 20 , 2−1 , . . . , 2−(i−1) , resulting in load of k − i + 1 on each one of these
+machines. If instead it assigns one of these jobs to a machine with speed 2−j , where j ≥ i, the resulting
+load will be k − j + 2j−i = (k − i) + 2j−i − (j − i), which is at least (k − i) + 1 since 2x − x ≥ 1 for all
+non-negative x. The greedy algorithm will therefore not assign any job of size 2−i to a machine with
+speed 2−i or slower, and the induction step follows.
+
+   Consequently, after all the jobs have been assigned, each machine with speed 2−j has load k − j;
+the single machine with speed 1 has load k = Ω(log n). Thus, under the simplifying assumption that
+the greedy algorithm always breaks ties in favor of the faster machine, the greedy algorithm is Ω(log n)-
+competitive.
+
+    Next we show how to avoid the above simplifying assumption. Before sending in the “large” jobs,
+we will send an “ϵ-job” of size ϵi 2−i for each machine with speed 2−i , giving it a load of ϵi . To avoid
+changing the greedy algorithm’s choice of where to assign the large jobs, each ϵi must be less than 2−k ,
+the smallest possible diﬀerence between loads resulting from large jobs. To force ties to be broken in
+favor of faster machines we require that ϵj > ϵi whenever j > i. Finally, to ensure that the ϵ-job intended
+for a machine is not placed on some faster machine, we generate the jobs for the faster machines ﬁrst
+and require that ϵj < ϵi + ϵj 2−j /2−i for j > i. all of these conditions can be satisﬁed by choosing
+ϵi = 2−k−1 (1 + 2−2k+i ).
+
+
+Theorem 3.5 The greedy algorithm has a competitive ratio O(log n) for related machines.
+
+
+Proof : Let L be the maximum load achieved by the greedy algorithm and let L∗ be the maximum load
+achieved by the optimal oﬀ-line algorithm.
+
+
+                                                      15
+                     l
+
+              l − 4L∗
+
+
+                         .
+                             speed > v     v > speed > v/2
+                                V                 V′
+
+             Figure 6: There is some job (the blue block) which is loaded in our algorithm
+             on a machine in V (faster than v) which in the optimal is loaded on a machine
+             slower than V . Therefore, on a machine in V ′ , it has load at most 2L∗ . But
+             the load of any machine in V ′ plus 2L∗ must be greater than the load on the
+             machine our algorithm selected in V , which is at least l − 2L∗ . Therefore, the
+             load on any machine in V ′ is at least l − 2L∗ − 2L∗ = l − 4L∗ .
+
+
+
+    First, consider the last job j assigned by the greedy algorithm to a machine i, causing the load of
+this machine to reach l. Since no job can add more than L∗ to the load of any fastest machine, the fact
+that the new load on i is l implies that the load on all the fastest machines is at least l − L∗ . Otherwise,
+the greedy algorithm would have assigned job j to a faster machine to achieve a load lower than l.
+
+   Intuitively, what we are going to show is that if the load on the fastest machines is very large, then
+the load on all of the machines is, although smaller, but still large. Then, to bound load on the fastest
+machines, we will use the fact that it is not possible to have uniformly large (above L∗ ) load on all of
+the machines.
+
+
+Lemma 3.6 If the load on all machines with speed ≥ v is ≥ l, then the load on all machines with speed
+≥ v/2 is ≥ l − 4L∗ .
+
+
+Proof : Now suppose that the load on all machines with speed v or more is at least l ≥ 2L∗ . Consider the
+set of jobs that are responsible for the last 2L∗ load increment on each of these machines. Observe that
+at least one of these jobs (call this job j) has to be assigned by the oﬀ-line algorithm to some machine
+i with speed less than v, and hence it can increase the load on i by at most L∗ . Since the speed of i is
+at most v, job j can increase the load on all machines with speeds above v/2 by at most 2L∗ . The fact
+that job j was assigned when the loads on all the machines with speed v and above were at least l − 2L∗
+implies that the loads on all the machines with speed above v/2 were at least l − 4L∗ . See ﬁgure 6.
+
+    Let vmax be the speed of the fastest machines. We have shown that all machines with speed vmax
+have load at least L − L∗ . Iteratively applying the above claim shows that all machines with speed
+vmax /2i have load at least L − L∗ − 4iL∗ . Thus every machine with speed at least vmax /n has load at
+least L − (1 + 4⌈log n⌉)L∗ .
+
+   Assume, for contradiction, that L − (1 + 4⌈log n⌉)L∗ > 2L∗ . Recall that since we are in the related
+machines case, for each job j and any two machines i and i′ , we have wj = pi (j)vi = pi′ (j)vi′ , where
+wj can be regarded as the weight of the job. Let I be the set of machines with speed less than vmax /n.
+
+
+
+
+                                                     16
+The total weight of jobs that can be assigned by the oﬀ-line algorithm is bounded from above by
+                                   ∑
+                                   n
+                                                    vmax      ∑          ∑
+                              L∗         vi ≤ nL∗        + L∗   vi ≤ 2L∗   vi
+                                                     n
+                                   i=1                          i̸∈I             i̸∈I
+
+The assumption that the online algorithm causes a load of more than 2L∗ on all machines not       ∑ in I
+implies that the total weight of all the jobs assigned by the online algorithm is greater than 2L∗ i̸∈I vi ,
+which is a contradiction. Thus, L − (1 + 4⌈log n⌉)L∗ ≤ 2L∗ , which implies L = O(L∗ log n).
+
+
+Achieving a constant competitive ratio Let us assume we know the optimal oﬄine load L∗ (we
+shall explain later as to how do we deal with the fact that we do not know this). Consider an algorithm
+with the following allocation strategy: when placing job j, consider S = {i|li (j − 1) + pi (j) ≤ 2L∗ }. Put
+j on the slowest machine i ∈ S.
+
+
+Lemma 3.7 At every step of the algorithm, S ̸= ∅.
+
+
+Proof : Assume, for contradiction, that S = ∅. (We will use, for notational purposes, that machines are
+ordered by increasing speed. i.e. For machines a and b where 1 ≤ a ≤ b ≤ n we have va ≤ vb .)
+
+    Let r be the fastest machine whose load does not exceed L∗ , i.e. r = max{i|li (j −1) ≤ L∗ }. If there is
+no such machine, we set r = 0. Obviously, r ̸= n, otherwise n ∈ S, since ln (j −1)+pn (j) ≤ L∗ +L∗ ≤ 2L∗
+as job j can incur at most L∗ load on the fastest machine n. This would contradict S = ∅. Thus r < n.
+
+    Deﬁne Γ = {i|i > r}, the set of overloaded machines in S. Since r < n, Γ ̸= ∅. Denote by Si and by
+Si∗ the sets of jobs assigned to machine i by the online and oﬄine algorithms, respectively. Consider the
+load on all machines in Γ as assigned by the online algorithm:
+
+
+                                    ∑                    ∑ ∑ pn (s)
+                                            pn (s) =         [     [         pi (s)]]
+                                                                     pi (s)
+                                 i∈Γ,s∈Si                i∈Γ s∈Si
+                                                         ∑ ∑ vi
+                                                     =       [     [ pi (s)]]                            (2)
+                                                                     vn
+                                                         i∈Γ s∈Si
+                                                         ∑ vi ∑
+                                                     =       [          [pi (s)]]                        (3)
+                                                               vn
+                                                         i∈Γ      s∈Si
+                                                         ∑ vi
+                                                     >       [ L∗ ]
+                                                               vn
+                                                         i∈Γ
+                                                         ∑ vi ∑
+                                                     ≥       [           [pi (s)]]                       (4)
+                                                               vn
+                                                         i∈Γ      s∈Si∗
+                                                         ∑ ∑ vi
+                                                     =       [      [ pi (s)]]
+                                                                  ∗
+                                                                     vn
+                                                         i∈Γ s∈Si
+                                                       ∑ ∑ pn (s)
+                                                     =    [      [        pi (s)]]
+                                                                   pi (s)
+                                                       i∈Γ s∈Si∗
+                                                         ∑
+                                                     =           pn (s)                                  (5)
+                                                         i∈Γ,s∈Si∗
+
+
+
+
+                                                         17
+                                                                                  ∑
+   At line 2, note that we are dealing with related machines. At line 3, note that s∈Si pi (s) is just the
+load assigned to machine i by the online algorithm, which must be more than L∗ since i ∈ Γ. At line 4,
+note that the oﬄine algorithm assigned not more than L∗ load to any machine in Γ.
+
+    The result at line 5 implies that there exists a job s ∈ ∪i∈Γ Si , such that s ̸∈ ∪i∈Γ Si∗ , i.e. there exists
+a job assigned by the online algorithm to a machine i ∈ Γ, and assigned by the oﬄine algorithm to a
+slower machine i′ ̸∈ Γ.
+
+     Because the oﬄine algorithm was able to ﬁt this job s on machine i′ , pi′ (s) ≤ L∗ . Since r ≥ i′
+(i.e. machine r is at least as fast as machine i′ ) then pr (s) ≤ L∗ . Since job s was assigned before
+job j (recall that job j is the job we are trying to assign at the current step in the algorithm) then
+lr (s − 1) ≤ lr (j − 1) ≤ L∗ . But this means that the online algorithm would have placed job s on machine
+r or a slower machine instead of on machine i ∈ Γ, which is a contradiction.
+
+   If we know the optimal load L∗ , the above online algorithm assigns jobs to machines so that the
+maximum load never exceeds 2L∗ . Since for every job j the set S is always non-empty, there is always a
+machine to which the job can be assigned without exceeding the maximum load 2L∗ (i.e the algorithm
+can never get ‘stuck’). Hence the algorithm has a competitive ratio of 2.
+
+    Now since we do not know L∗ , we start with an estimate of the value and then reﬁne it as we go
+along. Denote our ith estimate as L∗i . At any stage, if we underestimate the value of L∗ , then we would
+come to a situation where the set S = ∅. To start with a low estimate, let L∗1 be the load of the ﬁrst job
+on the fastest machine. At each job assignment, if S = ∅ (we cannot assign this job), we simply update
+our estimate: let L∗i+1 = 2L∗i . This ensures that our ﬁnal estimate of L∗ , say L∗k is within a factor of 2
+of the actual value. The total load is
+
+                                       2L∗1 + 2L∗2 + ... + 2L∗k   ≤ 4L∗k
+                                                                  ≤ 8L∗
+
+
+   giving us an approximation factor of 8.
+
+
+
+
+                                                       18
+4      Yao’s Minimax Theorem from LP duality
+
+Here we prove Yao’s minimax principle using LP duality. Recall that we use Yao’s minimax principle
+to lower bound the running time over randomized algorithms by proving a lower bound on the running
+time of every deterministic algorithm for a particular input distribution.
+
+    We ﬁrst show the following result:
+
+
+Lemma 4.1 Suppose A ∈ Rm×n is a given matrix. Then:
+
+                                      min max y T Ax = max min y T Ax
+                                        y     x             x   y
+
+where x ∈ Rn and y ∈ Rm are probability distributions.
+
+
+Proof : We will prove this via LP duality. First, however, observe that for ﬁxed y, maxx (y T A)x, where x
+is a probability distribution, is the same as maxi (AT y)i , since (y T A)x is just a weighted average of the el-
+ements of (AT y). Similarly, miny y T Ax = mini (Ax)i . Therefore, the problem of ﬁnding miny maxx y T Ax
+over all probability distributions is the same as miny maxi (AT y)i , which can be written as the following
+LP:
+                                          min . ∑t
+                                          s.t.   ∑i yi Aij ≤ t, ∀j                                           (6)
+                                                    i yi = 1,
+                                                 yi ≥ 0. ∀i
+
+    The dual of this LP is:
+                                       max . w
+                                             ∑
+                                       s.t.      A x − w ≥ 0, ∀i
+                                             ∑j ij j                                                         (7)
+                                               j xj = 1,
+                                             xj ≥ 0. ∀j
+
+    Which can be simpliﬁed to:
+                                            max . ∑
+                                                  w
+                                            s.t.      A x ≥ w, ∀i
+                                                  ∑j ij j                                                    (8)
+                                                    j xj = 1,
+                                                  xj ≥ 0. ∀j
+
+   This is exactly maxx minj (Ax)j in LP form, which we have already shown is equivalent to ﬁnding
+maxx miny y T Ax, for y a probability distribution. By strong duality, these two quantities are equal, as
+desired.
+
+    Now suppose A ∈ Rm×n is a matrix where A(i, j) is the running time of algorithm i on input j,
+where m is the number of algorithms and n is the number of possible inputs. If x and y are probability
+distributions on the inputs and algorithms respectively, then y T Ax is the expected running time with
+input distribution x and algorithm distribution y (a distribution on algorithms y can be thought of as
+specifying a randomized algorithm). By Lemma 4.1, we have that:
+
+                                      min max(AT y)i = max min(Ax)j ,
+                                       y      i             x    j
+
+    3 Edited by Joshua Wang.
+
+
+
+
+                                                       19
+   This implies that for every y and x:
+
+                                          max(AT y)i ≥ min(Ax)j .
+                                           i             j
+
+
+
+   Suppose we have a distribution x on inputs, for which the running time for the optimal deterministic
+algorithm (for this distribution of inputs), minj (Ax)j , is at least L (i.e., every deterministic algorithm
+has expected running time at least L for this distribution). Then L is also a lower bound on the running
+time of every randomized algorithm, i.e. for every randomized algorithm, there exists a speciﬁc input
+such that the running time of the randomized algorithm is at least L. This is exactly Yao’s Minimax
+Principle!
+
+
+
+
+                                                    20
+5      One-Inﬁnity Case
+
+We shall now consider the 1/∞ model, in which every job has a load vector whose entries are either 1
+or ∞. In particular, if for machine i and job j, pi (j) = ∞, then job j cannot be scheduled on machine
+i. We will prove that the greedy algorithm achieves a competitive ratio of O(log n). Furthermore we
+will prove a lower bound of Ω(log n) on the competitive ratio of any online algorithm for this model.
+This lower bound also applies to randomized online algorithms. The results presented in this section are
+mostly taken from [8].
+
+
+5.1     The Greedy Algorithm
+
+Theorem 5.1 The greedy algorithm achieves a competitive ratio of ⌈log2 n⌉ + 1.
+
+Proof : Let L∗ be the maximum load on a machine in an optimal oﬄine solution, denoted by OPT. If
+the total number of jobs is W then L∗ ≥ W         n . Let M be the assignment of jobs to machines produced
+by the greedy algorithm. Let j1 , j2 , . . . , jk be the jobs assigned to machine i in M , sorted in the order
+that the greedy algorithm assigned them. We divide jobs into layers as follows: The ﬁrst L∗ jobs in the
+sequence belong to layer 1, the next L∗ to layer 2, and so on. Since each layer needs to be completely
+ﬁlled before beginning the next layer, all layers above layer ⌈ Lk∗ ⌉ will have no jobs for machine i. For
+each machine i, divide the jobs into layers as described above.
+
+
+
+
+    Using this deﬁnition of layers, we make the following deﬁnitions:
+
+    • Ri - The set of jobs assigned in layers above i.
+    • Wi - The set of jobs assigned in layer i.
+    • Wij - The set of jobs assigned to machine j in layer i.
+    • Oj - The set of jobs assigned in OPT to machine j.
+    • Oij - The subset of Oj assigned by the online algorithm in layers above i (in other words, Oj ∩ Ri ).
+
+    By deﬁnition |R0 | = W . We prove that the size of Ri decreases exponentially as i increases.
+
+Lemma 5.2 For every layer i and machine j, |Wij | ≥ |Oij |.
+    3 Edited by Joshua Wang.
+
+
+
+
+                                                     21
+Proof : If Oij = ∅, the Lemma follows immediately.
+
+   The Lemma also follows if |Wij | = L∗ , since this means layer i is full of assigned jobs for machine j,
+and since OPT assigned at most L∗ jobs to any machine, then |Oij | ≤ |Oj | ≤ L∗ .
+
+     Therefore, the only remaining case is where |Wij | < L∗ and Oij ̸= ∅. We claim that this case cannot
+occur. |Wij | < L∗ means that in the ith layer, machine j is not completely loaded, implying that in all
+layers above i the load on machine j is 0. Hence the total load on machine j must be strictly less than
+i · L∗ . Since Oij ̸= ∅, the jobs in Oij must have been assigned in M to machines other than j. Let r be
+such a machine, i.e. there is a job k ∈ Oij assigned to machine r, with r ̸= j. Since job k appears in
+a layer above i (by deﬁnition of Oij ), then the load on machine r at the time of assignment must have
+been at least i · L∗ . However, the load on machine j at the time of assignment could be at most the
+total load on machine j, which is strictly less than i · L∗ . Since the assignment M was produced by the
+greedy algorithm, the load of machine r could not have been greater than the load of machine j at the
+time of the assignment. This gives a contradiction.
+
+
+Lemma 5.3 ∀i: |Ri | ≤ 12 |Ri−1 |
+
+
+Proof : Note that Ri = ∪nj=1 Oij . Also, for ﬁxed i and 1 ≤ j ≤ n, the sets Oij are mutually disjoint.
+Thus, by Lemma 5.2,
+                                           ∑
+                                           n           ∑
+                                                       n
+                                   |Wi | =    |Wij | ≥   |Oij | = |Ri |
+                                                j=1           j=1
+
+This implies that |Ri | = |Ri−1 | − |Wi | ≤ |Ri−1 | − |Ri |. Hence, |Ri | ≤ 12 |Ri−1 |.
+
+    We are now ready to complete the proof of the Theorem. Let b = ⌈log2 n⌉. Applying Lemma 5.3
+                                                    ∗
+b times, we obtain that |Rb | ≤ n1 |R0 | = Wn ≤ L . Hence, the load on a machine can be at most
+L · b + |Rb | ≤ L · (b + 1). Since OPT achieves a load of L∗ , we have proved that the competitive ratio
+  ∗              ∗
+
+of greedy is at most ⌈log2 n⌉ + 1.
+
+
+
+5.2    Lower bound
+
+Theorem 5.4 The competitive ratio of any online load-balancing algorithm for the 1/∞ model is at
+least 12 ⌈log2 (n + 1)⌉.
+
+
+Proof : For simplicity and without loss of generality assume that n is a power of 2, i.e. n = 2k−1 . For
+a job j, let Mj = {i|pi (j) = 1}. Thus Mj is the set of machines on which job j can be scheduled. A
+sequence σ of jobs with the following properties is constructed by an oblivious adversary based on the
+decisions that will be made by the deterministic online load-balancing algorithm:
+
+
+   1. The sequence σ is logically divided into k concatenated sub-sequences, σ = σ1 · σ2 · . . . · σk .
+      Each sub-sequence can be thought of as a step. In step i, 1 ≤ i ≤ k, the sub-sequence σi is
+      presented to the online algorithm. For 1 ≤ i ≤ k − 1, |σi | = 2ni and deﬁne |σk | = 1. Note that
+                                                                                           ∑k
+       ( is consistent with the total)number of jobs we have, since it follows that |σ| = i=1 |σi | =
+      this
+          2 + 4 + · · · + 2i + · · · + 2k−1   + 1 = (2k−2 + 2k−3 + · · · + 1) + 1 = 2k−1 = n.
+          1   1           1              1
+      n
+  3 Edited by David Jia.
+
+
+
+
+                                                         22
+   2. For each job j ∈ σi we have Mj = Yi , where Yi is a subset of machines chosen by the adversary
+      for step i. (Note that, in order for the adversary to be able to restrict those machines to which
+      the online algorithm can assign jobs, the adversary must be able to deﬁne the load vector p⃗(j) for
+      each job j ∈ σ.)
+
+   3. Yi+1 ⊂ Yi and |Yi | = 2i−1
+                               n
+                                 . The intuition here is that at each subsequent step, we limit the machines
+      that can perform the jobs in that step to be a subset of the machines in the previous step, more
+      precisely, to half of the machines in the “eligible” machines (machines i ∈ Mi ) of the previous step.
+   4. At the beginning of step i, before the jobs in σi are presented, the average load of the machines in
+                      2 . In other words, in the next step after step i − 1, we choose “eligible” machines to
+      Yi is at least i−1
+      be only from the set of machines to which the online algorithm has assigned jobs in the previous
+      step. This process of choosing Yi will be explained further later on.
+
+
+    If a sequence with the above properties can be constructed, then at the end of step k − 1, there is
+a machine in Yk whose load is at least k−1  2 , because of property 4 above. Since |Yk | = 1 and |σk | = 1,
+there is only one machine that can handle the last job. The load of that machine will be increased to
+k−1          k+1
+  2 + 1 =     2 . On the other hand, if we remove the requirement in property 4 above, there is an
+assignment of jobs to machines such that the maximum load is 1, since all jobs in σi can be assigned
+to the machines (on which σ does not recurse) in Yi − Yi+1 (deﬁne Yk+1 = ∅). To see this, note that
+Yi+1 ⊂ Yi and |Yi | − |Yi+1 | = 2i−1
+                                  n
+                                     − 2ni = 2ni = |σi |. So all jobs j ∈ σi can be assigned to a machine in Yi
+that becomes an ineligible or ∞ machine for jobs in the next step. Hence, the competitive ratio of the
+online algorithm is at least k+12 ≥ 2 ⌈log2 (n + 1)⌉.
+                                      1
+
+
+    Now, it is enough to show the construction of sequence sigma σ . To construct σ, we need to describe
+how set Yi is chosen so that the above properties are maintained. The set Y1 is deﬁned to be M , the set of
+all machines. If S = {n′ + 1, n′ + 2, . . . , n′ + 2l} is a set of 2l machines, let low(S) be the set of machines
+in S with the smallest l numbers, and high(S) be the set of machines with the highest l numbers.
+S = low(S) ∪ high(S) and low(S) is disjoint from high(S). Thus low(S) = {n′ + 1, n′ + 2, . . . , n′ + l}
+and high(S) = {n′ + l + 1, n′ + l + 2, . . . , n′ + 2l}. To obtain Yi+1 , choose from the two sets low(Yi )
+and high(Yi ), that set which will have a higher average load and let Yi+1 be this set. Properties 1 and
+2 can always be maintained independently of Yi , and property 3 clearly holds. We prove property 4
+by induction on the steps of the algorithm. It obviously holds for i = 1. Assume inductively, that it
+holds for i, i.e. at the beginning of step i the average load on a machine in Yi is at least i−1             2 . Hence
+the sum of the loads on the machines in Yi is at least i−1        2  |Y i |.  In step i, all of the jobs of σ i must be
+assigned to machines in Yi , so that at the end of step i, the sum of the loads of the machines is at least
+  2 |Yi | + |σi | = 2 |Yi | + 2 |Yi | = 2 |Yi |. Thus the average load per machine in Yi is 2 . Hence the average
+i−1                i−1        1         i                                                         i
+                                                                             i
+load on one of the halves low(Yi ) or high(Yi ) must be at least 2 . Thus the average load on Yi+1 must
+be at least 2i .
+
+    To give a better intuition, one can think about the adversary as one that is trying to slowly force
+the online algorithm into loading a machine that currently has maximum load. The adversary does this
+by constantly choosing the worst possible job allocation, even when the online algorithm does it best to
+alleviate the problems (i.e. distribute the jobs evenly amongst all ”eligible” machines) that is, by picking
+the ”eligible” machines in each step only from the ones that already have considerable load.
+
+   In the following example, a sequence of steps is demonstrated with k = 4 and n = 2k−1 = 8.
+
+
+
+
+                                                          23
+                                Step 1
+
+
+
+
+                                 1    2     3     4        5   6    7     8
+                                                Machines
+
+Figure 7: Here in Step 1, Y1 = {1, 2, . . . , 8}, i.e. the whole set of machines. The online algorithm chooses
+to allocate the n2 = 4 jobs to machines 1, 2, 5, and 6. The average load of Y1 is 1−1   2 = 0.
+
+
+                               Step 2
+
+
+
+
+                                1     2     3     4        5   6    7    8
+                                                Machines
+
+Figure 8: In Step 2, the side that has the highest average load is chosen. In this case both sides are the
+same, so we choose arbitrarily. Y2 = {1, 2, 3, 4}. The online algorithm chooses to allocate the 2n2 = 2
+jobs to machines 3, and 4. The average load of Y2 is at least 2−1
+                                                                2 = 2.
+                                                                      1
+
+
+
+                               Step 3
+
+
+
+
+                                1     2     3     4        5   6    7    8
+                                                Machines
+
+Figure 9: In Step 3, the side that has greater average load is again chosen. Y3 = {1, 2}. The online
+algorithm chooses to allocate the 2n3 = 1 jobs to machine 3. The average load of Y3 is at least 3−1
+                                                                                                 2 = 1.
+
+
+
+Randomized lower bound
+
+    The above proof can also be adapted to prove a lower bound of Ω(log n) on the competitive ratio of
+a randomized algorithm for online load-balancing in the 1/∞ model (against an oblivious adversary).
+We can produce a distribution on inputs such that every deterministic algorithm gives an assignment of
+jobs to machines with expected maximum load 12 ⌈log2 (n + 1)⌉. Also, for every input in this distribution,
+the oﬄine optimal algorithm can produce an assignment of jobs to machines such that every machine
+has load at most 1. By Yao’s Minimax Principle, this implies the claimed randomized lower bound for
+oblivious adversaries.
+
+   The construction that we use in this part, is similar to what we had in the proof of lower bound for
+deterministic online algorithms. However, now we cannot use the properties of any speciﬁc algorithm to
+
+
+                                                      24
+                                 Step 4
+
+
+
+
+                                  1     2        3     4        5   6    7     8
+                                                     Machines
+
+Figure 10: Finally, in Step 4, Y3 = {2} and one last job is allocated to machine 2. The average load of
+                     5
+Y3 is at least k+1
+                2 = 2.
+
+
+
+generate the sequence σ. Recall that in the above proof, we selected Yi+1 to either of low(Yi ) or high(Yi )
+depending on the choices made by the online algorithm. Instead of this, we set Yi+1 to either of low(Yi )
+or high(Yi ), with equal probability. Note that the sequence σ is completely determined once the sets
+Yi are determined. Thus this gives a probability distribution on the set of job sequences σ. Also, we
+maintain the following modiﬁed version of property 4 in the proof: At the beginning of step i, before
+the jobs in σi are presented, the expected load on each machine in Yi is at least i−1
+                                                                                   2 . The original proof
+goes through almost unchanged. However, in proving that the modiﬁed property 4 is maintained, our
+argument uses expected loads instead of average loads.
+
+    Assume inductively, that it holds for i, i.e. at the beginning of step i the expected load on a machine
+                   2 . Hence the expected sum of loads on the machines in Yi is at least 2 |Yi |. In step
+in Yi is at least i−1                                                                               i−1
+
+i, all of the jobs of σi must be assigned to machines in Yi , so that at the end of step i, the expected
+sum of the loads of the machines is at least i−1 2 |Yi | + |σi | = 2 |Yi | + 2 |Yi | = 2 |Yi |. Let Elow and Ehigh
+                                                                  i−1        1         i
+
+be the expected loads per machine in low(Yi ) and high(Yi ) respectively. Then the expected sum of the
+loads on machines in Yi is given by
+
+                                                 |Yi |         |Yi |  i
+                                          Elow         + Ehigh       ≥ |Yi |
+                                                  2             2     2
+Hence 12 Elow + 12 Ehigh ≥ 2i . Now Yi+1 is chosen to be either of low(Yi ) or high(Yi ) with equal probability.
+Then, at the beginning of step i, the expected load on machines in Yi+1 is 12 Elow + 21 Ehigh which is ≥ 2i .
+
+    Now as before, at the end of step k, the expected load on Yk is at least k+1
+                                                                              2 . Thus the expected value
+of the maximum load is k+12 . However,   the oﬄine optimal  algorithm  simply  assigns the jobs in σi to the
+machines in Yi − Yi+1 , maintaining a maximum load of 1.
+
+
+
+
+                                                           25
+6      On-line scheduling on unrelated machines
+
+In the last lecture, we studied on-line scheduling on unrelated machines in the special case where for
+each job, the entries of the load vector are either 1 or ∞ i.e. for each job some machines are eligible
+and can perform the job with one unit of load and some machines are ineligible and can not perform
+the job. Here, a greedy algorithm is O(log n)-competitive [8]. In the case where the load vector consists
+of arbitrary values, the greedy algorithm fails to achieve better than a O(n) competitive ratio [3]. We
+now present a diﬀerent algorithm that achieves a competitive ratio of O(log n). This result was derived
+in [3], but the proof technique we use is from [6].
+
+     Let li (j) denote the load on machine i after j jobs have been submitted to the online algorithm. Let
+pi (j) be the load of job j on machine i. Deﬁne ∆i (j) as
+                                     ∆i (j) = ali (j−1)+pi (j) − ali (j−1) ,
+where a is a constant to be deﬁned later. We will show that the following algorithm achieves a competitive
+ratio of O(log n):
+
+     Algorithm A: Assign job j to the machine i that minimizes ∆i (j).
+
+    Intuition: Unlike the greedy algorithm, which tries to minimize li (j − 1) + pi (j), algorithm A
+minimizes, in some sense, the diﬀerence between the previous load and the new load, where diﬀerence
+is deﬁned, as we will see, in some non-linear way. The reason the greedy algorithm that utilizes a linear
+deﬁnition of diﬀerence performs poorly is because it tries to equalize the load on all machines, and so
+an adversary can force it to make the wrong choice of machine each time [3]. Observe that if there is a
+job j such that it has the same load on each machine, that is, pi (j) = p(j) for all i (for this job j), then
+A makes the same choice as a greedy algorithm: it chooses the i minimizing ali (j−1) (ap(j) − 1), which is
+the least loaded machine. When a job does not place the same load on all machines, the exponentiation
+might lead to a non-greedy choice. For example, consider a situation where pi (j) ≪ pi′ (j). In this case,
+the load on i has to be much larger than the load on i′ in order for the algorithm A to put job j on i′ .
+
+Lemma 6.1 If job j is assigned to machine i by the online algorithm, and k is the number of jobs, then
+for any machine q,
+                                   ∆i (j) ≤ alq (k)+pq (j) − alq (k)
+
+Proof : Since job j is assigned to machine i, ∆i (j) ≤ ∆q (j) for any machine q, and so
+
+                                     ∆i (j) ≤ alq (j−1) (apq (j) − 1)
+                                            ≤ alq (k) (apq (j) − 1)
+                                              = alq (k)+pq (j) − alq (k) ,
+since lq (k) ≥ lq (j − 1) for any j. Note that this lemma relies on the convexity of ax ; this lemma could
+not have been obtained if a non-convex function were used to deﬁne ∆.
+
+
+Theorem 6.2 The online algorithm A is O(log n)-competitive.
+
+Proof : Let i∗ (j) be the machine that the optimal, oﬄine algorithm assigns job j to. From Lemma 6.1,
+we have
+                                  ∆i (j) ≤ ali∗ (j) (k)+pi∗ (j) (j) − ali∗ (j) (k) ,              (9)
+    3 Edited by David Jia.
+
+
+
+
+                                                       26
+where i is the machine to which job j is assigned by the online algorithm A.
+
+   Summing over all j, yields
+                         ∑                                          ∑
+                                   ali (j−1) (api (j) − 1) ≤               ali∗ (j) (k) (api∗ (j) (j) − 1)   (10)
+                               j                                      j
+
+
+
+   Let a = 1 + γ. We have
+                                               ax − 1 ≤ γx,                ∀x ∈ [0, 1].                      (11)
+
+   which can be derived from taking the ﬁrst order Taylor series expansion of ax − 1. Now assume that
+OP T = 1. Eﬀectively, this means that we scale all values of pi (j) by OP T by normalizing the load
+vector of all possible jobs. Later on, we will show how to do a binary search on the value of OPT which
+costs us only a constant factor in the competitive ratio.
+
+   Since OP T = 1, each pi (j) ≤ 1. Therefore
+                                           ∑the inequality in (11) holds for x = pi (j) ∈ [0, 1], and we
+can replace the R.H.S of equation (10) by γ j ali∗ (j) (k) pi∗ (j) (j).
+
+   Now take a sum over machines instead of jobs, we get
+                                           ∑ ∑
+                           R.H.S = γ                  ali∗ (j) (k) pi∗ (j) (j)
+                                                             i   j:i∗ (j)=i
+                                                           ∑
+                                                ≤ γ              ali (k)                                     (12)
+                                                             i
+
+
+   The last inequality holds because the inner sum is merely the total load in the oﬄine algorithm on
+machine i, which is ≤ OP T = 1, and we know that 0 ≤ pi (j) ≤ 1 and the sum of the loads, of the online
+algorithm is by deﬁnition greater than or equal to that of the OPT. Now,
+                                        ∑
+                           L.H.S =          ali (j−1) (api (j) − 1)
+                                                  j
+                                                 ∑               ∑
+                                          =                                    ali (j−1) (api (j) − 1)
+                                                  i       j:j assigned to i
+                                         (a)     ∑
+                                          =       (ali (k) − 1)
+                                                  i
+                                                 ∑
+                                          =               ali (k) − n,                                       (13)
+                                                  i
+
+where (a) is because li (j − 1) + pi (j) = li (j) = li (j ′ − 1), where j ′ is the next job after job j to be
+assigned to machine i (so that we have a telescoping sum).
+
+   Combining equations (12) and (13) yields
+                      ∑                   ∑            ∑
+                          ali (k) − n ≤ γ   ali (k) =⇒   ali (k) · (1 − γ) ≤ n
+                           i                          i                        i
+
+
+   which gives
+
+                                                      ∑                     n
+                                                            ali (k) ≤          .
+                                                      i
+                                                                           1−γ
+
+
+                                                                   27
+   Therefore, each ali (k) ≤ 1−γ
+                              n
+                                 , and speciﬁcally,
+
+                                                                 n
+                                            max li (k) ≤ loga                                               (14)
+                                                                1−γ
+
+
+   Choosing γ = 0.5 (and a = 1 + γ = 1.5) yields a competitive ratio of log1.5 2n.
+
+   Notice here that what we’re really saying is
+
+                                                              n
+                                         max li (k) ≤ loga       OP T                                       (15)
+                                                             1−γ
+
+
+   but earlier we have assumed that OP T = 1, which yields (14). We will not relax this assumption
+by searching for a suitable OP T , regardless of which, since we are normalizing all load vectors by this
+amount, will not change our algorithm.
+
+    Determining the value of OP T . Pick an initial value of OP T = λ. Run the algorithm scaling
+all values by λ. If the maximum value of li (j) crosses λ log n, we clearly have chosen a wrong value for
+OP T because this would mean that our competitive ratio given in equation (15) above is inconsistent.
+Set λnew = 2λ, and repeat the algorithm, assuming that the new initial loads on the machines are all 0.
+Do this until we obtain a solution S ≤ λ log n.
+
+    How much have we lost by this procedure ? Each time we double λ, we could have been just above
+λ log n, so we introduce an error ϵ <= λ. We lose a factor of 2 over OP T by summing up the errors from
+all doublings, and we lose an extra factor of 2 in the last stage because of our imprecise approximation.
+Therefore, we lose a factor of 4 overall.
+
+   What remains is to choose the starting value of λ. We choose λ = mini pi (1).
+
+     The main intuition in this algorithm is that we want to distinguish the cases when a particular job
+slightly increases load on one already heavily loaded machine versus signiﬁcantly increasing load on
+another not very loaded machine. This way, can save the less loaded machine for later jobs that can
+better utilize it by requiring less load on that machine. More formally, in the unrelated machines case,
+given a job j, we sometime want to choose a machine i over a machine i′ even though ℓi (j − 1) + pi (j) ≥
+ℓi′ (j − 1) + pi′ (j) if ℓi (j − 1) ≫ ℓi′ (j − 1) but pi (j) ≪ pi′ (j). We can do this by mapping their diﬀerence
+to an exponential (or any convex) function. For the same diﬀerence of a pair of values, the diﬀerence in
+the value of the convex function, ∆i (j) will allow us to distinguish which one is “better” by picking the
+machine that has the better comparative advantage for that particular job.
+
+    To be more precise, note that the goal of the problem is to minimize maxq ℓq (k), where k is the total
+number of jobs. This is not a smooth
+                                   ∑ function, so we will try to replace it with a nicer function with
+similar properties. Consider Φ = q aℓq (k) , and suppose that we were able to minimize Φ. Then if L∗
+                                         ∗
+is the optimal load, we certainly have aL ≤ Φmin , as the most loaded machine has load at least L∗ , and
+            ∗
+Φmin ≤ naL , since in the oﬄine algorithm all n machines do not exceed load L∗ .
+
+    Suppose we have some distribution of loads which attains Φmin . Then if L is the maximum load in
+                                                     ∗
+this allocation, we certainly have aL ≤ Φmin ≤ naL and therefore L ≤ loga n + L∗ . Hence, the load
+cannot be much worse than L∗ , so it is reasonable to be minimizing Φ instead of maxq ℓq (k). However,
+when we allocate job j to machine q, we increase Φ by precisely the quantity aℓq (j−1)+pq (j) − aℓq (j−1) ,
+so our algorithm is always choosing the machine which results in the smallest increase to Φ.
+
+
+
+                                                       28
+    In the example illustrated on the right, we see
+that a machine 1 currently has a load of 10 while
+machine 2 has a load of 1. By adding the new job
+j, machine 1’s load will increase by 1 while ma-
+chine 2’s load will increase by 9. In the original lin-
+ear diﬀerence, we would have chosen to put job j
+on machine 2. But this would have clogged up ma-
+chine 2 while we could have just increased machine
+1’s load slightly. In our new algorithm as pre-
+sented in this section, we would choose machine Figure 11: Here we choose machine 1 even though
+1 as clearly 1.510+1 − 1.510 ≈ 28.83 < 56.16 ≈ its new load exceeds that of machine 2.
+1.510 − 1.51 .
+
+
+
+
+                                              29
+7      Application of this algorithm to on-line network routing
+
+Consider a network where each edge has an associated capacity (bandwidth). A request consists of
+three entries: a source node, a destination node, and the bandwidth required for the transmission. The
+network then sets up a connection by choosing a path between the source and the destination and
+reserving bandwidth along it [3]. Similarly to the load balancing setting were we were not allowed to
+move a job once it is allocated to a machine, in the routing model we are not allowed to change the path
+used to satisfy a request.
+
+   There are two natural things we may wish to optimize. The ﬁrst is to require that no capacity
+constraints are violated and attempt to maximize the fraction of satisﬁed requests. The second is to
+require that all requests are satisﬁed, and minimize the maximum ratio by which our allocation exceeds
+any edge capacity. This latter model, called the congestion minimization model, is the one we will
+consider here.
+
+   Formally, we have a graph G = (V, E), |V | = n, |E| = m, and a capacity function u : E → R+ .
+Incoming requests are of the form Ri = (ui , vi , p(i)), where ui , vi ∈ V are the source and destination
+nodes, and p(i) ∈ R+ is the desired capacity of the link. We normalize bandwidth requests w.r.t edge
+capacities, and therefore deﬁne
+
+
+                                        ∀e ∈ E,      pe (i) = p(i)/u(e).
+
+    Let P = {P1 , P2 , . . . , Pk } be the set of paths assigned by the online algorithm for requests 1 through
+k, and let P ∗ = {P1∗ , P2∗ , . . . , Pk∗ } be the paths assigned by the optimal oﬄine algorithm. Now, given a
+set of paths P, we deﬁne the relative load after the ﬁrst j requests by
+
+                                                         ∑
+                                              ℓe (j) =          pe (i).
+                                                          i≤j
+                                                         e∈Pi
+
+
+   Let λ(j) = maxe∈E ℓe (j), λ = λ(k). Similarly deﬁne λ∗ (j), λ∗ , ℓ∗e (j) for the corresponding oﬄine
+quantities. The problem is now to minimize λ/λ∗ .
+
+    Note: As before, we will assume that λ∗ = 1, and use a “doubling” argument to determine the
+correct value.
+                                                                                           ∑
+    We will proceed as in the unrelated machines algorithm, by minimizing the objective Φ = e∈E aℓe (i) .
+In other words, given a path Pi , we deﬁne
+
+                                           ∑(                                    )
+                                    Wi =          aℓe (i−1)+pe (i) − aℓe (i−1)
+                                           e∈Pi
+
+
+   Algorithm B: Given a request i, choose a path minimizing Wi . Note that this path can be deter-
+mined easily using a shortest-path algorithm with the expression inside the summation as the cost of an
+edge.
+
+
+Theorem 7.1 This algorithm is O(log n)-competitive. [3]
+    3 Edited by Jeﬀrey Chen.
+
+
+
+
+                                                         30
+Proof : As in Lemma 6.1, for every path P ′ from si to ti , we have
+                                         ∑(                             )
+                                   Wi ≤        aℓe (k)+pe (i) − aℓe (k)
+                                             e∈P ′
+
+
+
+In particular, this holds for Pi∗ , the i-th path chosen in the optimal algorithm. As before, we set a = 1+γ,
+and since λ∗ = 1, pe (i) ≤ 1 for all e. Then we have
+                                                  ∑          (           )
+                                           Wi ≤       aℓe (k) ape (i) − 1
+                                                e∈Pi∗
+                                                    ∑
+                                            ≤            aℓe (k) (γpe (i))
+                                                e∈Pi∗
+                                                     ∑
+                                            =γ              aℓe (k) pe (i)
+                                                    e∈Pi∗
+
+
+
+Summing over i, we then have
+                                       ∑                 ∑ ∑
+                                            Wi ≤ γ                     aℓe (k) pe (i)
+                                        i                 i    e∈Pi∗
+                                                         ∑
+                                                    =γ         aℓe (k) ℓ∗e (k)
+                                                          e
+
+But ℓ∗e (k) ≤ λ∗ ≤ 1, so we conclude that
+                                            ∑                   ∑
+                                                    Wi ≤ γ             aℓe (k)
+                                                i                  e
+                                                         = γΦ
+
+Now recall that Wi is precisely the change in Φ when the online
+                                                            ∑ algorithm ∑   processes the i-th request, and
+the value of Φ before any requests have been processed is e a0 = m, so i Wi is simply Φ − m. Thus,
+we conclude that Φ − m ≤ γΦ, so Φ ≤ 1−γ  m
+                                            . In particular, this implies that L ≤ loga 1−γ
+                                                                                         m
+                                                                                             = O(log m).
+
+
+
+   Discussion: No lower bound is known for this problem. In the directed graph version, there is a
+known lower bound of Ω(log n) [8].
+
+
+
+
+                                                              31
+8      Online Load Balancing of Temporary Tasks
+
+In this section we consider Online Balancing problem - the jobs are now temporary. The jobs arrive
+one by one, each having an associated load vector, p⃗(j) = (p1 (j), p2 (j), . . . pn (j)), where pi (j) ≥ 0 and
+a duration, d(j). Assigning job j to machine i increases the load on this machine by pi (j) for a period
+d(j). As before, the load balancing is non-preemptive i.e. no reassignment is allowed.
+
+   Since the arriving tasks have to be assigned without the knowledge of future tasks, it is natural
+to evaluate performance in terms of the competitive ratio. In this case, the competitive ratio is the
+supremum over all input sequences, of the maximum load (because of the limited duration of the jobs
+the maximum has to be taken both over time and the machines) achieved by the on-line algorithm to
+that achieved by the optimal oﬀ-line algorithm.
+
+   As in the case of jobs that were permanent, this problem can be categorized into three classes
+according to the properties of the load vector.
+
+Identical machines All the coordinates of a load vector are the same.
+
+                                                  ∀i, i′ , j : pi (j) = pi′ (j)
+
+Related machines The ith coordinate of each load vector is equal to wj /si where the weight wj
+     depends only on the job j and the speed si depends only on the machine i.
+
+                                 ∀i, i′ , j, j ′ : pi (j)/pi′ (j) = pi (j ′ )/pi′ (j ′ ) = si′ /si
+
+       where si is the speed of the ith machine. In other words, each job j has a weight wj , and that
+       ∀i, pi (j) = wj /si
+Unrelated machines This includes all other cases.
+
+
+8.1      Identical Machines
+
+This was assigned as a homework problem. It is easily shown that Graham’s greedy algorithm achieves
+a competitive ratio of 2 − n1 even when the jobs are temporary.
+
+
+8.2      Related Machines
+
+Upper Bound For the identical machines case, the greedy approach achieved O(1) competitive ratio
+both in the case when the jobs were permanent as well as when the jobs had limited durations. It is
+quite natural to ask if the algorithm that achieved constant competitive ratio for related machines when
+the jobs were permanent could similarly be extended to the current problem.
+
+    This conjecture is true. We get a constant competitive ratio albeit a little poorer one. Even though
+the algorithm is identical to the case with permanent jobs, it is of considerable interest because of the
+substantially new proof technique required to prove it. The old proof technique breaks down because
+the jobs are not permanent. The method of getting a contradiction now has to span both time and
+machines. The essential idea is to isolate groups of machines at diﬀerent time instants with larger and
+larger loads until one reaches a contradiction.
+    3 Edited by Jack Chen.
+
+
+
+
+                                                           32
+   It is assumed that the machines are ordered in the ascending order of speeds i.e. machine 1 is
+the slowest
+        ∑ and machine n is the fastest. If G is a group of machines
+                                                                ∑     the total power of the group,
+S(G) ≡ k∈G sk . If J is a set of jobs then total weight, W (J) ≡ j∈T wj .
+
+    It shall be assumed that the load generated by the optimal oﬀ-line algorithm, OPT is known to the
+online algorithm. This is not a very binding assumption since one can always use a doubling strategy at
+the cost of increasing the competitive ration by a factor of 4. Let c be an integer constant (It is shown
+later that the optimal choice of c is 5 ). Assume that a task j arrives at time t and the load on machine
+i just before the arrival of the job is li (t− ). A job is said to be assignable to machine g iﬀ wj /sg ≤ OP T
+and lg (t− ) + wj /sg ≤ c · OP T
+
+Algorithm 1 : Assign the new job to theslowest assignable machine. Break ties by assigning to the
+    machine with the smallest index.
+
+
+Theorem 8.1 Provided c > 5, Algorithm 1 guarantees that every job is assignable, which implies that
+the algorithm is c-competitive.
+
+
+Proof : Suppose that at some time instant t0 , a job q arrives that is not assignable. It shall be shown
+that this entails a contradiction to the supposed value of OP T ∑  by showing that at some time in the past
+                                                                     n
+the aggregate weight of the tasks in the system was more than i=1 si · OP T . Starting from the current
+time t0 , a sequence of times t0 > t1 > . . . > tk is constructed. At time t−
+                                                                            i let J(Gi ) be the collection of
+jobs that are active and are assigned to the set of machines Gi by the on-line algorithm.
+
+   Initially G0 = n. It is proved by induction on i that the following invariants hold:
+
+  1. The Gj ’s ,0 < j < k are disjoint sets of consecutive machines, i.e.,
+
+                                           Gj = mj , mj+1 , . . . , mj−1 − 1
+
+      for some mj ’s. Some of the Gj ’s could be empty.
+  2. At time t−
+              i each machine in Gi has a load that exceeds (c − 1)OP T .
+
+  3. For 0 < j ≤ k, S(Gi ) ≥ (c − 3)S(Gi−1 ).
+
+   Assume that the invariants stated above hold and that the construction (described in the proof
+below) has been carried out until machine 1 ∈ Gk . We know that the cumulative weight of tasks in
+                                               ∑k
+J(Gk ), W (J(Gk )) > (c − 1)S(Gk )OP T . Now i=1 S(Gi ) ≤ 2S(Gk ). The contradiction follows from
+the fact that at any instant in time the maximum load that can be handled by all the machines is:
+
+                          ∑
+                          k
+                                 S(gi ) · OP T ≤ 2S(Gk )OP T < (c − 1)S(Gk )OP T
+                           i=1
+
+since c > 5
+
+
+Lemma 8.2 The invariants, stated in the proof above, hold.
+
+
+Proof : Set G0 = {n}. Since job q cannot be assigned to the fastest machine n and OPT ≥ wq /sn ,
+therefore ln (t−
+               0 ) > (c − 1)OP T , which implies that the cumulative weights of the jobs still active on
+
+
+                                                       33
+machine n is greater than (c − 1)sn OP T = (c − 1)S(G0 )OP T . Thus invariant 2 initially holds. The
+remaining invariants hold trivially.
+
+   Now assume that the invariants hold at the end of the ith iteration. The following construction
+ensures the existence of ti+1 and Gi+1 such that the invariants hold for i + 1 as well. Since the load on
+each machine in Gi is greater than (c − 1)OP T , therefore W (J(Gi )) > (c − 1)S(Gi )OP T .
+
+   Consider machines to which the optimal oﬀ-line algorithm assigns the jobs in J(Gi ) and let mi+1 be
+the slowest of them. Let
+                                Gi+1 ≡ mi+1 , mi+1 + 1, . . . , mi − 1
+Since all tasks in J(Gi ) are active at time t−
+                                              i and the load on any machine never exceeds OP T in the
+oﬀ-line assignment,
+             ∪       the  cumulative  weight
+                                        ∑     of the jobs in J(Gi ) assigned by the oﬀ-line algorithm to
+machines in 0≤j≤i Gj is bounded by 0≤j≤i S(Gj )OP T , which in turn, by invariant 3, is bounded by
+2S(Gi )OP T . Therefore it must be that, S(Gi+1 )OP T ≥ (c − 3)S(Gi )OP T . As a consequence we get,
+
+                                        S(Gi+1 ) ≥ (c − 3) · S(Gi )
+
+
+    Now consider the job qi with the smallest weight in J(Gi ). Deﬁne ti+1 be the time at which qi
+arrived. Since qi was not assigned to any machine in Gi+1 , all these machines were unassignable at ti+1 .
+Since w(qi )/sg ≤OPT ∀g ∈ Gi+1 , therefore
+
+                                   ∀g ∈ Gi+1 : lg (t−
+                                                    i+1 ) ≥ (c − 1)OP T
+
+This proves that the invariants hold for i + 1.
+
+    Thus, a competitive ratio of 5 is achievable. A proof of 3 − o(1) lower bound on the competitive ratio
+c is given in [7].
+
+
+8.3     1/∞ scheduling of temporary tasks
+
+In this section, we consider the 1/∞ model (identical speed machines with assignment restriction)√ with
+temporary jobs of unknown
+                       √       duration. We   describe a greedy algorithm with competitve ratio 2 n + 1.
+We also prove an Ω( n) lower bound on the competitive ratio. Although this lower bound is the same
+as that of [9], it is of some interest as it uses a job sequence with the ratio of maximum to minimum
+ratio that is logarithmic in the number of machines, which implies that a O(lg(nT )) lower bound, where
+T is the ratio of maximum to minimum job duration, is impossible.
+
+                                                                          √
+Upper Bound We will now describe an algorithm that achieves an O( n) competitive ratio. At all
+times, the algorithm maintains an estimate L(t) of OPT satisfying
+                                                              √    L(t) ≤ OPT. Let lg (t) be the load on
+machine g at time t. A machine is said to be rich if lg (t) ≥ nL(t), and otherwise it is poor. In other
+words, a machine is called rich if it is highly overloaded. Since the jobs are temporary, machines can
+alternate between being rich and poor. A machine can also become poor since L(t) can increase over the
+run time of the algorithm. However, since L(t) is constructed to be a monotonically increasing function,
+a machine can only get poor due to such a change or due to ﬁnishing of a job on that machine.
+
+   If a machine is rich at t, deﬁne its windfall time as the last moment in time when it became rich.
+
+
+Algorithm 2 : Assign the ﬁrst job to any machine, and set L(1) as the load generated by the ﬁrst task.
+
+
+                                                    34
+      When new task j arrives at time t, set:
+                                                {                  ∑               }
+                                                                              −
+                                                     −
+                                                            pj +       g lg (t )
+                                   L(t) = max L(t ), pj ,
+                                                                    n
+
+      If possible, assign the new job to a poor machine. Otherwise, if there are no poor machines, assign
+      it to the rich machine with the most recent windfall time.
+
+    This algorithm may seem counter-intuitive, because if we are assigning to a rich machine, then we
+keep allocating jobs to the same machine (the one that became rich last), so we might think that its
+load would just keep increasing, yielding a very bad competitive ratio. We need to prove that this
+will not happen. Instead, it will turn out that if the load on the most recently rich machine keeps on
+growing, then L must eventually increase, which means that other machines may become poor and thus
+assignable.
+
+Lemma 8.3 At all √ times t, the algorithm guarantees L(t) ≤OPT and the number of rich machines at
+any time is at most n.
+
+Proof : The proof is by induction on the number of assigned tasks. Initially, L(1) ≤OPT. It suﬃces to
+           ∑ the cases when L(t) increases. The claim immediately follows from the fact that pj ≤ OP T
+consider only
+and (pj + g lg (t− ))/n ≤ OP T . Both of these inequalities follow from the fact that the load on any
+machine in the oﬀ-line assignment never exceeds OP T .
+                                                                 √
+    Since nL(t) is an upper bound on the aggregate load, at most n machines can be rich at any point
+in time.
+
+                                                              √
+Theorem 8.4 The competitive ratio of Algorithm 2 is at most (2 n + 1).
+                                                                                   √
+Proof : Since L(t) ≤OPT it suﬃces to show that at any point t, lg (t) ≤             n · (L(t) + OP T ) + OP T for
+any machine g.
+                                                                                                    √
+    The claim is trivial for all poor machines since the load on a poor machine is less than         nOP T .
+
+     Otherwise, let S be the set of all active tasks that were assigned to machine g since its windfall time
+t0 . Let j ∈ S. Let M (j) be the machines to which the job j could have been potentially assigned.
+
+    Since g was rich when j arrived, all machines in M (j) must have been rich at that time. Moreover,
+all machines in M (j) − {g} must have been rich at t0 , because otherwise a machine would have had
+windfall time later than g, and the algorithm would not have assigned j to g.
+
+   Let k be the number of machines to which any job in S could have been assigned, i.e., k =
+∪                                                                       √
+  j∈S M (j) . Since they were all rich at t0 , Lemma 1 implies that k ≤  n.
+
+    Let q be the job that was assigned to g that made it rich at time t0 . Then:
+                                            √                ∑
+                                 lg (t) ≤     nL(t0 ) + pq +    pj
+                                                              j∈S
+                                           √
+                                         ≤   nL(t) + OP T + kOP T
+                                           √                √
+                                         ≤   nL(t) + OP T + nOP T
+                                             √
+                                         ≤ (2 n + 1)OP T
+
+
+                                                    35
+                                                                                        √
+   It might be of some interest to notice that the bound cannot be improved beyond n by cleverly
+redeﬁning rich machines as those with loads exceeding αL(t) since the coeﬃcient of the last term in the
+above inequality would then be n/α.
+
+
+Lower Bound
+
+                                                                                           √
+Theorem 8.5 The competitive ratio for the 1/∞ scheduling problem with temporary tasks is Ω( n).
+
+Proof : The lower bound shall be proved for the following scenario:
+
+                             √                              √
+   • Call machines 1 . . . n − n normal, and the remaining n machines special.
+                                √
+   • The jobs arrive in phases. n + 1 jobs arrive in phase i, each
+                                                              √ of which could be assigned to any    √ of
+     the special machines or normal machine i. There are n − n phases in all, from i = 1, . . . , n − n.
+
+
+    We will show
+               √ that malicious adversary can choose a sequence such that the online algorithm is forced
+to have about n load, while the oﬄine algorithm has OPT = 1. Figures 12 and 13 illustrate an example
+of this adversarial sequence.
+                                                           √
+    In phase
+          √ i, if the online algorithm schedules all of the n + 1 jobs on normal machine i, then i has
+a load of n + 1 and we are done. Otherwise, there exists at least one job pi that online schedules on
+the special machines. The malicious adversary keeps pi active “permanently” (until the end of the last
+phase), while the rest of the jobs are terminated at the end of phase i.
+                                         √
+    Therefore,√at the end of phase n − √n, the number of jobs online has active on special machines is
+at least n − √n. Since there are only n special machines, there is at least one special machine with
+load at least n − 1.
+
+   In each phase, the oﬄine algorithm takes the job pi that the online puts on the special machine (and
+                                                                                                    √
+that remains stuck there “permanently”), and puts that job on the normal√    machine i. The other n
+jobs, which are removed at the end of the phase, are scheduled on the√ n special machines. So oﬄine
+has load 1. Therefore, we have proved that the competitive ratio is Ω( n).
+
+
+                                                                                         √
+   One had to quibble about the fact that the jobs lasted until the end of phase n − n and were not
+permanent to ensure that this lower
+                                 √ bound√     implied a O(lg(nT )) competitive ratio is impossible. In the
+construction above, we have (n − n)( n + 1) ≃ n1.5 jobs in total, so the ratio of maximum to minimum
+job duration is T ≃ n1.5 . Therefore, it follows that a O(lg(nT )) competitive ratio is impossible. So the
+competitive ratio here is much worse than the known duration case, where we had log(nT ).
+
+    The lower bound is built on the notion that small local mistakes can have a very strong implication
+for global performance, therefore, if the job durations follow any reasonable distribution this lower bound
+completely falls apart.
+
+
+
+
+                                                    36
+           4                                               4                                                  4
+           3                                               3                                                  3
+    Load                                            Load                                               Load
+           2                                               2                                                  2
+           1                                               1                                                  1
+
+               1   2   3   4    5   6   7   8   9                 1   2   3    4   5   6   7   8   9                1   2   3   4    5   6   7   8   9
+
+
+
+
+                       Normal           Special                           Normal           Special                          Normal           Special
+
+
+           (a) Allocation for phase 1                          (b) After end of phase 1                           (c) At end of last phase
+
+                                                                                        √
+Figure 12: Example of online algorithm in the lower bound instance. (a) In phase 1, n + 1 = 4 jobs
+must be placed √
+               on machine 1 or the special machines. At least one must be on a special machine, or we
+already exceed n load. (b) At the end of phase 1, one job which online placed on a special machine
+                                                                                                 √   is
+kept “permanently”, while the rest are terminated. (c) At the end of the last phase, at√least n − n = 6
+jobs must be on the special machines, so there must be a machine with load at least n − 1 = 2.
+
+
+
+
+           4                                               4                                                  4
+           3                                               3                                                  3
+    Load                                            Load                                               Load
+           2                                               2                                                  2
+           1                                               1                                                  1
+
+               1   2   3   4    5   6   7   8   9                 1   2   3    4   5   6   7   8   9                1   2   3   4    5   6   7   8   9
+
+
+
+
+                       Normal           Special                           Normal           Special                          Normal           Special
+
+
+           (a) Allocation for phase 1                          (b) After end of phase 1                           (c) At end of last phase
+
+
+Figure 13: Example of optimal oﬄine algorithm in the lower bound  √      instance. (a) In phase
+                                                                                            √ i, the
+“permanent” job is placed on machine i, while the remaining jobs n jobs are placed on the n special
+machines. (b) At the end of phase i, all the non-“permanent” jobs which were placed on the special
+machines are terminated. (c) At the end of the last phase, oﬄine has spread the “permanent” jobs across
+the normal machines, achieving maximum load 1.
+
+
+
+
+                                                                              37
+8.4    Unrelated Machines with Known Durations
+
+Here, we will present an algorithm for the situation where the machines are unrelated, but the durations
+of the jobs are known to the online algorithm. First, suppose that we know that all durations integers in
+the range [1, T ]. Suppose that for every job, we have 0 ≤ start ≤ T and end ≤ 2T . Consider replicating
+every machine 2T times, one for each possible time. Then a job which is present at times s, s + 1, · · · , t
+must be assigned to a collection of machines, one for each of these times and all corresponding to the
+same original machine.
+
+   This problem can be solved in much the same way as the online     ∑ circuit routing problem and the
+previous unrelated machine load balancing problem: we deﬁne Φ = i,t aℓi,t (j) , where ℓi,t (j) is the load
+on the t-th copy of machine i after the ﬁrst j jobs are assigned, and we always choose to assign a job to
+the machine which results in the smallest increase to Φ. Noting that there are nT machines here, the
+same analysis as before shows that this algorithm gives a competitive ratio of O(log(nT )).
+
+    Now let us generalize this to the situation where durations are still bounded by T , but where start
+and end times can be arbitrary non-negative integers. We divide (”tile”) the timeline into overlapping
+intervals [0, 2T ], [T, 3T ], [2T, 4T ], · · · . Then since any job has duration at most T , we can always ﬁnd
+an interval which completely contains the job. Of course, the optimum oﬄine algorithm can achieve L∗
+maximum load at all times, so in particular its maximum load on every interval is at most L∗ . Moreover,
+the algorithm online algorithm can exceed the maximum load on any interval by a factor of O(log nT ).
+Additionally, at any time there are no more than two “active” intervals, which can increase the maximum
+load by a factor of up to 2, so we still have an overall competitive ratio of O(log nT ).
+
+    It is useful to note that the above approach directly translates to the congestion-minimization with
+known durations. In this model we are given a capacitated graph and each request i is for allocation of a
+certain capacity (bandwidth) pi between two given nodes si and ti for some time interval [ti , t′i ], where
+ti and t′i are integer start and stop times. As before, we ﬁrst consider the case where all start and stop
+times are between 0 and some 2T , and then use the ”tiling” approach to extend to the general case.
+
+   Assume that the underlying graph is G = (V, E). If all start and stop times are between 0 and 2T ,
+we can ”time-expand” G and represent the problem as 2T copies of G, where each copy represents a
+speciﬁc time instance. The basic idea is that we satisfy request i by allocating some path Pi in all of the
+copies corresponding to the duration of request i.
+
+   More precisely, recall that for permanent requests (i.e. without durations), ℓe (i) was deﬁned as
+                                                   ∑
+                                          ℓe (i) =     pe (j),
+                                                      j≤i
+                                                     e∈Pj
+
+
+where pe (j) = p(j)/u(e), the fraction of edge e capacity taken by j-th request.
+
+   For the temporary case, the load depends on time, and hence we deﬁne
+                                                   ∑
+                                       ℓe (i, t) =     pe (j).
+                                                       j≤i
+                                                      e∈Pj
+                                                     t∈[ti ,t′i ]
+
+In other words, we sum up the relative load of requests that were using edge e and that were alive at
+time t.
+
+   In the congestion minimization model with permanent requests the request was routed along path
+
+
+                                                     38
+Pi that minimizes                            ∑(                                      )
+                                    Wi =              aℓe (i−1)+pe (i) − aℓe (i−1)
+                                             e∈Pi
+
+Similarly, in the temporary case we route along path Pi that minimizes:
+                                   ∑ ∑ (                                        )
+                             Wi =              aℓe (i−1,t)+pe (i) − aℓe (i−1,t)
+                                      e∈Pi t∈[ti ,t′i ]
+
+
+
+   It is straightforward to see that the proof goes through ”as is”, with only change being the total
+number of edges, which is now 2T m instead of m. Hence we get O(log nT ) competitive algorithm.
+
+
+
+
+                                                            39
+9     Oﬀ-line Routing
+
+Since the results of the scheduling problems are going to applied to online routing problems, it might be
+instructive to consider oﬀ-line routing to understand the key ideas.
+
+    The statement of the routing problem in its simplest realization is as follows:
+
+    • There is a graph G = (V, E) with a demands between certain pairs of nodes (si , ti ). The number
+      of demand pairs is k, the number of vertices is n and the number of edges is m.
+    • One needs to ﬁnd a routing paths for every pair of nodes for which have a demand which minimize
+      the number of times a particular edge is in the various routing paths in the graph.
+
+   One can later complicate the issue by weighting the paths and also the edges. This problem can be
+approached as a multi-commodity ﬂow problem. Let XP be the variable associated with the path P in
+the graph G then
+                                                      min W
+                                     ∑
+                                                 XP     =            1     ∀q
+                                 P ∈P(sq ,tq )
+                                         ∑
+                                                 XP     ≤            W          ∀e ∈ E
+                                         e∈p
+                                                 XP     ≥            0     ∀P ∈ P
+is the associated linear program. Although the number of constraints in the program is exponential in
+the parameters which makes it rather useless for any useful application, it has some pedagogical value.
+Since there exists at least one optimal basic solution to any linear program there is one solution with
+at most k + m positive XP ’s. Since the solution could have fractional XP ’s it is not a solution for the
+routing problem as is. One way to generate a solution for the routing problem is to use path p with
+probability XP [20]. If so, the second constraint in program will be met only in the expected value sense
+and we need to have some estimate on the probability that it will be violated. One can estimate it using
+the following Chernoﬀ bound (stated without proof):
+
+Lemma 9.1 Let X1 , X2 , . . . , Xn be independent binary random variables, then:
+             ( n                               )     (              )IE(∑i Xi )
+              ∑                        ∑                    eδ
+          IP       Xi ≥ (1 + δ)IE(        Xi )   ≤
+              i=1                       i
+                                                       (1 + δ)(1+δ)
+                                                            −δ 2   IE(∑i Xi )
+                                                      ≃ e            4            for δ suﬃciently small
+A similar result holds for ≥ replaced by ≤.
+
+    Let W ∗ be the optimal solution of the LP. Using the modiﬁcation given above the expected number
+of paths through any edge is a sum of independent binary random variables with expectation less than
+W ∗ . If we want that
+                 √ the        probability any edge exceeds (1 + δ)W ∗ be less than ϵ then the above lemma
+                         m
+                    4 ln( ϵ )                                          ∗       ∗
+                                                                                  √
+implies that δ ≃       W ∗ . This implies that the total load (1 + δ)W is W +       4W ∗ ln( m
+                                                                                             ϵ ). Therefore,
+     ∗         m
+if W is Ω(lg( ϵ )) then the approximation is very good otherwise it is not. This puts us into a curious
+position where the quality of approximation depends on the solution on gets from the approximation.
+
+
+                                                       40
+10     Multicommodity Flow and Lagrangian Relaxation
+
+Given source/sink pairs, we can compute routes by stating the problem as a multi-commodity ﬂow,
+solving the relaxed LP, getting a fractional solution (corresponding to splitting the routes) and doing
+randomized rounding. This results in a good solution with high probability.
+
+    This approach, however, has several disadvantages. First, this procedure is relatively slow. Second, it
+is not clear how to use it to improve a given routing. Moreover, the procedure is completely centralized.
+In this lecture we will develop an iterative approach to computing routes (and solving multi-commodity
+ﬂow problems). Among other properties, the iterated nature of this approach makes it more useful in
+an on-line setting.
+
+
+10.1    Intuition behind the iterative approach
+
+We will use an approach that can be viewed as a type of Lagrangian Relaxation procedure. Intuitively,
+the idea is to “move” some of the more complicated constraints into the objective function. Consider
+the problem where we are given two sets of constraints, Ax ≤ b and αx ≤ β. Assume we have an oracle
+that can minimize cx (for any constant c) subject to the constraints Ax ≤ b . We can think of these as
+the “easy” constraints. We are responsible for satisfying the αx ≤ β constraints some other way. We try
+to satisfy these “hard” constraints by making them part of the objective function (cx) that our oracle
+minimizes.
+
+   We do this by proceeding in rounds, where c in one round depends on α, x, and β from the previous
+round. In particular, we set c = ϕ(αxprev /β).
+
+   The idea is that if x changes little, minimizing cx is likely to move us closer to satisfying αx ≤
+β. Unfortunately, we are not guaranteed that this iterative process converges. In order to guarantee
+polynomial time convergence, we will have to modify this approach.
+
+    Roughly speaking, our strategy will be to move a little bit towards x̃ that minimizes the new objective
+function, and choose this objective function so as to guarantee that we make a measurable improvement
+at every step. Our presentation will follow [18].
+
+
+10.2    Approximation algorithm for multi-commodity ﬂow
+
+Terminology:
+
+   • fi (e) : the ﬂow of commodity i on edge e
+   • f (e) : the total ﬂow on edge e
+   • f ′ (e) : the ﬂow for the next round
+   • u(e) : the capacity of edge e
+   • λ : the overﬂow, the smallest number such that f (e) ≤ λu(e) for all e
+
+Remember that our goal is to minimize λ.
+
+    Multi-commodity ﬂow has two kinds of constraints: conservation constraints and capacity constraints.
+If we ignore the capacity constraints, we’re left with a shortest-paths (SP) problem. We put these
+
+
+                                                    41
+constraints into Ax ≤ b and let SP be our oracle. SP will try to minimize cx. Thus c(e) should be large
+if f (e)/u(e) is large; on the other hand, we want c to be smooth to facilitate convergence. The deﬁnition
+we use (where we rename c to ℓ to capture the idea that this corresponds to edge lengths in a shortest
+paths context) is
+
+                                                   1
+                                       ℓ(e) =          exp[αf (e)/u(e)]
+                                                  u(e)
+
+    We are using a standard∑
+                           trick of estimating the maximum by summing over exponentials. Note that
+max∀e exp[α(f (e)/u(e))] ≤   ℓ(e)u(e) ≤ m × max∀e exp[α(f (e)/u(e))], where m is the number of edges
+in the network.
+
+    Now that we’ve set up the inequalities, we have to decide how to iterate. There are many possibilities;
+the one presented below does not produce integer ﬂows. We will defer the dealing with integrality until
+later. Given a ﬂow f (e), we use it to deﬁne ℓ(e) and run an SP algorithm to get f˜, the shortest paths
+for each commodity. We then move some fraction σ of the ﬂow to f˜:
+
+                                           f ′ = σ f˜ + (1 − σ)f
+
+
+   Our algorithm is then to pick a starting f (e), use it to deﬁne ℓ(e), run an SP algorithm, move σ of
+the ﬂow of each commodity from fi to f˜i to get a new f (e), and repeat. All we need to do is show that
+λ converges relatively quickly to the minimum possible solution.
+
+
+10.3     Proof of Convergence
+
+10.3.1   The approximation inequalities
+
+More terminology:
+
+                                          Ci (e) =     fi (e)ℓ(e)
+                                                       ∑
+                                                Ci   =      Ci (e)
+                                                            e
+
+
+Let C̃i be demandi · SPi , a lower bound on Ci (for the current ℓ). Likewise, we can bound Ci from above
+by (λu) · ℓ, where u and ℓ are row and column vectors of capacities and costs, respectively.
+
+   This gives us our basic inequality. (Observe that it corresponds to weak LP duality.)
+                                           ∑             ∑       ∑
+                                λ(u · ℓ) ≥    fi (e)ℓe =    Ci ≥     C̃i
+                                            e,i                     i          i
+
+In particular, these inequalities are true for the optimal λ∗ , so if we can ﬁnd an f and corresponding λ
+for which both of these inequalities are relatively tight, then we have a good approximation of λ∗ . In
+particular, we’re done when we satisfy the following two inequalities:
+                                                         ∑
+                                     (1 − ϵ)λ(u · ℓ) ≤       f (e)ℓ(e)                               (16)
+                                                                e
+                                                            ∑
+                                        (1 − ϵ)Ci       ≤               C̃i + ϵλuℓ                    (17)
+                                                                i
+
+
+
+
+                                                       42
+   Intuitively, (16), which tries to keep every edge equally congested, is “easy”; (17), which tries to
+keep most commodities on short paths, is “hard.”
+
+    (I should point out that we’re assuming ϵ is small enough that we can aﬀord to be oﬀ by constant
+factors; in the above equations, for instance, we’re assuming that 1/(1 − ϵ) ≈ 1 + ϵ.)
+
+    First we show that if α (in the deﬁnition of ℓ) is large enough, (16) is true. Intuitively, for large α
+uncongested edges have length 0. Formally, we consider the edges in two groups. First, consider an edge
+e such that f (e) < (1 − ϵ)λu(e). For this e, ∑ℓ(e)u(e)   < exp(α(1−ϵ)λ) = e−ϵαλ . Pick α so this quantity
+                                               e ℓ(e)u(e)   ∑exp(αλ)
+is less than ϵ/m. Then, summing over these edges only, λ ℓ(e)u(e) < ϵλ(ℓ · u).
+
+    Now consider the other∑edges, where f (e) ≥ (1 − ϵ)λu(e). Multiply both sides by ℓ(e) and sum over
+all e to get λ(ℓ · u) ≤ 1−ϵ
+                         1
+                            f (e)ℓ(e). Taken together, the inequalities for each edge type give us (16).
+
+   Instead of (17), we’re going to use
+
+                                      (1 + ϵ)c(i) − C̃i ≥ ϵλ(u · ℓ)                                      (18)
+
+Observe that if the above inequality is not satisﬁed, while (16) is satisﬁed, we have (1 + O(ϵ))-optimum
+solution. Since we will choose α large enough for (16) to be always satisﬁed, we will be able to assume
+that (18) is always satisﬁed.
+
+
+10.3.2   The potential function
+                                          ∑
+We deﬁne the potential function Φ =         e ℓ(e)u(e). This is not the only choice, but notice that the
+gradient points in the direction of ℓ, so as we move ﬂow onto the shortest path we’re descending along
+the gradient — that is, we’re optimizing with the gradient as our objective function!
+
+   We’ll need the following approximation of ex+δ :
+                                                  ϵ
+                                 ex+δ ≤ ex + δex + |δ|ex , δ ≤ ϵ/4 ≤ 1/4
+                                                  2
+(Remember: δ must be small!) Then we can bound the change in ℓ between iterations:
+
+                                     ℓ′ (e) − ℓ(e) ≤ δe ℓ(e) + ϵ/2|δe |ℓ(e).
+            α
+Let δe = u(e) (f ′ (e) − f (e)) = u(e)
+                                   ασ ˜
+                                       (f (e) − f (e)), where the last equality comes from the construction of
+f ′ . This measures the percent change in the congestion of edge e. Then
+                                   ∑ ασ                               ∑ ϵ ασ
+                   ℓ′ (e) − ℓ(e) ≤           (f˜i (e) − fi (e))ℓ(e) +          [f˜i (e) + fi (e)]ℓ(e)
+                                    i
+                                        u(e)                          i
+                                                                        2 u(e)
+
+(Notice we got rid of the absolute value by using the fact fi (e) ≥ 0. This assumes edges are directed.)
+
+   Multiplying everything by −u and doing some substitutions, we get
+                                        ∑               ϵ   ∑
+                            Φ − Φ′ ≥ ασ    [Ci − C̃i ] − ασ   [Ci + C̃i ]
+                                        i
+                                                        2   i
+                                                   ∑
+Ci + C̃i ≤ 2Ci , so the last term is at most ϵασ       Ci .
+
+   The assumption that (18) is true implies that we get a measurable decrease in the potential function:
+
+                                     Φ − Φ′ ≥ ασ · ϵλ(u · ℓ) = Φαλϵσ.
+
+
+                                                       43
+                                                                                      ˜
+   We’ve conveniently forgotten that δ has to be small. In fact, δ < ϵ/4 implies σ f −fu α < ϵ/4. For now,
+we will assume that there exists a value ρ, such that (f˜(e) − f (e))/u(e) < ρ for all possible ﬂows f˜. For
+example, if a commodity corresponds to a route, then each commodity should “ﬁt” on a single path, i.e.
+ρ ≤ k. For general multicommodity ﬂow ρ can be unbounded. Techniques to overcome this problem
+were developed in [18, 19].
+                                                                     2
+    Using ρ, we can choose σ ≈ ϵ/αρ. This means that Φ − Φ′ ≈ λϵρ Φ. That is, Φ is halved in ρϵ−2 /λmin
+iterations (we use λmin because, of course, λ is not constant between iterations).
+
+   In fact, we don’t care about ∆Φ as much as ∆λ. But notice that if λ0 /2 ≤ λ ≤ λ0 , then eαλ0 /2 ≤ Φ ≤
+me . Thus, after αλ0 + log m ≈ αλ0 halvings of Φ, we’ve halved λ. This works out to αλ0 λ0ρ/2 ϵ−2 ≈
+   αλ0
+
+αρϵ−2 ≈ ϵ−3 λ−1
+              0 ρ log(m/ϵ) iterations.
+
+  What value do we use for our starting λ? If we put every commodity on its shortest path, λ ≤
+max f˜(e)/u(e) = ρ. This is enough to show convergence in polynomial time, assuming polynomial ρ.
+
+
+10.4     ϵ scaling
+
+The dependence on ϵ can be reduced to ϵ−2 by using ϵ-scaling. Assume we have a 1 + 2ϵ approximation
+                                         ∗               ∗
+already. Then our bounds on Φ are eαλ ≤ Φ ≤ meαλ (1+2ϵ) . (λ∗ is the optimal λ.) Thus we only
+need ϵαλ0 “halving” steps, getting rid of an ϵ−1 in the time analysis. In return, we must repeat the
+ϵ scaling step, but since each time ϵ decreases by a factor of two, the times add up to approximately
+2ϵ−2      −1
+  f inal λ0 ρ log(m/ϵ).
+
+   Remember that we were assuming ϵ is small (so that 1/(1 − ϵ) ≈ 1 + ϵ), so we can’t start ϵ scaling
+until we have a good approximation already, about ϵ = 1/6.
+
+
+10.5     Integer ﬂows
+
+If we view each virtual circuit as a commodity, we want each commodity on only one path — that is, we
+want σ = 1. To achieve
+                     ∑ this, we will ∑ move only one commodity at a time,
+                                                                        ∑ namely commodity i which
+maximizes Ci − C̃i .    Ci − C̃i ≥ ϵ Ci + ϵλΦ, so Cimax − C̃imax ≥ k1 [ϵ Ci + ϵλΦ]. Since we only deal
+with a single commodity, ρ′ , which we deﬁne to be the maximum overﬂow of a single commodity, is the
+appropriate parameter. Note that since ρ ≈ k, ρ′ ≈ 1. Now we let σ = min{1, 4αρϵ
+                                                                                 ′ }. This means we do
+
+1/k as much work, but we move k times as much.
+
+   It’s still possible to have σ < 1, but we just stop if that ever happens. The claim is that we still get a
+good approximation. The proof of this claim will be deferred to the next lecture. (What is the running
+time of the resulting algorithm ?)
+
+
+
+
+                                                     44
+11       Throughput Model
+
+Up to now, we have been using the Congestion Model, where all requests must be routed and the goal is
+to minimize the maximum relative overload. In the Throughput Model, we are allowed to reject requests,
+but we must satisfy the capacity constraints on each edge. The goal is then to maximize the amount of
+requests routed.
+
+
+11.1      Simple Example
+
+First, we will consider a simpliﬁed situation, so we can get the intuition for the general case. We will
+consider:
+
+   • All edges have capacity k;
+   • The proﬁt for any request is p = 2k = n;
+
+   • All requests have rate 1.
+
+
+11.1.1    The Algorithm
+
+The algorithm is simply:
+
+       For each request, calculate the shortest path (SP) with the costs ce (j) = 2λe (j) − 1 associated
+       with each edge, where λe (j) =# of circuits routed through edge e right before request j is
+       routed. If cost of SP > p reject the request, otherwise rout through SP.
+
+   Claim 1: Capacity constraints are satisﬁed.
+
+   Proof: This is an obvious consequence of the deﬁnition of cost of an edge and the fact that all
+requests have rate 1.
+
+   Claim 2: Online Proﬁt ≥ 2k+1
+                              1
+                                 -OPT proﬁt. First, we lower bound the on-line proﬁt by the cost and
+then upper bound the oﬀ-line proﬁt by the cost.
+
+   (i): Total cost ≤ 2× Total proﬁt.
+
+   Proof: We will prove by induction on the number of requests. At the beginning both costs and
+proﬁts are zero, so the result is obviously true. Suppose it is true up to j. For j + 1, if the path assigned
+
+
+
+
+                                                      45
+is Pj+1 we have
+∑                               ∑
+    [ce (j + 1) − ce (j)] =            [ce (j + 1) − ce (j)],                    since ce does not change on edges not used
+ e                            e∈Pj+1
+                                ∑
+                         =             [2λe (j+1) − 2λe (j) ]
+                              e∈Pj+1
+                                ∑
+                         =             [2λe (j)+1 − 2λe (j) ]
+                              e∈Pj+1
+                                ∑
+                         =             2λe (j) − |Pj+1 | + |Pj+1 |
+                              e∈Pj+1
+                                ∑
+                         =             (2λe (j) − 1) + |Pj+1 |
+                              e∈Pj+1
+                         ≤ 2p.
+                                                                            ∑
+where the inequality follows from the fact that request j + 1 was routed and e∈Pj+1 (2λe (j) − 1) is the
+cost of path Pj+1 and the number of edges in Pj+1 is bounded by the number of nodes in the graph
+n = p. QED.
+
+     (ii): Total missed proﬁt ≤ k× Total cost.
+
+   Proof Let O denote the set of job rejected by the on-line algorithm but used by OPT. Also, let l be
+the total number of jobs. Then, if j ∈ O we have
+                                                 ∑
+                                            p≤      ce (j).
+                                                            e∈Pj
+
+Summing up over O we get
+        ∑         ∑ ∑
+           p ≤           ce (j)
+           j∈O        j∈O e∈Pj
+                      ∑       ∑
+                  ≤                    ce (j)
+                        e j∈O:e∈Pj
+                      ∑       ∑
+                  ≤                    ce (l + 1),                   by the monotonicity of ce (·)
+                        e j∈O:e∈Pj
+                        ∑
+                  ≤ k         ce (l + 1),              since each edge can only route k circuits. QED.
+                         e
+
+
+   Wrapping up: If P is the total proﬁt achieved by OPT, and A is the set of requests routed by the
+on-line algorithm, we have
+                                ∑       ∑
+                           P ≤      p+      p
+                                         j∈O         j∈A
+                                            ∑                         ∑
+                                   ≤ k           ce (τ, l + 1) +            p,            by (ii)
+                                             e                        j∈A
+                                             ∑         ∑
+                                   ≤ 2k           p+            p,               by (i)
+                                            j∈A        j∈A
+                                                     ∑
+                                   ≤ (2k + 1)              p.                QED.
+                                                     j∈A
+
+
+
+                                                                46
+11.2     General Case
+
+Here, the presentation will follow [4].
+
+
+11.2.1    Problem Statement and Deﬁnitions
+
+The network is represented by a capacitated graph G(V, E, u). u(e) represents the capacity of each edge
+e. The input sequence is a collection of requests β1 , β2 , · · · , βk , where
+
+                                     βi = (si , ti , ri (τ ), T s (i), T f (i), ρ(i))
+
+and si , ti are the origin and destination of request i; ri (τ ) is the traﬃc rate at time τ required by request
+i; T s (i), T f (i) are the start and ﬁnish time of request i; ρ(i) is the proﬁt of request i;
+
+    We will deﬁne ri (τ ) = 0 for τ ∈
+                                    / [T s (i), T f (i)]. We also deﬁne T (i) = T f (i) − T s (i), the duration of
+request i, T = max1≤j≤k T (j), the maximum duration of requests, and Pi to be the (si , ti )-path assigned
+to request i. If request i was rejected, we set Pi = ∅.
+
+   The relative load on edge e just before considering the j-th request (i.e., before assigning a path to
+request j, but after assigning a path to request j − 1) is deﬁned by
+                                                             ∑ ri (τ )
+                                               λe (τ, j) =                .
+                                                             i<j
+                                                                   u(e)
+
+Since we require that the capacity constraints be satisﬁed,
+                                                     ∑      we must have λe (τ, j) ≤ 1, ∀τ, e ∈ E, 1 ≤ j ≤
+k. The goal is to maximize the total proﬁt, i.e, max i:Pi ̸=∅ ρ(i).
+
+   The algorithm must be on-line in the sense that the routing or rejecting of βi is done at time T s (i)
+without knowledge of future requests.
+
+   We will only consider proﬁts that do not vary much from proportional to the bandwidth delay
+product, in the sense that for any connection βj and rj (τ ) ̸= 0,
+
+                                                   1     ρ(i)
+                                             1≤      .            ≤ F.
+                                                   L rj (τ )T (j)
+
+where L is the maximum number of hops that a rout can have. F is just a constant that bounds the
+amount of variation. Intuitively it is clear that we need some kind of restriction on the relative proﬁts
+of the requests, otherwise we can always come up with a sequence of moderate proﬁt requests that
+“exhausts” the resources followed by a giant proﬁt request (say 2(sum of all previous proﬁts) ) making
+the competitive ratio tend to 0.
+
+   We also deﬁne
+                                                  µ = 2LT F + 1
+and assume that
+                                                        mine {u(e)}
+                                                rj ≤                .
+                                                           log µ
+This means that the requested rates are signiﬁcantly smaller than the minimum capacity link in the
+network. This requirement is needed to get on-line algorithms with polylogarithmic competitive ratios
+[4].
+
+
+
+                                                           47
+11.2.2   The Admission Control and Routing Algorithm
+
+For each edge e and time τ , deﬁne the cost function
+
+                                             ce (τ, j) = u(e)(µλe (τ,j) − 1).
+
+The algorithm routes requests βj on a path that is small w.r.t. a weighted average of these costs. For
+                                                  ∑ rj (τ )
+each edge e ∈ Pj , e’s contribution to the cost is τ u(e)   ce (τ, j). If there exists a path Pj s.t.
+
+                                               ∑ rj (τ )
+                                                         ce (τ, j) ≤ ρ(j),
+                                                 u(e)
+                                             e∈Pj ,τ
+
+then this path is used to rout βj otherwise βj is rejected.
+
+   In the analysis of the algorithm we proved two claims:
+
+ Claim 1:The algorithm does not violate the capacity constraints.
+
+ Claim 2: The proﬁt achieved by the algorithm is a 2 log1µ+1 -fraction of the proﬁt achieved by the
+     optimal oﬀ-line algorithm.
+
+    Claim 1: Intuitively, the capacity constraints are satisﬁed because when an edge is close to satura-
+tion, its cost is so high that the algorithm will not use it. Recall that requests have rates much smaller
+than min u(e) and thus a request cannot saturate an edge with small load.
+
+     Proof of Claim 1: Deﬁne A = {i : Pi ̸= ∅}, i.e., the set of routed requests. For the sake of
+contradiction, let βj be the ﬁrst request to cause an overﬂow. Then, for some e ∈ E and T s (j) ≤ τ ≤
+T f (j),
+
+                                                  rj (τ )
+                                 λe (τ, j) > 1 −
+                                                   u(e)
+                                                    1                                 u(e)
+                                             > 1−        ,          since rj (τ ) ≤         .
+                                                  log µ                               log µ
+Then,
+
+                                 ce (τ, j)
+                       rj (τ )               = rj (τ )(µλe (τ,j) − 1)
+                                  u(e)
+                                                                1
+                                             ≥ rj (τ )(µ1− log µ − 1)
+                                                       µ
+                                             = rj (τ )( − 1) = rj (τ )LT F
+                                                       2
+                                                                      1     ρ(i)
+                                             ≥ ρ(j),             since .             ≤ F.
+                                                                      L rj (τ )T (j)
+
+This contradicts the assumption that βj was routed. QED.
+
+    Claim 2: To prove the claim, we ﬁrst prove a lower bound on the total proﬁt of the on-line algorithm
+in terms of the link costs, then we prove an upper bound on the proﬁt obtained by an optimal oﬀ-line
+algorithm on requests rejected by the on-line algorithm, in terms of the link costs, then, ﬁnally, we link
+all together to get the desired result.
+
+
+                                                           48
+  Proof of Claim 2: The proof is a bit long, but the ideas are simple, and I’ll try to make them clear
+whenever possible.
+
+    (i) The total proﬁt achieved by the online algorithm is lower bounded by the cost of the links as
+follows:                                 ∑        ∑∑
+                                 2 log µ   ρ(j) ≥        ce (τ, k + 1).
+                                                              j∈A              τ     e
+
+This should be intuitively clear, since we only routed requests, when the proﬁt exceeded the cost. The
+log µ constant comes from the requirement rj (τ ) ≤ u(e)/ log µ.
+
+   The proof proceeds by induction on k. For k = 0 both sides are 0 and the inequality holds. Now,
+suppose it holds for k = j. We only need to show that the increase in cost is smaller than 2ρ(j) log µ.
+Since rejected requests add 0 to both sides, we need only consider requests βj that are routed. For these
+requests we need to show:
+                               ∑∑
+                                      [ce (τ, j + 1) − ce (τ, j)] ≤ 2ρ(j) log µ.
+                                             τ       e
+
+
+     For an edge e ∈ Pj , we have
+                                                                                                  rj (τ )
+                                     ce (τ, j + 1) − ce (τ, j)          =      u(e)µλe (τ,j) (µ u(e) − 1)
+                                                                        ≤ µλe (τ,j) rj (τ ) log µ
+                                                                                     rj (τ )
+                                                                        = (ce (τ, j)          + rj (τ )) log µ.
+                                                                                     u(e)
+The inequality follows from rj (τ ) ≤ u(e)/ log µ and the fact that 2x − 1 ≤ x for 0 ≤ x ≤ 1. The last
+equality follows from the deﬁnition of ce (τ, j). Summing up on e and τ we get
+∑∑                                                 ∑
+       [ce (τ, j + 1) − ce (τ, j)] ≤ log µ(ρ(j) +    |Pj |rj (τ ))
+ τ     e                                                                  τ
+                                                                        ∑ ρ(j)                                        ρ(j)
+                                             ≤ log µ(ρ(j) +                            ),              since 1 ≤                 and |Pj | ≤ L,
+                                                                          τ
+                                                                               T (j)                               LT (j)rj (τ )
+                                             ≤ 2ρ(j) log µ.                   QED.
+
+
+∑ (ii): Let O be the set of requests
+                                ∑     routed ∑
+                                             by OPT
+                                                 ∑ but not by on-line, so that the lost proﬁt ′
+                                                                                                     is
+  j∈O ρ(j). Then, we will prove   j∈O ρ(j) ≤   τ   c
+                                                  e e (τ, k + 1). If request j ∈ O, then if Pj  is the
+path used by OPT,
+                                     ∑∑                      rj (τ )
+                  ρ(j)       ≤                   ce (τ, j)
+                                                             u(e)
+                                     τ   e∈Pj′
+                                     ∑∑                           rj (τ )
+                             ≤                   ce (τ, k + 1)            ,                 by the monotonicity of ce (τ, ·).
+                                                                  u(e)
+                                     τ   e∈Pj′
+
+Summing over j, we get
+     ∑                ∑∑                                 ∑          rj (τ )
+           ρ(j)   ≤                  ce (τ, k + 1)
+                         τ       e                                ′
+                                                                    u(e)
+     j∈O                                             j∈O,e∈Pj
+                      ∑∑
+                  ≤                  ce (τ, k + 1),                    since OPT cannot exceed the capacity of edge e. QED.
+                         τ       e
+
+
+                                                                              49
+   Wrapping up: If P is the proﬁt achieved by OPT, we have
+                             ∑          ∑
+                    P ≤          ρ(j) +     ρ(j)
+                                j∈O             j∈A
+                                ∑∑                             ∑
+                            ≤             ce (τ, k + 1) +            ρ(j),          by (ii)
+                                 τ    e                        j∈A
+                                          ∑              ∑
+                            ≤ 2 log µ           ρ(j) +         ρ(j),            by (i)
+                                          j∈A            j∈A
+                                                 ∑
+                            ≤ (2 log µ + 1)            ρ(j).                 QED.
+                                                 j∈A
+
+
+
+   Since µ = 2LT F + 1 and L = O(n), we get that on-line achieves a fraction of 1/O(log n) of the proﬁt
+achieved by OPT.
+
+
+
+
+                                                         50
+12        Online Bipartite Matching Made Simple
+
+In this section we review an online algorithm for bipartite matching. The algorithm appeared ﬁrst in [16].
+We will follow a simpler proof presented in [11].
+
+   Given bipartite graph G = (U, V, E) (where vertices of one part is given in online fashion), and
+we want to match the maximum number of vertices in U with vertices in V . This is useful for many
+applications, e.g. online advertising, where you match keywords to bidders.
+
+    More formally, given G(U, V, E), a node u ∈ U arrives in an online fashion (note that vertices on V
+are ﬁxed and given from beginning). As u arrives, all edges (u, v) ∈ E are revealed. If v is not matched,
+and (u, v) ∈ E, we can choose to match it with u. The objective is to maximize the number of nodes
+matched. (Note that this means we want to maximize our competitive ratio). Below, we will adopt the
+convention of writing the u nodes on the left and the v nodes on the right.
+
+    First of all, note that the greedy deterministic algorithm (in which by arriving vertex u, we will
+match it to the ﬁrst eligible node) will get 12 competitive ratio. Firstly note that it will always gets 12
+competitive ratio, since the output of this algorithm is always a maximal matching, which always has the
+size half of the maximum matching. Also it will not get better than 1/2 competitive ratio, since assume
+bipartite graph G(U, V, E), where U = {u1 , u2 }, V = {v1 , v2 }, and E = {(u1 , v1 ), (u1 , v2 ), (u2 , v1 )}.
+When vertex u1 arrives online, the greedy algorithm will match it to v1 , and thus it cannot match u2 ,
+however in the optimum algorithm both u1 and u2 will be matched.
+
+     The algorithm we’re going to discuss is called Ranking. The procedure is as follows: initially, choose
+a random permutation σ for the ﬁxed vertices V . We think of this as a ranking. Then, upon arrival
+of a vertex u on the left side, let N ′ (u) be set of neighbors of u that have not been matched yet. If
+N ′ (u) ̸= ∅, match u with the node in N ′ (u) with the lowest rank according to σ.
+
+    We denote the output of the algorithm as Ranking(G, π, σ) where π is the arrival order of u and σ
+is the permutation of the right side nodes.
+
+    We claim that ranking has a competitive ratio of c = 1 − 1/e. The basic strategy of our proof is to
+show that if Ranking fails to match a node, it must, in expectation, have matched most of the nodes
+before it. In order to understand what the algorithm does in expectation, we need to see how the results
+change when we change the permutation σ. To this end, we will prove three lemmas. We ﬁrst make an
+essentially structural observation about what happens when we remove a node from the v nodes. Note
+that without loose of generality we can assume that G has a perfect matching. (If there were extra
+unmatched nodes, then this can only help online, because matching to an extra node doesn’t take away
+any options from the online algorithm. This would increase the competitive ratio, which we don’t care
+about because we’re doing a lower bound). Let m∗ be this perfect matching and by v = m∗ (u), we mean
+in the perfect matching vertex v is matched to vertex u.
+
+Lemma 12.1 Let x be a vertex in V and H = G − {x}. Let σH be the ranking of H induced by σ, and
+πH be the ordering induced by π. If Ranking(H, πH , σH ) ̸= Ranking(G, π, σ), then they diﬀer by a single
+alternating path. (An alternating path is a path with edges alternately belonging to Ranking(H, πH , σH )
+and Ranking(G, π, σ).)
+
+Proof :
+
+   Let u be the node that x was matched to in G. Since we removed x, the edge (u, x) is gone from
+H. So if u is matched, it will be matched to some x′ where σ(x) ≤ σ(x′ ). This means that the node
+  3 Presented by Sean Choi, Scribed by Anand Natarajan.
+
+
+
+
+                                                          51
+originally matched with x′ is matched to someone else, and so on. This gives us an alternating path,
+going from u to x′ to its new matching and so on. This is clear from ﬁgure14.
+
+
+                       U                   V                                   UH          VH
+
+
+             arrival                       x      random         arrival                    x      random
+             order                               ranking        order                            ranking
+                                                                           H                                H
+
+
+
+
+                                     Figure 14: Illustration of lemma 12.1.
+
+
+   Additionally, knowing that our algorithm always matches to the lowest-ranked available vertex, we
+can say the following:
+
+
+Lemma 12.2 Fix u ∈ U , let v = m∗ (u). If v is not matched at all in Ranking(G, π, σ), then u is
+matched to v ′ where σ(v ′ ) ≤ t = σ(u).
+
+
+Proof : This is just because the algorithm greedily matches nodes to the lowest ranked available match.
+Since v is always free, the only way that u was not matched to v was that it was matched to something
+better.
+
+  Now that we know what happens when we remove a right-hand vertex, let’s examine what happens
+when we put it back in in a diﬀerent slot in the ranking.
+
+
+Lemma 12.3 Let u ∈ U , v ∈ m∗ (u). Let σ ′ be a permutation and let σi be the permutation obtained from
+σ ′ by removing vertex v and putting it back so that its ranking is i. If v is not matched in Ranking(σ ′ ),
+then for every i, u is matched by Ranking(σi ) to a vertex vi where σi (vi ) ≤ t = σ ′ (v).
+
+
+Proof : Let m = Ranking(σ ′ ), mi = Ranking(σi ). If v was not matched in σ ′ , then we can just remove
+it to get a permutation σ ′′ without changing the behavior of the algorithm at all. Now, σ ′′ is equal to
+σi with the ith vertex removed. Thus, according to lemma 12.1, the matchings diﬀer by an alternating
+path. If we recall the proof of lemma 12.1, the alternating path started at v and was monotone, i.e.
+it traversed vertices in V in order of increasing rank in σi . Now, let v ′ = m(u). Then because the
+alternating path is monotone, σi (vi ) ≤ σi (v ′ ). Since we only perturbed the permutation by one vertex,
+|σi (v ′ ) − σ ′ (v ′ )| ≤ 1. Moreover, by lemma 12.2, σ ′ (v ′ ) < t. Therefore, σi (vi ) ≤ σ ′ (v ′ ) + 1 < t + 1, so
+σi (vi ) ≤ t.
+
+
+                                                           52
+  Now, we put all these together to show that if a vertex is not matched by online, then in expectation
+most of the previous vertices were matched, and thus we can expect good result from online algorithm.
+
+Lemma 12.4 ∑  Let xt be the probability that a vertex of rank t is matched by the algorithm. Then
+1 − xt ≤ (1/n) 1≤s≤t xs .
+
+  This is consistent with the intuition description provided earlier: the RHS is the expected number of
+matchings of nodes ranked ≤ t, and the LHS is the probability that the node with rank t is not matched.
+
+    To gain further intuition, think about the extreme case: xt is very small. In this case, the lemma says
+all the previous vertices are matched. So there’s a trade-oﬀ between matching this node and matching
+all its precedents. This is how we prove that in overall a lot of vertices will be matched: if so far a lot
+haven’t been matched, then the next one is very likely to be matched.
+
+   Before we prove this lemma, let’s see how ∑to get from here to our ﬁnal result. We can rewrite the
+lemma as St (1 + 1/n) ≥ 1 + St−1 where St = 1≤s≤t xs . Our performance is Sn . We want to consider
+the worst case, which is when Sn is minimum. That∑    happens when all our inequalities are equalities.
+                                                        t
+By induction, the worst we could possibly do is St = s=1 (1 − 1/(n + 1))s :
+                                         ∑
+                                         t−1
+                               St−1 =        (1 − 1/(n + 1))s
+                                         s=1
+                                         n
+                                  St ≥      (1 + St−1 )
+                                       n+1
+                                                 n ∑
+                                                     t−1
+                                         n
+                                     =       +           (1 − 1/(n + 1))s
+                                       n + 1 n + 1 s=1
+                                          ∑
+                                          t
+                                     =n     (1 − 1/(n + 1))s
+                                          s=1
+
+This is equal to n(1 − 1/e) n → ∞, and thus we get 1 − 1e competitive ratio.
+
+   Now all that remains is to prove the lemma.
+
+Proof :
+
+   We ﬁrst give an incorrect but intuitively correct proof. This was the original proof by Karp, Vazirani,
+and Vazirani, and it stood thus for 17 years before somebody noticed the error. That shows how subtle
+the issue is.
+
+   Let v ∈ V whose rank is t. Let u be such that v = m∗ (u). Let Rt−1 ⊂ U be nodes matched by
+                                                ∑t−1
+Ranking to V with rank ≤ t − 1. E[|Rt−1 |] = s=1 xs . If v is not matched, then by lemma 12.2,
+                                                                           ∑t−1
+u ∈ Rt−1 . If u and Rt−1 were independent, then P [u ∈ Rt−1 ] = |Rt−1 |/n = s=1 xs (1/n) which would
+prove our lemma. However, our procedure for choosing u starts by choosing t: given a permutation,
+choosing t corresponds to a vertex which then gives us u. So u depends on t and σ. Thus, u is not
+independent from t and thus from Rt−1 .
+
+   We correct this by using lemma 12.3, where we removed the dependence on v by removing v from σ ′ .
+Given σ, let σ ′ be a permutation obtained by choosing v ∈ V at random and moving it back, so that its
+rank is t. Consider Ranking(σ ′ ). Let u be such that v = m∗ (u). By lemma 12.3, if v is not matched by
+Ranking(σ ′ ), then u is matched by Ranking(σ) to a vertex ṽ such that σ(ṽ) ≤ t. This is equivalent to
+saying that u ∈ Rt . Now u is independent of σ and hence Rt , so the argument presented above works.
+
+
+
+                                                     53
+    To put this all in perspective: the simple (deterministic) algorithm already had a competitive ratio
+of 1/2, so we did all this work to improve that up to 1 − 1/e ≈ 0.632.
+
+
+
+
+                                                  54
+References
+ [1] Susanne Albers. On randomized online scheduling. In STOC, pages 134–143, 2002.
+ [2] N. Alon and Y. Azar. On-line Steiner trees in the Euclidian plane. Discr. & Comp. Geometry,
+     10(2):113–121, 1993.
+ [3] J. Aspnes, Y. Azar, A. Fiat, S. Plotkin, and O. Waarts. On-line machine scheduling with applications
+     to load balancing and virtual circuit routing. J. Assoc. Comput. Mach., 44(3):486–504, 1997.
+ [4] B. Awerbuch, Y. Azar, and S. Plotkin. Throughput competitive on-line routing. In Proc. 34th IEEE
+     Annual Symposium on Foundations of Computer Science, pages 32–40, November 1993.
+ [5] Baruch Awerbuch and Yossi Azar. Buy-at-bulk network design. In Proceedings of the 38th IEEE
+     Symposium on Foundations of Computer Science, pages 542–547, 1997.
+ [6] Baruch Awerbuch, Yossi Azar, Serge A. Plotkin, and Orli Waarts. Competitive routing of virtual
+     circuits with unknown duration. J. Comput. Syst. Sci., 62(3):385–397, 2001.
+ [7] Y. Azar, B. Kalyanasundaram, S. Plotkin, K. Pruhs, and O. Waarts. On-line load balancing of
+     temporary tasks. J. Algorithms, 22(1):93–110, 1997.
+ [8] Y. Azar, S. Naor, and R. Rom. The competitiveness of on-line assignments. Journal of Algorithms,
+     18:221–237, 1995.
+ [9] Yossi Azar, Andrei Z. Broder, and Anna R. Karlin. On-line load balancing (extended abstract). In
+     FOCS, pages 218–225, 1992.
+[10] Y. Bartal, A. Fiat, H. Karloﬀ, and R. Vohra. New algorithms for an ancient scheduling problem.
+     In Proc. 24th Annual ACM Symposium on Theory of Computing, 1992.
+[11] Benjamin Birnbaum and Claire Mathieu. On-line bipartite matching made simple. SIGACT News,
+     39(1):80–87, March 2008.
+[12] A. Fiat, R. Karp, M. Luby, L. McGeoch, D. Sleator, and N. Young. Competitive paging algorithms.
+     Journal of Algorithms, 12:685–699, 1991.
+[13] R.L. Graham. Bounds for certain multiprocessing anomalies. Bell System Technical Journal,
+     45:1563–1581, 1966.
+[14] D. Johnson. Fast algorithms for bin packing. Journal of Computer and System Sciences, 8:272–314,
+     1974.
+[15] D. Karger, S. Phillips, and E. Torng. A better algorithm for an ancient scheduling problem. In
+     Proc. 5th ACM-SIAM Symposium on Discrete Algorithms, 1994.
+[16] R. M. Karp, U. V. Vazirani, and V. V. Vazirani. An optimal algorithm for on-line bipartite matching.
+     In Proceedings of the twenty-second annual ACM symposium on Theory of computing, STOC ’90,
+     pages 352–358, New York, NY, USA, 1990. ACM.
+[17] P. Klein, S. Plotkin, C. Stein, and É. Tardos. Faster approximation algorithms for the unit capacity
+     concurrent ﬂow problem with applications to routing and ﬁnding sparse cuts. SIAM Journal on
+     Computing, 23(3):466–487, June 1994.
+[18] T. Leighton, F. Makedon, S. Plotkin, C. Stein, É. Tardos, and S. Tragoudas. Fast approximation
+     algorithms for multicommodity ﬂow problems. J. Comp. and Syst. Sci., 50:228–243, 1995. (Invited
+     paper).
+
+
+                                                   55
+[19] S. Plotkin, D. Shmoys, and É. Tardos. Fast approximation algorithms for fractional packing and
+     covering problems. Math of Oper. Research, 20(2):257–301, 1995.
+
+[20] Prabhakar Raghavan and Clark D. Thompson. Randomized rounding: a technique for provably
+     good algorithms and algorithmic proofs. Combinatorica, 7(4):365–374, 1987.
+
+[21] F. Shahrokhi and D. Matula. The maximum concurrent ﬂow problem. J. Assoc. Comput. Mach.,
+     37:318–334, 1990.
+
+[22] D. Sleator and R. Tarjan. Amortized eﬃciency of list update and paging rules. Communications of
+     ACM, 28:202–208, 1985.
+
+[23] A. Yao. New algorithms for bin packing. Journal of ACM, 27:207–227, 1980.
+
+
+
+
+                                                56
+

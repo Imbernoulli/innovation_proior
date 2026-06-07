@@ -1,8 +1,9 @@
 OK, let me think this through from scratch. I have `n` cities, all pairwise distances, and the
 distances are metric — nonnegative, symmetric, and they obey `d(x,y) <= d(x,z) + d(z,y)`. I want the
 shortest tour that visits every city once and comes home. Finding it exactly is hopeless in
-polynomial time. So I'm not chasing the optimum; I'm chasing a *guarantee*: a tour I can build fast
-and prove is never more than some fixed factor `c` times the optimal length `OPT`, on every instance.
+polynomial time unless P = NP. So I'm not chasing the optimum; I'm chasing a *guarantee*: a tour I can
+build fast and prove is never more than some fixed factor `c` times the optimal length `OPT`, on every
+instance.
 
 And right away I notice that the hard part isn't producing *a* tour — any ordering of the cities is a
 tour. The hard part is the inequality. To say "my tour `<= c * OPT`" I need a number I can actually
@@ -10,12 +11,12 @@ compute that is provably `<= OPT`, because I can never compute `OPT` itself. So 
 what lower bound on `OPT` do I have that's also polynomial-time?
 
 Let me stare at the structure of a tour. A tour is a Hamiltonian cycle — `n` edges, every vertex
-degree 2, connected. Now do something violent to it: delete one edge. What's left is a path through
-all `n` cities — `n-1` edges, connected, no cycle. That's a spanning tree. So *the optimal tour with
-one edge removed is a spanning tree*, and its cost is `d(OPT) - d(e) <= d(OPT)`. The cheapest spanning
-tree, the MST, is no more expensive than that one, so
+degree 2, connected. Now do something violent to an optimal tour `C*`: delete one edge `e`. What's
+left is a path through all `n` cities — `n - 1` edges, connected, no cycle. That's a spanning tree.
+Its cost is `d(C*) - d(e)`, which is certainly at most `d(C*) = OPT`. The cheapest spanning tree, the
+MST, is no more expensive than that one, so
 
-    d(MST) <= d(OPT - e) <= d(OPT).
+    d(MST) <= d(C*) - d(e) <= d(C*) = OPT.
 
 And the MST I *can* compute in polynomial time, Prim or Kruskal. So there it is — my lower-bound
 handle on `OPT` is the MST. Everything I prove from here is going to be measured against `d(MST)`,
@@ -87,10 +88,10 @@ general (non-bipartite) graph in polynomial time. So the step is constructive.
 
 And actually I've seen this exact move before, in a different problem. The Chinese postman problem —
 traverse every edge of a graph by the shortest closed walk — has precisely this shape: the graph
-fails to be Eulerian only because of its odd-degree vertices, and the way Edmonds and Johnson (1973),
-and Christofides (1973), handle it is to add a minimum-weight perfect matching on the odd-degree
-vertices to restore parity. I'm transplanting that device: there it patched a graph so every edge
-could be traversed; here it patches the MST so a covering walk exists. Same parity surgery, new host.
+fails to be Eulerian only because of its odd-degree vertices, and the early solutions patch that
+failure by adding a minimum-weight matching on the odd-degree vertices to restore parity. I'm
+transplanting that device: there it patched a graph so every edge could be traversed; here it patches
+the MST so a covering walk exists. Same parity surgery, new host.
 
 So the construction is: take `M`, take a minimum-weight perfect matching `P` on its odd-degree
 vertices `O`, throw the edges of `P` together with the edges of `M` into one multigraph `H` (if an
@@ -108,36 +109,38 @@ on the matching is the entire ballgame.
 perfect matching on `O` that's cheap; `P` is at most that. Where do I find a cheap perfect matching
 on `O`? I should mine it out of `OPT` itself, since `OPT` is the thing I'm comparing against.
 
-I need a comparison object. Look only at the vertices in `O`, and let `N*` be a shortest cycle
-through those vertices. I do not need to compute `N*`; I only need it for the bound. Why is it cheap
-relative to `OPT`? Walk the optimal tour and skip every city not in `O`. By the triangle inequality,
-that gives a feasible cycle on `O` whose cost is at most `d(OPT)`. Since `N*` is the cheapest cycle on
-`O`, `d(N*) <= d(OPT)`. And `N*` has an even number of edges, because `|O|` is even.
+List the vertices of `O` in the order the optimal tour visits them: `o_1, o_2, ..., o_k`, wrapping
+around from `o_k` back to `o_1`. Between `o_i` and `o_{i+1}` on the optimal tour there may be a whole
+path through cities not in `O`. Replace that whole path by the direct edge `{o_i, o_{i+1}}`. The
+triangle inequality says the direct edge costs no more than the path it replaces. Do that for every
+gap between consecutive odd vertices. I get a cycle `C_O` on exactly the vertices in `O`, and its
+cost is at most the cost of the optimal tour:
 
-Now 2-color the edges of that cycle alternately, the way you'd 2-color the edges of an even cycle —
-odd-position edges one color, even-position edges the other. Because `|O|` is even, this works: the
-colors alternate consistently all the way around. Each color class touches every vertex of `O`
-exactly once (every vertex of a cycle sits between one edge of each color). So each color class is a
-*perfect matching* on `O`. Call them `N1` and `N2`. Together they partition all the edges of the
-cycle, so
+    d(C_O) <= d(OPT).
 
-    d(N1) + d(N2) = d(N*).
+Now `k = |O|` is even, so `C_O` has an even number of edges. Color its edges alternately: odd-position
+edges one color, even-position edges the other. Because the cycle length is even, the colors match
+when I wrap around. Each color class touches every vertex of `O` exactly once: every vertex of the
+cycle has two incident cycle edges, one of each color. So each color class is a perfect matching on
+`O`. Call them `N1` and `N2`. Together they partition the cycle edges, so
+
+    d(N1) + d(N2) = d(C_O).
 
 One of the two is at most the average:
 
-    min(d(N1), d(N2)) <= (d(N1) + d(N2))/2 = d(N*)/2.
+    min(d(N1), d(N2)) <= (d(N1) + d(N2))/2 = d(C_O)/2.
 
 And `P`, the minimum perfect matching on `O`, is no more expensive than either `N1` or `N2` — they're
 both perfect matchings on `O`, and `P` is the cheapest:
 
-    d(P) <= min(d(N1), d(N2)) <= d(N*)/2 <= d(OPT)/2.
+    d(P) <= min(d(N1), d(N2)) <= d(C_O)/2 <= d(OPT)/2.
 
-There it is. The `d(P) <= d(OPT)/2` I was hoping for is real, and the reason is genuinely pretty: a
-tour on an even vertex set is *two* perfect matchings stacked together, so the cheaper of the two
-costs at most half the tour, and my matching beats even that. The factor of 1/2 wasn't an assumption —
-it fell out of splitting a cycle into two matchings.
+There it is. The `d(P) <= d(OPT)/2` I was hoping for is real, and the reason is genuinely pretty: the
+optimal tour, after shortcutting onto the even set `O`, is two perfect matchings stacked together.
+The cheaper one costs at most half that shortcut cycle, and my minimum matching beats even that.
+The factor of 1/2 wasn't an assumption; it fell out of splitting an even cycle into two matchings.
 
-Let me make sure I didn't cheat on the parity of the split. The cycle `N*` has an even number of
+Let me make sure I didn't cheat on the parity of the split. The cycle `C_O` has an even number of
 edges precisely because `|O|` is even; if `|O|` were odd the alternating 2-coloring would clash when
 it wrapped around and the color classes wouldn't be matchings. But `|O|` *is* even by the handshake
 lemma — the same fact that let `P` exist in the first place. The two places I needed `|O|` even are
@@ -166,6 +169,7 @@ from networkx.utils import not_implemented_for
 
 
 @not_implemented_for("directed")
+@nx._dispatchable(edge_attrs="weight")
 def christofides(G, weight="weight", tree=None):
     """3/2-approximation for metric TSP on a complete graph G with the triangle inequality."""
 
@@ -193,9 +197,10 @@ def christofides(G, weight="weight", tree=None):
     L = G.copy()
     L.remove_nodes_from([v for v, degree in tree.degree if not (degree % 2)])
 
-    # Step 3: minimum-weight perfect matching on O. min_weight_matching transforms
-    # weights to max_weight + 1 - w and runs Edmonds' blossom via max_weight_matching
-    # with maxcardinality=True; on complete even O this is perfect. d(matching) <= OPT/2.
+    # Step 3: minimum-weight maximum-cardinality matching on O. min_weight_matching
+    # sets new_weight = (max_edge_weight + 1) - original_weight and calls
+    # max_weight_matching with maxcardinality=True; on complete even O this is perfect.
+    # The even-cycle split above gives d(matching) <= OPT/2.
     MG = nx.MultiGraph()
     MG.add_edges_from(tree.edges)          # the tree
     edges = nx.min_weight_matching(L, weight=weight)
@@ -225,9 +230,9 @@ closed covering walk, which needs all-even degrees (Euler); doubling the tree ac
 a full extra copy of the MST, giving factor 2. The slack is that doubling fixes parity everywhere,
 when only the odd-degree vertices `O` are broken. Flipping the parity of exactly `O` is what a perfect
 matching on `O` does — one added edge per `O`-vertex — and `|O|` is even by the handshake lemma so it
-exists; take the cheapest one. Its cost is at most `OPT/2`, because the cheapest cycle on `O` costs no
-more than the shortcut of `OPT` onto `O`, and that even cycle splits into two perfect matchings whose
-total is its length. The cheaper one is at most half, and the minimum matching beats it. MST plus
-matching is even-degree and connected, so it has an Eulerian circuit of cost
-`d(MST) + d(P) <= OPT + OPT/2`, and shortcutting yields a
-Hamiltonian tour of cost at most `(3/2) OPT`.
+exists; take the cheapest one. Its cost is at most `OPT/2`, because shortcutting `OPT` onto `O`
+produces an even cycle of cost no more than `OPT`, and that even cycle splits into two perfect
+matchings whose total is its length. The cheaper one is at most half, and the minimum matching beats
+it. MST plus matching is even-degree and connected, so it has an Eulerian circuit of cost
+`d(MST) + d(P) <= OPT + OPT/2`, and shortcutting yields a Hamiltonian tour of cost at most
+`(3/2) OPT`.

@@ -1,0 +1,316 @@
+—_ 4
+
+Harvard Uy, jee & CHAPTER III
+POSITIVE RESULTS
+
+YNept ra iy athemat _
+
+The Toom algorithm for multiplication.
+
+A. L. Toom [14] has shown that for every n, there is a logic net
+
+of no more than CnC. Vlog mR
+
+Rc, components which realizes the multiplica-
+
+tion of two arbitrary n-digit binary numbers, for some constants cy,
+
+c Implicit in his construction is an algorithm for carrying out
+
+2°
+multiplication that is considerably more efficient than the standard
+multiplication algorithm, provided the numbers of digits in the fac-
+tors are sufficiently large. In fact, the main purpose of this chapter
+is to show that the Toom algorithm can be utilized by a multitape
+Turing machine to multiply any two n-digit numbers within n 2° tog @
+steps, for all n. We shall also show that the method can be extended
+to cover other computations besides multiplication, and derive some
+consequences concerning the relative difficulty of computing the radix
+expansions of real numbers in different radix bases (section 21). One
+result (20.1) concerning the rate at which a Turing machine can com-
+pute the radix expansions of algebraic numbers improves on a theorem
+of Hartmanis and Stearns [6].
+
+Toom's method (slightly modified) can be presented as follows.
+
+Suppose M and N are the integers to be multiplied, and suppose the
+
+* NH _
+base b expansions of M and N are Beat cHo and Vava-1°°* 9” respec
+
+tively. Thus
+
+===== END PAGE 01 =====
+52:
+
+n
+Mos } nbs, and
+k=0
+16.1.
+N= vb".
+k=0 k
+Choose integers q, r such that n +1 < a(x + 1) and divide the ex-
+pansions of m and n into r + 1 segments of q digits each. Thus, if
+a, is the number represented by the eh segment of M and 8. is the
+number represented by the ee segment of N, then
+-1
+= ‘y Wea?
+i=0 itkg
+16.2. k = 0,1,...,r,
+q-1l .
+i
+& = y v b
+k 4=0 itkg
+where we define y= Yc = 0 fork >n. Next define the two polynomials
+P(x) and Q(x) by
+r
+P(x) = J ax", and
+k=O
+16.3.
+
+'. Kk
+Am) = 7 Bx",
+k=0
+
+so that M = P(b1) and N = Q(b4). To find the product MN it is suffi-
+
+cient to find the coefficients of the polynomial P(x)Q(x) and evaluate
+
+===== END PAGE 02 =====
+16.4,
+
+16.5.
+
+53
+
+the polynomial at x = b¢. Fina the coefficients by first calculating
+
+the values
+
+m= Pk)
+k = 0,1,...,2r,
+
+nm, = Q(k)
+
+then finding the product my by applying the general method all over
+
+again, and finally solving for the ¥,'8 the system of equations
++ yk + yok? + 00. ty ke k = 0,1,...,2
+Yo Yy Yo nee Yor mn. sdyeee,2r.
+
+A near-optimal relationship between q and r is given by r = givlog a)
+where [x] is the greatest integer in x.
+
+Although Toom designed his logic net to multiply integers in radix
+notation it turns out the same method works for multiplying polynomials
+over the integers modulo 2; or more generally, polynomials over Zi
+where b is prime, or polynomials over any finite field. A multitape
+Turing machine can utilize the algorithm to multiply such polynomials
+(i.e. compute the function £ defined in 5.7) at the same rapid rate as
+for ordinary multiplication: T(n) <n 2° ase m
+
+It seems especially interesting that this type of multiplication
+can be performed so rapidly, since it is so easy to visualize the
+dependence of the output on the input (say for the case b = 2). Each
+successive output digit is a sum of products of the preceeding input
+
+symbols, and if each output calculation were independent of the others,
+
+the computing time would grow as n?, It is far from obvious that some
+
+===== END PAGE 03 =====
+54
+
+of the work used in generating early outputs can be used for later
+outputs as well, but in fact the method of Toom shows a great time
+savings can be affected by working on producing long sequences of
+outputs simultaneously.
+
+To adapt the Toom algorithm to polynomial multiplication, treat
+M = M(W) and N = N(W) as polynomials in the indeterminant W with
+coeffictents goes oH and VorreeeYy from Z- Thus equations 16.1
+hold when b is replaced by W. The a's and B.'s become polynomials
+in W of degree q ~ 1 or less so that 16.2 holds when b is replaced
+by W and 16.3 holds as it is. Thus P(x) = P(W,x) and Q(x) = Q(W,x)
+are polynomials in the two indeterminants W and x such that M=
+P(W,W2) and N= aww). In equations 16.4, k must be replaced by
+k*, where k* is the polynomial in W whose string of coefficients is
+the base b notation for the integer k. Thus 0*,1*,...,(2r)* are
+2x + 1 distinct polynomials none of whose degrees exceeds {log, (2x + 1)].
+Then the system of equations 16.5, with k replaced by k*, can be solved
+for the Y's as before, as we shall see in section 18. This is the
+step in the algorithm that requires b to be prime, since if b is not
+prime, then the polynomials over Zz, do not form an integral domain,
+and the system 16.5 may not have a unique solution.
+
+It is interesting that the time estimates derived here for carrying
+out the various parts of the algorithm for ordinary multiplication turn
+
+out to be essentially the same as the estimates made by Toom on the
+
+amount of equipment required by the logic net. A little thought shows
+
+===== END PAGE 04 =====
+18.
+
+63
+
+Yeplecing tic old macuine witu a new one with a larger alphabet of
+tape symbols. Each of the new tape symbols encodes a finite sequence
+of the old, so one step of the new machine does the work of several
+steps of the olc. The condition of no inputs does not hold for our
+multiplying machine, put the method of Hartmanis and Stearns can be
+made to apply anyway. All that is necessary is to have the multi-
+piying wachine encode segments of the input tape into tle more compact
+format as they are read in.
+
+4 5Vloc n
+
+Tne time bound f(a) < va 2 stated in theorem i7.1 requires
+that the machine put out product digits at the rate of one per machine
+cycle for some initial period of time. This is easily accomplished by
+attaching a large finite-state multiplier wnich multiplies by ‘table
+look-up until the subroutine is able to supply the first string of
+product digits.
+
+Thus the proef of 17.1 will be complete as soon as the inequality
+
+17.6 is established in section 19.
+
+Solution of the linear equations.
+
+The algorithm used to solve the system 16.5 of linear equations
+is the standard one of applying elementary row operations to the
+coefficient matrix until it is reduced to the identity matrix. We
+shall discuss this algorithm in some detail to show that it can be
+
+carried out sufficiently rapidly both for the case of integer muiti-
+
+plication and polynomial multiplication.
+
+===== END PAGE 13 =====
+18.1.
+
+64
+
+tt will be convenient to cast the discussion in general setting.
+
+Thus we assume the problem is to solve for the Y's the system
+
+2 a-1 _ P
+Yo + XY + x, Yo t -.. + Kp ¥y-1 = Y¥ys 2 = 1,2,...,0,
+
+where Ky oXysee- ok, and YyoYgoeee oY, are elements from some integral
+
+domain R. For the case of integer multiplication, R is the ring of
+ordinary integers, while for polynomial multiplication, R is the ring
+
+of polynomials in W over Z,, where b is prime.
+
+b
+
+Elementary row operations are applied to the coefficient matrix
+
+2 n-1
+
+1 xy xy wre xX
+2 n-1
+
+1 X. x aoe x
+
+Ln 2 “2 2
+i & 27 «ss 22
+
+n n n
+
+to transform it to the identity matrix. When these same row operations
+
+are applied in order to the column matrix
+
+re)
+
+Mf eee
+
+the result is a column matrix giving the values of Yor Yuin’ Since
+these values lie in R, it is always possible to choose the row opera-
+tions in such a way that all entries in the n x n matrix are in R
+
+after each step in the computation. One simply multiplies rows by
+
+suitably large members of R. It is less obvious, but nevertheless true,
+
+===== END PAGE 14 =====
+on
+wn
+
+that the entries in the matrix remain in R without any “extra” multi-
+plications. This fact will come out of the description of the algorithm
+below and we shall use it in the next section to keep the computation
+time down.
+
+In describing the row operations, we shall restrict our attention
+to the n * n matrix of X's, and ignore the column matrix. Notice that
+since Voor Yay all lie in R, the entries in the column matrix will
+automatically lie in R after each row operation has been applied, pro-
+vided the entries in the n x n matrix remain in R.
+
+Ie will be convenient to think of X, 0% peed, not as mombers of
+R, but as indeterminants or variables for polynomials with coefficients
+in R. The specific case we are interested in can then be obtained by
+substituting the proper values in R for the variables Ayo+-+>X)- We
+shall denote the set of all polynomials in the variables Xporee X
+with coefficients in R by REX, ++-%]- If P(X) is a polynomial in X
+with coefficients in RIX,,---.%,1, then P(X) is monic provided the
+coefficient of the highest power of X is 1; or, if K does not occur,
+then P(X) is monic exactly if it is the constant polynomial 1. Thus
+1 and X¥ + 3x,” are monic as polynomials in K, but xy + X5> and xa are
+not.
+
+The algorithm consists of n major steps. We denote by A. the
+result of applying the first k of these steps to the matrix A, k = 0,1,
+
+eee,n. We shall prove by induction on k that AY consists of four
+
+rectangular sub-matrices, as follows:
+
+===== END PAGE 15 =====
+44
+
+where I, is the k x k identity matrix, 0, is the (n - k) x k matrix of
+zeroes, Ny is ak * (n - k) matrix of polynomials over the integers,
+aad qT, is a (a - k) x (a - k) matrix whose (i - 9t2 entry is
+
+ph) py
+“keby ay) ’
+
+(k) ,. (k) k r 5
+Here Pia > Pegg aeees pt op are monic polynomials in X of de~
+grees 0,1,2,...,n - k - 1 with coefficients in RIX, >++->%]. Thus,
+
+2 is simply the polynomial 1.
+
+Notice that for k= 90, A= A, satisfies this hypothesis: for in
+
+in particular, P
+
+this case A, and Ty, coincide, and the polynomials PO xy... PO (x
+are successive powers of X.
+
+The. (k + 188 major step of the algorithm consists of the
+following.
+
+(i) Subtract the (k + pst row from each succeeding row, and
+appropriate multiples of the (k + pst row from each preceding row,
+so that each entry except the diagonal entry of the (k + 1)= column
+
+is 0. Then the entries of the rowk +i, i> 1, are
+
+F (k) p(k) (k) ,. ~ p® ry
+1 Prete eta? ~ Pee yy? cee PE Oy - PL yy):
++1
+
+But notice that for any monic polynomial P(X), we have P(X) - P(Y) =
+
+(X - Y)QCQ), where 9(X) is monic of degree one less than P(X) (and has
+
+===== END PAGE 16 =====

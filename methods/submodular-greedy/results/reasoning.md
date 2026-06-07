@@ -8,13 +8,13 @@ Let me write down what I actually know about f. It's monotone: bigger sets are w
 
 That's submodularity. Coverage has it: a set covers fewer *new* elements once more of the universe is already covered. Let me sit with this, because it's the only leverage I have.
 
-Here's the worry with greedy, made concrete. Suppose OPT is some size-k set O with value f(O), and greedy after a few steps has some set S that's "wrong" -- it shares nothing with O. Why shouldn't greedy be stuck? Well, monotonicity says f(S ∪ O) >= f(O), so all of OPT's value is still *reachable* from where greedy stands -- adding O's elements on top of S can only help. The elements of O are sitting right there in V, available to greedy. So at least *some* element must still carry a decent marginal gain. The question is how to turn "OPT is still reachable" into a number.
+The worry with greedy is concrete. Suppose OPT is some size-k set O with value f(O), and greedy after a few steps has some set S that's "wrong" -- it shares nothing with O. Why shouldn't greedy be stuck? Well, monotonicity says f(S ∪ O) >= f(O), so all of OPT's value is still *reachable* from where greedy stands -- adding O's elements on top of S can only help. The elements of O are sitting right there in V, available to greedy. So at least *some* element must still carry a decent marginal gain. The question is how to turn "OPT is still reachable" into a number.
 
-Let me try to lower-bound the gain greedy makes in one step. Greedy takes the single best marginal. In particular it does at least as well as adding any *one* specific element of O: for every o in O,
+Let me try to lower-bound the gain greedy makes in one step. Greedy takes the single best marginal. In particular it does at least as well as adding any *one* specific element of O; if o is already in S_i, then f(S_i + o) - f(S_i) is just 0, and monotonicity keeps greedy's gain non-negative. So for every o in O,
 
     f(S_{i+1}) - f(S_i) >= f(S_i + o) - f(S_i),
 
-where S_i is greedy's set at the start of round i. That's just the greedy rule -- it beat o, so it beat the best one too. Now, which o do I plug in? Picking "the best o" feels right but I have no handle on it. Let me instead not pick at all and *average* over all of O. Since the left side doesn't depend on o, averaging the right side over the |O| <= k elements only weakens it:
+where S_i is greedy's set at the start of round i. That's just the greedy rule. Now, which o do I plug in? Picking "the best o" feels right but I have no handle on it. Let me instead not pick at all. Since the left side doesn't depend on o, it is at least the average marginal over the |O| elements of O; because those marginals are non-negative and |O| <= k, replacing |O| by k only lowers the right side:
 
     f(S_{i+1}) - f(S_i) >= (1/k) * sum_{o in O} [ f(S_i + o) - f(S_i) ].
 
@@ -28,7 +28,7 @@ Each term here is a marginal of o_j on top of a set *bigger than* S_i. Diminishi
 
     f(S_i ∪ O) - f(S_i) <= sum_{o in O} [ f(S_i + o) - f(S_i) ].
 
-The sum of individual marginals dominates the joint gain. Wait -- that's exactly the inequality I wanted, and it points the right way: the right side of my averaging step is >= f(S_i ∪ O) - f(S_i). Chaining,
+The sum of individual marginals dominates the joint gain. Wait -- that's exactly the inequality I wanted, and it points the right way: after the 1/k averaging, I still get the 1/k-scaled joint gain. Chaining,
 
     f(S_{i+1}) - f(S_i) >= (1/k) [ f(S_i ∪ O) - f(S_i) ].
 
@@ -38,44 +38,78 @@ Now monotonicity closes it: S_i ∪ O contains O, so f(S_i ∪ O) >= f(O) = f(OP
 
 Let me stare at this for a second, because it's the whole ballgame. It says: every greedy step closes at least a 1/k fraction of the *remaining gap* to OPT. The gap to OPT shrinks geometrically. That's a contraction, and contractions I can solve.
 
-Let me name the gap a_i = f(OPT) - f(S_i). Rearrange the inequality:
+Equivalently, before naming the gap, I can write the same inequality as a concave-combination lower bound:
+
+    f(S_{i+1}) >= (1/k) f(OPT) + (1 - 1/k) f(S_i).
+
+So the next value is at least one fresh 1/k slice of OPT plus the remaining (1 - 1/k) share of what I already have. If I unroll that form for t additions, with S_0 empty and S_t after t rounds, the coefficients stack into a finite geometric sum:
+
+    f(S_t) >= [1 + (1 - 1/k) + ... + (1 - 1/k)^{t-1}] * f(OPT) / k
+           = [1 - (1 - 1/k)^t] f(OPT).
+
+The same thing is even cleaner as a gap recurrence. Let a_i = f(OPT) - f(S_i). Rearrange the inequality:
 
     f(OPT) - f(S_{i+1}) <= f(OPT) - f(S_i) - (1/k)[f(OPT) - f(S_i)]
     a_{i+1} <= (1 - 1/k) a_i.
 
-So the gap multiplies by (1 - 1/k) each round. After k rounds (greedy starts at S_1 = empty and returns S_{k+1}):
+So the gap multiplies by (1 - 1/k) each round. After k rounds (greedy starts at S_0 = empty and returns S_k):
 
-    a_{k+1} <= (1 - 1/k)^k a_1.
+    a_k <= (1 - 1/k)^k a_0.
 
-And a_1 = f(OPT) - f(empty) <= f(OPT), since f is non-negative. So
+And a_0 = f(OPT) - f(empty) <= f(OPT), since f is non-negative. So
 
-    f(OPT) - f(S_{k+1}) <= (1 - 1/k)^k f(OPT)
-    f(S_{k+1}) >= [ 1 - (1 - 1/k)^k ] f(OPT).
+    f(OPT) - f(S_k) <= (1 - 1/k)^k f(OPT)
+    f(S_k) >= [ 1 - (1 - 1/k)^k ] f(OPT).
 
-Now what is (1 - 1/k)^k? Use 1 - x <= e^{-x} with x = 1/k: (1 - 1/k)^k <= (e^{-1/k})^k = e^{-1} = 1/e. So
+Now what is (1 - 1/k)^k? If k = 1, it is zero. For k > 1, the tangent bound for log gives log(1 - x) <= -x on 0 < x < 1, so with x = 1/k,
 
-    f(S_{k+1}) >= (1 - 1/e) f(OPT) ≈ 0.632 f(OPT).
+    k log(1 - 1/k) <= -1,
+
+and therefore (1 - 1/k)^k <= e^{-1} = 1/e. So
+
+    f(S_k) >= (1 - 1/e) f(OPT) ≈ 0.632 f(OPT).
 
 There it is. The plain greedy algorithm -- take the maximum marginal gain, k times -- never returns less than (1 - 1/e) of the optimum, on *every* instance. No instance-dependent badness, no restarts, no luck. And nothing magical happened with e: it's purely the residue of a geometric (1 - 1/k) contraction compounded k times. The 1/k came from averaging over the k elements of OPT; the contraction came from "each step kills a 1/k share of the gap"; e is just where (1 - 1/k)^k lands.
 
-Let me make sure I didn't quietly need k = |O| exactly. I used |O| <= k when I divided by k in the averaging step -- dividing by k when |O| could be smaller only makes the lower bound smaller, so it's safe; the inequality still holds. Good. And every step used only the two structural facts: submodularity (for the termwise domination) and monotonicity (for f(S_i ∪ O) >= f(OPT)). Drop either and the chain breaks -- which tells me precisely the function class this lives on.
+Let me make sure I didn't quietly need k = |O| exactly. If O is empty, then monotonicity already makes f(empty) optimal and the guarantee is immediate. Otherwise I used |O| <= k when I divided by k in the averaging step -- dividing by k when |O| could be smaller only makes the lower bound smaller, because all marginals are non-negative, so it's safe; the inequality still holds. If k = 0 there is no averaging step, but then the only feasible set is empty and OPT is empty too, so the guarantee is trivial. Good. And every real step used only the two structural facts: submodularity (for the termwise domination) and monotonicity (for f(S_i ∪ O) >= f(OPT)). Drop either and the chain breaks -- which tells me precisely the function class this lives on.
 
-Two things nag at me, and I want to resolve both before writing code.
+Now I need to know whether this proof is merely conservative. The recurrence imagines a very specific failure mode: each greedy step captures exactly a 1/k fraction of the value still sitting in each optimal block, and then the same thing happens again. Coverage can realize that.
 
-First: is (1 - 1/e) the best constant, or an artifact of my loose analysis? Maximum coverage is itself a monotone-submodular maximization, and there's a hardness result that no polynomial algorithm beats (1 - 1/e) for max coverage unless P = NP (and in the value-oracle model, beating it needs exponentially many queries). So the bound my two-line argument produced is the *true* frontier -- the loss isn't slack in my proof, it's the wall. That's a relief: greedy isn't just good, it's optimal for this class.
+Take k optimal blocks B_1, ..., B_k, each of size N; choose N = k^k so all the slice sizes below are integers. The k sets I wish greedy would take are O_i = B_i, and together they cover kN elements. Inside each block B_i, carve disjoint slices P_{i,1}, ..., P_{i,k} with
 
-Second: I divided by k because |O| <= k -- I used that the constraint is a *cardinality* bound. What if the constraint were richer, say "S must be independent in a matroid" (partition budgets, a spanning constraint)? Then the averaging-over-O step gets shakier: I can no longer just smear greedy's one move against all of O uniformly, because greedy's feasible moves and O's elements interleave under the matroid's exchange structure. Working through the same engine under a general matroid, the clean (1/k)-per-step contraction degrades, and the guarantee one can squeeze out is only 1/2, not 1 - 1/e. So the cardinality case is special -- it's the uniform matroid, the most forgiving independence system -- and that's *why* it gets the sharper constant. Good to know where the 1 - 1/e lives and where it stops.
+    |P_{i,t}| = (N/k) (1 - 1/k)^{t-1},
 
-Now, code. The algorithm is almost embarrassingly direct, but the cost is in oracle calls: naive greedy evaluates the marginal of every remaining element every round, O(k m) evaluations of f, and f can be expensive. I notice I have an unused structural fact: marginals are *monotonically non-increasing* in the set they're conditioned on -- that's literally what submodularity says. So a marginal I computed for element e at an *earlier*, smaller S is an upper bound on e's marginal now. If I keep all the gains in a max-heap, the top is a possibly-stale upper bound. Re-evaluate just that top at the current S; if its refreshed gain is still at least every other (stale, hence upper-bound) entry, then by submodularity no other element can exceed it -- it's the true argmax this round, and I never touched the rest. Lazy evaluation. Same output as naive greedy, far fewer oracle calls.
+and let R_i be the leftover part of the block, of size N(1 - 1/k)^k. Now add k tempting cross-block sets
 
-Let me write both -- the oracle, the coverage instance, naive greedy, and the lazy version.
+    G_t = P_{1,t} ∪ P_{2,t} ∪ ... ∪ P_{k,t}.
+
+At the start, every O_i has value N, and G_1 also has value k * (N/k) = N. If the tie-break chooses G_1, then each block has exactly N(1 - 1/k) elements not yet covered. In round t, after G_1, ..., G_{t-1} have been chosen, any O_i has marginal
+
+    N(1 - 1/k)^{t-1},
+
+because it would cover the still-uncovered future slices in that block plus R_i. The cross-block set G_t has the same marginal, since it contributes one fresh slice from each of k blocks:
+
+    k * (N/k)(1 - 1/k)^{t-1} = N(1 - 1/k)^{t-1}.
+
+So the tie can keep sending greedy to G_t for t = 1, ..., k. Greedy's final coverage is
+
+    sum_{t=1}^k |G_t|
+      = N [1 + (1 - 1/k) + ... + (1 - 1/k)^{k-1}]
+      = kN [1 - (1 - 1/k)^k],
+
+while OPT takes O_1, ..., O_k and covers kN. The ratio is exactly 1 - (1 - 1/k)^k, which tends to 1 - 1/e. Tiny perturbations of the slice sizes can make the ties strict while moving the ratio by an arbitrarily small amount. So the proof is not hiding a better constant for this rule; the geometric loss is a real max-coverage obstruction.
+
+The pressure point is the constraint. I divided by k because every element of OPT was a comparable feasible single move under a cardinality budget. If the rule were richer -- "S must be independent in a matroid," say a partition budget or another exchange system -- then I cannot smear greedy's one move uniformly over all of O in the same clean way. Feasibility now depends on which elements are already in S. The matroid exchange axiom can still pair greedy's accepted elements with elements of an evolving copy of OPT, and submodularity lets those displaced optimal marginals be charged to greedy's marginals, but the charge gives a comparison of the form f(OPT) <= f(G) + f(G), not a k-step geometric contraction. That is why the same plain greedy instinct has a 1/2 guarantee under a general matroid while the cardinality case -- the uniform matroid -- gets the sharper 1 - 1/e.
+
+The code should mirror the proof. I need a value oracle, a coverage instance to make the oracle concrete, a tiny exhaustive checker so I can compare against OPT on a toy instance, and the selection routine whose only real decision is "scan all currently available elements and take the largest marginal." The proof itself is the plain max-marginal selector, so that is the code I should make runnable.
 
 ```python
-import heapq
+from itertools import combinations
+from math import e
 
 
-class SubmodularFunction:
-    """Monotone submodular f over a ground set of indices, as a value oracle."""
+class SetFunction:
+    """Value oracle over a ground set of element indices."""
     def __init__(self, ground_set):
         self.ground_set = list(ground_set)
 
@@ -83,12 +117,12 @@ class SubmodularFunction:
         raise NotImplementedError
 
     def marginal(self, e, S):
-        # f(S + e) - f(S); >= 0 for monotone f, non-increasing in S (submodular).
+        # f(S + e) - f(S)
         return self.value(S | {e}) - self.value(S)
 
 
-class MaxCoverage(SubmodularFunction):
-    """f(S) = | union of the sets indexed by S |. Non-neg, monotone, submodular."""
+class Coverage(SetFunction):
+    """f(S) = | union of the subsets indexed by S |."""
     def __init__(self, sets):
         super().__init__(range(len(sets)))
         self.sets = [set(s) for s in sets]
@@ -106,16 +140,32 @@ class MaxCoverage(SubmodularFunction):
         return len(self.sets[e] - covered)   # only newly covered elements
 
 
-def greedy(f, k):
-    """Take the maximum marginal gain k times. >= (1 - 1/e) f(OPT)."""
+def exact_best(f, k):
+    """Exhaustive optimum for tiny instances, used only as a checker."""
+    best_S, best_value = set(), f.value(set())
+    limit = min(k, len(f.ground_set))
+    for r in range(limit + 1):
+        for combo in combinations(f.ground_set, r):
+            S = set(combo)
+            value = f.value(S)
+            if value > best_value:
+                best_S, best_value = S, value
+    return best_S, best_value
+
+
+def select(f, k):
+    """Grow S by repeatedly adding the element with maximum marginal gain."""
+    if k < 0:
+        raise ValueError("k must be non-negative")
+
     S = set()
-    for _ in range(k):
-        best_e, best_gain = None, -1.0
+    for _ in range(min(k, len(f.ground_set))):
+        best_e, best_gain = None, 0
         for e in f.ground_set:                 # the argmax-marginal step
             if e in S:
                 continue
             g = f.marginal(e, S)
-            if g > best_gain:
+            if best_e is None or g > best_gain:
                 best_e, best_gain = e, g
         if best_e is None or best_gain <= 0:   # monotone f has plateaued
             break
@@ -123,30 +173,26 @@ def greedy(f, k):
     return S
 
 
-def lazy_greedy(f, k):
-    """Minoux's acceleration: a stale gain is an upper bound (diminishing
-    returns), so the heap top, if its fresh gain still tops the heap, is the
-    true argmax. Same output as greedy(), fewer oracle calls."""
-    S = set()
-    heap = []                                  # [-gain, element, size_when_evaluated]
-    for e in f.ground_set:
-        heapq.heappush(heap, [-f.marginal(e, S), e, 0])
+if __name__ == "__main__":
+    sets = [
+        {1, 2, 3, 8},
+        {1, 2, 3, 4, 5},
+        {1, 4, 6, 7},
+        {5, 6, 7, 8},
+        {2, 3, 9},
+    ]
+    f = Coverage(sets)
+    k = 2
 
-    while len(S) < k and heap:
-        neg_gain, e, evaluated_at = heap[0]
-        if e in S:
-            heapq.heappop(heap)
-            continue
-        if evaluated_at == len(S):             # fresh and on top => true argmax
-            heapq.heappop(heap)
-            if -neg_gain <= 0:
-                break
-            S.add(e)
-        else:                                  # stale upper bound: refresh, re-sift
-            heap[0][0] = -f.marginal(e, S)
-            heap[0][2] = len(S)
-            heapq.heapreplace(heap, heap[0])
-    return S
+    chosen = select(f, k)
+    opt, opt_value = exact_best(f, k)
+    chosen_value = f.value(chosen)
+    ratio = 1.0 if opt_value == 0 else chosen_value / opt_value
+
+    assert chosen_value >= (1 - 1 / e) * opt_value
+    print("selected", sorted(chosen), "value", chosen_value)
+    print("optimum ", sorted(opt), "value", opt_value)
+    print("ratio   ", round(ratio, 3))
 ```
 
-So the whole chain: f is monotone and submodular; greedy's one move beats adding any single element of OPT, so it beats the average over OPT; submodularity turns that average of single marginals into the joint gain f(S_i ∪ O) - f(S_i), and monotonicity lifts that to f(OPT) - f(S_i); hence every step closes a 1/k fraction of the remaining gap, the gap contracts by (1 - 1/k) per round, k rounds leave at most (1 - 1/k)^k <= 1/e of it, and greedy lands within 1 - 1/e of the optimum -- which is exactly the best any polynomial algorithm can promise here. The diminishing-returns property that powered the proof also powers the lazy implementation, because it makes every stale marginal a safe upper bound.
+So the whole chain is tight and simple: f is monotone and submodular; the max-marginal move beats each single element of OPT and therefore the weakened 1/k sum over OPT; submodularity makes the unscaled sum dominate the joint gain f(S_i ∪ O) - f(S_i), so the weakened sum dominates the 1/k-scaled joint gain; monotonicity turns that joint gain into the remaining gap f(OPT) - f(S_i); the recurrence closes a 1/k fraction of that gap per round; and after k rounds only a (1 - 1/k)^k <= 1/e residue can remain. The code is just that recurrence made operational on a value oracle: scan the remaining elements, add the largest marginal, and repeat until the budget is spent or no positive marginal remains.

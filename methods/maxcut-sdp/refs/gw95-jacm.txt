@@ -1,0 +1,1750 @@
+Improved           Approximation              Algorithms             for
+Maximum            Cut and Satisfiability                   Problems           Using
+Semidefinite           Programming
+
+
+MIC13EL       X.   GOEMANS
+
+Massachusetts Institute of Technology, Cambridge, Massachusetts
+
+
+AND
+
+DAVID       P. WILLIAMSON
+
+IBM    T. J. Watson Research Center, Yorktown Heights, New York
+
+
+
+
+Abstract.  We present randomized approximation algorithms for the maximum cut (MAX CUT)
+and maximum 2-satisfiability (MAX 2SAT) problems that always deliver solutions of expected
+value at least .87856 times the optimal value. These algorithms use a simple and elegant
+technique that randomly rounds the solution to a nonlinear programming relaxation. This
+relaxation can be interpreted both as a semidefinite program and as an eigenvalue minimization
+problem. The best previously known approximation algorithms for these problems had perfc~r-
+mance guarantees of ~ for MAX CUT and ~ for MAX 2SAT. Slight extensions of our analysis
+lead to a .79607-approximation algorithm for the maximum directed cut problem (MAX DICUT)
+and a .758-approximation algorithm for MAX SAT, where the best previously known approxim a-
+tion algorithms had performance guarantees of ~ and ~, respectively. Our algorithm gives the first
+substantial progress in approximating MAX CUT in nearly twenty years, and represents the first
+use of :semidefinite programming in the design of approximation algorithms.
+Categories and Subject Descriptors: F2.2 [Analysis of Algorithms and Problem Complexity]:
+Nonumerical Algorithms and Problems—computations   on discrete structures; G2.2 [Discrete Math-
+
+
+
+
+A preliminary version has appeared in Proceedings of the 26th AnnualACM Symposium on Theory
+of Computing (Montreal, Que., Canada). ACM, New York, 1994, pp. 422–431.
+The research of M. X. Goemans was supported in part by National Science Foundation (NSF)
+contract CCR 93-02476 and DARPA contract NOO014-92-J-1799.
+The research of D. P. Williamson was supported by an NSF Postdoctoral Fellowship. This
+research was conducted while the author was visiting MIT.
+Authors’ addresses: M. X. Goemans, Department of Mathematics, Room 2-382, Massachusetts
+Institute of Technology, Cambridge, MA 02139, e-mail: goemans@math.mit. edu; D. P. Williamson,
+IBM T, J. Watson Research Center, Room 33-219, P.O. Box 218, Yorktown Heights, NY 1059I8,
+e-mail: dpw@watson.ibm. corn.
+Permission to make digital/hard copy of part or all of this work for personal or classroom use is
+grantedl without fee provided that copies are not made or distributed for profit or commercial
+advantage, the copyright notice, the title of the publication, and its date appear, and notice is
+given tlhat copying is by permission of ACM, Inc. To copy otherwise, to republish, to post on
+servers, or to redistribute to lists, requires prior specific permission and/or a fee.
+01995 ACM 0004-5411/95/1100-1115 $03.50
+
+                      Journalof the Associationfor ComputinsMachinery,Vol. 42,No. 6, November1995,pp.1115-1145.
+1116                                                            M. X. GOEMANS AND D. P. WILLIAMSON
+
+ematics]: Graph Theo~—graph                 algorithms; G3 [Probability          and Statistics] —probabik~ic algo-
+rithms (including      Monte-Car-lo);     11.2 [Algebraic manipulation]:         Algorithms—analysis of algorithm
+General Terms: Algorithms
+Additional Key Words and Phrases: Approximation                      algorithms, convex optimization, randomized
+algorithms, satisfiability
+
+
+
+
+1. Introduction
+
+Given      an undirected           graph      G = (V, E)            and nonnegative               weights       Wi i = Wii on
+the edges (i, j)         G E, the ‘maximum                cut problem         (MAX          CUT)          is that ‘of firidi~g
+the set of vertices           S that      maximizes           the weight       of the edges in the                   cut (J, S);
+that    is, the weight        of the edges with              one endpoint        in S and the other                   in S. For
+simplicity,      we usually        set wil = O for (i, j)               G E and denote              the weight         of a cut
+(S>~)      by ~(S>S)    = ~ie~,j=~     Wij. The MAX     CUT problem     is one of the
+Karp’s     original NP-complete    problems   [Karp 1972] and has long been known to
+be NP-complete              even if the problem                is unweighed;              that     is, if Wij = 1 for         all
+(i, j) ~ E [Garey et al. 1976]. The MAX       CUT problem      is solvable in polyno-
+mial time for some special classes of graphs (e.g., if the graph is planar [Orlova
+and Dorfman      1972; Hadlock    1975]). Besides its theoretical     importance,  the
+MAX     CUT problem     has applications   in circuit layout   design and statistical
+physics       (Barahona       et al. [1988]).         For a comprehensive                 survey     of the MAX            CUT
+problem,        the reader        is referred        to Poljak       and Tuza        [1995].
+   Because        it    is unlikely         that     there      exist    efficient        algorithms           for     NP-hard
+maximization           problems,         a typical      approach        to solving        such a problem              is to find
+a p-approximation            algorithm;       that      is, a polynomial-time              algorithm         that delivers         a
+solution   of value   at least    p times the optimal         value.    The constant   p is
+sometimes    called the pe~ormance        guarantee of the algorithm.      We will also use
+the term “p-approximation         algorithm”     for randomized      polynomial-time   algo-
+rithms   that deliver   solutions    whose expected      value is at least p times the
+optimal.       Sahni     and Gonzales           [1976]       presented       a ~-approximation                 algorithm     for
+the MAX    CUT problem.    Their algorithm    iterates through   the vertices   and
+decides whether  or not to assign vertex    i to S based on which placement
+maximizes the weight of the cut of vertices 1 to i. This algorithm   is essentially
+equivalent   to the randomized                       algorithm    that flips an unbiased    coin for each
+vertex to decide which vertices                      are assigned to the set S. Since 1976, a number
+of researchers    have presented                      approximation      algorithms  for the unweighed
+MAX        CUT      problem       with     performance           guarantees          of
+
+                                          11
+                                          ~+—                    [Vitfinyi    1981],
+                                                   2m
+                              1   n–1
+                              –+—                         [Poljak       and Turzik        1982],
+                              2    4m
+                             11
+                            j+~                    [Haglin      and Venkatesan              1991],
+
+and
+
+                           11
+                           ~+z                     [Hofmeister          and Lefmann              1995],
+Algorithms          for Maximum           Cut and Satisfiability            Problems                                           1117
+
+(where n = IVI, m = IEl and A denotes the maximum                                          degree), but no progress
+was made in improving  the constant in the performance                                       guarantee  beyond that
+of Salhni and Gonzales’s                  straightforward           algorithm.
+  We present a simple, randomized                            (a    –     ●)-approximation              algorithm         for    the
+maximum   cut problem where
+                                                    2(3
+                                   (y=       min    —                        >0.87856,
+                                            0< B<7, %- 1 –Cos$
+and       E is any positive              scalar. The algorithm                represents         the     first     substantial
+progress       in approximating     the MAX    CUT problem   in nearly twenty                                      years. The
+algorithm         for MAX       CUT    also leads directly to a randomized                                           ( a – c)-
+approlximation             algorithm        for     the     maximum           2-satisfiability          problem          (MAX
+2SAT).        The best          previously known algorithm    for this problem  has a perform-
+ance         guarantee          of ~ and is due to Yannakakis     [1994]. A somewhat  simpler
+~-approximation             algorithm        was given in Goemans and Williamson     [1994b]. The
+imprcwed     2SAT            algorithm        leads to .7584 -approximation  algorithm    for the
+overall MAX            SAT problem, fractionally better than Yannakakis’   ~-approxima-
+tion algorithm          for MAX SAT. Finally, a slight extension of our analysis yields                                           a
+( p – ~)-approximation                 algorithm          for the maximum           directed      cut problem            (MAX
+DICUT),    where
+                                                              2     2r–3e
+                           p=          min                                             >0.79607.
+                                  OSO<arccos(–1/3)           ~ 1 + 3cos           O
+The    best     previously         known       algorithm          for    MAX       DICUT          has a performance
+guarantee           of ~ [Papadimitriou             and Yannakakis             1991].
+  Our algorithm      depends on a means of randomly      rounding     a solution   to a
+nonlinear relaxation    of the MAX   CUT problem.    This relaxation    can either be
+seen as a semidejinite program   or as an eigenvalue minimization    problem.    To our
+knowledge,           this is the first       time    that    semidefinite         programs         have been           used      in
+the    design        and   analysis       of approximation               algorithms.       The     relaxation           plays     a
+crucial      role    in allowing       us to obtain          a better      performance           guarantee:           previous
+approximation   algorithms                  compared   the value of the solution                         obtained  to the
+total sum of the weights                   xi< j Wij. This sum can be arbitrarily                          close to twice
+the value       of the maximum              cut.
+  A semidefinite             program        is the problem              of optimizing        a linear         function         of a
+symmetric  matrix subject to linear equality     constraints    and the constraint   that
+the matrix be positive semidefinite.   Semidefinite    programming     is a special case
+of convex programming     and also of the so-called     linear programming    over cones
+or cone-LP   since the set of positive semidefinite     matrices constitutes    a convex
+cone. To some extent,    semidefinite  programming                                      is very similar   to lineiir
+programming; see Alizadeh    [1995] for a comparison.                                     It inherits the very ele-
+gant      duality     theory      of cone-LP         (see Wolkowicz               [1981]    and    the        exposition         by
+Alizadeh        [1995]).        The      simplex     method         can      be   generalized            to      sernidefinite
+programs        (Pataki     [1995]).      Given     any e >0,           semidefinite       programs           can be solved
+within an additive error of ● in polynomial   time (c is part of the input, so the
+running  time dependence    on ~ is polynomial    in log 1/~). This can be done
+through   the ellipsoid   algorithm   (Grotschel    et al. [1988]) and other polynomiaJ-
+time algorithms     for convex programming         (Vaidya     [1989]), as well as interior-
+point methods (Nesterov         and Nemirovskii   [1989; 1994] and Alizadeh        [1995]). To
+terminate   in polynomial     time, these algorithms     implicitly    assume some require-
+ment on the feasible space or on the size of the optimum                 solution; for details,
+1118                                                              M. X. GOEMANS AND D. P. WILLIAMSON
+
+see Grotschel  et al. [1988]                 and Section 3.3 of Alizadeh  [1995]. Since the work                                         of
+Nesterov   and Nemirovskii,                   and Alizadeh,  there has been much development                                             in
+the     design      and     analysis       of interior-point            methods          for        semidefinite          program-
+ming;       for several      references         available       at the time          of writing              of this paper,             see
+the survey         paper     by Vandenberghe                and Boyd       [19961.
+     Semidefinite          programming              has many       interesting           applications            in a variety            of
+areas including    control  theory, nonlinear                         programming,                   geomet~,  and combi-
+natorial   optimization.   1 In combinatorial                            optimization,                 the importance   of
+semidefinite        programming      is that it leads to tighter      relaxations     than the
+classical    linear    programming       relaxations   for many graph and combinatorial
+problems.      A beautiful    application     of semidefinite  programming      is the work of
+Low%z        [1979]       on the       Shannon         capacity       of a graph.              In     conjunction          with         the
+polynomial-time              solvability       of    semidefinite         programs,                 this     leads     to the      only
+known        polynomial-time            algorithm         for finding    the largest stable set in a perfect
+graph (Grotschel et al.                    [1981]).        More     recently,   there  has been increased
+interest      in semidefinite          programming             from     a combinatorial                    point-of-view.z         This
+started with the work of LOV5SZ and Schrijver     [1989; 1990], who developed   a
+machinery   to define tighter and tighter relaxations    of any integer program
+based on quadratic      and semidefinite programming.     Their papers demonstrated
+the wide applicability    and the power of semidefinite   programming      for combina-
+torial optimization    problems.  Our use of semidefinite   programming       relaxations
+was inspired by these papers, and by the paper of Alizadeh         [1995].
+      For   MAX        CUT,      the       semidefinite        programming                relaxation             we     consider          is
+equivalent         to an eigenvalue             minimization            problem          proposed              by Delorme               and
+Poljak       [1993a;       1993b].     An     eigenvalue          minimization            problem              consists      of mini-
+mizing       a decreasing          sum of the eigenvalues                  & of a matrix                    subject     to equality
+constraints         on the matrix;           that    is, minimizing        xi     rni Ai, where                Al > A2 >          “.”    >
+h. and ml >mz        > ““” > m. > 0. The equivalence       of the semidefinite     pro-
+gram we consider        and the eigenvalue    bound    of Delorme   and Poljak      was
+established   by Poljak    and Rendl  [1995a]. Building   on work by Overton        and
+Womersley     [1992; 1993], Alizadeh  [1995] has shown that eigenvalue      minimiza-
+tion problems     can in general be formulated    as semidefinite programs.     This is
+potentially    quite useful,                since there is an abundant                      literature on eigenvalue
+bounds      for combinatorial                  optimization problems;                     see the survey paper by
+Mohar and Poljak [1993].
+  As shown by Poljak     and                        Rendl      [1994;     1995b]          and         Delorme           and      Poljak
+[1993 c], the eigenvalue               bound        provides      a very good bound                    on the maximum                   cut
+in     practice.       Delorme         and     Poljak       [1993a;      1993b]          study         the     worst-case          ratio
+between the maximum     cut and their eigenvalue                                 bound.         The worst             instance      they
+are aware of is the 5-cycle for which the ratio                                 is
+
+                                                     32
+                                                                = 0.88445         ...,
+                                              25 + 56
+
+but they were unable to prove a bound better than 0.5 in the worst case. Our
+result implies a worst-case bound of a, very close to the bound for the 5-cycle.
+
+1See, for example, Nesterov and Nemirovskii [1994], Boyd et al. [1994], Vandenberghe and Boyd
+~1996],and Alizadeh [1995], and the references therein.
+ See, for example, Lov&z and Schrijver [1989; 1990], Alizadeh [1995], Poljak and Rendl [1995a],
+Feige and Lowisz [1992], and Lovfisz [1992].
+Algon!thms        for ik%ximurn          Cut and Satisfiability                  Problems                                                 1119
+
+  The      above      discussion         on the worst-case                     behavior         indicates           that      straightfom--
+ward     modifications         of our technique                  will     not lead to significant                     improvements
+in the     MAX        CUT      result.     Furthermore,                   MAX            CUT,        MAX       2SAT,              and    MAX
+DICLJT       are      MAX       SNP-hard            [1991],         and        so it is known                that     there         exists       a
+constant     c < 1 such that              a c-approximation                      algorithm            for     any of these               prob-
+lems would          imply     that   P = NP [Arora                  et al. 1992]. Bellare                     et al. [unpublished
+manuscript]   have shown that c is as small as 83/84                                            for MAX          CUT and 95/!16
+for MAX     2SAT. Since bidirected instances of MAX                                              DICUT          are equivalent to
+instan~ces     of     MAX       CUT,       the      bound           for        MAX          CUT        also     applies            to    MAX
+DIC~JT.
+  Since the appearance   of an abstract of this paper, Feige                                                and Goemans [1995]
+have extended our technique    to yield a .931 -approximation                                                algorithm for MAX
+2SAT and a .859-approximation                        algorithm             for MAX DICUT.       By using semidef-
+inite programming   and similar                     rounding              ideas, Karger -et al. [1994] have been
+able to show how to color a k-colorable        graph with 0( n* – ‘3’(~ + 1))) colors in
+polynomial    time. Frieze and Jerrum    [1996] have used the technique        to devise
+approximation     algorithms for the maximum     k-way cut problem    that improve on
+the best previously             known 1 – l/k                   performance   guarantee.                        Chor and Sudan
+[1995] apply ideas             from this paper                  to the “betweenness”                          problem.  Thus, it
+seems likely        that     the techniques              in this paper               will     continue        to prove             useful        in
+designing approximation   algorithms.
+  We expect that in practice     the performance                                     of our          algorithms            will    be much
+better     than      the     worst-case        bounds.              We     have           performed            some          preliminary
+computational          experiments           with        the MAX               CUT        algorithm          which         show that         cm
+a number         of different        types    of random                 graphs           the algorithm              is usually          within
+.96 of the optimal   solution.
+   A preliminary   version of this                       paper       [Goemans                and Williamson                   1994a]        pre-
+sented a method   to obtain deterministic   versions of our approximation  algo-
+rithm with the same performance    guarantees.    However, the method given had
+a subtle     error,        as was pointed           out     to us by several                    researchers.           Mahajan              and
+Ramesh       [1995]         document       the      error        and      propose            their     own      derandomizaticm
+schem~e for our algorithms.
+  The paper is structured                 as follows:           We present                  the randomized                 algorithm         for
+MAX        CUT      in Section         2, and its analysis                     in Section         3. We        elaborate                on our
+semidefinite  programming     bound and its relationship   with other work on the
+MAX     CUT problem    in Section 4. The quality of the relaxation   is investigated
+in Section 5, and computational    results are presented in Section 6. In Section 7,
+we show how to extend                    the algorithm              to an algorithm                   for    MAX           2SAT,         MAX
+SAT,      MAX DICUT,     and other                  problems.             We conclude                 with    a few remarks                 and
+open     lproblems in Section 8.
+
+2. The Randomized              Approximation              Algorithm             for MXX           CUT
+
+Given a graph with vertex set V = {1,...,    n} and nonnegative  weights Wij ~ ~<ji
+for each pair of vertices    i and j, the weight  of the maximum    cut w(S, S) N
+given by the following  integer quadratic  program:
+
+
+                                Maximize             ~    ~,wij(l          -    .Yiyj)
+                                                          1<J
+
+(Q)                             subject      to: yi c { – 1, 1}                                   Vi G V.
+1120                                                                  M. X. GOEMANS AND D. P. WILLIAMSON
+
+To    see this,         note      that     the   set S = {il yi = 1} corresponds                            to a cut        of weight
+~(S,S)      = ~ ~i<         j W~j(l – Yiyj).
+   Since solving this integer    quadratic program   is NP-complete,                                                     we consider
+relaxations  of (Q). Relaxations    of (Q) are obtained   by relaxing                                                    some of the
+constraints         of (Q),        and      extending          the    objective           function         to the    larger        space;
+thus,     all    possible         solutions        of    (Q)     are     feasible          for    the      relaxation,        and        the
+optimal         value     of the relaxation             is an upper           bound        on the optimal            value        of (Q).
+We can interpret  (Q) as restricting       Yi to be a l-dimensional      vector of unit
+norm. Some very interesting    relaxations    can be defined   by allowing    yi to be a
+multidimensional vector     Ui of unit Euclidean     norm.   Since the linear      space
+spanned by the vectors                     Ui has dimension               at most          n, we can assume                that     these
+vectors belong to R”                    (or      Rm for some                  m < n), or more precisely  to the
+n-dimensional              unit     sphere       S. (or S~ for                m s n). To ensure that the result-
+ ing optimization                problem is indeed                a relaxation, we need to define   the ob-
+jective  function              in such a way that                it reduces to ~ ~i. j Wij(l – yiyj) in the
+case of vectors    lying in a l-dimensional    space. There  are several natural
+ways of guaranteeing    this property. For example, one can replace (1 – yiyj) by
+(1 – u, “ Uj), where               u, “ Uj represents            the     inner          product      (or     dot    product)        of     ~i
+and Vj. The resulting                    relaxation         is denoted        by (P):
+
+
+                                   Maximize             ~ >, Wij(l        -    U, “ ‘j)
+                                                          Z<J
+
+(P)                                subject       to: Ui G S.                                      Vi    E V.
+
+We will show              in Section 4 that we can solve this relaxation                                     using semidefinite
+programming.               We can now present our simple randomized                                           algorithm  for the
+MAX        CUT          problem.
+
+(1) Solve (P), obtaining  an optimal    set of vectors Ui.
+(2) Let r be a vector uniformly   distributed    on the unit                                         sphere        S..
+(3) Set S = {il.ZJi “r > O}.
+
+In other words, we choose a random     hyperplane  through                                                 the origin (with          r as
+its normal) and partition the vertices  into those vectors                                                 that lie “above”           the
+plane (i.e., have a nonnegative   inner product with r) and those that lie “below”
+it (i.e., have a negative inner product with r). The motivation   for this random-
+ized step comes from the fact that (P) is independent    of the coordinate   system:
+applying          any     orthonormal              transformation              to       a set     of    vectors          results     in        a
+solution   with the same objective value.
+   Let W denote      the value of the cut produced     in this way, and E[W]   its
+expectation.    We will show in Theorem   3.1 in Section 3 that, given any set of
+vectors Ui ● S., the expected weight of the cut defined by a random hyperplane
+is
+                                                                       arccos( ui - uj )
+                                            E[W]        =     ~wij
+                                                             i <j                   T
+
+We will         also show in Theorem                    3.3 that
+
+
+                                          E[W]        > a“ :         ~wij(l         – Ui”uj),
+                                                                     1<]
+Algorithms       for Maximum                 Cut and Satisjiability            Problems                                        1121
+
+where
+
+                                                              26
+                                       ~=”—                                         > .878.
+                                                0%.           %- 1 – Cos 8
+
+If Z; ~ is the optimal               value      of the maximum               cut and Z;         is the optimal          value      of
+the relaxation         (P),     then     since the expected                 weight    of the cut generated                by the
+algorithm      is equal        to E[ W]             > aZj      > aZ~c,         the algorithm         has a performance
+guarantee of a for the MAX   CUT problem.
+  We must argue that the algorithm can be implemented                                               in polynomial             timle.
+We      assume       that      the    weights          are    integral.       In    Section     4, we       show       that     the
+program       (P) is equivalent   to a semidefinite    program.                               Then we will show that,
+by using       an algorithm   for semidefinite    programming,                                 we can obtain, for any
+E > 0, a set of vectors Ui’s of value                         greater than 2$ – E in time                     polynomial          in
+the input   size and log l/~.     On                          these approximately  optimal                     vectors,         the
+randclmized          algorithm         will     produce         a cut       of expected        value       greater      than       or
+equal    to   a (Z;      – e) z ( a – e )Z~c.                      The     point    on the unit          sphere      S. can be
+generated     by drawing   n values xl, X2, ..., x. independently      from the standard
+normal    distribution,  and normalizing   the vector obtained      (see Knuth   [1981, p.
+130]); for our purposes,     there is no need to normalize       the resulting  vector x.
+The standard          normal         distribution            can be simulated          using     the uniform           distribu-
+tion between    O and 1 (see Knuth                              [1981, p. 117]). The algorithm                        is thus         a
+randomized   ( a – e)-approximation                            algorithm  for MAX   CUT,
+
+
+
+3. Analysis      of the Algorithm
+
+In this section,        we analyze             the performance               of the algorithm.             We first     analyze
+the general       case and then               consider        the case in which           the maximum             cut is large
+and the generalization                 to negative           edge weights.          We conclude            this section        with
+a new formulation     for the MAX   CUT problem.
+  Let {ul,...,  u.} be any vectors belonging to S., and let E[W]                                           be the expected
+value of the cut              w(S, ~) produced   by the                     randomized    algorithm given in the
+previcms section.             We start by characterizing                      the expected value of the cut.
+
+  THEOREM         3.1
+
+
+
+
+   Given      a vector r drawn uniformly                        from       the unit    sphere       S., we know           by the
+linearity     of expectation that
+
+                             E[W’]       =     ~wij      “ pr[sgn(ui        “ r)   + sgn(~j     “ r)],
+                                              i <j
+
+where sgn(x)           = 1 if x >0,             and      – 1 otherwise.            Theorem      3.1 is thus          implied      by
+the following         lemma.
+
+   LEMMA       3.2
+
+
+                            Pr[sgn(ui”         r)     # sgn(uj”      r)]     = +arccos(ui         c uj).
+1122                                                                   M. X. GOEMANS AND D. P. WILLIAMSON
+
+      PROOF.         A     restatement             of the      lemma          is that        the    probability      the     random
+hyperplane  separates the two vectors is directly      proportional   to the angle be-
+tween the two vectors; that is, it is proportional   to the angle f3 = arccos( Ui “ Uj).
+By symmetry,    Pr[sgn(ui” r-) # sgn( Uj “ r)] = 2 Pr[ Ui . r >0, Uj” r < O]. The set
+{r:    u,. r >0,         Uj “ r < O} corresponds                to the intersection                of two half-spaces            whose
+dihedral angle                 is precisely 6; its intersection  with the sphere is a spherical
+digon of angle                 O and, by symmetry     of the sphere, thus has measure  equal to
+t9/2m        times    the measure    of the   full sphere.                                     In      other      words,         Pr[ui     .
+r >0,       Uj . r < O] = t9/2T, and the lemma follows.                                       ❑
+
+      Our   main         theorem         is the following:            As we have argued                  above,     this theorem
+applied to vectors                Ui’s of value greater               than Z: – ~ implies that                     the algorithm
+has a performance                  guarantee   of a –                ● . Recall that we defined
+
+                                                                       20
+                                               ~=”—
+                                                          03%          m 1 – Cos 19”
+
+      THEOREM            3.3
+
+
+                                            E[W’]        > +        ~,wij(l         – Ui”uj).
+                                                                    c<j
+
+      By using       Theorem             3.1 and the nonnegativity                       of Wij, the result         follows       from
+the following             lemma          applied        to y = vi oUj.
+
+      LEMMA      3.4.           For      – 1 s y s 1, 1 arccos(y)\m                         > a” +(1 – y).
+
+      PROOF.         The expression                for    a follows         straightforwardly            by using       the change
+of variables           cos 6 = y. See Figure                   1, part      (i).        ❑
+
+      The    quality           of the     performance            guarantee              is established         by the      following
+lemma.
+
+      LEMMA      3.5.           a >.87856.
+
+      PROOF.         Using        simple      calculus,         one      can see that              a achieves        its value       for
+9 = 2.331122...,  the                     nonzero         root of cos 6 + (3 sin 6 = 1. To                        formally        prove
+the bound of 0.87856,                     we first       observe that
+
+                                                         26
+                                                         —                         >1
+                                                         %-1-         COSO
+
+for O < 6 s 7r/2.                 The concavity            of ~(~)       = 1 – cos 0 in the range                  7r/2      s   (3 s n-
+implies      that,       for any O., we have ~(13) s ~(do)                              + ($ – 00)~’( 6), or 1 – cos 9 s
+1 – cos 190+ (0 – t90)sin /30 = 9 sin 190+ (1 – cos 00 – 60sin 6.).                                                  Choosing  f30
+= 2.331122 for which 1 – cos 130– OOsin 00<0,       we derive that                                                   1 – cos O <
+0 sin O., implying                that
+                                                                2
+                                                   a>                       >0.87856.                                                    ❑
+                                                           T sin 130
+
+    We have analyzed the expected value of the cut returned         by the algorithm.
+For randomized      algorithms,  one can often also give high probability   results. In
+this case, however, even computing       the variance of the cut value analytically   is
+difficult. Nevertheless,    one could use the fact that W is bounded    (by ~i. j Wij)
+to give lower             bounds         on the probability              that      W is less than          (1 –     ●)E[W].
+Algorithms       for Maximum             Cut and Satisjiability    Problems                          13.23
+                             t
+
+
+
+
+FIG. 1. (i) Plot of z = arccos(y)\~ as a function of t = ~(1 – y). The ratio z/t is thus the slope
+of the line between (O,O) and (z, t). The minimum slope is precisely a = 0.742/0.844 and
+corresponds to the dashed line. (ii) The plot also represents h(t) = arccos(l – 2t)/ r as ~
+functi,on of t.As t approaches 1, h(t)/t also approaches 1. (iii) The dashed line corresponds to h
+between O and y = .844.
+
+
+
+
+   3.1 ANALYSIS WHEN THE MAXIMUM           CUT Is LARGE.      We can refine    the
+analysis and prove a better performance     guarantee  whenever  the value of the
+relaxation  (P) constitutes a large fraction    of the total weight. Define   JJ&
+=      ~i.   j wij    and   h(t)       = arccos(l   -   2t)/m.    Let   y be the value    of t attaining
+the minimum            of h(t)/t         in the interval     (O, 1]. The value   of y is approximately
+.84458.
+
+
+      THIEOREM 3.1.1.            Let
+
+
+
+                                          A=    #-g,wijl-;              ””j<
+                                                   tot1<J
+
+
+IfA      z y, then
+
+
+
+
+  The theorem   implies a performance    guarantee    of h(A)/A    – c when A > y.
+As A varies between      y and 1, one easily verifies that h(A)\xl    varies between
+a and 1 (see Figure    1, part (ii)).
+
+
+  PROOF.             Letting A, = wij/ WtOt and x, = (1 – Ui” Uj)/2 for e = (i, j),                      we
+can rewrite           A as A = ~, A=X,. The expected weight of the cut produced                            by
+1124                                                                   M. X. GOEMANS AND D. P. WILLIAMSON
+
+the algorithm         is equal          to
+
+                                             arccos( Ui c vj )                                        arccos(l          – 2X, )
+              E[w]        =     ~w[j                                   = Wtot ~ Ae
+                               i cj                      T                     e                                   ‘i-r
+
+                          .— w&~AJz(xe).
+                                         e
+
+To bound       E[w],          we evaluate
+
+                                                   Min                      ~A.h(x.)
+
+
+                                                   subject      to:         ;       A~xg = A
+                                                                                e
+                                                                         O<xe                  <l.
+
+Consider      the     rel~xation             obtained          by replacing                    h(t)    by the        largestx (pointwise)
+convex function  k(t) smaller or equal to h(t). It is easy to see that h(t) is linear
+with slope a between O and y, and then equal to h(t) for any t greater than y.
+See Figure       1, part       (iii).    But       for A > y,
+
+
+                ~A#(.x.)                > ~&fi(x,)               a k       ~&xg                       = Z(A)        = h(A),
+                 e                             c                         () e
+
+where       we have       used the fact               that      ~e     A, = 1, A. > 0 and that                                     & is a convex
+function.     This     shows that
+
+
+                           E[w] > wtot/z(z4) =                         yp,wi,
+                                                                           y’,
+                                                                                         Z<J
+
+proving      the result.            ❑
+
+
+   3.2 ANALYSIS FOR NEGATIVE                              EDGE WEIGHTS.                              So far, we have assumed                          that
+the weights are nonnegative.    In several practical problems,    some edge weights
+are negative [Barahona    et al. 1988]. In this case the definition   of the perfor-
+mance       guarantee         has to be modified                  since the optimum                             value      could           be positive
+or negative.   We             now       give       a corresponding                       generalization             of Theorem                      3.3 to
+arbitrary  weights.
+
+   THEOREM           3.2.1.        Let       W.=         xi.    j Wij,          where x- = nzirz(O, x). Then
+
+
+
+                         {E[W]          – W.}         z ~ / ~~~ij(l                         –ui.       uj) – W.                .
+                                                                                                                           )
+                                                               \Li<j                                                       I
+
+
+   PROOF.        The quantity                E[w]         – W.         can be written                      as
+
+                                   arccos( ~i “ Uj )
+                 ~         I’vij          ~          +                  ~                l~,jl       ~ _    arccos(ui              “ ‘j)        .
+             i<j:wij>o                                            i<j:wi,           <O           (                        %-                )
+Algorithms      for Maximum              Cut and Satisylability               Problems
+
+Similarly,     (z~      i< j Wij(l      – Ui “ Uj) – W_)              is equal        to
+
+                                               I–vi”vj
+                             ~wij2+
+                         i<j:wij>O                                 i<,~j<O1’’’’ijll              ‘~        “ ‘j    .
+
+
+The result       therefore           follows      from       Lemma         3.4 and         the        following         variation       of
+it. El
+
+   LEMMA       3.2.2.       For       – 1 s z s 1, 1 – 1 arccos(z)/m                             > a” ~(1 + z).
+
+   PROOF.        The lemma             follows       from      Lemma        3.4 by using                  a change      of variables
+z =     --y and noting         that     m – arccos(z)             = arccos( –z).                      ❑
+
+   3.3 A NEW FORMULATION                          OF MAX           CUT.          An    interesting                 consequence          of
+our analysis is a new                  nonlinear            formulation          of the          maximum               cut   problem.
+Consider  the following                nonlinear           program:
+
+                                                               arccos( Ui “ vi)
+                             Maximize                ~wij             ~
+                                                    i <j
+
+(R)                          subject      to:
+
+Let     Zj$ denote       the optimal            value      of this program.
+
+  T13E0REM 3.3.1.               Z:     = Z~c.
+
+  PROOF.    We first show that                      Z: > Z*MC. This follows since (R) is a relaxation
+of (Q): the objective  function                      of (R) reduces to ~ xi< j Wij (1 – Uivj) in the
+case of vectors          .vi lying     in a l-dimensional                 space.
+   TO see that z: ~ Z&C> 1A the                            VeCtOrS Vi denote the optimal    solution to (~~).
+From Theorem     3.1, we see that                          the randomized    algorithm   gives a cut whose
+expected       value     is exactly       Z;,      implying       that     there      must            exist       a cut of value        at
+least    Z:.     ❑
+
+
+4. Relaxations          and Duality
+
+In this section, we address the question     of solving the relaxation   (P). We do so
+by showing that (P) is equivalent      to a semidefinite   program,    We then explore
+the dual of this semidefinite   program    and relate it to the eigenvalue    minimiza-
+tion bound of Delorme       and Poljak [1993a; 1993b].
+
+   4.1 SOLVING THE RELAXATION.     We begin    by defining    some terms   and
+notation. All matrices under consideration  are defined    over the reals. An
+n x n matrix           A is said to be positive                  semidefinite          if for             every vector         x = R”,
+X%.X :20.       The     following        statements            are equivalent              for        a symmetric            matrix     A
+(see, e.g., Lancaster  and Tismenets@     [19851); (i) A is positive semidefinite,     (ii)
+all eigenvalues   of A are nonnegative,   and (iii) there exists a matrix B such that
+A = J?TB. In (iii), B can either be a (possibly        singular)   n X n matrix,    or an
+m X n matrix for some rrz < n. Given a symmetric           positive semidefinit  e matrix
+A, an m x n matrix     B of full row-rank   satisfying (iii) can be obtained    in 0(rz3)
+time using an incomplete    Cholesky decomposition        [Golub and Van Loan 1983,
+p. 90, P5.2-3].
+1126                                                                         M. X. GOEMANS AND D. P. WILLIAMSON
+
+  Using the decomposition                               Y = BTB, one can see that a positive semidefinite
+Y with y,, = 1 corresponds                              precisely to a set of unit vectors UI, . . . . u. = S~:
+simply         correspond               the vector           Ui to the ith       column       of B. Then             yij = ZJi. Uj. The
+matrix Y is known as the Gram matrix of {u,, ..., u.} [Lancaster    and Tismenet-
+sky 1985, p. 110]. Using   this equivalence;   we ;ai    reformulate    (P)   as a
+semidefinite                program:
+
+
+Z:     = Max                       ;     ~,wij(l       – y~j)
+                                         G<]
+
+(SD)
+           subject           to :yii = 1
+
+                                                                                  Y symmetric            positive          semidefinite
+
+where          Y = (y,j).               The       feasible      solutions        to    (SD)       are    often           referred           to    as
+correlation           matrices           [Grone        et al. 1990]. Strictly           speaking,        we cannot              solve (SD)
+to     optimality             in       polynomial            time;     the    optimal      value         Z;      might          in    fact        be
+irrational.           However,             using      an algorithm           for semidefinite           programming,                 one can
+obtain,         for         any        ~ >0,       a solution          of     value     greater         than        Z:     –    ●    in      time
+polynomial    in the input size and log l/~.  For example, Alizadeh’s     adaptation    of
+Ye’s interior-point     algorithm  to semidefinite   programming      [Alizadeh      1995]
+performs          O(&(log   WtOt + log l/~)) iterations.    By exploiting   the simple struc-
+ture of         the problem   (SD) as is indicated       in Rendl    et al. [1993] (see also
+Vandenberghe                  and Boyd [1996, Sect. 7.4]), each iteration                                  can be implemented
+in 0(n3) time.                Once an almost optimal   solution to (SD)                                  is found, one can use
+an incomplete                  Cholesky             decomposition             to obtain        vectors         u ~, ...,       u. E S~ for
+some       m s n such that
+
+
+
+
+     Among            all    optimum               solutions         to (SD),     one     can      show        the       existence           of     a
+solution         of low            rank.       Grone         et al. [1990]       show     that     any extreme                 solution           of
+(SD) (i.e., which cannot be expressed as the strict                                           convex      combination                of other
+feasible solutions) has rank at most 1 where
+
+                                                                1(1 + 1)
+                                                                                ~ n,
+                                                                       2
+that     is,
+
+
+
+
+For related results, see Li and Tam [1994], Christensen and Vesterstr@m [1979],
+Loewy [1980], and Laurent     and Poljak [1996]. This means that there exists a
+primal         optimum                 solution       Y*      to (SD)        of rank      less than            m,          and       that        the
+optimum      vectors u, of (P) can be embedded           in R!~ with m < ~.       This result
+also follows from a more general          statement       about semidefinite programs     due
+to Barvinok       [1995] and implicit   in Pataki      [1994]: any extreme    solution   of a
+semidefinite       program  with   k linear     equalities     has rank at most 1 where
+1(1 + 1)/2 < k.
+Algorithms       for Maximum            Cut and Satisjiability                 Problems                                             1127
+
+  4.2 THE SEMIDEFINITE                  DUAL.           As mentioned              in the introduction,                  there       is an
+elegant      duality      theory      for      semidefinite            programming.               We       now       turn      to    dis-
+cussing     the dual of the program                    (SD).     It is typical         to assume           that      the objective
+function        of a semidefinite              program          is symmetric.             For      this     purpose,          we     can
+rewrite     the objective       function           of (SD)       as ~ ~ ~. * ~~.             ~ ~ij(l        — yij),     or even as
+~~01       – ~ ~ ~ ~ j ~ijyij.          In matrix          form,        the objective            function           can be com~e-
+niently written  as ~ WtOt – ~Tr(WY),                                where      W = (wij)           and        Tr     denotes         the
+trace.
+   The dual of (SD) has a very simple                            description:
+
+
+
+
+(D)                       subject      to:              W + diag( y ) positive                   semidefinite,
+where diag( y ) denotes the diagonal   matrix whose ith diagonal                                               entry is Yi. The
+dual has a simple interpretation.  Since W + diag(y)   is positive                                             semidefinite,   it
+can be expressed as C ‘C; in other words, the weight                                       Wij can be viewed as Ci ~Cj
+for some vectors  Ci’s and -yi = Ci. Ci = llci112. The                                    weight   of any cut is thus
+w(S, ~) = ( z ~6s ci) . ( ~j                  ~s cj), which            is never        greater      than
+
+
+
+
+   Showing        weak     duality     between           (P)     and (D),         namely         that     Z:        < Z:,      is easy.
+Consider  any primal   feasible solution   Y and any dual vector y. Since both Y
+and W + diag( y) are positive semidefinite,    we derive that Tr((diag( y) + W)Y)
+z O l(see Lancaster  and Tismenetsky     [1985, p. 218, ex. 14]). But Tr((diag( y) +
+W)Y)        = Tr(diag(y)Y)            + Tr(WY)            =     xi     yi + Tr(WY),              implying            that     the     clif-
+ference of the dual            objective            function         value    and the primal              objective          function
+value is nonnegative.
+   For semidefinite           programs             in their     full    generality,        there     is no guarantee                 that
+the    primal      optimum           value         is equal      to     the     dual     optimum            value.          Also,     the
+maximum          (respectively,         minimum)               is in fact       a supremum                (respectively,             irlfi-
+mum)       and there       is no guarantee              that     the supremum               (respectively,             infimum)l          is
+attained.       These,     however,          are pathological                cases. Our         programs            (SD)      and (D)
+behave nicely; both programs   attain their optimum values, and these values are
+equal (i.e., Z; = Z:).  This can be shown in a variety of ways (see Poljak and
+Rendl       [1995a],     Alizadeh       [19951, and Barvinok                    [1995]).
+   Given that strong duality      holds in our case, the argument     showing  weak
+duality implies that, for the optimum     primal solution  Y* and the optimum   dual
+solution  y*, we have Tr((diag(y       *) + W) Y*) = 0. Since both    diag(y *) + W
+and Y* are positive    semidefinite,    we derive that (diag(y *) + W)Y*    = O (see
+Lancaster    and Tismenetsky    [1985, p. 218, ex. 14]). This is the strong form of
+complementary             slackness          for    semidefinite         programs          (see Alizadeh               [1995]);        the
+component-wise     product expressed by the trace is replaced by matrix multipli-
+cation. This implies, for example, that Y* and diag( y *) + W share a system of
+eigenvectors   and that rank(Y*)   + rank(diag(y *) + W) s n.
+
+      4.3 THE     EIGENVALUE             BOUND           OF DELORME                AND POLJAK.                  The         relaxation
+(D) (and thus (P)) is also equivalent     to an eigenvalue upper bound    on the
+value of the maximum     cut Z~c   introduced   by Delorme   and poljak  [1993a;
+1993 b]. To describe the bound, we first introduce    some notation. The Lapla-
+1128                                                              M. X. GOEMANS AND D. P. WILLIAMSON
+
+cian     matrix      L = (lij)     is defined        by lij =            – Wij for         i # j and              lij =     ~.         ~ wj~.
+The maximum              eigenvalue       of a matrix             A is denoted             by A~QX(A).
+
+  LEMMA            4.3.1 [DELORME              AND       POLJAK               [1993b].]            Let      u G R“          satisfv        U1
++ ... +Ufl         = O. Then
+
+                                               ;A~~X     (L       + diag(u))
+
+is an upper        bound      on Z&c.
+
+   PROOF.          The     proof   is simple.        Let      y be an optimal                       solution        to the         integer
+quadratic          program       (Q). Notice    that   y~Ly = 4Z~c.                                By       using     the        Rayleigh
+principle        ( A~~X(M)       = mullXll= ~ x~lvfx), we obtain
+
+                                                                   y~(L          + diag(u))y
+                              A~.X(L     + diag(u))           z
+                                                                                   YTY
+                                                                 1                             n
+                                                              — .         yTLy       +      ~       Jj2Ui
+                                                              -[ n                         izl               I
+                                                                   4Z;C
+
+                                                                         n’
+proving         the lemma.         ❑
+  A vector          u satisfying        ~=     ~ Ui = O is called                 a correcting              uector.       Let     g(u)      =
+(n/4)&X(L             + diag(u)). The bound                   proposed            by Delorme                 and Poljak           [1993b]
+is to optimize        g(u) over all correcting                 vectors:
+
+                                       Z&~      = Inf                     g(u)
+
+
+(EIG)                                              subject         to:         ~ Ui = O.
+                                                                              i=l
+
+  As mentioned             in the introduction,              eigenvalue            minimization                  problems          can be
+formulated         as semidefinite           programs.        For MAX              CUT,            the equivalence               between
+(SD) and (lSIG) was established                     by Poljak and Rendl [1995a].
+  For completeness, we derive                      the equivalence between   (lZIG)                                   and        the    dual
+(D). For the optimum   dual vector -y*, the smallest eigenvalue of diag( y *) + TV
+must be O, since otherwise  we could decrease all yi* by some ~ > 0 and thus
+reduce  the dual objective   function.  This can be rewritten    as A~~x( – w –
+diag(y    ’))    = O. Define           A as ( ~i        y;    + 2W,0,)/rz.                By       definition,         Z;        = nA/4.
+Moreover,          defining      Ui = A – y:         –
+                                     ~j HJ,j, one easilJ verifies   that                                                    xi u, = O
+and      that – W – diag(y”)  = L + diag(u)   – AI,  implying     that                                                      &~X(L  +
+diag(u))  = A. This shows that Z*EIG < z:.   The converse inequality                                                        follows       by
+reversing  the argument.
+
+5. Qualip         of the Relaxation
+In this section we consider the tightness                           of our analysis                   and the quality of the
+semidefinite   bound  Z:.   Observe   that                          Theorem     3.3                  implies  the following
+corollaqr
+
+  COROLLARY            5.1.      For any instance            of MAX             CUT,
+                                                       Z;c
+                                                       —>                Q!.
+                                                       z;
+Algorithms         for Maximum              Cut and Satisjiability               Problems                                              1:129
+
+   Fc}r the 5-cycle,              Delorme         and Poljak          [1993b]         have shown              that
+
+                                      Z;c                     32
+                                      —           .                         = 0.88445           ...,
+                                      Z;IG             25 + 56
+
+implying         that our worst-case              analysis         is almost         tight.    One can obtain               this bound
+from~ the         relaxation        (P)     by observing             that      for     the     5-cycle        1–2–3–4–5–l,              the
+optimal        vectors      lie in a 2-dimensional                  subspace           and can be expressed                    as
+
+
+
+                                            ‘=(cos(asin(:))
+fori=l,,,.,5                corresponding             to
+
+
+
+                                           25+:fi
+                                     “=%+cosa=
+Since      Z~r         = 4 for     the 5-cycle,            this yields      the bound              of Delorme             and Poljak.
+Delclrme          and Poljak        have shown              that
+
+                                                      Z;c                   32
+
+                                                      Z;IG     2     25 + 56
+
+holds      for    special      subclasses         of graphs,          such       as planar             graphs        or line       graphs.
+However,           they were        unable        to prove          a bound           better      than        0.5 in the       absolute
+worst-case.
+  Although             the worst-case          value         of Z&c\Z~               is not      completely             settled,      there
+exist     instances         for     which      E[ W ]\Z~             is very          close      to      a,    showing         that     the
+analysis of our algorithm    is practically   tight. Leslie Hall (personal  communica-
+tion) has observed that    E[W]/Z~        = .8787 for the Petersen graph [Bondy and
+Murty   1976, p. 55]. In Figure 2, we give an unweighed          instance for which the
+ratio is less than ,8796 in which the vectors have a nice three-dimensional
+representation.             We have also constructed                        a weighted            instance           on 103 vertices
+for which         the ratio       is less than        .8786. These           two instances               are based on strongly
+self-dual         polytopes        due      to Loviisz         [1983].      A polytope                 P in R”          is said       to be
+strongly       self-dual     [Lcn&z         1983], if (i) P is inscribed                      in the unit            sphere,   (ii)    P is
+circumscribed              around     the     sphere         with     origin         as center         and with          radius       r for
+some O < r z 1, and (iii) there is a bijection o between vertices                                                       and facets of
+P such that, for every vertex o of P, the facet u(u) is orthogonal                                                      to the vector
+u. Fcjr example, in R 2, the strongly self-dual     polytopes   are precisely the regular
+odd :polygons. One can associate a graph G = (V, E) to a self-dual            polytope  P:
+the vertex set V corresponds     to the vertices of P and there k an edge (u, w) if
+w belongs to the facet u(u)        (or, equivalently,     u belongs to u(w)).      For the
+regular          odd    polygons,         these       graphs        are     simply        the      odd        cycles.     Because         of
+conditions (ii) and (iii), the inner product        u “ w for any pair of adjacent vertices
+is eqpal to – r. As a result, a strongly          self-dual    polytope   leads to a feasilble
+solution     of (P)   of value    ((1 + r)/2)WtOt.       LOV6SZ [1983] gives a recursive
+construction     of a class of strongly    self-dual    polytopes.    One can show that, by
+choosing     the dimension     n large enough,         his construction     leads to strongly
+self-dual   polytopes   for which r is arbitrarily      close to the critical value giving a
+bound of a. However,         it is unclear    whether,      in general,  for such polytopes,
+nonnegative     weights can be selected such that the vectors given by the polytope
+1130                                             M.     X.   GOEMANS AND D. P. WILLIAMSON
+                     5
+                                                                                   3
+
+
+
+
+FIG. 2. Graph on 11 vertices for which the ratio E[w]/z~   is less than .8796 in the unweighed
+case. The convex hull of the optimum vectors is depicted on the right; the circle represents the
+center of the sphere.
+
+
+constitute       an optimum   solution to (P).        Nevertheless,   we conjecture  that such
+instances      lead to a proof that E[ W]/Z~           can be arbitrarily  close to a. Even if
+this could      be shown,    this would   not imply     anything   for the ratio       Z~c/Z~.
+
+6. Computational         Results
+
+In practice,   we expect that the algorithm      will perform much better than the
+worst-case   bound of a. Poljak and Rendl [1994; 1995b] (see also Delorme       and
+Poljak [1993 c]) report  computational    results showing that the bound    Z~I~ is
+typically    less than 2-5% and, in the instances they tried, never worse than 8%
+away from Z~c. We also performed           our own computational     experiments, in
+which     the cuts computed   by the algorithm    were usually   within   4% of the
+semidefinite   bound Z;, and never less than 9% from                 the bound. To implement
+the algorithm,   we used code supplied   by Vanderbei                 [Rendl et al. 1993] for a
+special class of semidefinite        programs.  We used Vanderbei’s   code to solve the
+semidefinite  program,     then      we generated   50 random   vectors   r. We output
+the best of the 50 cuts induced.  We applied our code to a small subset of the
+instances considered  by Poljak and Rendl [1995 b]. In particular, we considered
+several      different  types of random graphs, as well as complete geometric  graphs
+defined      by Traveling    Salesman Problem  (TSP) instances from the TSPLIB    (see
+Reinelt [1991]).
+  For four different        types of random     graphs,      we ran 50 instances        on graphs   of
+50 vertices, 20 on graphs of size 100, and 5 on graphs of size 200. In the Type A
+random graph, each edge (i, j) is included   with probability  1/2. In the Type B
+random     graph, each edge is given a weight drawn uniformly     from the interval
+[– 50, 50]; the ratio of Theorem           3.2.1 is used in reporting    nearness    to the
+semidefinite    bound. In the Type C random graph of size n > 10, an edge (i, j)
+is included   with probability     10/n, leading to constant expected degree. Finally,
+in the Type D random          graphs, an edge (i, j) is included    with probability    .1 if
+i s n/2     and j > n/2      and probability     .05 otherwise,  leading  to a large cut
+between the vertices in [1,..., n\2]    and those in [n/2             + 1,..., ~]. We summa.
+rize the results of our experiments     in Table I. CPU              Times are given in CPU
+seconds on a Sun SPARCstation        1.
+Algorithms       for Maximum          Cut and Satisfiability            Problems                                    1’131
+                TABLE I.     SUMMARY OF RESULTSOF ALGORITHM ON RANDOM INSTANCES
+
+                 Type of Graph        Size     Num ‘lkials         Ave Int Gap          Ave CPU Time
+
+                                          50               50            .96988                    36.28
+
+                 Type A                100                 20            .96783                   323.08
+
+                                      200                    5           .97209                  4629.62
+
+                                          50               50            .97202                    23.06
+
+                 Type B               100                  20            .97097                   217.42
+
+                                      200                    5           .97237                  2989.00
+
+                                          50               50            .95746                    23.53
+
+                Type C                100                  20            .94214                   306.84
+
+                                      200                    5           .92362                  2546.42
+
+                                          50               50            .95855                    27.35
+
+                Type D                100                  20            .93984                   355.32
+
+                                      200                    5           .93635                 10709.42
+
+            NOTE: Ave Int Gap is the average ratio of the value of the cut generated to
+          the semidefinite bound, except for Type B graphs, where it is the ratio of the
+          value of the cut generated minus the negative edge weights to the semidefinite
+          bound minus the negative edge weights.
+
+
+
+  In     the   case of the         TSP     instances,        we used      Euclidean            instances     from    ‘the
+TSPILIB,       and set the         edge weight        Wij to the        Euclidean         distance        between    the
+points     i and j. We summarize                our     results     in Table      II.    In all 10 instances,        we
+compute        the optimal     solution;       for 5 instances,          the value       of the cut produceti            is
+equal     to   2$,   and     for    the    others,      we       have   been   able       to    exploit     additional
+information    from the dual semidefinite  program to prove optimality (for the
+problems    dantzig42, gr48 and hk48, Poljak and Rendl [1995b] also show tlhat
+our fsolution is optimal).    For all TSPLIB    instances,  the maximum    cut value is
+within   .995 of the semidefinite    bound, Given these computational      results, it is
+tempting    to speculate   that a much stronger       bound   can be proven for these
+Euclidean    instances. However,    the instance defined by a unit length equilateral
+triangle   has a maximum     cut value of 2, but Z; = ~, for a ratio of $ = 0.8889.
+    Homer  and Peinado   [unpublished                    manuscript]  have implemented     our algo-
+rithm   on a CM-5,   and have shown                      that it produces  optimal   or very neau-ly
+optimal    solutions    to a number                of MAX   CUT   instances   derived  from via
+minimization      problems.  These               instances were provided    by Michael    Junger
+(personal      communication)             and have between              828 and 1366 vertices.
+
+
+7. Generalizations
+We can use the same technique    as in Section 2 to approximate                                       several otlher
+problems. In the next section, we describe a variation of MAX                                        CUT and give
+1132                                                         M.   X.    GOEMANS AND D. P. WILLIAMSON
+
+                                   TABLE II.   SUMMARY OF RESULTSOF
+                                      ALGORITHM ON TSPLIB INSTANCES
+
+                              Instance        Size         SD Val      Cut Val          Time
+
+                              dantzig42         42          42638        42638          43.35
+
+                              gr120           120      2156775         2156667         754.87
+
+                              gr48              48         321815        320277         26.17
+
+                              gr96              96         105470        105295        531.50
+
+                              hk48              48         771712        771712         66.52
+
+                              kroAIOO         100      5897392         5897392         420.83
+
+                              kroBIOO         100      5763047         5763047         917.47
+
+                              kroCIOO         100      5890760         5890760         398.7,8
+
+                              kroDIOO         100      5463946         5463250     469.48
+
+                              kroEIOO         100      5986675         5986591         375.68
+
+                              NOTE: SD Val is the value produced by the
+                            semidefinite relaxation. Cut Val is the value of
+                            the best cut output by the algorithm.
+
+
+
+an ( a –     ●)-approximation            algorithm         for it. In Section          7.2, we give an ( a – ~)-
+approximation    algorithm      for the MAX 2SAT problem,                               and show that it leads to
+a slightly improved     algorithm     for MAX SAT. Finally,                            in Section 7.3, we give a
+(/3 - c)-approximation      algorithm            for the maximum    directed cut problem (MAX
+DICUT),    where     ~ >.79607.      In          all cases, we will show how to approximate
+more general     integer   quadratic             programs   that can be used to model     these
+problems.
+
+     7.1 MAX     RES    CUT.          The MAX          RES        CUT     problem         is a variation        of MAX
+CUT      in which   pairs     of vertices     are forced          to be on either            the same side of the
+cut or on different sides of the cut. The extension of the algorithm                                        to the MAX
+RES CUT problem       is trivial. We merely need to add the following                                         constraints
+to (P):     Ui . Uj = 1 for     (z, j)   = E+        and     Ui . Vj =    –1     for     (i, j)     c E-,     where    E+
+(respectively,    E-) corresponds       to the pair of vertices forced to be on the same
+side (respectively,     different   sides) of the cut. Using the randomized       algorithm
+of Section 2 and setting          yj = 1 if r . Ui > 0, and yi = – 1 otherwise,      gives a
+feasible solution     to MAX       RES CUT, assuming that a feasible       solution    exists.
+Indeed,    it is easy to see that if u, oUj = 1, then the algorithm        will produce       a
+solution    such that y, yj = 1. If Ui “ Uj = – 1, then the only case in which the
+algorithm     produces a solution      such that yiyj # — 1 is when Ui . r = Uj “ r = O, an
+event that happens          with probability          O. The analysis of the expected value of the
+cut is unchanged            and, therefore,           the resulting   algorithm  is a randomized
+(a    – ~)-approximation         algorithm.
+     Another   approach        to the problem              is to use a standard                   reduction     of MAX
+RES CUT        to MAX       CUT      based on contracting                edges and “switching”                 cuts (see,
+Algorithms       for Maximum               Cut and Satisy2ability                 Problems                                          1“133
+
+e.g. [Poljak          and     Rendl       to appear]).          This       reduction         introduces         negative            edge
+weights        and so we do not discuss                   it here,        although       Theorem          3.2.1 can be used
+to show        that    our        MAX      CUT        algorithm           applied      to a reduced         instance            has a
+performance    guarantee                   of ( a – e) for the original MAX   RES CUT instance.
+In fact, a more general                   statement  can be made: any p-approximation algorithm
+(in the        sense of Theorem     3.2.1) for MAX     CUT                                 instances       possibly having
+negative        edge weights  leads to a p-approximation                                   algorithm       for MAX    RES
+CUT.
+
+
+      7.2 MAX         2SAT        AND MAX         SAT.          An instance            of the maximum              satisfiabillity
+problem         (MAX         SAT)        is defined      by a collection               & of Boolean             clauses,       where
+each      clause       is     a     disjunction         of     literals       drawn        from       a   set     of     variables
+{X*, X2,..., x.}. A literal is either                        a variable             x or its negation    Z The length
+/(Cj) of a clause Cj is the number                           of distinct          Iiterals in the clause. In addition,
+for     each    clause        Cj ● % there              is an       associated          nonnegative         weight            ~j.    An
+optimal   solution    to a MAX     SAT instance   is an assignment of truth values to
+the variables     xl, ..., x. that maximizes   the sum of the weight of the satisfied
+clauses.       MAX      2SAT         consists     of MAX           SAT       instances       in which      each clause               has
+length     at most          two.    MAX       2SAT        is NP-complete               [Garey       et al. 1976];         the best
+approximation               algorithm       known       previously           has a performance              guarantee               of ~
+and is due to Yannakakis                      [1994]      (see also Goemans                  and Williamson              [199412]).
+As with        the MAX             CUT     problem,          MAX       2SAT         is known       to be MAX            SNP-hard
+[Papadimitriou              and Yannakakis              1991];      thus,      there     exists     some    constant            c ‘< 1
+such that the existence     of a c-approximation                                    algorithm   implies that P = NP
+[Arora  et al. 1992]. Bellare  et al. [unpublished                                  manuscript]    have shown that a
+95\96-approximation     algorithm    for MAX    2SAT would imply P = NP. Haglin
+[1992] and Haglin (personal      communication)   has shown that any p-approxinaa-
+tion algorithm    for MAX   RES CUT can be translated      into a p-approximation
+algorithm   for MAX                 2SAT, but we will               show a direct algorithm                      here. Haglin’s
+observation    together              with the reduction              from MAX     RES CUT                       to MAX    CUT
+mentioned          in the previous              section        shows       that      any p-approximation                for     MAX
+CUT with negative                   edge weights             translates       into     a p-approximation                algorithm
+for MAX  2SAT.
+
+
+      7.2,.1 MAX        2SAT.            In order      to model           MAX        2SAT,        we consider          the integer
+quadratic        program
+
+
+                      Maximize             ~ [aij(l       - yiyj)         + b,j(l      + y,yj)]
+                                          i <j
+
+(Q’)                  subject       to: yi ● { – 1, 1}                                                    Vi = V,
+
+
+where       ai j and        bi j are nonnegative.                The       objective      function        of (Q’)        is thus          a
+nonnegative    linear   form in 1 ~ yi yj. To model        MAX     2SAT using (Q ‘), we
+introduce   a variable    yi in the quadratic   program   for each Boolean       variable xi
+in the 2SAT instance; wc also introduce        an additional   variable   y.. The value of
+y. will determine      whether     – 1 or 1 will correspond     to “true”     in the MAX
+2SAT instance. More precisely, xi is true if y, = y. and false otherwise.                                                       Given
+a Boolean  formula C, we define its value u(C) to be 1 if the formula                                                          is true
+1134                                                                       M. X. GOEMANS AND D. P. WILLIAMSON
+
+and O if the formula                  is false.            Thus,
+
+                                                                            1 + YOYi
+                                                            Z)(xi) =
+                                                                                   2
+
+and
+
+                                                                                        1 – YOYi
+                                             Z)(ii)        = 1 – Z)(xi)            =          z        .
+
+
+Observe         that
+
+                                                                                                               1 – YOYi 1 – YOYj
+      /J(Xi VXj)         =    1 –     u(~i        A~j)        =       1 – U(Zi)U(Zj)              = 1 –                 *
+                                                                                                                                         2
+                               1
+                         .—          3 + yo.yj + YOYj – YtYiYj
+                               4 (                                                 )
+
+
+                         — l+         YOYi +               l+ YOYj + l–YiYj
+                                      4                           4                    4“
+
+The value of other      clauses with 2 literals can be similarly expressed;  for
+instance, if xi is negated one only needs to replace yi by – yi. Therefore, the
+value u(C) of any clause with at most two literals per clause can be expressed
+in the form required                       in (Q ‘). As                a result,       the    MAX          2SAT             problem          can be
+modelled  as
+
+                                Maximize                    ~    Wjv(cj)
+                                                           C,e’?z
+
+(SAT)                           subject           to: yi G { – 1, 1}                    Vi={o,l,...,                n},
+
+where the U(Cj) are nonnegative   linear combinations                                                  of 1 + yi yj and 1 – yi yj.
+The (SAT) program   is in the same form as (Q’),
+  We relax             (Q’)    to:
+
+                   Maximize                ~      [a,j(l      – ZJi“ Uj) + bij(l              + u,. .vj)]
+                                           i <j
+
+(P’)               subject         to: Ui e S.                                                                              Vi = V.
+
+Let     E[ V]     be the expected                     value        of the solution             produced           by the randomized
+algorithm.         By the linearity                   of expectation,
+
+                              E[V]         = 2~aijPr[sgn(ui                    ‘ r)     # sgn(uj       . r)]
+                                              i cj
+
+                                                  + 2~bijPr[sgn(ui                     . r)   = sgn(uj         “ r)].
+                                                     i <j
+
+Using      the     analysis           of     the      max         cut    algorithm,           we    note       that          Pr[sgn(vi        “ r) =
+sgn( ~j or)] = 1 – l\m- arccos( Ui “ Uj), and thus the approximation                                                            ratio        for the
+more general program    follows from Lemmas 3.4 and 3.2.2.
+  Hence, we can show the following        theorem, which implies that                                                          the algorithm
+is an ( a – .E)-approximation                              algorithm        for (Q’)          and thus for MAX                    2SAT.
+Algorithms        for Maximum              Cut and Satisfiability               Problems                                           1135
+
+  THEOREM           7.2.1.1
+
+                           E[V]      > ax     [aij(l         – Uiwj)            + b,$l       + Uj .Uj)l.
+                                         i <j
+
+
+   7.2.2 MAX   SAT.     The improved       MAX  2SAT algorithm    leads to a slightly
+imp roved approximation    algorithm    for MAX SAT. In Goemans and Williamson
+[1994b],  we developed     several   randomized   ~-approximation     algorithms   for
+MAX        SAT.     We considered               the following            linear    programming                 relaxation       of the
+MAX        SAT      problem,         where            1,+ denotes         the     set of nonnegated                    variables      in
+clause     Cj and 1,7 is the set of ‘negated                        variables        in Cj:                -
+
+
+
+
+                       subject       to:
+
+
+
+
+By associating             yi = 1 with           xi     set true,     yi = O with             xi     set false,        Zj = 1 with
+clause     Cj satisfied,          and Zj = O with            clause       Cj not satisfied,            the program           exactly
+corresponds          to     the    MAX          SAT       problem.          We      showed          that       for    any   feasible
+solution     (y, z), if xi          is set to be true             with     probability             yi, then      the probability
+that   clause      j will    be satisfied             is at least
+
+
+                                                      (l-(l-;)’)zj,
+for k = l(Cj).            We then considered      choosing                       randomly    between    the following
+two algorithms:            (1) set xi true independently                        with probability   yi; (2) set xi true
+independently             with    probability          ~. Given      this combined             algorithm,             the probabil-
+ity that     a length        k clause        is satisfied      is at least
+
+
+
+                                   ;(l-2-k)+;(l-(1                                -;)k)zj.
+
+
+
+This expression     can be shown to be at least ~zj for all lengths                                                  k. Thus, if an
+optimal    solution   to the linear  program    is used, the algorithm                                                 results in~ a
+~-aplproximation     algorithm   for MAX     SAT, since the expected                                                  value of the
+algorithm         is at least      $ ~j       Wj Zj.
+   We formulate              a slightly       different       relaxation          of the MAX               SAT       problem.       Let
+u(C) denote a relaxed                 version of the expression  u used in the previous section
+in wlhich the products                 yi yj are replaced  by inner products  of vectors  ~i “ Uj.
+Thus,
+1136                                                               M. X. GOEMANS AND D. P. WILLIAMSON
+
+and
+
+
+
+
+We then        consider      the following          relaxation,
+
+
+
+
+                                          U(cj)        2 Zj                      Vcj       =    %?,l(cj)       = 2
+
+
+
+
+Thus,      if we set xi to be true              with         probability         U(xi)         for the optimal           solution      to
+the     corresponding         semidefinite          program,              then       by the       arguments          of Goemans
+and Williamson             [1994b],      we satisfy           a clause        Cj of length            k with       probability         at
+least (1 – (1 – (l\k))~)zj.
+   To obtain the improved      bound, we consider three algorithms:                                               (1) set xi true
+independently   with probability    ~; (2) set xi true independently                                            with probability
+U(xi) (given the optimal solution   to the program);   (3) pick a random unit                                                    vector
+r and set xi true iff sgn( Ui “ r) = sgn( UO“ r). Suppose we use algorithm                                                       i with
+probability        pi, where      pl     + pz + pq = 1. From                         the       previous       section,     for      algo-
+rithm      (3) the probability           that     a clause        Cj of length             1 or 2 is satisfied            is at least
+a u(Cj)       > CYZj. Thus       the expected            value       of the solution               is at least
+
+          ~      ‘j(-5~~     +   (p,+ ap’3)zj) +                          ~       ‘j(.75p~ + (.75~~+ a~~)zj)
+      j:l(Cj)= 1                                                   j:l(Cj)=2
+
+
+
+
+If we set pl          = p,   =   .4785     and p~ =              .0430,       then     the expected            value      is at least
+.7554 zj         wjzj, yielding a .7554-approximation    algorithm. To see this, we check
+the value        of the expression   for lengths 1 through   4, and notice that
+
+
+
+
+and
+                                       ‘4-(1
+                                          -3’)-+
+                                 .4785
+                                           ((1 – 2-5)             + 1 – ~
+                                                                        e            ) > .7554.
+
+
+      We can obtain          even a slightly            better       approximation                algorithm        for the MAX
+SAT problem.    The bottleneck                          in the analysis   above is that algorithm   (3)
+contributes no expected weight                         for clauses of length 3 or greater. For a given
+clause       Cj of length        3 or more,            let     Pj be a set of length                       2 clauses     formed        by
+Algorithms               for Maximum                  Cut and Satisfiability                      Problems                                                      1137
+                                                                                                                                     l(cj)
+taking        the literals           of Cj two at a time;                     thus,           ~      will      contain              clauses. If at
+                                                                                                                            ()
+least one of the literals                         in Cj is set true,                 then          at least           l(cj)   –21 of the clauses
+in pi will            be satisfied.             Thus,     the following                program                 is a relaxation                   of the IWAX
+SAT problem:
+
+
+
+
+                subject        to:
+
+                                             ~ ‘(x,)          +     ~        ‘(z,)            > ‘j                   Vcj         e f7
+                                           i ● 11+                 i ● Ij–
+
+
+                                          U(cj)        > Zj                                                          Vcj         e %’, l(cj)            = 2
+
+
+                                                                                                                     Vcj         e    %’,l(cj)          >3
+
+
+
+
+Algorithm   (3) has expected value of au(C)  for each C = Pj for any j, so tlhat
+its expected value for any clause of length 3 or more becomes at least
+
+
+                          a“      &               ~;,u(c)             = a o          J                         1                ~       u(c)
+
+
+                               ()
+                                                                                     l(Cj)           l(C’j)      –    1 ~GPj
+                                                         1
+                                      2]
+
+                                                                                          2
+                                                                                .—
+                                                                      2a         l(Cj)zj’
+
+so that         the overall           expectation              of the algorithm                        will     be at least
+
+          ~              Wj(-5~~ + (~’2+ a~~)zj)                         +            ~              wj(.75p,              +     (.75p2          +   a!p,)zj)
+     j:l(Cj)=        1                                                         j:l(Cj) = 2
+
+
+
+                 +         ~         Wj        (1 -    2-’(cJ)p1
+                      j:l(Cj)>3            [
+
+
+                                               ‘[(1      -(1-*]’(c’))P2+                                             a&        P3)zj)
+
+
+By     setting            pl   = pz = .467               and       p~ =        .066,          we        obtain             a .7584-approximation
+algorithm,               which       can         be verified            by checking                      the     expression                    for    lengths      1
+through              6, and noticing              that
+
+                                                              1
+                                           .467
+                                                      ((
+                                                         1 – .
+                                                              e )
+                                                                  +(1–                    2-7)
+                                                                                                       )      ? .7584.
+
+
+Other           small      improvements                  are possible            by tightening                       the analysis.
+1138                                                                        M. X. GOEMANS AND D. P. WILLIAMSON
+
+      7.3 MAX          DICUT.                  Suppose     we are given               a directed        graph    G = (V, xl) and
+weights Wij on each directed                         arc (i, j) = A, where                     i is the tail of the arc and j
+k the head. The maximum                             directed   cut problem                     is that of finding   the set of
+vertices S that maximizes                          the weight of the edges with their tails in S and their
+heads in ~. The problem                          is NP-hard via a straightforward   reduction  from MAX
+CUT. The best previously    known approximation                                            algorithm  for MAX   DICUT
+has a performance guarantee    of ~ [Papadimitriou                                          and Yannakakis  1991].
+      To model         MAX           DICUT,         we consider              the integer        quadratic        program
+
+
+
+
+                                                          +dij~(l            – yiyj    + y~Y~ + YjY~)]
+
+(Q” )                   subject          to:     y, = { –1,        1}                          ‘di ~ V,
+
+
+where          Cij~ and       dij~       are nonnegative.               Observe         that     1 – y, yj – yi y~ + yj y~ can
+also be written              as (1 – yiyj)(l             – yiy~)        (or as (1 – yiyj)(l             + yjy~)),    and, thus, the
+objective            function of (Q”)                  can be interpreted                  as a nonnegative   restricted
+quadratic             form in 1 i yiyj.                Moreover,  1 – yiyj               – yiy~ + yjy~ is equal to 4 if
+Yi =     ‘Yj     =     ‘Yk     and       O othe~ise~        while           1 +   YiYj + Yiyk + Yjyk is 4 if Yi = yj = Y~
+and is O otherwise.
+    We can             model     the MAX     DICUT    problem   using the program                                           (Q”)   by
+introducing            a variable   y, for each i G V, and, as with the MAX 2SAT                                           program,
+and introducing               a variable          yO that will          denote        the S side of the cut. Thus,             i = S
+iff    yi = yO. Then            arc (i, j) contributes                  weight
+
+                     1                                                      1
+                     ~w~j(l        + YiY())(l          – YjYO)      =       ~wij(l      + YiYO        – YjYO    – YiYj)
+
+
+
+to the cut. Summing                      over all arcs (i, j)               = A gives a program                 of the same form
+as (Q”).         We observe               that    if the directed             graph     has weighted            indegree    of every
+vertex         equal     to weighted              outdegree,            the program            (Q”)     reduces      to one of the
+form   (Q ‘), and therefore                         our    approximation                 algorithm         has      a performance
+guarantee    of ( a – 6).
+   We relax (Q”) to:
+
+
+
+
+                                                       +dijk(l          + U1. u, + Vi- Uk + u, . Vk)]
+
+(P”)                 subject       to:         Ui = S.                                             Vi ~ V.
+
+
+We approximate        (Q”)  by using exactly                                      the same algorithm              as before.  The
+analysis is somewhat       more complicated.                                       As we will show,             the performance
+guarantee   /3 is slightly weaker, namely
+
+                                                                        2     2v–36
+                              p=                   min                                          >0.79607.
+                                         0S9<arcc0s(-       1/3) ~           1 + 3cos      d
+Algo,tithms          for Maximum                    Cut and Satisjiability                  Problems                                              11!39
+
+   Given           a vector          r drawn           uniformly               from   the unit             sphere     S., we know               by the
+linearity          of expectation                  that    the expected               value      E[u]         of the solution            output      is
+
+                     4 X [Cijk “ Pr[f%n(ui                          “   ‘) # ‘EJn(uj          “ ‘)]
+                                                                                  “ ‘) = ‘gn(uk
+                          i,j, k
+
+                                         +dij~     “ Pr[sgn(ui”            r)     = sgn(uj       “r)       = sgn(uk        “ r)]].
+
+Consider any term in the sum, say ~ij~ “ Pr[sgn(ui . r) = sgn( ~j “r) = sgn(u~ “ r)].
+The cij~ terms can be dealt with similarly    by simply replacing    vi by – vi. The
+perfclrmance               guarantee               follows         from         the proof       of the following               two lemmas,
+
+   LEMMA            7.3.1
+
+            Pr[sgn(ui              “r)     = Sgn(uj or)                 = sgn(u~ “ r)]
+
+
+                      = 1-               &(arccos(ui                . Z)j) + arccos(ui              . Uk) + arCCOS(Uj . Uk)).
+
+   LEMMA            7.3.2.           For any vi, Vj, v~ e S.,
+
+
+                     1-       #_(a~CCOS(Ui                    - Uj) + arccos(ui             eU,)       + a~CCOS(Uj - U,))
+
+
+
+
+   PROOF            OF LEMMA                      7.3.1.       A        very      short     proof           can     be     given       relying      on
+spherical geometry.   The                            desired            probability  can be seen to be equal to twilce
+the area of the spherical                            triangle            polar to the spherical triangle defined by vi,
+Vj, and v~. Stated                       this way, the result                    is a corollary            to Girard’s         [1629]      formula
+(see Rosenfeld   [1988]) expressing the area of a spherical    triangle   with angles
+@l, 6J, and tl~ as its excess @l + Oz i- OS – z-.
+   We also present a proof of the lemma from first principles.     In fact, our proof
+parallels Euler’s   [1781] proof                               (see Rosenfeld                 [1988])        of Girard’s             formula.      We
+define the following    events:
+
+                                         A:         Sgn(Ui . r)           = Sgn(.lJj “r)        = sgn(uk            “r)
+
+                                         Bi :       Sgn(lli     - r)      # Sgn(Uj “ r)         = sgn(uk            “ r)
+
+                                         Ci :       sgn(vj      or)       = sgn(uk        or)
+
+                                         Cj :       Sgll(Vi     “ r)      = sgn(u~ “ r)
+
+                                     Ck :           Sgll(L’i “ r)         = Sgn(Uj “ r).
+
+Note        that     Bi = Ci – A. We                          define       Bj and         B~ similarly,             so that          Bj = Cj – .A
+and Ek = ck – A. Clearly,
+
+                                         Pr[A]        + Pr[Bi]            + Pr[Bj]          + Pr[B~]              = 1.                             (1)
+
+Also, Pr[Ci] = Pr[ A ] + Pr[Bi]  and similarly                                                for      j    and     k. Adding            up      these
+equalities and subtracting (l), we obtain
+
+                                         Pr[Ci]      + Pr[Cj]             + Pr[C~]          = 1 + 2Pr[A].                                          (2!)
+1140                                                              M. X. GOEMANS AND D. P. WILLIAMSON
+
+By   Lemma         3.2,     Pr[Ci]        = 1 – I/z-       arccos(~j       . ~~) and       similarly          for     j    and     k.
+Together        with     (2), we derive
+
+
+        Pr[A]      = 1 – ~            (arccos(ui        “ Uj) + arccos(ui          “ u~) + arccos(uj                ou~)),
+
+
+proving     the lemma.               ❑
+
+   PROOF OF LEMMA 7.3.2.   One can easily verify                                  that the defined value of ~ is
+greater than  0.79607. Let  a = arccos( u, “ Uj),                                 b = arccos(ui “ u~), and c =
+arccos( Uj. u~).         From    the theory     of spherical   triangles, it follows  that the
+possible values          for (a, b, c) over all possible vectors Ui, Uj, and v~ define the set
+
+                S={(a,        b,c):O<a<n,                      O<bs        T,Osc         S7r,
+                         c<a+b,             bga+c,               a<b+        c,a+b+c                  S2~}.
+
+(see Berger        [1987,     Corollary           18.6.12.3]).     The    claim     can thus be restated                     as
+
+
+                1 – &(a           + b + c) > ~(1                  + cos(a)        + cos(b)       + cos(c))
+
+
+for all (a, b, c) C S.
+   Let (a, b, c) minimize
+
+
+     h(a,   b,c)       = 1 – -&(a             + b + c) – :(1               + cos(a)        + COS(b) + COS(C))
+
+
+over all (a, b, c) = S. We consider                       several       cases:
+
+(l)a-tb+c=27r.                        We      have       1 – (l\2w)(a             + b + c) = O. On                   the      other
+       hand,
+
+                         1 + cos(a)          + Cos(b)          + Cos(c)
+                                =1+          cos(a)      + cos(h)         + cos(u       + b)
+
+                                =1+
+                                             cOs(a+b’+2c0s(%c0s(=
+                                = 2COS2
+                                                  (+)+2c0s(+]c0s(+!
+
+                                .2COS(+)[COS(+)                                    +Cos(       :)].                               (3)
+
+
+       We now derive           that
+
+
+            lz(a,b,c)>               -;      COS(+)[COS(+)+COS(+]                                                     20,
+
+
+       the last inequality            following        from      the fact that
+
+                                             T          a+b                      a–b
+                                             —<         —<v—                     —
+                                              2            2                        2
+Algorithms         for Maximum           Cut and Satisfiability                Problems                                       1141
+
+        and thus
+
+                      a+b
+
+                    ()
+                  Cos —
+                        2
+                                    <0
+                                                  and               [C”s(+)+cosrwl’o
+
+(2)    a= b+corb=a+corc                                     =a+b.              Bysymmetry,               assume   thatc=         a
+       + b. Observe that
+
+                                                                                          a+b
+                                     l–         &(a+b+c)=l–                               —.
+                                                                                             T
+
+        On the other        hand,    by (3) we have that
+
+                       1 + cos(a)              + cos(b)          + COS(C)
+
+                               .2COS(+)(COS(9)                                          +COS(*))
+
+
+                                                 a+b                       a+b
+                               S2COS
+                                                ( )( ( ))
+                                                 —
+                                                   2
+                                                                   1 + Cos —
+                                                                             2“
+
+        Letting     x = (a + b)/2,              we observe           that   the claim         is equivalent        to
+
+
+                                         1 .     —      2    ;     Cos(.x)(l      + Cos(x))
+                                                  ,11         z.
+
+                                           One can in fact verify                  that
+
+                                           2x           0.81989
+                                l–         —->                         Cos(x)(l         + Cos(x))
+                                            T                 2
+
+        for any O < x < r/2,              implying the claim.
+(3)    ~z = O or      b = O or           c =’ O: Without    loss                  of    generality,         let   a = O. The
+        definition of S implies that b = c, and thus                              b = a + c. This case therefore
+        reduces to the previous one.
+(4)    (z = n or b = n or c = rr.  Assume   a = m. This implies that b + c =’ n
+       and, thus, a + b + c = 2m. We have thus reduced the problem   to case (1).
+(5)     l[n the last case, .,.(a, b, c) belongs to the interior of S. This implies that the
+        gradient   of h must vanish and-the hessian of h must be posi~ive semidefi-
+        nite   at (a, b, c). In other            words,
+
+                                                                                          2
+                                               sina=sinb=sinc=—,
+                                                                                        pn
+
+        and cos a 2 0, cos b z O and                         cos c > 0, From               this,    we derive       that      a =
+        b = C. But
+
+
+                              h(a,       a,a)      = 1 – ~              – :(1          + 3cos(a)).
+
+
+        The lemma now follows from the fact that a s 2T/3,      the definition                                                of ~
+        and the fact that 1 + 3 cos a < 0 for a > arccos – 1/3.    ❑
+
+      Thus,    we obtain      a ( ~ – e)-approximation                          algorithm          for    ( Q“ ) and    for    the
+MAX        DICUT       problem.
+1142                                                                M. X. GOEMANS AND D. P. WILLIAMSON
+
+8. Concluding           Remarks
+Our       motivation          for studying           semidefinite      programming             relaxations         came        from
+a realization  that the standard tool of using                           linear programming     relaxations   for
+approximation     algorithms   had limits which                          might not be easily surpassed (see
+the conclusion    of Goemans     and Williamson                            [1994b]). In fact, a classical linear
+programming      relaxation  for the maximum                              cut problem    can be shown to be
+arbitrarily       close to twice             the value      of the maximum            cut in the worst             case. Given
+the work        of LOV6SZ and Schrijver                     [1989;    1990], which            showed      that     tighter       and
+tighter       relaxations            could     be obtained           through      semidefinite           programming,                  it
+seemed        worthwhile             to investigate         the power        of such relaxations               from       a worst-
+case perspective. The results   of this paper      constitute                                        a first      step     in this
+direction. As we mentioned    in the introduction,      further                                       steps      have      already
+been      made,       with     improved         results     for MAX          2SAT     and MAX            DICUT           by Feige
+and Goemans,              and for coloring    by Karger, Motwani,    and Sudan. We think that
+the continued            investigation   of these methods   is promising.
+   While   this          paper    leaves many open questions,        we think   there are two
+especially       interesting             problems.      The first     question      is whether          a .878 -approxima-
+tion      algorithm          for    MAX       CUT        can be obtained            without      explicitly        solving           the
+semidefinite      program.                 For example,   the first            2-approximation    algorithms    for
+weighted     vertex cover                 involved solving a linear            program    [Hochbaum      1982], but
+later Bar-Yehuda                    and Even [1981] devised a primal-dual    algorithm                                 in which
+linear programming                    was used only in the analysis of the algorithm.                                 Perhaps a
+semidefinite     analog is possible                     for MAX   CUT. The second question  is whether
+adding    additional   constraints                      to the semidefinite program leads to a better
+worst-case        bound.  There is some reason to think                                this    might be true. Linear
+constraints       are known for which the program would                                find    an optimal solution on
+any planar         graph,           whereas      there      is a gap of 32/(25                + 5fi)       for    the     current
+semidefinite program   for the 5-cycle.
+  One consequence    of this paper is that                             the situation          with     several     MAX          SNP
+problems         is no longer              clear-cut.       When     the best-known             approximation              results
+for    MAX         CUT             and    MAX         SAT     had     such     long-standing             and     well-defined
+bounds as ~ and ~, it was tempting     to believe that perhaps no further      work
+could be done in approximating    these problems,   and that it was only a matter
+of time before matching  hardness results would be found. The improved       results
+in this paper should rescue algorithm    designers from such fatalism.   Although
+MAX          SNP problems     cannot be approximated                             arbitrarily    closely,          there      still     is
+work       to do in designing    improved approximation                             algorithms.
+
+
+ACKNOWLEDGMENTS . Since the appearance               of an extended    abstract    of this
+paper,   we have benefited       from    discussions   with  a very large number         of
+colleagues.  In particular,   we would like to thank Don Coppersmith          and David
+Shmoys for pointing      out to us that our MAX      2SAT algorithm   could lead to an
+improved    MAX    SAT algorithm,      Jon Kleinberg     for bringing Lmlisz    [1983] to
+our attention,     Bob Vanderbei        for kindly    giving   us his semidefinite     code,
+Francisco    Barahona    and Michael     Jiinger for providing    problem  instances, Joel
+Spencer for motivating      Theorem     3.1.1, Farid Alizadeh,    Gabor Pataki, and Rob
+Freund    for results   on semidefinite       programming,     and Shang-Hua       Teng for
+bringing   Knuth    [1981] to our attention.       We received    other useful comments
+from Farid ,?dizadeh, Joseph Cheriyan,          Jon Kleinberg,   Monique   Laurent,    Colin
+Algorithms    for Maximum       Cut and Satisfiability     Problems                             1143
+
+McDiarmid,      Giovanni     Rinaldi,   David    Shmoys,    Eva Tardos,     and the two anony-
+mous   referees.
+
+REFERENCES
+ALIZADEH,   F. 1995. Interior point methods in semidefinite programming with applications to
+  combinatorial optimization. SIAM J. Optimiz. 5, 13–51.
+A~orm, S., LUND, C., MOTWANI, R., SUDAN, M., AND SZEGEDY, M. 1992. Proof verification and
+  hardness of approximation problems. In Proceedings of the 33rd Annual Symposium on Founda-
+  tions of Computer Science. IEEE, New York, pp. 14–23.
+BAR-YEHUDA, R., ANDEVEN, S. 1981. A linear time approximation algorithm for the weighted
+  vertex cover problem. J. Algorithms 2, 198–203.
+BARAHONA, F., GROTSCHEL, M., JUNGER, M., AND REINELT, G. 1988. An application of connbi-
+  natorial optimization to statistical physics and circuit layout design. Oper. Res. 36, 493–513.
+BARVINOK, A. I. 1995. Problems of distance geometry and convex properties of quadratic
+  maps. Disc. Computat. Geom. 13, 189–202.
+BELLARE, M., GOLDREICH, O., AND SUDAN,M. 1995. Free bits, PCP and non-approximabili~y—
+  Tovvards tight results, In Proceedings of the 36th Annua[ Symposium on Foundations of Computer
+  Science. IEEE, Los Alamitos, Calif., pp. 422-431.
+BERGIER,M. 1987. Geomety 11. Springer-Verlag, Berlin.
+BONDY, J. A., AND MURTY, U. S. R. 1976. Graph Theo~ with Applications. American Elsevier
+  Publishing, New York, N.Y.
+BOYD,S., EL GHAOUI, L., FERON, E., AND BALAKRISHNAN, V. 1994. Linear Matrix Inequalities in
+  System and Control Theoiy. SIAM, Philadelphiaj Pa.
+CHOR,B., ANDSUDAN,M. 1995. A geometric approach to betweenness. In Algorithms-ESA                 ’95,
+  P. Spirakis, ed. Lecture Notes in Computer Science, vol. 979. Springer-Verlag, New York,
+  pp. 227-237.
+CHRISTENSEN, J., AND VESTERSTRONL J. 1979. A note on extreme positive definite matrices.
+ Math. Annalen, 24465-68.
+DELORME, C., AND POLJAK, S. 1993a. Combinatorial properties and the complexity of a
+  max-cut approximation. Europ. J. Combinat. 14, 313–333.
+DELORME, C., AND POLJAK,S. 1993b, Laplacian eigenvalues and the maximum cut problem.
+ Math. Prog. 62, 557-574.
+DELORME,C., ANDPODAK, S. 1993c. The performance of an eigenvalue bound on the max-cut
+  problem in some classesof graphs. Disc. Math. 111, 145-156.
+EULER, L. 1781. De mensura angulorum solidorum. Petersburg.
+FEIGE,,U., AND GOEMANS,M. X. 1995. Approximating the value of two prover proof systems,
+  with applications to MAX 2SAT and MAX DICUT. In Proceedings of the 3rd Israel Symposium
+  on Theory of Computing and Systems. IEEE Computer Society Press, Los Alamitos, Callif.,
+  pp. 182-189.
+FEIGE, U., ANDLovAsz, L. 1992. Two-prover one-round proof systems: Their power and their
+  problems. In Proceedings of the 24th Annual ACM Symposium on the Theo~ of Computing
+  (Victoria, S.C., Canada, May 4-6). ACM, New York, pp. 733-744.
+FRIEZE, A., AND JERRUM, M.       1996. Improved approximation algorithms for MAX k-CUT and
+  MAX BISECTION. AZgotithmica, to appear.
+GAREY, M., JOHNSON,D., AND STOCKMEYER,L. 1976. Some simplified NP-complete graph
+  problems. Theoret. Comput. Sci. 1,237-267.
+GIRARD, A. 1629. De la mesure de la superficie des triangles et polygones sph&iques. Appendix
+  to “l[nvention nouvelle en l’alg~bre”. Amsterdam.
+GOEMANS,M. X., AND WILLIAMSON,D. P. 1994a. .878-approximation algorithms for MAX
+  CUT and MAX 2SAT. In Proceedings of the 26th Annual ACM Symposium on the Theory of
+  Computing (Montreal, Que., Canada, May 23–25). ACM, New York, pp. 422-431.
+GOEMANS,M. X., AND WILLIAMSON,D. P. 1994b. New 3/4-approximation algorithms for the
+  maximum satisfiability problem. SL4M J. Disc. Math. 7, 656-666.
+GOLUE+G. H., AND VAN LoAN, C. F. 1983. Matrix Computations. The Johns Hopkins Univer-
+  sity IPress, Baltimore, Md.
+GRONE,R., PIERCE,S., AND WATKINS,W. 1990. Extremal correlation matrices. Lin. Algebra
+  Appl, 134, 63-70.
+GROTSCHEL,M., Lovkz, L., AND SCHRIJVER,A. 1981. The ellipsoid method and its conse-
+ quences in combinatorial optimization. Combinatorics 1, 169-197.
+1144                                            M. X. GOEMANS AND D. P. WILLIAMSON
+
+GROTSCHEL,    M., Loviisz, L., ANDSCHRIJVER,
+                                           A. 1988. Geometric Algorithms and Combinatorial
+ Optimization. Springer-Verlag, Berlin.
+HADLOCK,F. 1975. Finding a maximum cut of a planar graph in polynomial time. SIAM J.
+  Comput. 4, 221-225.
+HAGLIN, D. J. 1992. Approximating maximum 2-CNF satisfiability. Paral. Proc. Lett. 2, 181-187.
+HAGLIN) D. J., AND VENKATESAN,S. M. 1991. Approximation and intractability results for the
+   maximum cut problem and its variants. IEEE Trarrs. Comput. 40, 110–1  13.
+HOCHBAUM,D. S. 1982. Approximation algorithms for the set covering and vertex cover
+   problems. SIAM J. Comput. 11, 555-556.
+HOFMEISTER) T., AND LEFMANN, H.       1995. A combinatorial design approach to MAXCUT. In
+  Proceedings of the 13th Symposium on Theoretical Aspects of Computer Science. To appear.
+HOMER, S., AND PEINADO,M. A highly parallel implementation of the Goemans/Williamson
+   algorithm to approximate MaxCut. Manuscript.
+nRGER, D., Momv.mx, R., AND SUDAN,M. 1994. Approximate graph coloring by semidefinite
+   programming. In Proceedings of the 35th Annual Symposium on Foundations of Computer
+   Science. IEEE, New York, pp. 2-13.
+KARP, R. M. 1972. Reducibility among combinatorial problems. In Complexi@ of Computer
+   Computations, R. Miller and J. Thatcher, eds. Plenum Press, New York, pp. 85-103.
+KNUTH, D. E. 1981. Seminumerical Algorithms. Vol. 2 of The Art of Computer Programming.
+   Addison-Wesley, Reading, Mass.
+LANCASTER,P., ANDTISMENETSKY,      M. 1985. The Theoiy of Matrices. Academic Press, Orlando,
+   Fla.
+LAURENT,M., AND POUW, S. 1996. On the facial structure of the set of correlation matrices.
+   SIAM J. Matrix Anal., and Appl. to appear.
+LI, C.-K., ANDTAM, B.-S. 1994. A note on extreme correlation matrices. NAM J. Matrix Anal.
+  and Appl. 15, 903–908.
+LOEWY,R.     1980. Extreme points of a convex subset of the cone of positive definite matrices.
+ Math. Annalen. 253, 227-232.
+LOVA.SZ,L. 1979. On the Shannon capacity of a graph. IEEE       Trans. In& TheoV IT-25,   1-7.
+LovAsz, L. 1983. Self-dual polytopes and the chromatic number of distance graphs on the
+  sphere. Acts Sci. Mad-r. 45, 317–323.
+LOV1.SZ, L.   1992. Combinatorial optimization: Some problems and trends. DIMACS Technical
+  Report 92-53.
+Lov.&z, L., AND SCHRIJVER,A. 1989. Matrix cones, projection representations, and stable set
+  polyhedra. In Polyhedral Combinatorics, vol. 1 of DILL4CS Series in Discrete Mathematics and
+  Theoretical Computer Science. American Mathematical Society, Providence, R.I.
+Loviisz, L., AND SCHRIJVER,A. 1990. Cones of matrices and setfunctions, and O–1 optimiza-
+  tion. SIAM J. Optimiz. 1, 166–190.
+MAHAJAN,S., ANDRAMESH,H. 1995. Derandomizing semidefinite programming based approxi-
+  mation algorithms. In Proceedings of the 36th Annual Symposium on Foundations of Computer
+  Science. IEEE, Los Afamitos, Calif., pp. 162-163.
+MOHAR, B., AND POUX, S. 1993. Eigenvalue methods in combinatorial optimization. In
+  Combinatorial  and Graph-Theoretic Problems in Linear Algebra, vol. 50 of The IAL4 Volumes in
+  Mathematics and Its Applications.  R. Brualdi, S. Friedland, and V. Kfee, eds. Springer-Verlag,
+  New York.
+NESTEROV,Y., AND NEMIROVSKU,A. 1989. Self-Concordant Functions and Polynomial Time
+  Methods in Convex Programming. Central Economic and Mathematical Institute, Academy of
+  Science, Moscow, CIS.
+NESTEROV,Y., AND NEMIROVSJCN,       A. 1994. Interior Point Polynomial Methods in Convex pro-
+  gramming. Society for Industrial and Applied Mathematics, Philadelphia, Pa.
+ORLOVA,G. I., ANDDORFMAN,Y. G. 1972. Finding the maximal cut in a graph. Eng. Cyber. 10,
+  502-506.
+OVERTON,M. L., AND WOMERSLEY,R. S. 1992. On the sum of the largest eigenvalues of a
+  symmetric matrix. SIAM J. Matrix Anal. and Appl. 13, 41–45.
+OVERTON,M. L., AND WOMERSLEY,R. S. 1993. Optimality conditions and duality theory for
+  minimizing sums of the largest eigenvalues of symmetric matrices. Math. Prog. 62, 321–357.
+PAPADIMITRIOU)C. H., m YANNAKAKJS,M, 1991. Optimization, approximation, and complex-
+  hy classes. J. Comput. Syst. Sci. 43, 425–440.
+PATAKI, G. 1994. On the multiplicity of optimal eigenvalues. Management Science Research
+  Report MSRR-604, GSIA. Carnegie-Mellon Univ., Pittsburgh, Pa.
+Algorithms    for Maximum     Cut and Satisfiability       Problems                                  1145
+
+PATAKI, G.  1995, On cone-LP’s and semi-definite programs: Facial structure, basic solutions,
+ and the simplex method. GSIA Working paper WP 1995-03, Carnegie-Mellon Univ., Pittsburgh,
+ Pa.
+POUAK, S., AND RENDL,F. 1994. Node and edge relaxations of the max-cut problem. Comput-
+  ing 52, 123–137,
+POLJAI<,S., AND RENDL, F. 1995a. Nonpolyhedral relaxations of graph-bisection problems.
+ SZAM J. Optim., to appear.
+POLJAK,S., AND RENDL,F. 1995b. Solving the max-cut problem using eigenvalues. Disc. A@.
+ Math. 62, 249-278.
+POLTAK,S., AND TURZiK, D. 1982. A polynomial algorithm for constructing a large bipartite
+ subgraph, with an application to a satisfiability problem. Can. J. Math, 34, 519–524.
+POLJ.ML,S., ANDTUZA, Z. 1995. Maximum cuts and largest bipartite subgraphs. In Combinato-
+ rial Optirnizatiorr. W. Cook, L. Lov&z, and P. Seymour, eds. DIMACS series in Discrete
+ Mathematics and Theoretical Computer Science, Vol. 20. American Mathematical Society,
+ Providence, R,l. To be published.
+REINEI.T, G. 1991. TSPLIB—A traveling salesman problem library. ORSA J. Comput. 3,
+  376-384.
+RENDL, F., VANDERBEI, R., AND WOLKOWICZ, H.       1993. Interior point methods for max-min
+  eigenvalue problems. Report 264, Technische Universitat Graz, Graz, Austria.
+ROSENIFELD,B. 1988. A histo~ of non-Euclidean geometry. Springer-Verlag, Berlin.
+SAHNI,S., AND GONZALEZ, T, 1976. P-complete approximation problems. J. ACM 23, 3 (July),
+  555-565.
+VAIDYA, P. M.    1989. A new algorithm for minimizing convex functions over convex sets. In
+  Proceedings of the 30th Annual Symposium on Foundations of Computer Science. IEEE, New
+  York, pp. 338-343.
+VANDENBERGHE, L., AND BOYD, S. 1996. Semidefinite programming. SZAM Rev. To appear.
+VITANYI, P. M. 1981. How well can a graph be n-colored? Disc. Math. 34, 69-80.
+WOLKC,WICZ,H. 1981. Some applications of optimization in matrix theory. Lin. Algebra Appl.
+  40, 1101-118.
+YANNAKAKIS,M.        1994. On the approximation      of maximum satisfiability.      J. Algorithms     17,
+  475-.502.
+
+
+RECEIVEDJUNE1994; REVISEDJUNE1995; ACCEPTED
+                                          JULY 1995
+
+
+
+
+                                JOuxndof the Associationfor ComputingMachinery,vol. 42,No. 6, November199:5.
+

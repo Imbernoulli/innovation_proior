@@ -74,10 +74,19 @@ def hash32(value):
     # fixed pseudo-uniform hash D -> {0,1}^32
     pass
 
+def rho(w, max_width):
+    # TODO: finite bit-pattern statistic recorded from the hash suffix
+    pass
+
+def alpha(m):
+    # TODO: multiplicative calibration for the estimator
+    pass
+
 class DistinctCounter:
     def __init__(self, p):
         self.p = p
         self.m = 1 << p                 # number of buckets
+        self.alpha = alpha(self.m)
         self.M = [0] * self.m
 
     def add(self, value):

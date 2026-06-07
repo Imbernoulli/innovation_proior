@@ -1,0 +1,118 @@
+A Simple Explicit Construction of an nÕ(log n)-Ramsey Graph
+
+arXiv:math/0601651v1 [math.CO] 26 Jan 2006
+
+Boaz Barak∗
+June 9, 2021
+
+Abstract
+√
+
+We show a simple explicit construction of an 2Õ( log n) Ramsey graph. That is, we provide
+a poly(n)-time algorithm to output the
+adjacency matrix of an undirected n-vertex graph with
+√
+no clique or independent set of size 2ǫ log n log log n for every ǫ > 0.
+Our construction has the very serious disadvantage over the well-known construction of
+Frankl and Wilson [FW81] that it is only explicit and not very explicit, in the sense that we
+do not provide a poly-logarithmic time algorithm to compute the neighborhood relation. The
+main advantage of this construction is its extreme simplicity. It is also somewhat surprising that
+even though we use a completely different approach we get a bound which essentially equals the
+bound of [FW81]. This construction is quite simple and was obtained independently by others
+as well1 but as far as we know has not been published elsewhere.
+
+1
+
+The Construction
+
+As mentioned above, we prove the following proposition:
+Proposition 1.1. Let ǫ > 0 be some constant. There is a polynomial-time algorithm A that on
+input 1n outputs
+the adjacency matrix for a graph H on n vertices with no clique or independent
+√
+log
+n
+log log n .
+ǫ
+set of size 2
+Proof. We will need to recall the notion of the Abbott product of two graphs: if G = (VG , EG )
+and H = (VH , EH ) are graphs, then the Abbott product of G and H, denoted by G ⊗ H is the
+graph with vertex set VH × VH (where × denotes Cartesian product) and where h(u, v), (u′ , v ′ )i is
+an edge if either (u, u′ ) is an edge in G or u = u′ and (v, v ′ ) is an edge in H. One can think of
+G ⊗ H as obtained by replacing each node of G with an entire copy of H (both vertices and edges),
+where each two different copies of H have either all the edges between them or none of the edges
+between them, depending on whether the corresponding vertices in G are neighbors. We let Gl
+denote G ⊗ G ⊗ · · · ⊗ G (l times).
+We let ω(G) be the clique number of G (i.e., the size of the largest clique in G) and α(G) be
+the independence number of G (i.e., the size of the largest independent set in G). The basic fact
+we need about the Abbot product is that ω(G ⊗ H) = ω(G) · ω(H) and α(G ⊗ H) = α(G) · α(H).
+We can now specify our construction. Given ǫ > 0, the algorithm
+A′ will choose a constant
+√
+c > 1 (the exact choice of c will be specified later), and let k = 2c log n and using kO(log k) = nO(1)
+running time construct a graph G on k vertices such that ω(G), α(G) < 3 log k.
+∗
+1
+
+Department of Computer Science, Princeton University boaz@cs.princeton.edu.
+P. Pudlak, personal communications, July 2004.
+
+1
+
+Constructing such a graph can be done using well-known techniques: as a first observation note
+that in time kO(log k) it can be verified that a graph G satisfies ω(G), α(G) < 3 log k. Thus, it is
+2
+enough to show an explicit family of kO(logk ) graphs,
+ where one of which satisfies this condition.
+A graph can be represented as a string of length k2 . We claim that if we choose this string from a
+2
+sample space that is 2−5 log k -close to being 5 logk -wise independent then with high probability the
+graph will satisfy ω(G), α(G) < 2 log k, once we prove this then we’ll be done since explicit sample
+spaces with cardinality kO(log k) were given by Naor and Naor [NN93]. However, this follows by
+the same reason that a random graph satisfies this property:
+that every set of 4.5 log2 k edges has
+
+2
+2
+k
+2
+probability at most 2 · 2−4.5 log k + 2−5 log k ≪ 1/ 3 log
+k to be identically zero or identically one.
+1√
+
+Now, the algorithm will compute the graph H = G c
+1√
+
+ω(H), α(H) < (3 log k) c
+
+log n
+
+log n
+
+. This graph has n vertices, but
+
+√
+p
+log c+2
+1√
+= (3c log n) c log n < 2 2c log log n log n
+
+we choose c large enough such that the constant expression in the exponent will be smaller than
+ǫ.
+
+References
+[FW81]
+
+P. Frankl and R. M. Wilson. Intersection theorems with geometric consequences. Combinatorica., 4(1):357–368, 1981.
+
+[NN93]
+
+J. Naor and M. Naor Small-Bias Probability Spaces: Efficient Constructions and Applications SIAM J. Comput., 22(4): 838-856 ,1993.
+
+2
+
+Another approach that may work is derandomization using the method of conditional expectations.
+
+2
+
+

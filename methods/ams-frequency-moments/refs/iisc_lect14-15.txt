@@ -1,0 +1,1759 @@
+E0 206: Theorist’s Toolkit
+
+November 17, 2020
+
+Lecture 14-15: Streaming Algorithms
+Instructor: Arindam Khan
+
+Scribe: Aditya V. Singh, Bhargav Thankey
+
+In these lectures, we will first look at the AMS estimator for estimating Fk (Section 1). Along the way,
+we will describe reservoir sampling, which is a useful technique for sampling elements from a data stream.
+For the special case of F2 estimation, we will look at the Tug-of-War sketch, and present its geometric
+interpretation. In Section 2, we will define p-stable distributions and look at Indyk’s algorithm for estimating
+Fp , p ∈ (0, 2]. Finally, in Section 3, we will give a brief account of the notion of communication complexity
+and its application in proving lower bounds for streaming algorithms.
+
+1
+
+AMS Estimator for Fk
+
+Recall from the previous lecture that the k-th frequency moment Fk of a data stream x1 , . . . , xm coming
+from a universe U = {e1 , . . . , en } is defined as
+Fk =
+
+n
+X
+
+fik ,
+
+i=1
+
+where fi = |{j : xj = ei }| is the number of occurrences of the element ej in the stream. The goal of this
+section is to prove the following theorem:
+Theorem
+1. We 
+can estimate Fk with (1 ± ε) multiplicative error with probability at least (1 − δ) using
+
+ 1− 1
+1
+1
+O ε2 log δ n k · (log m + log n) space.
+We will look at an explicit estimator – the AMS estimator [AMS99] – for Fk which achieves the guarantees
+in Theorem 1.
+Intuition. Suppose we could sample an element X uniformly at random from the stream. Say X = ei ∈ U .
+Then X is equally likely to be any of the fi occurrences of ei . If r is the number of occurrences of ei ‘from
+now on’, then r is equally likely to be in {1, . . . , fi }. Therefore,
+fi
+ k
+
+1 X k
+E r |X = ei =
+j
+fi j=1
+
+
+
+fi
+fX
+i −1
+X
+ k
+
+1 
+1
+=⇒ E r − (r − 1)k |X = ei =
+jk −
+jk =
+· fik .
+fi j=1
+f
+i
+j=0
+Hence, after removing conditioning,
+
+
+E rk − (r − 1)k
+n
+X
+
+
+=
+E rk − (r − 1)k |X = ei Pr [X = ei ]
+=
+
+i=1
+n
+X
+
+1
+fi
+· fik ·
+f
+m
+i=1 i
+
+(1)
+
+1
+· Fk .
+m
+
+This implies that m · rk − (r − 1)k is an unbiased estimator of Fk . To turn this intuition into a streaming
+algorithm, we need two things:
+=
+
+E0 206: Theorist’s Toolkit-1
+
+1. We need an algorithm that can sample an element from a stream (of length m) with probability 1/m
+without knowing m apriori. We will see an algorithm called Reservoir Sampling that achieves this.
+2. We need to show concentration results because the value returned by the estimator is equal to Fk only
+in expectation. We will show this by computing the variance of the estimator and using Chebyshev’s
+inequality.
+
+1.1
+
+Reservoir Sampling
+
+Reservoir Sampling (Algorithm 1) is an answer to the following question:
+How can we sample k elements uniformly at random (without replacement) from a stream of length m
+(m  k), where m is unknown?
+Algorithm 1: Reservoir Sampling
+Input: k ∈ Z, data stream: x1 , x2 , . . .
+1 while not end-of-stream do
+2
+Put the first k elements of the stream into a ‘reservoir’ R = {x1 , . . . , xk }.
+3
+for i ≥ k + 1 do
+4
+With probability k/i, replace a random entry of R with xi .
+5
+end
+end
+7 Return R.
+6
+
+Claim 2. For every t ≥ k + 1 and i ≤ t, Pr [xi ∈ Rt ] = k/t, where Rt denotes the ‘reservoir’ after observing
+x1 , . . . , x t .
+Proof. We prove the claim using induction on t.
+Base case: t = k + 1. For i ≤ k, xi will not be in Rt iff the (k + 1)-th element is selected for inclusion
+in Rt and the i-th element is chosen to be replaced. That is
+
+
+k
+1
+k
+Pr [xi ∈ Rt ] = 1 −
+·
+=
+for i ≤ k.
+k+1 k
+k+1
+{z
+}
+|
+Pr[xi /
+∈Rt ]
+
+Moreover, xk+1 gets included in Rt (where t = k + 1) iff the (k + 1)-th element is selected for inclusion
+in Rt . That is
+k
+Pr [xk+1 ∈ Rt ] =
+.
+k+1
+Induction: We assume that for a given t ≥ k + 1, Pr [xi ∈ Rt ] = k/t for every i ≤ t. We want to show
+that Pr [xi ∈ Rt+1 ] = k/(t + 1) for every i ≤ t + 1. For i ≤ t,
+Pr [xi ∈ Rt+1 ] = Pr [xi ∈ Rt ] · Pr [xi not replaced at time t + 1|xi ∈ Rt ]
+
+
+
+k
+k
+1
+k
+= · 1−
+·
+=
+.
+t
+t+1 k
+t+1
+For (t + 1)-th element,
+Pr [xt+1 ∈ Rt+1 ] =
+
+k
+.
+t+1
+
+E0 206: Theorist’s Toolkit-2
+
+Remark
+A similar inductive
+argument shows that for every t ≥ k + 1 and distinct i1 , . . . , ik ≤ t,
+
+Pr [xi1 , . . . , xik ∈ Rt ] = 1/ kt . Even though we have presented Algorithm 1 for general k, we only need
+it for the case when k = 1 for the purposes of this lecture.
+
+1.2
+
+Estimating Fk
+
+Now that we have an algorithm that can sample an element from the stream uniformly at random without
+knowing the length of the stream apriori, we are ready to describe the algorithm for Fk estimation.
+Algorithm 2: Estimating Fk
+Input: Data stream: x1 , x2 , . . .
+1 X ← x1 , r ← 1, i ← 1, select ← 0;
+2 while not end-of-stream do
+3
+i ← i + 1, select ← 0;
+4
+With probability 1/i, set select ← 1 (Reservoir Sampling).
+5
+if select = 1 then
+6
+X ← xi , r ← 1;
+7
+else
+8
+if X = xi then
+9
+r ← r + 1;
+10
+end
+end
+
+11
+12
+13
+
+end
+Return m(rk − (r − 1)k ).
+
+1.2.1
+
+Analysis
+
+Let the random variable Y := m(rk −(r−1)k ) denote the output of Algorithm 2. We have already shown (see
+(1)) that E[Y ] = Fk . We now show that Y is concentrated around its mean, i.e., Y ∈ [(1 − ε)Fk , (1 + ε)Fk ]
+with high probability. For this, we compute the variance of Y and use Chebyshev’s inequality.
+var(Y ) ≤ E[Y 2 ]
+n
+X
+=
+E[Y 2 |X = ei ] · Pr [X = ei ]
+i=1
+n
+X
+
+i f
+2
+i
+rk − (r − 1)k |X = ei ·
+m
+{z
+}
+z
+}|
+{
+fi
+n
+X
+2
+1 X k
+=m
+fi ·
+j − (j − 1)k
+fi j=1
+i=1
+=
+
+m2 E
+|
+i=1
+
+≤m
+
+h
+
+fi
+n X
+X
+
+k · j k−1 · j k − (j − 1)k
+
+
+
+since j k − (j − 1)k ≤ k · j k−1 , see Section 1.2.2 for a proof
+
+i=1 j=1
+
+≤m·k
+
+n
+X
+i=1
+
+fik−1
+
+fi
+X
+
+j k − (j − 1)k
+
+
+
+j=1
+
+E0 206: Theorist’s Toolkit-3
+
+
+
+≤m·k
+
+n
+X
+
+where f∗ = max fi , which implies f∗k−1 = max fik−1
+
+f∗k−1 · fik
+
+i∈[n]
+
+i=1
+
+≤ m · k · f∗k−1 · Fk
+
+since
+
+n
+X
+
+i∈[n]
+
+!
+fik = Fk
+
+i=1
+
+
+k−1
+k
+
+≤ m · k · Fk
+
+ k−1
+k
+k
+
+ since f∗k−1 = f∗
+
+· Fk
+
+≤
+
+n
+X
+
+! k−1
+k
+fik
+
+
+k−1
+k
+
+= Fk
+
+
+
+i=1
+2k−1
+k
+
+≤ m · k · Fk
+
+1
+
+1
+
+2k−1
+
+
+
+≤ n1− k · Fkk · k · Fk k
+
+1
+
+1
+
+since m = F1 ≤ n1− k Fkk , see Section 1.2.2 for a proof
+
+1
+
+≤ k · n1− k · Fk2
+1
+
+2
+
+= k · n1− k · (E[Y ]) .
+
+( since Fk = E[Y ])
+
+(2)
+
+Now, we use Chebyshev’s inequality to get
+Pr [|Y − E[Y ]| ≥ εE[Y ]] ≤
+=⇒ Pr [|Y − E[Y ]| ≥ εFk ] ≤
+
+var(Y )
+2
+ε2 (E[Y ])
+
+1
+k
+· n1− k .
+2
+ε
+
+
+
+1
+Note that for a fixed k > 1, εk2 · n1− k  1. To improve this result, we use the median-of-means trick.
+We start with an observation.
+Observation 3. The variance of the estimator can be improved by running t independent copies of Algorithm 2 in parallel to get i.i.d. random variables Y1 , . . . , Yt , and computing their average Z. Note that
+#
+" t
+1X
+Yi = E[Y1 ] = Fk
+E[Z] = E
+t i=1
+by linearity of expectation and
+var(Z) =
+
+1
+var(Y1 ).
+t
+
+Hence, from Chebyshev’s inequality,
+Pr [|Z − Fk | ≥ εFk ] ≤
+
+1
+k
+· n1− k .
+tε2
+
+To make this probability smaller than δ, we set
+t=
+
+1
+k
+· n1− k .
+2
+δε
+
+The median-of-means trick
+improve the dependence of t on δ; i.e. we can achieve the same
+ allows us to 1 
+concentration with t = O εk2 · log 1δ · n1− k .
+The median-of-means trick. For ` = 4 log 1δ , output
+Z = median(Z1 , . . . , Z` ),
+1
+
+1− k
+where Z1 , . . . , Z` are i.i.d. random variables generated as follows: For t = 4k
+,
+ε2 · n
+t
+
+Zi =
+
+1X
+Yij ,
+t j=1
+
+E0 206: Theorist’s Toolkit-4
+
+
+
+where, for each i, Yi1 , . . . , Yit are
+random variables generated by running t copies of Algorithm 2.
+ i.i.d.
+1
+1
+1− k
+copies
+of Algorithm 2. Moreover, we get the desired concentration,
+Thus, overall, we run 16k
+·
+log
+n
+2
+ε
+δ
+as shown by the following claim.
+Claim 4. Pr [|Z − Fk | ≥ εFk ] = o(δ).
+Proof. For each i ∈ [`], using Chebyshev’s inequality (set δ = 1/4 in Observation 3), we get
+Pr [|Zi − Fk | ≥ εFk ] ≤
+
+1
+.
+4
+
+Let Ei be the event {|Zi − Fk | ≥ εFk } and let Si be the corresponding indicator random variable. Then
+Pr [Si = 1] ≤
+Let S =
+
+1
+.
+4
+
+P`
+
+i=1 Si . By linearity of expectation,
+
+E[S] ≤
+
+1
+1
+1
+· 4 log = log .
+4
+δ
+δ
+
+Now
+
+
+`
+Pr S ≥
+2
+
+
+`
+= Pr S ≥ 2 ·
+4
+
+≤ Pr [S ≥ 2E[S]]
+≤
+
+ e log δ1
+22
+
+1
+`
+since E[S] ≤ log =
+δ
+4
+
+
+
+
+using Chernoff bound: Pr [S ≥ (1 + α) E[S]] ≤
+
+e
+
+!E[S]
+
+α
+1+α
+
+(1 + α)
+
+
+with α = 1
+
+= o(δ).
+So, with probability at least 1 − δ, at least half of Zi ’s lie in (1 ± ε)Fk (implying that median lies there
+too).
+With the proof of this claim, we have also proved Theorem 1. We end this section with proof of two
+inequalities that were used to bound var(Y ).
+1.2.2
+
+Proof of two useful inequalities
+
+Inequality 1. For j, k ≥ 1, we have j k − (j − 1)k ≤ k · j k−1 .
+Proof. We apply the mean value theorem to f (x) = xk . Given x1 < x2 , the mean value theorem (MVT)
+states that there exists θ ∈ [x1 , x2 ] such that f 0 (θ) = (f (x2 ) − f (x1 )) / (x2 − x1 ). Substituting f (x) = xk ,
+x1 = j − 1, x2 = j, we get
+f (j) − f (j − 1) = f 0 (θ) = kθk−1 ≤ kj k−1 .
+
+Remark In general, truncated Taylor series is quite useful in deriving inequalities. Suppose a real-valued
+function f is infinitely differentiable at a. Then Taylor series expansion of f about a is given by
+f (x) = f (a) + f 0 (a)(x − a) + f 00 (a)
+
+(x − a)2
++ ··· .
+2
+
+Moreover,
+E0 206: Theorist’s Toolkit-5
+
+- there exists y ∈ [a, x] such that f (x) = f (a) + f 0 (y)(x − a) (MVT);
+2
+
+;
+- there exists z ∈ [a, x] such that f (x) = f (a) + f 0 (a)(x − a) + f 00 (z) (x−a)
+2
+· · · and so on for higher derivatives.
+This is useful to derive inequalities. For instance, take f (x) = ln(1 + x). Then
+f 0 (x) =
+
+1
+1
+, f 00 (x) = −
+2.
+1+x
+(1 + x)
+
+For any x, f 00 (x) < 0 and thus
+f (x) ≤ f (0) + f 0 (0)x
+=⇒ ln(1 + x) ≤ x
+=⇒ 1 + x ≤ ex .
+
+1
+
+1
+
+Inequality 2. F1 ≤ n1− k Fkk .
+Proof. Applying Jensen’s inequality to convex function f (x) = xk , we get
+ Pn
+
+i=1 fi
+
+n
+That is
+
+
+1.3
+
+F1
+n
+
+k
+
+Pn
+≤
+
+k
+i=1 fi
+
+n
+
+.
+
+1/k
+
+k
+≤
+
+1
+F
+1
+Fk
+=⇒ F1 ≤ k1/k · n = n1− k Fkk .
+n
+n
+
+Special case: F2 Estimation
+
+An important special case of Fk estimation is when k = 2. We present a simple streaming algorithm for F2
+estimation, the Tug-of-War Sketch [AMS99] (Algorithm 3). This algorithm
+improves upon the dependency
+√
+on n of the space requirement of Algorithm 2 (with k = 2) – from n to log n. Observe that log n is the
+minimum space needed to store the index of an element from a universe of cardinality n. In this section, we
+assume that the universe U = [n].
+Algorithm 3: Tug-of-War Sketch
+Input: Data stream: x1 , x2 , . . . , xm .
+1 Choose a random hash function h : [n] → {±1} from a 4-universal family.
+2 z ← 0;
+3 for i = 1 to m do
+4
+z ← z + h(ai );
+5 end
+2
+6 Return z .
+
+E0 206: Theorist’s Toolkit-6
+
+1.3.1
+
+Analysis
+
+We will first show that z 2 is an unbiased estimator of F2 . We will then bound the variance of z 2 , which will
+imply concentration results for this estimator.
+Computing E[z 2 ]. We can write z as
+z=
+
+n
+X
+
+xs fs
+
+(3)
+
+s=1
+
+where, for each s ∈ [n], xs = h(s) is a random variable taking values in {±1} uniformly. Thus
+" n
+#
+n
+X
+X
+E
+xs fs =
+fs E[xs ] = 0.
+s=1
+
+Now
+
+
+E[z 2 ] = E 
+
+s=1
+
+n
+X
+
+!2 
+xs fs
+
+
+
+s=1
+
+=E
+
+" n
+X
+
+#
+x2s fs2
+
+
+
+X
+xs xt fs ft 
++ 2E 
+
+s=1
+
+=
+
+n
+X
+
+s6=t
+
+X
+ 
+fs2 E x2s + 2
+fs ft E [xs xt ]
+
+s=1
+
+=
+
+n
+X
+
+s6=t
+
+fs2 ,
+
+s=1
+
+where the last equality follows from the fact that x2s = 1 with probability 1, and that for s 6= t,
+E[xs xt ] = E[xs ]E[xt ] = 0 (since 4-universality of h implies pairwise independence of xs , xt ).
+Computing var(z 2 ). Let a = z 2 . We want to compute var(a). We first compute E[a2 ].
+
+!4 
+n
+X
+E[a2 ] = E 
+xs fs 
+s=1
+
+
+= E
+
+
+X
+
+xs xt xu xv fs ft fu fv 
+
+1≤s,t,u,v≤n
+
+= 6E
+
+" n
+n
+X X
+
+#
+x2s x2t fs2 ft2
+
++E
+
+" n
+X
+
+#
+x4s fs4
+
+(see Claim 6)
+
+s=1
+s=1 t=s+1
+n
+n
+X
+X n
+X
+
+
+ 
+=6
+fs2 ft2 E x2s x2t +
+fs4 E x4s
+s=1 t=s+1
+s=1
+n
+n
+n
+X
+X
+X
+=6
+fs2 ft2 +
+fs4
+s=1 t=s+1
+s=1
+
+≤3
+
+n
+X
+
+fs4 + 2
+
+s=1
+
+=3
+
+n
+X
+
+n
+n
+X
+X
+
+!
+fs2 ft2
+
+s=1 t=s+1
+
+!2
+fs2
+
+
+since
+
+s=1
+
+i
+
+E0 206: Theorist’s Toolkit-7
+
+
+
+!2
+X
+
+αi
+
+=
+
+X
+i
+
+αi2 + 2
+
+X
+i<j
+
+αi αj 
+
+2
+
+= 3 (E[a]) .
+Thus
+2
+
+var(a) = E[a2 ] − (E[a])
+2
+
+2
+
+≤ 3 (E[a]) − (E[a])
+2
+
+= 2 (E[a])
+
+(4)
+
+= 2F22 .
+√
+2
+Remark The variance of the output of the Fk estimator with k = 2 (call the output a) is 2 n (E[a]) (see
+equation (2)). Thus, for F2 estimation,
+the variance of the output of the Tug-of-War estimator (see equation
+√
+(4)) is smaller by a factor of n.
+Remark Since we have bounded the variance of the Tug-of-War estimator, the remaining calculations to
+get the desired concentration proceeds similarly as in the analysis of the F√
+k estimator, using the median-ofn, we will get a space saving of
+means
+trick.
+Moreover,
+since
+the
+variance
+here
+is
+smaller
+by
+a
+factor
+of
+√
+n in comparison to the Fk estimator (with k = 2). In particular, for a universal constant c, by running
+t = εc2 · log 1δ copies of Algorithm 3 (note: no dependence on n), we can estimate F2 to within a multiplicative
+factor of (1 ± ε) with probability at least (1 − δ).
+The following exercise shows an explicit construction of a k-universal hash family.
+Exercise 5. Prove that the family of hash functions H such that h(x) = ck−1 xk−1 + · · · + c0 , where
+ci
+
+unif
+
+∼ {0, . . . , p − 1} (for a prime p), is a k-independent universal hash family.
+
+Before moving on, we prove a claim that was used to bound the variance of the Tug-of-War estimator.
+Claim 6. Suppose h : [n] → X is sampled from a 4-independent universal hash family (a.k.a. 4-universal
+hash family), such that, for every i ∈ [n], E[h(i)] = 0. Let xi = h(i). Then
+
+
+" n
+#
+" n
+#
+n
+X
+X X
+X
+E
+xs xt xu xv  = 6E
+x2s x2t + E
+x4s .
+s=1 t=s+1
+
+1≤s,t,u,v≤n
+
+s=1
+
+Proof. The summation on the left hand side is over all tuples (s, t, u, v) where 1 ≤ s, t, u, v ≤ n. Suppose
+(s, t, u, v) is such that an index i ∈ [n] appears only once. Without loss of generality, let s = i and t, u, v 6= i.
+Then, by 4-independence of the hash family
+E [xs xt xu xv ] = E[xi ]E[xt xu xv ] = 0.
+Thus, E [xs xt xu xv ] 6= 0 only for tuples (s, t, u, v) where
+- either there is an index i ∈ [n] such that i appears 4 times in (s, t, u, v), i.e. s = t = u = v = i;
+- or there are two indices i, j ∈ [n], i 6= j, such that i and j both appear twice in (s, t, u, v). For a given
+i, j, this can happen in 42 = 6 ways (choose 2 variables from s, t, u, v and assign them i; assign the
+remaining 2 variables the value j).
+
+E0 206: Theorist’s Toolkit-8
+
+1.3.2
+
+Geometric Interpretation
+
+To build up to the next section, where we study Indyk’s algorithm to estimate Fp , p ∈ (0, 2], we give a
+geometric interpretation of the Tug-of-War sketch for F2 estimation.
+Pt
+Let t = 6/ε2 , and for i ∈ [t], let ai = yi2 be the output of the i-th copy of Algorithm 3. Then, 1t i=1 yi2 is
+an unbiased estimator of F2 . Moreover, by Chebyshev’s inequality
+"
+#
+t
+1X 2
+1
+var(a1 )
+Pr
+y − F2 ≥ εF2 ≤ ·
+t i=1 i
+t ε2 (E[a1 ])2
+| {z }
+(5)
+2
+≤ 2/ε from (4)
+
+≤
+
+1
+3
+
+
+substituting t = 6/ε2 .
+
+Let hi be the random hash function used for thePi-th copy of the Tug-of-War sketch, and let yi2 be its output.
+n
+As in equation (3), yi can be written as yi = s=1 hi (s)fs . Overall, for the t copies of the algorithm, we
+have
+ 
+  
+ f1
+y1
+h1 (1) h1 (2) · · · h1 (n)  
+ ..   ..
+..
+..
+..   f2  .
+.= .
+.
+.
+. 
+.
+ .. 
+yt
+ht (1) ht (2) · · · ht (n)
+{z
+} fn
+| {z } |
+| {z }
+y
+M
+f
+
+Now, equation (5) tells us that, with probability ≥ 2/3,
+√
+
+√
+ 
+1
+√ y ∈
+1 − ε kf k2 , 1 + ε kf k2 ⊂ (1 − ε) kf k2 , (1 + ε) kf k2 .
+t 2
+That is,
+
+
+1
+√ M f ∈ (1 − ε) kf k2 , (1 + ε) kf k2
+with probability ≥ 2/3.
+t
+2
+Thus, in totality, running t copies of the Tug-of-War sketch can be interpreted as generating a t-dimensional
+√
+sketch of the n-dimensional frequency vector f (note that t  n) using a t × n random matrix M/ t, such
+that the `2 -norm of the t-dimensional sketch (which the algorithm generates) is within a (1±ε) multiplicative
+factor of the `2 -norm of f (which we want to estimate).
+The interpretation of the Tug-of-War sketch as “randomly projecting a high-dimensional vector into a lowdimensional space while approximately preserving the `2 -norm with high probability” suggests that we can
+look for more general random projections (instead of only using hash functions, as in the Tug-of-War sketch).
+Dimensionality reduction using random projections would be covered in more detail in future lectures.
+Here, we give an informal account of an important result in this area called the Johnson-Lindenstrauss
+(J-L) lemma. Intuitively,
+it says that n points in a high dimensional Euclidean space can be mapped into
+
+an O log(n)/ε2 -dimensional Euclidean space such that the distance between any two points change by at
+most a multiplicative factor of (1 ± ε). More formally,
+ 2
+−1
+3
+Theorem (J-L Lemma). Fix arbitrary 0 < ε < 1 and n, k ∈ N satisfying k ≥ 4 ε2 − ε3
+ln n. Then, for
+any set V of n points in Rd , there is a map f : Rd → Rk such that, for every u, v ∈ V
+2
+
+2
+
+2
+
+(1 − ε) ku − vk2 ≤ kf (u) − f (v)k2 ≤ (1 + ε) ku − vk2 .
+Furthermore, such a map can be found in polynomial time.
+
+E0 206: Theorist’s Toolkit-9
+
+In fact, guarantees of the J-L lemma can be obtained (with high probability) using a random linear map
+given by a k×d matrix whose entries are i.i.d. random variables from standard Gaussian distribution N (0, 1).
+Note that the sketch-matrix of the Tug-of-War sketch is different in two respects:
+1. The entries are uniformly distributed in {±1}, which is a much simpler distribution than the standard
+Gaussian.
+2. The entries in a row need not be fully independent – 4-wise independence suffices.
+However, J-L sketch will give us insights into algorithms for estimating general `p -norm, p ∈ (0, 2], of the
+frequency vector. To see how, let us estimate F2 using J-L sketch.
+Algorithm 4: Estimating F2 using J-L sketch
+Input: Data stream: x1 , x2 , . . . , xm .
+1 Choose Y1 , . . . , Yn independently, each from N (0, 1).
+2 z ← 0;
+3 for i = 1 to m do
+4
+if xi = j then
+5
+z ← z + Yj ;
+6
+end
+7
+8
+
+end
+Return z 2 .
+
+Let us quickly see why this algorithm works. Note that z can be written as z =
+i.i.d.
+
+Y1 , . . . , Yn ∼
+
+Pn
+
+j=1 fj Yj .
+
+Since
+
+2
+N (0, 1), we have that z ∼ N (0, kf k2 ) (Exercise: verify this). Hence,
+2
+
+2
+
+E[z 2 ] = var(z) + (E[z]) = kf k2 + 0 = F2 .
+An important property of the J-L sketch was that the sketch z, which is a linear combination of i.i.d.
+Gaussian random variables, is itself a Gaussian random variable with standard deviation F2 . For estimating
+Fp , p ∈ (0, 2], we generalize this idea in the next Section using p-stable distributions, where the sketch – a
+linear combination of i.i.d. random variables from a p-stable distribution – would itself be a scaled version
+of the distribution with the scaling factor = Fp .
+
+2
+
+Indyk’s Algorithm
+
+We start by defining p-stable distributions.
+Definition 7 (Stable Distribution [Ind06]). Let p ∈ (0, 2]. A distribution D is said to be p-stable if for
+any a1 , ..., an ∈ R, and independent, identically distributed random variables X1 , ..., Xn drawn from D, the
+Pn
+Pn
+1/p
+distribution of the random variable i=1 ai Xi is the same as the distribution ( i=1 = api ) X, where X
+is a random variable with distribution D.
+Notice that the Gaussian distribution is 2-stable. In fact, it is known that for every p ∈ (0, 2], there exist
+p-stable distributions. For p = 1/2 and p = 1, these are the Lévy distribution and the Cauchy distribution,
+respectively. However, for values of p other than 1/2, 1, 2, we do not know closed formulas for the probability density functions of p-stable distributions and they are defined using their characteristic functions: a
+p
+distribution D is p-stable if E[eitX ] = e−|t| .
+Although we do not know closed formulas for probability density functions of general p-stable distributions,
+we can sample from a p-stable distribution for any p ∈ (0, 2] using the Chambers, Mellows, Stuck method
+E0 206: Theorist’s Toolkit-10
+
+[CMS76] as follows: pick θ uniformly at random from [−π/2, π/2], pick p uniformly at random from [0, 1]
+and output
+sin pθ
+cos1/p θ
+
+2.1
+
+
+
+cos (1 − p)θ
+− ln r
+
+(1−p)/p
+.
+
+Indyk’s algorithm for Fp estimation
+
+Before we give an algorithm for Fp estimation, let us develop some intuition. Our goal is to obtain an (ε, δ)
+estimate of the Fp norm for p ∈ (0, 2]. We’ll have a k × n matrix M , where k = O(ε−2 log(1/δ)), whose
+entries are draw independently from a p-stable distribution Dp . This matrix will map the n-dimensional
+frequency vector f to a k-dimensional
+sketch z. The sketch z will be a linear combination of the columns
+Pn
+M1 , ..., Mn of M i.e. z = i=1 fi Mi . Since, the entries of M are drawn form a p-stable distribution, this
+means that every coordinate of z will be a random variable whose distribution is a scaled version of Dp with
+scaling factor kf kp . We will then “extract” Fp from the sketch.
+Algorithm 5: Estimating Fp norm
+Input: Data stream: x1 , . . . , xm .
+−2
+1 Let k = O(ε
+log(1/δ)). Create k × n matrix M by picking its entries independently from a
+p-stable distribution Dp .
+2 for i = 1 to k do
+3
+zi ← 0;
+4 end
+5 for ` = 1 to m do
+6
+if x` = j then
+7
+for i = 1 to k do
+8
+zi ← zi + M [i, j]
+9
+end
+end
+
+10
+11
+12
+
+end
+Return median1≤i≤k {|zi |/median (|Dp |)}.
+
+In the above algorithm |Dp | is the distribution of Y = |X| where X ∼ Dp .
+
+2.2
+
+Analysis of the algorithm
+
+Before analysing the algorithm, let us recall the definition of median of a continuous distribution and see
+how the distribution of the random variable c|X| – for some c ∈ R – is related to the distribution of |X|.
+Let D be a continuous distribution with PDF φ and CDF FX . Let X be a random variable with distribution
+D. Then, median of D is any number µ ∈ R such that
+Z µ
+1
+Pr[X ≤ µ] =
+φ(x) dx = .
+2
+−∞
+In our case we will have unique medians as the PDFs of the distributions we will work with will be continuous
+functions.
+
+E0 206: Theorist’s Toolkit-11
+
+Let D0 be a distribution of Y = |X| and let its PDF and CDF be ψ and FY , respectively. Then,
+FY [y] = Pr[Y ≤ y]
+= Pr[|X| ≤ y]
+= Pr[−y ≤ X ≤ y]
+= FX (y) − FX (−y).
+Differentiating w.r.t. y on both sides, we get,
+ψ(y) = φ(y) − (−φ(y)) = 2φ(y).
+Thus,
+(
+ψ(y) =
+
+2φ(y),
+0,
+
+y≥0
+y < 0.
+
+Now, let X ∼ Dp and for c ∈ R, let φp,c be the PDF of c|X| and µp,c its median We make the following
+claim.
+Claim 8.
+1. φp,c (x) = 1c φp,1 ( xc ).
+2. µp,c = cµp,1 .
+Proof. Let Y = |X| and FY be its CDF; its PDF is φp,1 . Fix c ∈ R. Let Z = c|X| and FZ be its CDF; its
+PDF if φp,c . Then,
+FZ [z] = Pr[Z ≤ z]
+= Pr[cY ≤ z]
+h
+zi
+= Pr Y ≤
+z  c
+= FY
+c
+Then, differentiating both sides w.r.t. z, we get
+
+φp,c (z) =
+
+z 
+1
+φp,1
+,
+c
+c
+
+which proves item 1 of the claim. Now, µp,c is any number such that
+1
+2
+1
+=⇒ FZ (µp,c ) =
+2
+µ  1
+p,c
+=⇒ FY
+= .
+c
+2
+Pr[Z ≤ µp,c ] =
+
+As FY [µp,1 ] = 1/2, cµp,1 is a median of Z.
+E0 206: Theorist’s Toolkit-12
+
+Armed with Claim 8, let us analyse algorithm 5. Consider the final value of the variables zi . As the entries of
+matrix M are independent random variables drawn from Dp , zi = kf kp Z where Z ∼ Dp . Thus the random
+variable zi /median (|Dp |) has distribution with PDF φp,λ , where λ = kf kp /median (|Dp |) and its median is
+µp,λ = λµp,1 =
+
+kf kp
+median (|Dp |)
+
+· median (|Dp |) = kf kp .
+
+So, we can say the algorithm is attempting to estimate the median by sampling from the distribution
+k = O(ε−2 log(1/δ)) many times and then outputting the sample median. We will now show that the sample
+median is close to the actual median. As a first step in that direction, we prove the following theorem.
+Theorem 9. Let ε > 0 and let D be a distribution over R with PDF φ and a unique median µ > 0. Further,
+suppose that φ is continuous on [(1 − ε)µ, (1 + ε)µ] and let φ∗ = min {φ(z) : z ∈ [(1 − ε)µ, (1 + ε)µ]}. For
+k ∈ N, let Z1 , .., Zk be independent samples drawn from D and let Y = median1≤i≤k Zi . Then,
+
+
+2 2 2 2
+Pr [|Y − µ| > εµ] ≤ 2 · exp − ε µ φ∗ k .
+3
+Proof. We will show how to obtain an upper bound on Pr[Y < (1 − ε)µ]; aR similar argument can be used to
+y
+obtain a lower bound on Pr[Y > (1 + ε)µ]. Let the CDF of D be F (y) = −∞ φ(z) dz. Then,
+Z µ
+
+Z (1−ε)µ
+
+Pr[Zi < (1 − ε)µ] =
+
+φ(z) dz −
+−∞
+
+φ(z) dz
+−∞
+
+1
+− (F (µ) − F ((1 − ε)µ))
+2
+1
+= − εµφ(β)
+2
+=
+
+(∵ µ is the median of Zi )
+(6)
+
+for some β ∈ [(1 − ε)µ, µ]. To see why the last equality is true, observe that the Fundamental Theorem of
+Calculus implies F 0 (y) = φ(y). As φ is continuous on [(1 − ε)µ, µ], it also implies that F 0 is continuous on
+[(1 − ε)µ, µ] and differentiable on ((1 − ε)µ, µ). Thus, F 0 satisfies the hypothesis of the Mean Value Theorem
+on the interval [(1 − ε)µ, µ]. Applying the Mean Value Theorem, we get that there exists a β ∈ [µ, (1 − ε)µ]
+such that
+φ(β) =
+
+F (µ) − F ((1 − ε)µ)
+F (µ) − F ((1 − ε)µ)
+=
+.
+µ − (1 − ε)µ
+εµ
+
+Define α to be the number which satisfies
+
+
+
+1
+1
+− εµφ(β) (1 + α) = .
+2
+2
+
+(7)
+
+Let N = |{i ∈ [k] : Zi < (1 − ε)µ}| and for i ∈ [k], let Ii = 1, if and only if Zi < (1 − ε)µ. Then,
+
+E[N ] = E 
+
+
+X
+
+Ii 
+
+i∈[k]
+
+=
+
+X
+
+E[Ii ]
+
+(∵ linearity of expectation)
+
+Pr[Ii = 1]
+
+(∵ Ii are 0-1 variables)
+
+i∈[k]
+
+=
+
+X
+i∈[k]
+
+E0 206: Theorist’s Toolkit-13
+
+
+=
+
+
+1
+− εµφ(β) k
+2
+
+(from 6)
+
+(8)
+
+Now, the sample median Y < (1 − ε)µ if and only if at least half of the Zi ’s are less than (1 − ε)µ; in other
+words Pr[Y < (1 − ε)µ] = Pr[N ≥ k/2]. Also, from (7) and (8), (1 + α) E[N ] = k/2 . Thus,
+Pr[Y < (1 − ε)µ] = Pr[N ≥ k/2]
+= Pr[N ≥ (1 + α) E[N ]]
+
+
+1 2
+≤ exp − α E[N ]
+3
+
+(using Chernoff bound) . (9)
+
+Now, from (7), we have
+
+k
+
+
+
+
+1
+1
+k
+− εµφ(β) + k
+− εµφ(β) α =
+2
+2
+2
+k
+k
+=⇒
+− εµφ(β)k + α E[N ] =
+2
+2
+=⇒ α E[N ] = εµφ(β)k.
+
+(from (8))
+
+Also, from (7),
+
+
+ 
+
+1
+1
+1
+− εµφ(β) +
+− εµφ(β) α =
+2
+2
+2
+1
+=⇒ −εµφ(β)k + α ≥ 0
+2
+=⇒ α ≥ 2εµφ(β)k.
+
+(∵ εµφ(β) ≥ 0 since ε, µ > 0 and φ(β) ≥ 0 as φ is continuous at β.)
+
+Thus, from (9),
+
+α E[N ]
+α
+}|
+{
+z
+}|
+{
+z
+
+ 1
+Pr[Y < (1 − ε)µ] ≤ exp − · εµφ(β)k · 2εµφ(β)
+3
+
+
+
+
+2
+= exp − ε2 µ2 (φ(β))2 k
+3
+
+
+2
+≤ exp − ε2 µ2 φ2∗ k .
+3
+
+To prove the accuracy of the estimate we will use the above theorem with φ = φp,λ and µ = µp,λ where
+λ = kf kp /µp,1 . Note that to use the above theorem in any meaningful way, we need an estimate of φ∗ . Now,
+µφ∗ = µp,λ · min {φp,λ (z) : z ∈ [(1 − ε)µp,λ , (1 + ε)µp,λ ]}
+
+
+z
+1
+= λµp,1 · min
+φp,1
+: z ∈ [(1 − ε)λµp,1 , (1 + ε)λµp,1 ]
+λ
+λ
+= µp,1 · min {φp,1 (y) : y ∈ [(1 − ε)µp,1 , (1 + ε)µp,1 ]} ,
+
+E0 206: Theorist’s Toolkit-14
+
+which is a constant only depending on p, say cp . Thus, from the theorem,
+
+
+2
+Pr [|Y − µ| > εµ] ≤ 2 · exp − ε2 µ2 φ2∗ k
+3
+
+
+i
+h
+2
+=⇒ Pr Y − kf kp > ε kf kp ≤ 2 · exp − ε2 c2p k
+3
+i
+h
+=⇒ Pr Y − kf kp > ε kf kp ≤ δ,
+by putting k = 2c32 ε−2 log 2δ .
+p
+
+2.3
+
+Some technical details about implementing the algorithm
+
+Algorithm 5 is an idealized sketch and one needs to take care of the following details while implementing
+the algorithm.
+1. The sketch – in particular the matrix M – uses real numbers while in practice computers can only do
+bounded precision arithmetic. To get around this problem, we can approximate all entries of M with
+sufficient precision using rational numbers. While we won’t prove it, the number of bits required per
+entry of M is polynomial in log n, 1/ε and 1/δ.
+2. The matrix M used by the sketch has n columns and no small implicit representation. We can get
+around storing M by using a pseudorandom generator (PRG, for short) that works with space bounded
+algorithms (see [Nis92]). A PRG is a deterministic function that takes a “small” truly random string
+(called a seed) and generates a “large” string which “looks random”. Note that we only need the j-th
+column of M when the j-th token arrives. So, we can use the PRG seeded with j plus the initial seed
+to generate the j-th column of M when required. While we won’t prove it, this only blows up the
+space required by the algorithm by a log n factor and adds 1/n to the error probability.
+
+3
+
+Communication Complexity Theory and Lower Bounds
+
+Communication complexity theory studies the following fundamental problem:
+Consider two players Alice and Bob who have inputs x and y, respectively. They do not know each other’s
+input and want to compute a function f (x, y) which is known to both of them. What is the minimum
+amount of communication required to compute f ?
+Not only is communication complexity theory an important and interesting area of complexity theory, it
+is also very useful in proving lower bounds for many diverse areas like property testing, game theory, data
+structures, extension complexity, parallel and VLSI computation, and circuit lower bounds, to name just a
+few. Additionally, unlike some lower bounds that rely on some assumptions like P 6= NP or the Exponential
+Time Hypothesis (ETH), lower bounds obtained using communication complexity are unconditional. In this
+section we will first introduce the one-way communication setting and then see how it can be used to prove
+lower bounds on streaming algorithms.
+
+3.1
+
+The setting
+
+As shown in Figure 1, there are two players Alice and Bob with unlimited computational power. Alice has
+a
+b
+input x ∈ {0, 1} and Bob has input y ∈ {0, 1} . Neither of them know the input of the other player and
+a
+b
+their goal is to compute a function f : {0, 1} × {0, 1} → {0, 1}, which is known to both. Moreover, they
+have already agreed upon a protocol to compute f before seeing their respective inputs and all that needs
+to be done now is to implement the protocol with inputs x and y. In this lecture, we will focus only on
+E0 206: Theorist’s Toolkit-15
+
+Figure 1: The one-way communication setting.
+one-way communication protocols, where only one player (say, Alice) can send a message to the other player
+(say, Bob), who then has to compute f (x, y) using the message received and their input.
+Now we are ready to define the notion of one-way communication complexity (owcc, for short).
+a
+
+b
+
+Definition 10 (One-way communication complexity or owcc). Let f : {0, 1} × {0, 1} → {0, 1} be a
+Boolean function. The one-way communication complexity of f , denoted owcc(f ) is the minimum number
+of bits communicated in the worst case by any one-way communication protocol that correctly computes f
+on all inputs. For randomized protocols, owcc(f ) is the minimum number of bits communicated in the worst
+case by any one-way communication protocol that correctly computes f on all inputs with probability at least
+2/3.
+Remark The probability in the above definition is on the randomness of the protocol; there is no randomness in the input. Also, as long as we are not interested in the exact value of owcc(f ), but only its
+asymptotic behaviour, 2/3 in the above definition can be replaced by any constant in (1/2, 1).
+Note that, trivially, owcc(f ) ≤ a: Alice can send x to Bob and Bob can compute f (x, y). On the other hand,
+consider the parity function defined as P ARIT Yn : {0, 1}n × {0, 1}n → {0, 1}, P ARIT Yn (x, y) = 1 ⇐⇒
+the sum of number of 1s in xy is odd; here xy denotes the string obtained by concatenating x and y.
+owcc(P ARIT Yn ) = 1 as Alice can simply send the parity of x to Bob. Now let us see some “hard” functions
+for which the trivial protocol of sending x is optimal:
+1. The equality function.
+N
+
+N
+
+EQN : {0, 1} × {0, 1}
+
+→ {0, 1} ,
+
+(
+1 if x = y,
+EQN (x, y) =
+0 otherwise.
+
+2. The index function.
+(
+N
+
+IDXN : {0, 1} × [N ] → {0, 1} ,
+
+IDXN (x, y) =
+
+1
+0
+
+if xy = 1,
+otherwise.
+
+where xy denotes the y-th symbol of x. For example, IDX3 (101, 2) = 0 and IDX3 (011, 3) = 1.
+3. The disjointness function.
+(
+N
+
+N
+
+DISJN : {0, 1} × {0, 1}
+
+→ {0, 1} ,
+
+DISJN (x, y) =
+
+1
+0
+
+if ∀i ∈ [N ], xi = 0 or yi = 0,
+otherwise
+
+i.e. if X ⊂ [N ] is the set of indices i such that xi = 1 and Y ⊂ [N ] is the set of indices j such that yj = 1,
+then DISJN (x, y) = 1 if and only if X ∩ Y = φ. For example, DISJ3 (101, 010) = 1, DISJ3 (101, 100) = 0
+and DISJ3 (100, 010) = 1.
+E0 206: Theorist’s Toolkit-16
+
+3.2
+
+Connection to streaming algorithms
+
+Now let us see how we can obtain streaming algorithm lower bounds using communication complexity lower
+bounds. In what follows we show that a small space streaming algorithm implies one-way communication
+protocols with low communication complexity; we can then use the contrapositive of this statement to prove
+streaming algorithm lower bounds.
+Small space streaming algorithm =⇒ low communication one-way protocols: Suppose that we
+have a streaming algorithm As that uses s bits of memory. How can we define a one-way communication
+protocol using it? Well, we can have Alice and Bob treat their inputs x and y as a stream (x, y) where all
+of x appears before all of y. Then,
+1. Alice feeds x into As without communicating it to Bob.
+2. After As has processed x its state can be expressed using at most s bit.
+3. Alice communicates these s bits to Bob.
+4. Bob restarts As where Alice left off by initializing it with these s bits of memory.
+Now, the output computed by Bob will be the same as the output of As on the stream (x, y) and so we
+have a one-way protocol with low communication complexity! In fact the communication cost of the induced
+protocol is the same as the space used by As . This discussion suggests that to prove a lower bound on the
+space required by any streaming algorithm for some problem P, we need a function f with the following two
+properties:
+1. f can be reduced to P. In other words, f can be computed using a streaming algorithm for P.
+2. No low-communication one-way protocol can compute f .
+We now show that the disjointness function DISJN defined on the previous page satisfies 2. In fact, in
+communication complexity, it is one of the canonical “hard” functions - analogous to SAT in the theory of
+NP-completeness.
+Proposition 11. Every deterministic one-way communication protocol that computes DISJN uses at least
+N bits of communication in the worst case. (Thus, the trivial protocol for DISJN is an optimal deterministic
+protocol.)
+Proof. For the sake of contradiction assume that there is a one-way communication protocol in which Alice
+sends at most N − 1 bits. This means that Alice can send at most 2N −1 different messages. Then, as
+N
+there are 2N distinct strings of size N , by the pigeon hole principle, there must exist x, x0 ∈ {0, 1}
+0
+such that the message that Alice sends to Bob on input x is the same as that sent on input x . As
+x 6= x0 , ∃i ∈ [N ] such that xi 6= x0i . Let y be the string that is all 0’s except for yi , which is 1. But,
+then DISJN (x, y) 6= DISJN (x0 , y). However, as Bob cannot distinguish between x and x0 , he cannot
+distinguish between DISJN (x, y) and DISJN (x0 , y) and must thus output the wrong value for at least one
+of them, a contradiction.
+While we will not prove it, the following statement, which is much stronger, is true.
+Theorem 12. Every randomized one-way communication protocol that correctly computes DISJN (x, y) on
+n
+n
+all inputs (x, y) ∈ {0, 1} × {0, 1} with probability at least 2/3 requires Ω(n) bits of communication in the
+worst case.
+Remark In the above theorem, the probability is over the randomness of the protocol; there is no randomness in the input. Moreover, 2/3 can be replaced by any constant greater than 1/2 using the “median
+trick”.
+We are now in the position to prove a lower bound for F∞ estimation.
+E0 206: Theorist’s Toolkit-17
+
+3.3
+
+Space lower bound for F∞ estimation
+
+Recall that the F∞ norm of a stream is the frequency of the most frequent element in it.
+Theorem 13. Any randomized streaming algorithm that computes F∞ within a factor of (1 ± 1/5) with
+probability at least 2/3 for every data stream of length m over a universe of size n uses space Ω (min {m, n}).
+Proof. Let As be a randomized streaming that uses s bits of space which computes F∞ within a factor of
+(1 ± 1/5) with probability at least 2/3 for every data stream of length m over a universe of size n. Consider
+the following one-way communication protocol for the DISJn .
+Protocol 6: Protocol for DISJn
+Alice feeds As the indices i for which xi = 1 (in any arbitrary order).
+2 Alice sends the current memory state σ of As to Bob.
+3 Bob resumes As with memory state σ and feeds it the indices i for which yi = 1 (in any arbitrary
+order).
+4 Bob declares ‘disjoint’ if and only if the final output of As is at most 4/3.
+1
+
+Let us first determine the communication cost of the protocol. Steps 1 and 3 do not incur any cost as Alice
+has x and Bob has y. The only communication is in Step 2. As As uses at most s bits of memory, σ can be
+expressed in s bits . So the communication cost of the above protocol is s bits.
+Note that the universe of the stream induced by (x, y) is [n] and the size of the stream is m ≤ 2n (the size
+is 2n when both x and y are all 1 strings). The frequency fi of an element i ∈ [n] is given by
+
+
+0
+fi = 1
+
+
+2
+
+if xi = yi = 0,
+if exactly one of xi and yi is 1,
+if xi = yi = 1.
+
+Hence, F∞ = 2 if and only if DISJn (x, y) = 0 and F∞ ≤ 1 otherwise. Since, for every input (x, y), As
+outputs a number in (1 ± 1/5)F∞ with probability at least 2/3, if DISJn (x, y) = 1, the output of As
+is at most (1 + 1/5) = 1.2 and if DISJn (x, y) = 0, the output of As is at least 2(1 − 1/5) = 1.6. As
+1.2 < 4/3 < 1.6, Protocol 6 correctly computes DISJn (x, y) with probability at least 2/3. Then, from
+Theorem 12, its communication cost must be Ω(n). Hence, s = Ω(n); furthermore, as m ≤ 2n, s = Ω(m)
+and so s = Ω(min {m, n}).
+Exercise 14. In fact, the lower bound of s = Ω(min {m, n}) holds for estimation of any Fk , k 6= 1. Extend
+the above proof for arbitrary k 6= 1.
+
+References
+[AMS99] Noga Alon, Yossi Matias, and Mario Szegedy, The space complexity of approximating the frequency
+moments, Journal of Computer and system sciences 58 (1999), no. 1, 137–147.
+[CMS76] J. M. Chambers, C. L. Mallows, and B. W. Stuck, A method for simulating stable random variables,
+Journal of the American Statistical Association 71 (1976), no. 354, 340–344.
+[Ind06]
+
+Piotr Indyk, Stable distributions, pseudorandom generators, embeddings, and data stream computation, J. ACM 53 (2006), no. 3, 307–323.
+
+[Nis92]
+
+Noam Nisan, Pseudorandom generators for space-bounded computation, Combinatorica 12 (1992),
+no. 4, 449–461.
+
+E0 206: Theorist’s Toolkit-18
+
+

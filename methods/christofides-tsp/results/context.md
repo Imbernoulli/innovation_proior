@@ -8,8 +8,8 @@ Hamiltonian cycle. The distances are *metric*: for all `x, y, z`,
 - `d(x, y) = d(y, x)` (symmetry);
 - `d(x, y) <= d(x, z) + d(z, y)` (triangle inequality).
 
-Finding the exact optimum is computationally intractable even in this metric special case, so an
-exact polynomial-time method is out of reach. The goal is therefore an *approximation algorithm*:
+Finding the exact optimum is NP-hard even in this metric special case, so an exact polynomial-time
+method is out of reach unless P = NP. The goal is therefore an *approximation algorithm*:
 one that runs in polynomial time and returns a valid tour whose length is provably within a fixed
 constant factor `c` of the optimum, for every instance. The quality of such an algorithm is its
 worst-case ratio `(cost of returned tour) / OPT`, and the whole problem is to make `c` as close to 1
@@ -33,10 +33,15 @@ longer than the walk.
 **Spanning trees and the MST lower bound.** A spanning tree connects all `n` cities with `n - 1`
 edges and no cycle. The minimum spanning tree (MST) — the cheapest such tree — is computable in
 polynomial time by Prim's or Kruskal's algorithm. The structural fact that makes the MST a *lower
-bound on OPT*: delete any single edge from a Hamiltonian cycle and what remains is a path, which is a
-spanning tree. So the optimal tour minus an edge is a spanning tree, and since the MST is the
-cheapest spanning tree, `d(MST) <= d(OPT - e) <= d(OPT)`. The MST is the standard handle on OPT for
-this problem.
+bound on OPT*: delete any single edge `e` from an optimal Hamiltonian cycle `C*`. What remains is a
+path through every city, hence a spanning tree, of cost `d(C*) - d(e)`. Since the MST is the cheapest
+spanning tree,
+
+```
+d(MST) <= d(C*) - d(e) <= d(C*) = OPT.
+```
+
+The MST is the standard handle on OPT for this problem.
 
 **Euler's theorem and parity.** A connected multigraph has a closed walk traversing every edge
 exactly once — an Eulerian circuit — if and only if every vertex has even degree (Euler, 1736). The
@@ -51,6 +56,10 @@ Edmonds (1965) gave the first polynomial-time algorithm for minimum/maximum-weig
 Karzanov's `O(n^3 log n)` version made it concretely fast. Before 1965 there was no polynomial method
 for general-graph weighted matching, so this is a relatively recent tool.
 
+One elementary matching fact is especially useful: a cycle on an even number of vertices can be split
+by alternating its edges into two disjoint perfect matchings. The two matchings have total cost equal
+to the cycle cost, so the cheaper one costs at most half the cycle.
+
 **The Chinese postman connection.** A closely related problem was being studied intensively in the
 early 1970s: the Chinese postman problem — find a shortest closed walk traversing *every edge* of a
 given graph. Edmonds and Johnson (1973), Christofides (1973), and Serdyukov (1974) all attack it,
@@ -63,21 +72,18 @@ edge-traversal problems.
 ## Baselines
 
 **Nearest-neighbour and greedy heuristics.** Building a tour by repeatedly walking to the closest
-unvisited city, or by greedily adding cheapest edges, runs fast but has only a logarithmic
-worst-case guarantee (`Theta(log n)` for nearest-neighbour) — no constant factor. Useful in
-practice, useless for a constant-ratio proof.
+unvisited city, or by greedily adding cheapest edges, runs fast but does not supply the constant
+worst-case ratio needed here. Useful in practice, useless for a constant-ratio proof.
 
-**The twice-around (double-MST) 2-approximation (Rosenkrantz, Stearns, Lewis, 1977).** This is the
-baseline a new method must beat, and it already exploits the MST lower bound. Build the MST `M`.
-Walk around it with a hand on the wall: this traverses each tree edge once in each direction, a
-closed walk of cost exactly `2 d(M)` in which every vertex is visited and (since each edge is
-doubled) has even degree, so the walk is Eulerian. Shortcut repeated vertices to get a Hamiltonian
-tour `T`. Then
+**The twice-around (double-MST) 2-approximation.** This tree-based baseline already exploits the MST
+lower bound. Build the MST `M`. Walk around it with a hand on the wall: this traverses each tree edge
+once in each direction, a closed walk of cost exactly `2 d(M)` in which every vertex is visited and
+(since each edge is doubled) has even degree, so the walk is Eulerian. Shortcut repeated vertices to
+get a Hamiltonian tour `T`. Then
 
 ```
 d(T) <= 2 d(M)            (shortcutting the doubled-tree walk, triangle inequality)
-     <= 2 d(OPT - e)      (M is the minimum spanning tree)
-     <= 2 d(OPT).
+     <= 2 d(OPT)          (MST lower bound)
 ```
 
 So `T` is within a factor of 2 of optimal. The gap it leaves open: the factor of 2 comes *entirely*
@@ -91,9 +97,9 @@ the vertices that are actually broken — is exactly the open question.
 The natural yardstick is the worst-case approximation ratio over all metric instances: the supremum
 of `(returned tour length) / OPT`. One also reports asymptotic running time as a function of the
 number of cities `n`, since a guarantee is only useful if it is achieved in polynomial time. Test
-inputs are complete graphs whose weights satisfy the triangle inequality — including Euclidean
-point sets in the plane, shortest-path metrics of weighted graphs, and adversarial families designed
-to stress worst-case behavior.
+inputs are complete graphs whose weights satisfy the triangle inequality, including Euclidean point
+sets in the plane, shortest-path metrics of weighted graphs, and adversarial families designed to
+stress worst-case behavior.
 
 ## Code framework
 
@@ -108,6 +114,7 @@ from networkx.utils import not_implemented_for
 
 
 @not_implemented_for("directed")
+@nx._dispatchable(edge_attrs="weight")
 def metric_tsp_tour(G, weight="weight", tree=None):
     # G: complete undirected graph, weights satisfy the triangle inequality.
     loop_nodes = nx.nodes_with_selfloops(G)

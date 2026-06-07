@@ -12,9 +12,9 @@ Now the size is easy to average. For each nonzero integer $a$, the map $\theta\m
 $$\Pr_\theta(\{\theta a\}\in(1/3,2/3))=\frac13.$$
 Linearity of expectation gives
 $$\mathbb{E}_\theta |A_\theta|=\sum_{a\in A}\Pr_\theta(\{\theta a\}\in(1/3,2/3))=\frac n3.$$
-Some $\theta$ has $|A_\theta|\ge n/3$, and hence $s(A)\ge n/3$.
+Some $\theta$ has $|A_\theta|\ge n/3$, and hence $s(A)\ge n/3$. The averaging is doing something stronger than it first looks like, because the selected size is always an integer. To turn that into a strict gain, I need to make sure the selector is not constant.
 
-The average is exactly $n/3$, but the values $|A_\theta|$ are integers. If I use the half-open arc $[1/3,2/3)$, which is still sum-free and has the same measure, then I can write
+If I use the half-open arc $[1/3,2/3)$, which is still sum-free because the endpoint $2/3$ is excluded, then I can write
 $$f(x)=1_{[1/3,2/3)}(x)-\frac13,\qquad f_A(x)=\sum_{a\in A}f(ax),$$
 so $|A_x|=n/3+f_A(x)$ and $\int f_A=0$. At $x=0$ no element lies in $[1/3,2/3)$, so the selected set is empty; since the average is $n/3>0$, the integer-valued function $|A_x|$ is not constant. Its maximum is strictly larger than $n/3$, so
 $$s(A)\ge \lfloor n/3\rfloor+1=\left\lceil\frac{n+1}{3}\right\rceil\ge\frac{n+1}{3}.$$
@@ -25,10 +25,18 @@ $$b_m=2\int_{1/3}^{2/3}\cos(2\pi m x)\,dx=\frac1{\pi m}\left(\sin\frac{4\pi m}{3
 If $m\equiv1\pmod3$, this is $-\sqrt3/(\pi m)$; if $m\equiv2\pmod3$, this is $+\sqrt3/(\pi m)$; and if $3\mid m$, it vanishes. Thus, with the nonprincipal character $\chi$ modulo $3$,
 $$f(x)=-\frac{\sqrt3}{\pi}\sum_{m\ge1}\frac{\chi(m)}{m}\cos(2\pi m x),\qquad \chi(1)=1,\ \chi(2)=-1,\ \chi(3k)=0.$$
 So
-$$f_A(x)=-\frac{\sqrt3}{\pi}\sum_{a\in A}\sum_{m\ge1}\frac{\chi(m)}{m}\cos(2\pi m a x).$$
-The first harmonic already contains the exponential sum $\sum_{a\in A}\cos(2\pi ax)$, and the full series has only $1/m$ decay. This is why an $L^1$ quantity enters: if the trigonometric sum has large average magnitude, the surplus over $n/3$ cannot stay small everywhere. The estimate I want in that regime is
-$$s(A)\ge \frac n3+C\left\|\sum_{a\in A}\cos(2\pi a\,\cdot)\right\|_{L^1(\mathbb{T})}.$$
-That handles the pseudorandom-looking sets. The sets that remain dangerous are structured, with small Littlewood norm, so I need a way to certify $m_A$ by hand.
+$$f_A(x)=-\frac{\sqrt3}{\pi}F_A(x),\qquad F_A(x)=\sum_{a\in A}\sum_{m\ge1}\frac{\chi(m)}{m}\cos(2\pi m a x).$$
+This is the right object for the surplus. Since $F_A$ has mean zero,
+$$\|F_A\|_1=2\int \max(-F_A(x),0)\,dx\le 2\max_x(-F_A(x)),$$
+and therefore a large $L^1$ norm for $F_A$ immediately pushes $m_A$ above zero. The first harmonic inside $F_A$ is the plain Littlewood sum
+$$c_A(x)=\sum_{a\in A}\cos(2\pi ax),$$
+but I cannot simply throw away the rest of the series; the $1/m$ tail can cancel with it. I need to sift. If I Mobius-invert over primes up to $Q$, the multiplicativity of $\chi$ leaves
+$$\sum_{k\mid \prod_{p\le Q}p}\frac{\mu(k)\chi(k)}k F_A(kx)=c_A(x)+R_Q(x),$$
+where $R_Q$ contains only $Q$-rough harmonics with $m>1$. The triangle inequality costs
+$$\prod_{p\le Q}\left(1+\frac1p\right)\ll\log Q,$$
+and choosing $Q$ around $n^2$ makes $R_Q$ small in $L^1$ by Parseval. So the plain-cosine estimate that comes out is
+$$s(A)\ge \frac n3+c\frac{\|c_A\|_{L^1(\mathbb{T})}}{\log n}.$$
+That handles the sets with a large Littlewood norm. The sets that remain dangerous are structured, so I need a way to certify $m_A$ by hand.
 
 A lower bound on a maximum can be certified by a nonnegative average. If $\varphi\ge0$ and $\int\varphi=1$, then
 $$m_A=\max_x f_A(x)\ge \int_0^1 \varphi(x)f_A(x)\,dx.$$
@@ -40,7 +48,7 @@ Products of $1-\cos(2\pi ux)$ are perfect for this because they are nonnegative.
 $$\varphi(x)=(1-\cos 2\pi ux)(1-\cos 2\pi vx).$$
 Since $u\ne v$, its mean is $1$, and its nonzero cosine coefficients are
 $$c_u=c_v=-1,\qquad c_{u+v}=\frac12,\qquad c_{v-u}=\frac12.$$
-The $u$ and $v$ terms contribute the two main positive units: $ma=u$ only has the solution $(m,a)=(1,u)$, and $ma=v$ has the solution $(1,v)$; any solution with $m>1$ and $a<v$ would force $u\mid a$ by the choice of $v$, hence $u\mid v$, impossible. The frequency $v-u$ contributes nothing by the same minimality argument. At $u+v$, the solution with $m=1$ is just the possible element $u+v\in A$, while any solution with $m>1$ has $a\le(u+v)/2<v$ and again forces $u\mid v$. The value is therefore
+The coefficient at $u$ sees only $ma=u$, hence only $(m,a)=(1,u)$; any other solution would have $a<u$. The coefficient at $v$ sees $(1,v)$, and any solution with $m>1$ has $a<v$, so the choice of $v$ forces $u\mid a$ and then $u\mid v$, contrary to the definition of $v$. The frequency $v-u$ contributes nothing by the same minimality argument. At $u+v$, the solution with $m=1$ is just the possible element $u+v\in A$, while any solution with $m>1$ has $a\le(u+v)/2<v$ and again forces $u\mid v$. The value is therefore
 $$\int\varphi f_A=\frac{\sqrt3}{2\pi}\left(2-\frac12 1_A(u+v)\right)\ge \frac{\sqrt3}{2\pi}\cdot\frac32>\frac13.$$
 This is a clean certificate: whenever $1\notin A$, $m_A>1/3$.
 
@@ -67,7 +75,7 @@ So unless the residue classes already provide the surplus, the divisible-by-$3$ 
 
 For the concrete bound $s(A)\ge(n+2)/3$, the previous Alon-Kleitman step already handles $n\equiv0,1\pmod3$ after integer rounding. The binding residue is $n\equiv2\pmod3$. In that residue class the possible positive values of $m_A$ begin at $1/3$ and then jump by integers, so proving $m_A>1/3$ is enough to force the next value and hence the required integer size. The finite descent leaves the cases $n=5$ and $n=8$.
 
-For $n=5$, the descent lets me reduce to the case $A_1=\{v,2v\}$. If $1\notin A$, the product certificate already gives $m_A>1/3$, so I may suppose $1\in A$. I try the nonnegative polynomial
+For $n=5$, the descent leaves only the two-element obstruction inside the divisible-by-$3$ part, so I may reduce to $A_1=\{v,2v\}$. If $1\notin A$, the product certificate already gives $m_A>1/3$, so I may suppose $1\in A$. I try the nonnegative polynomial
 $$\varphi(x)=1-\frac43\cos(2\pi x)+\frac23\cos(4\pi x)=\frac13(2\cos(2\pi x)-1)^2.$$
 Its integral against $f_A$ is
 $$\frac{\sqrt3}{2\pi}\left(\frac53-\frac23 1_A(2)\right).$$
@@ -75,7 +83,9 @@ If $2\notin A$, this is already larger than $1/3$, so I may suppose $2\in A$. Ca
 $$\int f_A(x)\varphi(ux)\,dx=\frac{\sqrt3}{2\pi}\left(\frac53+\frac{\chi(u)}u-\frac{8\chi(u)}{3u}1_{u\equiv0\pmod2}\right)> \frac13,$$
 using that $2u$ is not one of the available elements. The size-$5$ case is done.
 
-For $n=8$, the same reductions force $A_1=\{v,2v\}$ and $1,2\in A$. Let $u$ be the next element not among $1,2,v,2v$; the size-$5$ argument forces $2u\in A$ as well. I look at $x=1/(6v)$. Since $f(2vx)=f(1/3)=2/3$, the three-shift identity for $A_0$ implies that I already get $m_A>1/3$ unless the $A_0$ values are balanced in a very rigid way. That rigidity pushes the two remaining elements beyond $2v$. Then the product
+For $n=8$, any larger divisible-by-$3$ subproblem would already be settled by the size-$5$ case through the descent, so I am again forced into $A_1=\{v,2v\}$ and $1,2\in A$. Let $u$ be the next element not among $1,2,v,2v$; otherwise the size-$5$ certificate applied to the visible five elements would already finish, so I may also suppose $2u\in A$. I look at $x=1/(6v)$. The divisible part contributes
+$$f(vx)+f(2vx)=f(1/6)+f(1/3)=-\frac13+\frac23=\frac13.$$
+The three-shift identity for $A_0$ implies that I already get $m_A>1/3$ unless the $A_0$ values at the three shifts are all exactly balanced at zero. Since $f(z)=-1/3$ for $0\le z<1/3$, the known elements $1,2,u,2u$ force one of the three shifted $A_0$ sums to become positive if either unknown element lies at most $2v$. The only hard case has the two unknown elements larger than $2v$. Then the product
 $$\varphi(x)=(1-\cos(2\pi x))(1-\cos(2\pi vx))$$
 has a manageable coefficient calculation. The main terms give
 $$\int f_A\varphi\ge \frac{\sqrt3}{2\pi}\left(2-\frac18-\frac12 E_A\right),$$
@@ -151,7 +161,7 @@ $$\left\{\left\lceil\frac{N+1}{3}\right\rceil,\dots,N\right\}.$$
 The count for that interval is $\sim c_0(N)2^{N/2}$ with two parity-dependent constants; adding the entirely odd family and subtracting the overlap only changes the parity-dependent constant. Therefore
 $$|\mathrm{SF}(N)|\sim c(N)2^{N/2}.$$
 
-Now I can write the computation directly: use the half-open middle-third selector, evaluate finite Fourier certificates with the sign of $\widehat f$ fixed, and compare exact small counts with the two large families.
+The computation I want is small: use the half-open middle-third selector, evaluate finite Fourier certificates with the sign of $\widehat f$ fixed, and compare exact small counts with the two large families.
 
 ```python
 import math
@@ -160,6 +170,21 @@ from itertools import combinations
 
 ARC_START = Fraction(1, 3)
 ARC_END = Fraction(2, 3)
+
+KNOWN_SMALL_COUNTS = {
+    1: 2,
+    2: 3,
+    3: 6,
+    4: 9,
+    5: 16,
+    6: 24,
+    7: 42,
+    8: 61,
+    9: 108,
+    10: 151,
+    11: 253,
+    12: 369,
+}
 
 def chi(m):
     r = m % 3
@@ -207,6 +232,20 @@ def select_filtered_subset(A):
             best_set, best_theta = S, theta
     return best_set, best_theta
 
+def guaranteed_integer_bound(n):
+    return 0 if n == 0 else n // 3 + 1
+
+def verify_dilation_samples(samples):
+    verified = []
+    for A in samples:
+        if any(a == 0 for a in A):
+            raise ValueError("the dilation argument assumes nonzero integers")
+        S, theta = select_filtered_subset(A)
+        assert is_sum_free(S)
+        assert len(S) >= guaranteed_integer_bound(len(A))
+        verified.append((A, S, theta))
+    return verified
+
 def certificate_integral(A, coeffs):
     total = 0.0
     positive_coeffs = [(n, c) for n, c in coeffs.items() if n > 0]
@@ -242,21 +281,38 @@ def count_sumfree_subsets(N):
 def baseline_families(N):
     odds = [x for x in range(1, N + 1) if x % 2 == 1]
     upper_half = list(range(N // 2 + 1, N + 1))
-    return {"odds": odds, "upper_half": upper_half}
+    cameron_erdos_interval = list(range((N + 3) // 3, N + 1))
+    return {
+        "odds": odds,
+        "upper_half": upper_half,
+        "cameron_erdos_interval": cameron_erdos_interval,
+    }
 
 def estimate_count(N):
     families = baseline_families(N)
+    assert is_sum_free(families["odds"])
+    assert is_sum_free(families["upper_half"])
     return {
         "exact": count_sumfree_subsets(N),
         "odd_family_choices": 2 ** len(families["odds"]),
         "upper_half_choices": 2 ** len(families["upper_half"]),
+        "cameron_erdos_interval_size": len(families["cameron_erdos_interval"]),
         "scale_2_to_N_over_2": 2 ** (N / 2),
     }
 
+def verify_exact_small_counts():
+    exact = {N: count_sumfree_subsets(N) for N in KNOWN_SMALL_COUNTS}
+    assert exact == KNOWN_SMALL_COUNTS
+    return exact
+
 if __name__ == "__main__":
-    A = [1, 2, 3, 4, 5, 6, 7]
-    S, theta = select_filtered_subset(A)
-    print(f"A={A}  forced subset={S}  theta={theta}  n/3={len(A)/3:.3f}")
+    samples = [
+        [1, 2, 3, 4, 5, 6, 7],
+        [2, 3, 5, 7, 11],
+        [-5, -2, 1, 4, 9, 10],
+    ]
+    for A, S, theta in verify_dilation_samples(samples):
+        print(f"A={A}  forced subset={S}  theta={theta}  bound={guaranteed_integer_bound(len(A))}")
 
     B = [2, 3, 5, 7, 11]
     val = certificate_bound(B)
@@ -264,10 +320,12 @@ if __name__ == "__main__":
     assert abs(val - target) < 1e-12
     print(f"certificate={val:.6f}  formula={target:.6f}  >1/3={val > 1/3}")
 
-    for N in range(1, 11):
+    exact_counts = verify_exact_small_counts()
+    for N in range(1, 13):
         data = estimate_count(N)
+        assert data["exact"] == exact_counts[N]
         ratio = data["exact"] / data["scale_2_to_N_over_2"]
         print(f"N={N:2d}  |SF(N)|={data['exact']:5d}  ratio={ratio:.3f}")
 ```
 
-The causal chain is now clear: a one-third sum-free arc gives the averaging bound, integrality forces the first integer improvement, Fourier exposes the surplus and supplies nonnegative certificates for structured cases, mod-$3$ descent reduces the remaining obstruction to finite checks, and granularized almost-sum-free containers plus the popular-difference/Kneser dichotomy reduce the enumeration to the odd and interval families.
+The route has landed on two mechanisms working together: a one-third sum-free arc gives the averaging bound, integrality forces the first integer improvement, Fourier exposes the surplus and supplies nonnegative certificates for structured cases, mod-$3$ descent reduces the remaining obstruction to finite checks, and granularized almost-sum-free containers plus the popular-difference/Kneser dichotomy reduce the enumeration to the odd and interval families.

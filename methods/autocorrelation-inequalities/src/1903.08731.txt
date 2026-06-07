@@ -1,0 +1,998 @@
+arXiv:1903.08731v2 [math.CA] 19 Feb 2020
+
+THREE CONVOLUTION INEQUALITIES ON THE REAL LINE
+WITH CONNECTIONS TO ADDITIVE COMBINATORICS
+RICHARD C. BARNARD AND STEFAN STEINERBERGER
+Abstract. We discuss three convolution inequalities that are connected to
+additive combinatorics. Cloninger and the second author showed that for
+nonnegative f ∈ L1 (−1/4, 1/4),
+!2
+Z
+Z
+1/4
+
+−1/2≤t≤1/2
+
+f (x)dx
+
+f (t − x)f (x)dx ≥ 1.28
+
+max
+
+−1/4
+
+R
+
+which is related to g−Sidon sets (1.28 cannot be replaced by 1.52). We prove
+a dual statement, related to difference bases, and show that for f ∈ L1 (R),
+Z
+f (x)f (x + t)dx ≤ 0.42kf k2L1 ,
+min
+0≤t≤1
+
+R
+
+where the constant 1/2 is trivial, 0.42 cannot be replaced by 0.37. This suggests
+a natural conjecture about the asymptotic structure of g−difference bases.
+Finally, we show for all functions f ∈ L1 (R) ∩ L2 (R),
+Z 1 Z
+2
+f (x)f (x + t)dxdt ≤ 0.91kf kL1 kf kL2 .
+−1
+2
+
+R
+
+1. Introduction
+We discuss three convolution inequalities on the real line; one is well known, the
+other two seem to be new. The common theme is that all of them are fairly trivial
+if we do not care about the optimal constant. The optimal constant encapsulates
+something difficult in additive combinatorics that is not well understood.
+1.1. The first inequality. Our first inequality is valid for f ∈ L1 (R) ∩ L2 (R).
+Recall that Fubini’s theorem shows that
+Z Z
+f (x)f (x + t)dxdt ≤ kf k2L1
+R
+
+R
+
+while the Cauchy-Schwarz inequality shows that for any t ∈ R
+Z
+f (x)f (x + t)dx ≤ kf k2L2
+R
+
+with equality attained for t = 0. We prove a result between these two statements.
+Theorem 1. Let f ∈ L1 (R) ∩ L2 (R). Then
+Z 12 Z
+f (x)f (x + t)dxdt ≤ 0.91kf kL1 kf kL2
+− 12
+
+R
+
+Moreover, the constant cannot be replaced by 0.8.
+2010 Mathematics Subject Classification. 11B13, 26D10, 28A75.
+Key words and phrases. Convolution, Additive Number Theory, Fourier transform.
+S.S. is supported by the NSF (DMS-1763179) and the Alfred P. Sloan Foundation.
+1
+
+2
+
+1.2. Second inequality. The second inequality deals with a fundamental question
+in probability theory: if f is a probability density in (−1/4, 1/4), then the convolution f ∗ f is a probability density in (−1/2, 1/2). This means that the maximal
+value of f ∗ f has to exceed 1. How big does it necessarily have to be? Cilleruelo,
+Ruzsa & Vinuesa [7] showed that finding the optimal constant c in the inequality
+!2
+Z
+Z 1/4
+(1)
+max
+f (t − x)f (x)dx ≥ c
+f (x)dx ,
+−1/2≤t≤1/2
+
+−1/4
+
+R
+
+is equivalent to answering an old question in additive combinatorics about the
+behavior of g−Sidon sets. A subset A ⊂ {1, 2, . . . , n} is called g−Sidon if
+| {(a, b) ∈ A × A : a + b = m} | ≤ g
+
+for every m. The main question is: how large can these g−Sidon sets be for a given
+n? Let us denote the answer by
+βg (n) :=
+
+max
+
+A⊂{1,2,...,N }
+
+A is g-Sidon
+
+|A|.
+
+Cilleruelo, Ruzsa & Vinuesa [7] have shown that
+√
+√
+σ(g) gn(1 − o(1)) ≤ βg (n) ≤ σ(g) gn(1 + o(1)),
+where the o(1) is with respect to n and
+lim σ(g) = c = lim σ(g)
+
+g→∞
+
+g→∞
+
+for some universal constant c ∈ R which is exactly the sharp constant in (1). Several
+arguments have been suggested, in particular
+c≥1
+
+trivial
+
+≥ 1.151
+
+Cilleruelo, Ruzsa & Trujillo [6], 2002
+
+≥ 1.183
+
+Martin & O’Bryant [19], 2007
+
+≥ 1.263
+
+Martin & O’Bryant [20], 2009
+
+≥ 1.28
+
+Cloninger & Steinerberger [5], 2017
+
+≥ 1.178
+
+Green [16], 2001
+
+≥ 1.251
+
+Yu [27], 2007
+
+≥ 1.274
+
+Matolcsi & Vinuesa [22], 2010
+
+Matolcsi & Vinuesa [22] also construct an example showing that c ≤ 1.52, one
+is perhaps inclined to believe that this upper bound is close to the truth. It is
+this fascinating connection between additive combinatorics and real analysis that
+motivated us to look for a dual inequality.
+1.3. Third inequality. The third inequality is in a similar spirit to (1) and motivated by a problem in additive combinatorics of a similar spirit. It is not difficult
+to see (‘half of Fubini’) that for any f ∈ L1 (R)
+Z 1Z
+f (x)f (x + t)dxdt ≤ 0.5kf k2L1
+0
+
+R
+
+and the constant is sharp. However, once we replace the average in t with the
+minimum, the constant can be universally improved, which is our main result.
+
+3
+
+Theorem 2. Let f ∈ L1 (R). Then
+Z
+min
+f (x)f (x + t)dx ≤ 0.411kf k2L1
+0≤t≤1
+
+R
+
+and the constant cannot be replaced by 0.37.
+
+This can be understood as the continuous analogue of a nice problem in additive
+combinatorics. We say that a set A ⊂ Z is a difference basis with respect to n if
+{1, . . . , n} ⊆ A − A,
+where A − A = {a1 − a2 : a1 ∈ A, a2 ∈ A}. A natural question, going back to Redei
+& Renyi [24], is to understand the minimal size of A. A trivial estimate is
+ 
+|A|2
+|A|
+n = # {1, . . . , n} ≤ #((A − A) ∩ N) ≤
+≤
+2
+2
+√
+which shows |A| ≥ 2n. The best known results are, for n large,
+√
+√
+2.435n ≤ |A| ≤ 2.645n,
+where the lower bound was recently found by Bernshteyn & Tait [2] (improving
+on a 1955 bound of Leech [18]). The upper bound is a 1972 result of Golay [14].
+Golay’s writes that the optimal constant “will, undoubtedly, never be expressed in
+closed form”. The book of Bollobas [3] has a nice description of the problem. We
+also refer to papers of Erdős & Gal [11], Haselgrove & Leech [17]. The problem
+has some importance in engineering, cf. the book of Pott, Kumaran, Helleseth &
+Jungnickel [23]. One wonders whether the continuous analogue might also have
+applications.
+Theorem 2 and its similarity to the g−Sidon sets suggests another natural question.
+Let us define a set A ⊂ Z to be a g−difference basis with respect to n if, for all
+1 ≤ k ≤ n the equation
+ai − aj = k
+
+has at least g solutions.
+
+The natural question is how small can such a set can be? Let us define
+γg (n) :=
+
+min
+A⊂Z
+
+A is g-difference basis
+
+|A|.
+
+Analogous to the result of Cilleruelo, Ruzsa & Vinuesa [7], we could possibly hope
+that
+√
+√
+σ(g) gn(1 − o(1)) ≤ γg (n) ≤ σ(g) gn(1 + o(1)),
+where the o(1) is with respect to n,
+lim σ(g) = c = lim σ(g),
+
+g→∞
+
+g→∞
+
+and c is the optimal constant in the inequality
+Z
+1
+min
+f (x)f (x + t)dx ≤ kf k2L1 .
+0≤t≤1 R
+c
+
+It is an open question whether the optimal constant in Theorem 2 can be given in
+closed form.
+
+4
+
+1.4. Two related open problems. We conclude by describing two fascinating
+open problems that seem to be very related in spirit. The first seems to have been
+raised by Martin & O’Bryant [21, Conjecture 5.2.] and asks whether there is a
+universal constant c > 0 such that for all nonnegative f ∈ L1 (R) ∩ L2 (R) there is
+an improved Hölder inequality
+kf ∗ f k2L2 ≤ (1 − c)kf ∗ f kL1 kf ∗ f kL∞ .
+They proposed that it might even be true for a rather large value of c, they proposed
+c ∼ 0.1174. This was disproven by Matolcsi & Vinuesa [22] who showed that
+necessarily c ≤ 0.1107. We believe it to be a rather fascinating question. The
+second problem may, at first glance, seem unrelated: we noted the similarity to
+Theorem 2 because in both proofs the constant
+inf
+
+x∈R
+
+sin x
+∼ −0.217234
+x
+
+appears naturally. The question goes back to Bourgain, Clozel & Kahane [4]: If
+f : R → R is an even function such that f (0) ≤ 0 and fb(0) ≤ 0, then it is not
+possible for both f and fb to be positive outside an arbitrarily small neighborhood
+of the origin. Having f even and real-valued guarantees that fb is real-valued and
+even. The second condition yields
+Z ∞
+Z ∞
+b
+fb(y)dy,
+0 ≥ f (0) =
+f (x)dx
+and
+0 ≥ f (0) =
+−∞
+
+−∞
+
+which implies that the quantities
+
+A(f ) := inf {r > 0 : f (x) ≥ 0 if |x| > r}
+A(fb) := inf {r > 0 : fb(y) ≥ 0 if |y| > r}
+
+are strictly positive (possibly ∞) unless f ≡ 0. There is a dilation symmetry
+x → λx having the reciprocal effect y → y/λ on the Fourier side. As a consequence,
+the product A(f )A(fb) is invariant under this group action and becomes a natural
+quantity to consider. They prove that
+A(f )A(fb) ≥ 0.1687,
+
+and 0.1687 cannot be replaced by 0.41. The lower bound here is given by
+0.1687 ∼
+
+1
+4(1 + λ)2
+
+where
+
+λ = − inf
+
+x∈R
+
+sin x
+.
+x
+
+Goncalves, Oliveira e Silva and the second author [15] improved this to
+A(f )A(fb) ≥ 0.2025,
+
+and 0.2025 cannot be replaced by 0.353. It was also shown in [15] that the sharp
+constant is assumed by a function and that this function has infinitely many double
+roots. While this question is still open, a sharp form of the inequality in d = 12
+dimensions has been established by Cohn & Goncalves [9] using modular forms.
+There is also at least a philosophical similarity to problems related to the ’unavoidable geometry of probability distributions’ [1, 10, 12, 13, 25, 26].
+
+5
+
+2. Proofs
+2.1. Preliminaries. All three proofs are based on the Fourier Analysis and variants of the Hardy-Littlewood rearrangement inequality. We recall that the HardyLittlewood inequality states that for bounded, positive and decaying functions
+f, g : R → R
+Z
+Z
+f (x)g(x)dx ≤
+f ∗ (x)g ∗ (x)dx,
+R
+
+R
+
+where f ∗ (x) is the symmetric decreasing rearrangement of a function f . If one were
+to draw a picture, it would show that the integral is maximized if f is rearranged
+in such a way that the ‘big’ parts of f interact with the ‘big’ parts of g and the
+‘small’ parts of f interact with the ‘small’ parts of g. Over regions where one of the
+functions is negative, the reverse statement is true and integrals are maximized by
+matching big contributions of one with small contributions of the other. In terms
+of Fourier Analysis, we will make use of the Wiener-Khintchine theorem: using
+Plancherel’s identity, we see that
+Z
+f (x)f (x + t)dx = hf, f (· + t)iL2
+R
+Z
+E
+D
+2πiξt b
+b
+=
+e−2πiξt |fb(ξ)|2 dξ.
+f (ξ)
+= f (ξ), e
+2
+L
+
+R
+
+In particular, the auto-correlation cannot look like the characteristic function of a
+set (which are the types of functions for which Hölder’s inequality is sharp) and it
+is not hard to see how these types of identities would enter. As a toy example, we
+show that the auto-correlation cannot be close to χ[−1,1] .
+
+Proposition. Let f ∈ L1 (R) ∩ L2 (R). Then
+Z
+f (x)f (x + t)dx − χ[−1,1] (t)
+R
+
+L2
+
+≥
+
+3
+.
+10
+
+Proof. The proof is simple: we use that the Fourier transform is unitary and obtain
+that
+Z
+sin (2πξ)
+.
+f (x)f (x + t)dx − χ[−1,1] (t)
+= |fb(ξ)|2 −
+πξ
+2
+R
+L2
+L
+
+However, one of these functions is positive while the other one becomes negative.
+So we clearly have at least
+2
+Z 
+2
+sin (2πξ)
+sin (2πξ)
+2
+b
+|f (ξ)| −
+χ sin (2πξ) ≤0 dξ ≥ 0.1.
+≥
+πξ
+πξ
+πξ
+R
+L2
+
+
+2.2. Proof of Theorem 1.
+Proof. We may assume, without loss of generality, that f ≥ 0 and, using the
+invariance under scaling, that
+Z 12 Z
+f (x)f (x + t)dxdt = 1.
+− 21
+
+R
+
+6
+
+We note that this normalisation dictates that
+Z Z
+Z 21 Z
+f (x)f (x + t)dxdt ≤
+f (x)f (x + t)dxdt = kf k2L1 .
+1=
+− 12
+
+R
+
+R
+
+R
+
+We distinguish two cases: the first case is
+1 kf k2L2
+≥ 0.88
+2 kf k2L1
+
+kf k2L2 ≥ 1.76kf k2L1 ≥ 1.76
+
+in which case
+
+and we have shown the desired inequality since then
+Z 12 Z
+kf k 2
+f (x)f (x + t)dxdt = 1 ≤ kf kL1 √ L ≤ 0.8kf kL1 kf kL2 .
+1
+1.76
+−2 R
+It remains to deal with the case where the fraction is smaller than 0.88 and we will
+assume this throughout the subsequent argument. Our main ingredient will be the
+Fourier transform which we use in the normalization
+Z
+b
+e−2πixξ f (x)dx,
+f (ξ) =
+R
+
+which is the normalisation that turns it into a unitary transformation on L2 (R).
+We estimate
+Z 12 Z
+Z 12 Z
+1=
+f (x)f (x + t)dxdt =
+e−2πitξ |fb(ξ)|2 dξdt
+− 21
+
+− 12
+
+R
+
+Z
+
+R
+
+sin (πξ) b 2
+|f (ξ)| dξ,
+=
+πξ
+R
+
+We use the Hardy-Littlewood rearrangement inequality
+∗
+
+Z
+Z
+sin (πξ)
+sin (πξ) b 2
+|fb∗ (ξ)|2 dξ.
+|f (ξ)| dξ ≤
+max 0,
+πξ
+πξ
+R
+R
+
+The symmetric decreasing rearrangement of the sinc function has a particularly
+simple form around the origin since
+
+∗
+sin (πξ)
+sin (πξ)
+max 0,
+=
+for |ξ| ≤ 0.88.
+πξ
+πξ
+We now estimate the rearranged Fourier transform and note that
+Z
+Z
+−2πixξ
+b
+|f (ξ)| =
+e
+f (x)dx ≤
+|f (x)|dx = kf kL1 .
+R
+
+R
+
+We now assume that fb(ξ) is equal to this maximal value over a large interval
+centered at the origin (by Hardy-Littlewood, this is a bound from above). However,
+we also have that kf kL2 = kfbkL2 which means that the Fourier transform fb can
+only be of size kf kL1 on an interval of total length J centered at the origin where
+kf k2L1 J = kf k2L2 . Therefore, we have
+Z 12 kf k2 2 kf k−21
+Z
+L
+L
+sin (πξ)
+sin (πξ) b 2
+|f (ξ)| dξ ≤
+kf k2L1 dξ
+1≤
+πξ
+πξ
+R
+− 21 kf k2 2 kf k−2
+L
+L1
+Z 21 kf k2 2 kf k−21
+L
+L
+sin (πξ)
+dξ.
+= kf k2L1
+−2
+1
+2
+πξ
+− 2 kf k 2 kf k 1
+L
+
+L
+
+7
+
+Introducing the special function
+Si(x) =
+
+Z x
+0
+
+sin (y)
+dy,
+y
+
+we can rewrite the result of our argument as
+
+
+2kf k2L1
+π kf k2L2
+,
+1≤
+Si
+π
+2 kf k2L1
+
+or, making use of kf kL1 ≥ 1, and setting x = 2kf k2L1 π −1 and y = kf k2L2 ,
+y
+2
+x Si
+≥1
+where x ≥
+and y > 0.
+x
+π
+If we can show that this implies x · y ≥ 0.78, then this this implies the main result.
+We will now show that this is indeed the case. We start by arguing that it suffices
+to restrict to 2/π ≤ x ≤ 0.78 since | Si(x)| ≤ |x| implies
+y y
+1
+≤
+≤ Si
+x
+x
+x
+and thus y ≥ 1. We now define, for x > 2/π, the function y(x) as the smallest
+positive number such that
+
+
+y(x)
+= 1.
+x Si
+x
+A quick computation shows that y(2/π) = 1.226 and thus (2/π)y(2/π) ≥ 0.78076 . . . .
+Differentiating the equation leads to
+
+
+
+
+y(x)
+sin (y(x)/x) y ′ (x) y(x)
+Si
++x
+= 0.
+− 2
+x
+y(x)/x
+x
+x
+
+This is an ordinary differential equation for y(x) that gives all the necessary information. In particular, it shows that (xy(x))′ = 0.39 . . . for x = 2/π and thus xy(x)
+is monotonically increasing for x close to 2/π. Standard error estimates then give
+the desired result for the entire range 2/π ≤ x ≤ 0.78. It remains to provide a lower
+bound for the constant. If we set
+2
+
+f (x) = e−ax ,
+then a computation shows that
+R 12 R
+f (x)f (x + t)dxdt
+−1 R
+2
+
+kf kL1 kf kL2
+
+(2π)1/4 erf
+=
+
+a1/4
+
+√ 
+√a
+8
+
+which yields 0.793 for a = 7.839. We used this as a start for a local search for
+2
+functions of the type f (x) = e−ax (b + cx) and found that (a, b, c) = (15, 0.51, 8.55)
+results in the value 0.802.
+
+2.3. Proof of Theorem 2.
+Proof. Let f ∈ L1 (R) and suppose that for all 0 ≤ t ≤ 1
+Z
+1
+f (x)f (x + t)dx ≥ .
+2
+R
+
+By symmetry, this shows that the function
+Z
+f (x)f (x + t)dx
+g(t) =
+R
+
+8
+
+satisfies g(t) ≥ 1/2 for all −1 ≤ t ≤ 1. Trivially,
+
+R
+
+R
+
+g(t)dt = kf k2L1 . We write
+
+1
+χ[−1,1] + h(t)
+for some h(t) ≥ 0.
+2
+Recalling the Wiener-Khintchine theorem (see §2.1.), we have that for any ξ
+Z
+2
+b
+0 ≤ |f (ξ)| =
+e−ξπit g(t)dt
+R
+
+
+Z
+1
+−ξπit
+e
+=
+χ[−1,1] + h(t) dt
+2
+R
+Z
+sin (2πξ)
+≤
++ h(t)dt.
+2πξ
+R
+Optimizing over ξ shows that
+Z
+sin x
+h(t)dt ≥ − inf
+x
+x
+R
+and thus
+Z
+sin x
+g(t)dt ≥ 1 − inf
+x
+x
+R
+and therefore
+r
+sin x
+kf kL1 (R) ≥ 1 − inf
+∼ 1.10328.
+x
+x
+g(t) =
+
+
+
+Construction of an Example. It remains to construct an example showing that
+the optimal constant in Theorem 2 cannot be less than 0.37. In light of the conjecture made after Theorem 2 about the asymptotic structure of g−difference bases,
+we believe that extremal functions for Theorem 2 might tell us something about
+the asymptotic structure of difference bases as well and are thus of interest beyond
+the scope of Theorem 2.
+We now outline the reasoning behind our construction. The fact that our construction gives a very good lower bound (0.37) almost matching our upper bound (0.41)
+is a good indicator that constructions of the type we consider are promising.
+
+Figure 1. Left: if the function f is very flat, then the product
+becomes small. We thus want to have our functions concentrated.
+Middle: if the functions are concentrated, then shifting it a bit
+leads to very little overlap leading again to small integrals. Right:
+if our functions has an integrable singularity at the boundary of
+its support, then the integral has a chance of remaining large.
+We are thus led to studying functions with compact support having a singularity
+on the boundary. A particularly natural such function is given by the arcsine
+distribution f : (−0.5, 0.5) → R given by
+f (x) =
+
+χ[−0.5,0.5] (x)
+√
+.
+1 − 4x2
+
+9
+
+which has many interesting properties (see e.g. [8] and references therein). In our
+normalization, we have
+Z
+π
+f (x)dx = .
+2
+R
+We now discuss one interesting property that we have not found in the literature
+and that inspired our example. For any −1/2 < t < 1/2, the integral
+Z
+f (x)f (x + t)dx
+is well defined.
+R
+
+We note that for t = 0, it is infinite (because the boundary singularities are of
+strength ∼ |1/2 − |x||−1/2 ), for all other values of t the integral is finite (because
+the boundary singularities by themselves are integrable). However, we would expect
+that the integral becomes small as t → ±1 (because that’s when the support of the
+two functions starts being very small). However, the scaling of the singularity is
+precisely cancels this effect! We now carry out the associated computation.
+Z 12
+Z
+1
+1
+√
+p
+dx
+f (x)f (x + t)dx =
+2
+1
+1
+−
+4x
+1
+−
+4(x
++ t)2
+− 2 −t
+R
+Z 12
+1
+1
+1
+1
+√
+p
+√
+p
+=
+dx.
+1
+1
++
+2x
+1
+−
+2x
+1
+−
+2(x
++
+t)
+1
++
+2(x
++ t)
+− 2 −t
+
+We see that on the entire interval of integration
+1
+1
+√
+≥√
+1 + 2x
+2
+
+and
+
+1
+f (x)f (x + t)dx ≥
+2
+R
+
+Z 21
+
+1
+1
+p
+≥ √
+2
+1 − 2(x + t)
+
+Therefore
+Z
+
+− 12 −t
+
+√
+
+1
+1
+p
+dx.
+1 − 2x 1 + 2(x + t)
+
+Assuming −1 < t < −1/2, a linear substitution simplifies the integral to
+Z 21
+1
+π
+1
+√
+p
+dx = .
+2
+1 − 2x 1 + 2(x + t)
+− 21 −t
+
+and we have established
+Z
+π
+f (x)f (x + t)dx ≥
+4
+R
+
+for all 0 < t < 1.
+
+It does not cover the case t = 1 but this is not a big problem, our desired inequality
+is continuous under dilations and we can thus consider, for any ε > 0, the function
+χ[−0.5−ε,0.5+ε]
+fε (x) = q
+x2
+1 − (0.5+ε)
+2
+
+and choose ε arbitrarily small. Actually computing
+Z
+f (x)f (x + t)dx
+for various values of t
+R
+
+shows that the resulting function assumes its minimum on the boundary. This
+suggests that we can improve the function a bit by removing some L1 −mass in the
+
+10
+
+middle. Numerically, for ε sufficiently small
+
+we have
+
+Z
+
+R
+
+χ[−0.5−ε,0.5+ε]
+1 χ[−0.25,0.25]
+− √
+f (x) = q
+x2
+4 1 − 4x2
+1 − (0.5+ε)2
+f (x)f (x + t)dx ≥
+
+π
+4
+
+while
+
+kf kL1 = 1.439
+
+which shows that the constant cannot be less than 0.37. We note that, since we
+are removing L1 −mass in the middle, this does not affect any of the above computations for t close to ±1. The remaining computations are all easy to do since
+everything is integrable.
+We have found it difficult to attack the problem of constructing lower bounds
+numerically, this might be an interesting challenge. It would also be interesting
+to prove or disprove the existence of an extremizing function f for this problem.
+We also note that having f blow up like ∼ |1/2 − |x||−1/2 at the boundary seems
+optimal. If the blow-up is stronger, then the arising integral is even bigger on the
+boundary: that does not help us but it does increase the L1 −mass which is not
+favorable. If the blow-up is weaker, then the integral tends to 0 which is also not
+favorable. This motivates the following
+Open problem. Is this reflected in the asymptotic structure of
+g−difference bases? Do they have an asymptotic density profile
+and does this density profile have ∼ |1/2 − |x||−1/2 blow-up at the
+boundary?
+References
+[1] N. Alon and R. Yuster, The 123 theorem and its extensions, J. Combin. Theory Ser. A 72,
+322–331 (1995).
+[2] A. Bernstheyn and M. Tait, Improved lower bound for difference basis, arXiv:1901.09411
+[3] B. Bollobas, The Art of Mathematics: Coffee Time in Memphis, Cambridge University Press,
+2006.
+[4] J. Bourgain, L. Clozel and J.-P. Kahane, Principe d’Heisenberg et fonctions positives. Ann.
+Inst. Fourier (Grenoble) 60 (2010), no. 4, 1215–1232.
+[5] A. Cloninger and S. Steinerberger, On suprema of autoconvolutions with an application to
+Sidon sets. Proc. Amer. Math. Soc. 145 (2017), no. 8, 3191–3200.
+[6] J. Cilleruelo, I.Z. Ruzsa, C. Trujillo, Upper and lower bounds for finite Bh[g] sequences, J.
+Number Theory 97 (2002) 26–34.
+[7] J. Cilleruelo, I.Z. Ruzsa and C. Vinuesa, Generalized Sidon sets. Adv. Math. 225 (2010), no.
+5, 2786–2807.
+[8] R. Coifman and S. Steinerberger, A Remark on the Arcsine Distribution and the Hilbert
+Transform, to appear in J. Fourier Analysis and Applications
+[9] H. Cohn and F. Goncalves, An optimal uncertainty principle in twelve dimensions via modular
+forms, arXiv:1712.04438
+[10] Z. Dong, J. Li, and W. Li, A note on distribution-free symmetrization inequalities, J. Theor.
+Prob. 28(3) (2015), 958–967.
+[11] P. Erdős and I. Gal, On the representation of 1, 2, ..., N by differences, Nederl. Akad. Wetensch., Proc. 51 (1948), 1155–1158.
+[12] U. Feige, On sums of independent random variables with unbounded variance and estimating
+the average degree in a graph. SIAM J. Comput. 35 (2006), no. 4, 964–984.
+[13] N. Feldheim and O. Feldheim, Mean and minimum of independent random variables, arXiv:
+1609.03004
+
+11
+
+[14] M. J. E. Golay. Notes on the representation of 1, 2, . . . , N by differences, J. London Math.
+Soc., 2 (4) (1972), 729–734.
+[15] F. Goncalves, D. Oliveira e Silva and S. Steinerger, Hermite polynomials, linear flows on the
+torus, and an uncertainty principle for roots, arxiv, J. Math. Anal. Appl. 451, 678–711 (2017).
+[16] B. Green, The number of squares and Bh[g] sets, Acta Arith. 100 (2001) 365–390.
+[17] C. Haselgrove and J. Leech, Note on Restricted Difference Bases, J. London Math. Soc. 32,
+p. 228–231 (1957).
+[18] J. Leech. On the representation of{1, 2, ..., n} by differences, J. London Math. Soc., 31 (2)
+(1956), 160–169.
+[19] G. Martin, K. O’Bryant, Constructions of generalized Sidon sets, J. Combin. Theory Ser. A
+113 (4) (2006) 591–607.
+[20] G. Martin, K. O’Bryant, The symmetric subset problem in continuous Ramsey theory, Experiment. Math. 16 (2) (2007) 145–166.
+[21] G. Martin, K. O’Bryant, The supremum of autoconvolutions, with applications to additive
+number theory. Illinois J. Math. 53 (2009), no. 1, 219–235.
+[22] M. Matolcsi and C. Vinuesa, Carlos, Improved bounds on the supremum of autoconvolutions.
+J. Math. Anal. Appl. 372 (2010), no. 2, 439–447.
+[23] A. Pott, V. Kumaran, T. Helleseth and D. Jungnickel, Difference Sets, Sequences and their
+Correlation Properties, NATO Science Series C, Springer, 2012.
+[24] L. Redei and A. Renyi, On the representation of 1, 2, . . . , N by differences (in Russian), Mat.
+Sb., 66 (3) (1949), 385–389.
+[25] R. S. Schultze and H. V. Weizsäcker, Level-crossing probabilities I: One-dimensional random
+walks and symmetrization, Adv. Math. 208, 672–679 (2007)
+[26] S. Steinerberger, A aharp estimate for probability distributions, arXiv:1801.00663
+[27] G. Yu, An upper bound for B2[g] sets, J. Number Theory 122 (1) (2007) 211–220.
+Department of Mathematics, Western Washington University, Bellingham, WA 98225
+E-mail address: barnarr3@wwu.edu
+Department of Mathematics, Yale University, New Haven, CT 06511
+E-mail address: stefan.steinerberger@yale.edu
+
+

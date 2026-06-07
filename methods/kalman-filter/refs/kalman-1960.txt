@@ -1,0 +1,941 @@
+                                                     A New Approach to Linear Filtering
+                                                     and Prediction Problems1
+                        R. E. KALMAN
+   Research Institute for Advanced Study,2                The classical filtering and prediction problem is re-examined using the Bode-
+                             Baltimore, Md.          Shannon representation of random processes and the “state transition” method of
+                                                     analysis of dynamic systems. New results are:
+                                                          (1) The formulation and methods of solution of the problem apply without modifica-
+                                                     tion to stationary and nonstationary statistics and to growing-memory and infinite-
+                                                     memory filters.
+                                                          (2) A nonlinear difference (or differential) equation is derived for the covariance
+                                                     matrix of the optimal estimation error. From the solution of this equation the co-
+                                                     efficients of the difference (or differential) equation of the optimal linear filter are ob-
+                                                     tained without further calculations.
+                                                          (3) The filtering problem is shown to be the dual of the noise-free regulator problem.
+                                                          The new method developed here is applied to two well-known problems, confirming
+                                                     and extending earlier results.
+                                                          The discussion is largely self-contained and proceeds from first principles; basic
+                                                     concepts of the theory of random processes are reviewed in the Appendix.
+
+
+
+                            Introduction
+                                                                                 Present methods for solving the Wiener problem are subject to
+            AN IMPORTANT class of theoretical and practical                    a number of limitations which seriously curtail their practical
+                                                                               usefulness:
+problems in communication and control is of a statistical nature.
+Such problems are: (i) Prediction of random signals; (ii) separa-                 (1) The optimal filter is specified by its impulse response. It is
+tion of random signals from random noise; (iii) detection of                   not a simple task to synthesize the filter from such data.
+signals of known form (pulses, sinusoids) in the presence of                      (2) Numerical determination of the optimal impulse response is
+random noise.                                                                  often quite involved and poorly suited to machine computation.
+   In his pioneering work, Wiener [1]3 showed that problems (i)                The situation gets rapidly worse with increasing complexity of
+and (ii) lead to the so-called Wiener-Hopf integral equation; he               the problem.
+also gave a method (spectral factorization) for the solution of this              (3) Important generalizations (e.g., growing-memory filters,
+integral equation in the practically important special case of                 nonstationary prediction) require new derivations, frequently of
+stationary statistics and rational spectra.                                    considerable difficulty to the nonspecialist.
+   Many extensions and generalizations followed Wiener’s basic                    (4) The mathematics of the derivations are not transparent.
+work. Zadeh and Ragazzini solved the finite-memory case [2].                   Fundamental assumptions and their consequences tend to be
+Concurrently and independently of Bode and Shannon [3], they                   obscured.
+also gave a simplified method [2] of solution. Booton discussed                   This paper introduces a new look at this whole assemblage of
+the nonstationary Wiener-Hopf equation [4]. These results are                  problems, sidestepping the difficulties just mentioned. The
+now in standard texts [5-6]. A somewhat different approach along               following are the highlights of the paper:
+these main lines has been given recently by Darlington [7]. For                   (5) Optimal Estimates and Orthogonal Projections. The
+extensions to sampled signals, see, e.g., Franklin [8], Lees [9].              Wiener problem is approached from the point of view of condi-
+Another approach based on the eigenfunctions of the Wiener-                    tional distributions and expectations. In this way, basic facts of
+Hopf equation (which applies also to nonstationary problems                    the Wiener theory are quickly obtained; the scope of the results
+whereas the preceding methods in general don’t), has been                      and the fundamental assumptions appear clearly. It is seen that all
+pioneered by Davis [10] and applied by many others, e.g.,                      statistical calculations and results are based on first and second
+Shinbrot [11], Blum [12], Pugachev [13], Solodovnikov [14].
+                                                                               order averages; no other statistical data are needed. Thus
+   In all these works, the objective is to obtain the specification of
+                                                                               difficulty (4) is eliminated. This method is well known in
+a linear dynamic system (Wiener filter) which accomplishes the
+                                                                               probability theory (see pp. 75–78 and 148–155 of Doob [15] and
+prediction, separation, or detection of a random signal.4
+———                                                                            pp. 455–464 of Loève [16]) but has not yet been used extensively
+    1 This research was supported in part by the U. S. Air Force Office of     in engineering.
+Scientific Research under Contract AF 49 (638)-382.                               (6) Models for Random Processes. Following, in particular,
+    2 7212 Bellona Ave.
+    3 Numbers in brackets designate References at end of paper.
+                                                                               Bode and Shannon [3], arbitrary random signals are represented
+    4 Of course, in general these tasks may be done better by nonlinear        (up to second order average statistical properties) as the output of
+filters. At present, however, little or nothing is known about how to obtain   a linear dynamic system excited by independent or uncorrelated
+(both theoretically and practically) these nonlinear filters.                  random signals (“white noise”). This is a standard trick in the
+    Contributed by the Instruments and Regulators Division and presented       engineering applications of the Wiener theory [2–7]. The
+at the Instruments and Regulators Conference, March 29– Apri1 2, 1959,
+of THE AMERICAN SOCIETY OF MECHANICAL ENGINEERS.                               approach taken here differs from the conventional one only in the
+    NOTE: Statements and opinions advanced in papers are to be understood      way in which linear dynamic systems are described. We shall
+as individual expressions of their authors and not those of the Society.       emphasize the concepts of state and state transition; in other
+Manuscript received at ASME Headquarters, February 24, 1959. Paper             words, linear systems will be specified by systems of first-order
+No. 59—IRD-11.
+                                                                               difference (or differential) equations. This point of view is
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+natural and also necessary in order to take advantage of the               Similarly, the quadratic form associated with the n × n matrix Q
+simplifications mentioned under (5).                                       is,
+   (7) Solution of the Wiener Problem. With the state-transition                                            n
+method, a single derivation covers a large variety of problems:                                 x'Qx = ∑ xi qij x j
+growing and infinite memory filters, stationary and nonstationary                                       i , j =1
+statistics, etc.; difficulty (3) disappears. Having guessed the            We define the expression xy' where x' is an m-vector and y is an
+“state” of the estimation (i.e., filtering or prediction) problem          n-vector to be the m × n matrix with elements xiyj.
+correctly, one is led to a nonlinear difference (or differential)             We write E(x) = Ex for the expected value of the random vec-
+equation for the covariance matrix of the optimal estimation error.        tor x (see Appendix). It is usually convenient to omit the brackets
+This is vaguely analogous to the Wiener-Hopf equation. Solution            after E. This does not result in confusion in simple cases since
+of the equation for the covariance matrix starts at the time t0 when       constants and the operator E commute. Thus Exy' = matrix with
+the first observation is taken; at each later time t the solution of       elements E(xiyj); ExEy' = matrix with elements E(xi)E(yj).
+the equation represents the covariance of the optimal prediction              For ease of reference, a list of the principal symbols used is
+error given observations in the interval (t0, t). From the covariance      given below.
+matrix at time t we obtain at once, without further calculations,
+the coefficients (in general, time-varying) characterizing the             Optimal Estimates
+optimal linear filter.                                                                t   time in general, present time.
+   (8) The Dual Problem. The new formulation of the Wiener                           t0   time at which observations start.
+problem brings it into contact with the growing new theory of              x1(t), x2(t)   basic random variables.
+control systems based on the “state” point of view [17–24]. It                     y(t)   observed random variable.
+turns out, surprisingly, that the Wiener problem is the dual of the          x1*(t1|t)    optimal estimate of x1(t1) given y(t0), …, y(t).
+noise-free optimal regulator problem, which has been solved                          L    loss function (non random function of its argument).
+previously by the author, using the state-transition method to great                  ε   estimation error (random variable).
+advantage [18, 23, 24]. The mathematical background of the two
+problems is identical—this has been suspected all along, but until         Orthogonal Projections
+now the analogies have never been made explicit.                                  Y(t)    linear manifold generated by the random variables
+   (9) Applications. The power of the new method is most ap-                              y(t0), …, y(t).
+parent in theoretical investigations and in numerical answers to               x (t1|t)   orthogonal projection of x(t1) on Y(t).
+                                                                               ~
+                                                                               x (t1|t)   component of x(t1) orthogonal to Y(t).
+complex practical problems. In the latter case, it is best to resort to
+machine computation. Examples of this type will be discussed
+later. To provide some feel for applications, two standard                 Models for Random Processes
+examples from nonstationary prediction are included; in these              Φ(t + 1; t)    transition matrix
+cases the solution of the nonlinear difference equation mentioned                Q(t)     covariance of random excitation
+under (7) above can be obtained even in closed form.
+   For easy reference, the main results are displayed in the form of       Solution of the Wiener Problem
+theorems. Only Theorems 3 and 4 are original. The next section                    x(t)    basic random variable.
+and the Appendix serve mainly to review well-known material in                    y(t)    observed random variable.
+a form suitable for the present purposes.                                        Y(t)     linear manifold generated by y(t0), …, y(t).
+                                                                                                                        ~
+                                                                                 Z(t)     linear manifold generated by y (t|t – 1).
+                                                                               x*(t1|t)   optimal estimate of x(t1) given Y(t).
+Notation Conventions                                                           ~
+                                                                               x (t1|t)   error in optimal estimate of x(t1) given Y(t).
+   Throughout the paper, we shall deal mainly with discrete (or
+sampled) dynamic systems; in other words, signals will be ob-              Optimal Estimates
+served at equally spaced points in time (sampling instants). By                To have a concrete description or the type of problems to be
+suitable choice of the time scale, the constant intervals between          studied, consider the following situation. We are given signal
+successive sampling instants (sampling periods) may be chosen as           x1(t) and noise x2(t). Only the sum y(t) = x1(t) + x2(t) can be ob-
+unity. Thus variables referring to time, such as t, t0, τ, T will          served. Suppose we have observed and know exactly the values
+always be integers. The restriction to discrete dynamic systems is         of y(t0), ..., y(t). What can we infer from this knowledge in regard
+not at all essential (at least from the engineering point of view);        to the (unobservable) value of the signal at t = t1, where t1 may be
+by using the discreteness, however, we can keep the mathematics            less than, equal to, or greater than t? If t1 < t, this is a data-
+rigorous and yet elementary. Vectors will be denoted by small              smoothing (interpolation) problem. If t1 = t, this is called
+bold-face letters: a, b, ..., u, x, y, ... A vector or more precisely an   filtering. If t1 > t, we have a prediction problem. Since our treat-
+n-vector is a set of n numbers x1, ... xn; the xi are the co-ordinates     ment will be general enough to include these and similar
+or components of the vector x.                                             problems, we shall use hereafter the collective term estimation.
+   Matrices will be denoted by capital bold-face letters: A, B, Q,             As was pointed out by Wiener [1], the natural setting of the
+Φ, Ψ, …; they are m × n arrays of elements aij, bij, qij,... The           estimation problem belongs to the realm of probability theory and
+transpose (interchanging rows and columns) of a matrix will be             statistics. Thus signal, noise, and their sum will be random
+denoted by the prime. In manipulating formulas, it will be                 variables, and consequently they may be regarded as random
+convenient to regard a vector as a matrix with a single column.            processes. From the probabilistic description of the random
+   Using the conventional definition of matrix multiplication, we          processes we can determine the probability with which a par-
+write the scalar product of two n-vectors x, y as                          ticular sample of the signal and noise will occur. For any given
+                             n                                             set of measured values η(t0), ..., η(t) of the random variable y(t)
+                      x'y = ∑ xi yi = y'x                                  one can then also determine, in principle, the probability of
+                            i =1                                           simultaneous occurrence of various values ξ1(t) of the random
+The scalar product is clearly a scalar, i.e., not a vector, quantity.      variable x1(t1). This is the conditional probability distribution
+                                                                           function
+
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+         Pr[x1(t1) ≤ ξ1|y(t0) = η(t0), …, y(t) = η(t)] = F(ξ1)       (1)      Theorem l-a. If L(ε) = ε2, then Theorem 1 is true without as-
+                                                                            sumptions (A) and (B).
+Evidently, F(ξ1) represents all the information which the meas-               Proof: Expand the conditional expectation (4):
+urement of the random variables y(t0), ..., y(t) has conveyed about
+the random variable x1(t1). Any statistical estimate of the random           E[x12(t1)|y(t0), …, y(t)] – 2X1(t1)E[x1(t1)|y(t0), …, y(t)] + X12(t1)
+variable x1(t1) will be some function of this distribution and
+therefore a (nonrandom) function of the random variables y(t0), ...,        and differentiate with respect to X1(t1). This is not a completely
+y(t). This statistical estimate is denoted by X1(t1|t), or by just X1(t1)   rigorous argument; for a simple rigorous proof see Doob [15], pp.
+or X1 when the set of observed random variables or the time at              77–78.
+which the estimate is required are clear from context.                         Remarks. (a) As far as the author is aware, it is not known what
+   Suppose now that X1 is given as a fixed function of the random           is the most general class of random processes {x1(t)}, {x2(t)} for
+variables y(t0), ..., y(t). Then X1 is itself a random variable and its     which the conditional distribution function satisfies the re-
+actual value is known whenever the actual values of y(t0), ..., y(t)        quirements of Theorem 1.
+are known. In general, the actual value of X1(t1) will be different            (b) Aside from the note of Sherman, Theorem 1 apparently has
+from the (unknown) actual value of x1(t1). To arrive at a rational          never been stated explicitly in the control systems literature. In
+way of determining X1, it is natural to assign a penalty or loss for        fact, one finds many statements to the effect that loss functions of
+incorrect estimates. Clearly, the loss should be a (i) positive, (ii)       the general type (2) cannot be conveniently handled mathe-
+nondecreasing function of the estimation error ε = x1(t1) – X1(t1).         matically.
+Thus we define a loss function by                                              (c) In the sequel, we shall be dealing mainly with vector-
+                                                                            valued random variables. In that case, the estimation problem is
+                                L(0) = 0                                    stated as: Given a vector-valued random process {x(t)} and ob-
+                                                                            served random variables y(t0), ..., y(t), where y(t) = Mx(t) (M
+                 L(ε2) ≥ L(ε1) ≥ 0     when     ε2 ≥ ε1 ≥ 0          (2)    being a singular matrix; in other words, not all co-ordinates of
+                                                                            x(t) can be observed), find an estimate X(t1) which minimizes the
+                              L(ε) = L(–ε)                                  expected loss E[L(||x(t1) – X(t1)||)], || || being the norm of a
+                                                                            vector.
+Some common examples of loss functions are: L(ε) = aε2, aε4,                   Theorem 1 remains true in the vector case also, provided we
+a|ε|, a[1 – exp(–ε2)], etc., where a is a positive constant.                re- quire that the conditional distribution function of the n co-
+   One (but by no means the only) natural way of choosing the               ordi- nates of the vector x(t1),
+random variable X1 is to require that this choice should minimize
+the average loss or risk                                                        Pr[x1(t1) ≤ ξ1,…, xn(t1) ≤ ξn|y(t0), …, y(t)] = F(ξ1, …,ξn)
+
+   E{L[x1(t1) – X1(t1)]} = E[E{L[x(t1) – X1(t1)]|y(t0), …, y(t)}] (3)       be symmetric with respect to the n variables ξ1 – ξ 1, …, ξn – ξ n
+                                                                            and convex in the region where all of these variables are
+Since the first expectation on the right-hand side of (3) does not          negative.
+depend on the choice of X1 but only on y(t0), ..., y(t), it is clear that
+minimizing (3) is equivalent to minimizing
+                                                                            Orthogonal Projections
+                  E{L[x1(t1) – X1(t1)]|y(t0), ..., y(t)}             (4)       The explicit calculation of the optimal estimate as a function of
+Under just slight additional assumptions, optimal estimates can be          the observed variables is, in general, impossible. There is an
+characterized in a simple way.                                              important exception: The processes {x1(t)}, {x2(t)} are gaussian.
+   Theorem 1. Assume that L is of type (2) and that the conditional
+                                                                               On the other hand, if we attempt to get an optimal estimate
+distribution function F(ξ) defined by (1) is:                               under the restriction L(ε) = ε2 and the additional requirement that
+                                                                            the estimate be a linear function of the observed random
+  (A) symmetric about the mean ξ :                                          variables, we get an estimate which is identical with the optimal
+                                                                            estimate in the gaussian case, without the assumption of linearity
+                       F(ξ – ξ ) = 1 – F( ξ – ξ)
+                                                                            or quadratic loss function. This shows that results obtainable by
+  (B) convex for ξ ≤ ξ :                                                    linear estimation can be bettered by nonlinear estimation only
+                                                                            when (i) the random processes are nongaussian and even then (in
+             F(λξ1 + (1 – λ)ξ2) ≤ λF(ξ1) + (1 – λ)F(ξ2)                     view of Theorem 5, (C)) only (ii) by considering at least third-
+                                                                            order probability distribution functions.
+for all ξ1, ξ2 ≤ ξ and 0 ≤ λ ≤ 1
+                                                                               In the special cases just mentioned, the explicit solution of the
+Then the random variable x1*(t1|t) which minimizes the average              estimation problem is most easily understood with the help of a
+loss (3) is the conditional expectation                                     geometric picture. This is the subject of the present section.
+                                                                               Consider the (real-valued) random variables y(t0), …, y(t). The
+                  x1*(t1|t) = E[x1(t1)|y(t0), …, y(t)]               (5)    set of all linear combinations of these random variables with real
+                                                                            coefficients
+   Proof: As pointed out recently by Sherman [25], this theorem                                              t
+follows immediately from a well-known lemma in probability
+theory.
+                                                                                                           ∑ ai y(i)                            (6)
+                                                                                                           i =t0
+   Corollary. If the random processes {x1(t)}, {x2(t)}, and {y(t)}
+                                                                            forms a vector space (linear manifold) which we denote by Y(t).
+are gaussian, Theorem 1 holds.                                              We regard, abstractly, any expression of the form (6) as “point”
+   Proof: By Theorem 5, (A) (see Appendix), conditional distribu-
+                                                                            or “vector” in Y(t); this use of the word “vector” should not be
+tions on a gaussian random process are gaussian. Hence the re-              confused, of course, with “vector-valued” random variables, etc.
+quirements of Theorem 1 are always satisfied.                               Since we do not want to fix the value of t (i.e., the total number
+  In the control system literature, this theorem appears some-              of possible observations), Y(t) should be regarded as a finite-
+times in a form which is more restrictive in one way and more               dimensional subspace of the space of all possible observations.
+general in another way:
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+   Given any two vectors u, v in Y(t) (i.e., random variables ex-                   x*(t1|t) = optimal estimate of x(t1) given y(t0), …, y(t)
+pressible in the form (6)), we say that u and v are orthogonal if                           = orthogonal projection x (t1|t) of x(t1) on Y(t). (11)
+Euv = 0. Using the Schmidt orthogonalization procedure, as de-
+scribed for instance by Doob [15], p. 151, or by Loève [16], p.                  These results are well-known though not easily accessible in
+459, it is easy to select an orthonormal basis in Y(t). By this is            the control systems literature. See Doob [15], pp. 75–78, or
+meant a set of vectors et0, …, et in Y(t) such that any vector in             Pugachev [26]. It is sometimes convenient to denote the
+Y(t) can be expressed as a unique linear combination of et0, …, et            orthogonal projection by
+and
+           Eeiej = δi j = 1 if i = j                                                          x (t1 | t ) ≡ x * (t1 | t ) = Eˆ [ x(t1 ) |Y(t)]
+                                      (i, j = t0, …, t)      (7)
+                        = 0 if i ≠ j                                            The notation Ê is motivated by part (b) of the theorem: If the
+Thus any vector x in Y(t). is given by                                        stochastic processes in question are gaussian, then orthogonal
+                                          t
+                                                                              projection is actually identical with conditional expectation.
+                                x = ∑ ai ei                                      Proof. (A) This is a direct consequence of the remarks in con-
+                                      i = t0
+                                                                              nection with (10).
+                                                                                 (B) Since x(t), y(t) are random variables with zero mean, it is
+and so the coefficients ai can be immediately determined with the             clear from formula (9) that the orthogonal part ~    x (t1|t) of x(t1)
+aid of (7):                                                                   with respect to the linear manifold Y(t) is also a random variable
+                      t                t              t                     with zero mean. Orthogonal random variables with zero mean are
+           Exe j = E  ∑ ai ei e j = ∑ ai Eei e j = ∑ ai δ ij = a j (8)      uncorrelated; if they are also gaussian then (by Theorem 5 (B))
+                      i =t    
+                      0             i =t0          i =t0
+                                                                              they are independent. Thus
+   It follows further that any random variable x (not necessarily in
+Y(t)) can be uniquely decomposed into two parts: a part x in Y(t)             0 = E~
+                                                                                   x (t1|t)         = E[ ~
+                                                                                                         x (t1|t)|y(t0), …, y(t)]
+and a part ~x orthogonal to Y(t) (i.e., orthogonal to every vector in                               = E[x (t1) – x (t1|t)|y(t0), …, y(t)]
+'Y(t)). In fact, we can write                                                                       = E[x (t1)|y(t0), …, y(t)] – x (t1|t) = 0
+                                      t
+                      x = x + x~ = ∑ ( Exei )ei + ~
+                                                  x                     (9)     Remarks. (d) A rigorous formulation of the contents of this
+                                    i =t0                                     section as t → ∞ requires some elementary notions from the
+                                                                              theory of Hilbert space. See Doob [15] and Loève [16 ].
+  Thus x is uniquely determined by equation (9) and is obviously
+a vector in Y(t). Therefore ~    x is also uniquely determined; it               (e) The physical interpretation of Theorem 2 is largely a matter
+remains to check that it is orthogonal to Y(t):                               of taste. If we are not worried about the assumption of gaus-
+                  Ex~e = E ( x − x )e = Exe − Exe
+                          i                    i   i      i
+                                                                              sianness, part (A) shows that the orthogonal projection is the op-
+                                                                              timal estimate for all reasonable loss functions. If we do worry
+   Now the co-ordinates of x with respect to the basis et0, …, et, are        about gaussianness, even if we are resigned to consider only
+given either in the form Exei (as in (8)) or in the form Exei (as in          linear estimates, we know that orthogonal projections are not the
+(9)). Since the co-ordinates are unique, Exei = Exei (i = t0, ..., t);        optimal estimate for many reasonable loss functions. Since in
+hence E~x ei = 0 and ~
+                     x is orthogonal to every base vector ei; and             practice it is difficult to ascertain to what degree of approxima-
+therefore to Y(t). We call x the orthogonal projection of x on                tion a random process of physical origin is gaussian, it is hard to
+Y(t).                                                                         decide whether Theorem 2 has very broad or very limited sig-
+   There is another way in which the orthogonal projection can be             nificance.
+characterized: x is that vector in Y(t) (i.e., that linear function of           (f) Theorem 2 is immediately generalized for the case of
+the random variables y(t0), ..., y(t)) which minimizes the quad-              vector-valued random variables. In fact, we define the linear
+ratic loss function. In fact, if w is any other vector in Y(t), we            manifold Y(t) generated by y(t0), ..., y(t) to be the set of all linear
+have                                                                          combinations
+                                                                                                              t      m
+         E( x − w ) 2 = E( ~
+                           x + x − w ) 2 = E[( x − x ) + ( x − w )]2                                        ∑ ∑ aij y j (i)
+                                                                                                            i =t 0   j =1
+   Since ~
+         x is orthogonal to every vector in Y(t) and in particular            of all m co-ordinates of each of the random vectors y(t0), …, y(t).
+to x − w we have                                                              The rest of the story proceeds as before.
+                                                                                 (g) Theorem 2 states in effect that the optimal estimate under
+            E( x − w ) 2 = E( x − x )2 + E( x − w ) 2 ≥ E( x − x ) 2   (10)   conditions (A) or (B) is a linear combination of all previous ob-
+                                                                              servations. In other words, the optimal estimate can be regarded
+This shows that, if w also minimizes the quadratic loss, we must              as the output of a linear filter, with the input being the actually
+have     E( x − w )2 = 0   which means that the random                        occurring values of the observable random variables; Theorem 2
+variables x and w are equal (except possibly for a set of events              gives a way of computing the impulse response of the optimal
+whose probability is zero).                                                   filter. As pointed out before, knowledge of this impulse response
+  These results may be summarized as follows:                                 is not a complete solution of the problem; for this reason, no
+                                                                              explicit formulas for the calculation of the impulse response will
+   Theorem 2. Let {x(t)}, {y(t)} random processes with zero mean              be given.
+(i.e., Ex(t) = Ey(t) = 0 for all t). We observe y(t0), …, y(t).
+   If either                                                                  Models for Random Processes
+  (A) the random processes {x(t)}, {y(t)} are gaussian; or                      In dealing with physical phenomena, it is not sufficient to give
+  (B) the optimal estimate is restricted to be a linear function of           an empirical description but one must have also some idea of the
+the observed random variables and L(ε) = ε2;                                  underlying causes. Without being able to separate in some sense
+                                                                              causes and effects, i.e., without the assumption of causality, one
+then                                                                          can hardly hope for useful results.
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+   It is a fairly generally accepted fact that primary macroscopic                 Fig. 1 actually stands for n integrators such that the output of
+sources of random phenomena are independent gaussian proc-                         each is a state variable; F(t) indicates how the outputs of the
+esses.5 A well-known example is the noise voltage produced in a                    integrators are fed back to the inputs of the integrators. Thus fij(t)
+resistor due to thermal agitation. In most cases, observed random                  is the coefficient with which the output of the jth integrator is fed
+phenomena are not describable by independent random variables.                     back to the input of the ith integrator. It is not hard to relate this
+The statistical dependence (correlation) between random signals                    formalism to more conventional methods of linear system
+observed at different times is usually explained by the presence of                analysis.
+a dynamic system between the primary random source and the                            If we assume that the system (12) is stationary and that u(t) is
+observer. Thus a random function of time may be thought of as the                  constant during each sampling period, that is
+output of a dynamic system excited by an independent gaussian
+                                                                                                       u(t + τ) = u(t); 0 ≤ τ < 1, t = 0, 1, …                              (13)
+random process.
+   An important property of gaussian random signals is that they                   then (12) can be readily transformed into the more convenient
+remain gaussian after passing through a linear system (Theorem 5                   discrete form.
+(A)). Assuming independent gaussian primary random sources, if
+the observed random signal is also gaussian, we may assume that                                  x(t + 1) = Φ(1)x(t) + ∆(1)u(t); t = 0, 1, …
+the dynamic system between the observer and the primary source                     where [18, 20]
+is linear. This conclusion may be forced on us also because of                                                         ∞
+lack of detailed knowledge of the statistical properties of the                                 Φ(1) = exp F = ∑ Fi/i! (F0 = unit matrix)
+observed random signal: Given any random process with known                                                           i =0
+first and second-order averages, we can find a gaussian random                     and
+process with the same properties (Theorem 5 (C)). Thus gaussian
+distributions and linear dynamics are natural, mutually plausible                                            ∆(1) =   ( ∫ exp Fτ dτ) D
+                                                                                                                             0
+                                                                                                                              1
+
+
+assumptions particularly when the statistical data are scant.
+   How is a dynamic system (linear or nonlinear) described? The                          u(t)                   x(t + 1)       unit
+                                                                                                                                                x(t)                 y(t)
+                                                                                                ∆(t)        ∑                                                 M(t)
+fundamental concept is the notion of the state. By this is meant,                                                             delay
+
+intuitively, some quantitative information (a set of numbers, a
+function, etc.) which is the least amount of data one has to know
+about the past behavior of the system in order to predict its future                                                         Φ (t + 1; t)
+
+behavior. The dynamics is then described in terms of state
+transitions, i.e., one must specify how one state is transformed                   Fig 2. Matrix block diagram of the general linear discrete-dynamic
+into another as time passes.                                                       system
+   A linear dynamic system may be described in general by the
+vector differential equation                                                       See Fig. 2. One could also express exp Fτ in closed form using
+                                                                                   Laplace transform methods [18, 20, 22, 24]. If u(t) satisfies (13)
+                   dx/dt = F(t)x + D(t)u(t)
+                                                                                  but the system (12) is nonstationary, we can write analogously
+and                                                                        (12)
+                                                                                           x(t + 1) = Φ(t + 1; t) + ∆(t)u(t)
+                    y(t) = M(t)x(t)                                                                                                        
+                                                                                                                                               t = 0, 1, …                 (14)
+where x is an n-vector, the state of the system (the components xi                              y(t) = M(t)x(t)                             
+of x are called state variables); u(t) is an m-vector (m ≤ n)
+representing the inputs to the system; F(t) and D(t) are n × n,                    but of course now Φ(t + 1; t), ∆(t) cannot be expressed in gen-
+respectively, n × m matrices. If all coefficients of F(t), D(t), M(t)              eral in closed form. Equations of type (14) are encountered fre-
+are constants, we say that the dynamic system (12) is time-                        quently also in the study of complicated sampled-data systems
+invariant or stationary. Finally, y(t) is a p-vector denoting the                  [22]. See Fig. 2
+outputs of the system; M(t) is an n × p matrix; p ≤ n                                 Φ(t + 1; t) is the transition matrix of the system (12) or (14).
+   The physical interpretation of (12) has been discussed in detail                The notation Φ(t2; t1) (t2, t1 = integers) indicates transition from
+elsewhere [18, 20, 23]. A look at the block diagram in Fig. 1 may                  time t1 to time t2. Evidently Φ(t; t) = I = unit matrix. If the system
+be helpful. This is not an ordinary but a matrix block diagram (as                 (12) is stationary then Φ(t + 1; t) = Φ(t + 1 – t) = Φ(1) = const.
+revealed by the fat lines indicating signal flow). The integrator in               Note also the product rule: Φ(t; s)Φ(s; r) = Φ(t; r) and the inverse
+                                                                                   rule Φ–1(t; s) = Φ(s; t), where t, s, r are integers. In a stationary
+                           .                                                       system, Φ(t; τ) = exp F(t – τ).
+      u(t)
+                     ∑
+                           x(t)                  x(t)
+                                                              M(t)
+                                                                     y(t)             As a result of the preceding discussion, we shall represent ran-
+             D(t)
+                                                                                   dom phenomena by the model
+                                                                                                          x(t + 1) = Φ(t + 1; t)x(t) + u(t)                                 (15)
+                                    F (t)
+                                                                                   where {u(t)} is a vector-valued, independent, gaussian random
+                                                                                   process, with zero mean, which is completely described by (in
+Fig 1. Matrix block diagram of the general linear continuous-dynamic               view of Theorem 5 (C))
+system
+                                                                                                Eu(t) = 0 for all t;
+———
+  5 The probability distributions will be gaussian because macroscopic                          Eu(t)u'(s) = 0 if t ≠ s
+random effects may be thought of as the superposition of very many
+microscopic random effects; under very general conditions, such ag-                             Eu(t)u'(t) = G(t).
+gregate effects tend to be gaussian, regardless of the statistical properties
+of the microscopic effects. The assumption of independence in this context         Of course (Theorem 5 (A)), x(t) is then also a gaussian random
+is motivated by the fact that microscopic phenomena tend to take place             process with zero mean, but it is no longer independent. In fact, if
+much more rapidly than macroscopic phenomena; thus primary random                  we consider (15) in the steady state (assuming it is a stable sys-
+sources would appear to be independent on a macroscopic time scale.                tem), in other words, if we neglect the initial state x(t0), then
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+                                 t −1                                      manifold (possibly 0) which we denote by Z(t). By definition,
+                    x(t) = ∑            Φ(t; r + 1)u(r).                   Y(t – 1) and Z(t) taken together are the same manifold as Y(t),
+                            r = −∞                                         and every vector in Z(t) is orthogonal to every vector in Y(t – 1).
+Therefore if t ≥ s we have                                                   Assuming by induction that x*(t1 – 1|t – 1) is known, we can
+                         s−1                                               write:
+          Ex(t)x'(s) = ∑            Φ(t; r + 1)Q(r) Φ'(s; r + 1).
+                                                                             x*(t1|t) = Ê [x(t1)|Y(t)] = Ê [x(t1)|Y(t – 1)] + Ê [x(t1)|Z(t)]
+                        r = −∞
+Thus if we assume a linear dynamic model and know the                                  = Φ(t + 1; t) x*(t1 – 1|t – 1) + Ê [u(t1 – 1)|Y(t – 1)]
+statistical properties of the gaussian random excitation, it is easy                                                     + Ê [x(t1)|Z(t)] (18)
+to find the corresponding statistical properties of the gaussian
+random process {x(t)}.                                                     where the last line is obtained using (16).
+                                                                              Let t1 = t + s, where s is any integer. If s ≥ 0, then u(tl – 1) is
+   In real life, however, the situation is usually reversed. One is        independent of Y(t – 1). This is because u(tl – 1) = u(t + s – 1) is
+given the covariance matrix Ex(t)x'(s) (or rather, one attempts to         then independent of u(t – 2), u(t – 3), ... and therefore by (16–
+estimate the matrix from limited statistical data) and the problem         17), independent of y(t0), ..., y(t – 1), hence independent of Y(t –
+is to get (15) and the statistical properties of u(t). This is a subtle    1). Since, for all t, u(t0) has zero mean by assumption, it follows
+and presently largely unsolved problem in experimentation and              that u(tl – 1) (s ≥ 0) is orthogonal to Y(t – 1). Thus if s ≥ 0, the
+data reduction. As in the vast majority of the engineering                 second term on the right-hand side of (18) vanishes; if s < 0,
+literature on the Wiener problem, we shall find it convenient to           considerable complications result in evaluating this term. We
+start with the model (15) and regard the problem of obtaining the          shall consider only the case tl ≥ t. Furthermore, it will suffice to
+model itself as a separate question. To be sure, the two problems          consider in detail only the case tl = t + 1 since the other cases can
+should be optimized jointly if possible; the author is not aware,          be easily reduced to this one.
+however, of any study of the joint optimization problem.                      The last term in (18) must be a linear operation on the random
+   In summary, the following assumptions are made about random                       ~
+                                                                           variable y (t |t – 1):
+processes:
+                                                                                                                                   ~
+   Physical random phenomena may be thought of as due to                                                Ê [x(t + 1)|Z(t)] = ∆*(t) y (t|t – 1)                                    (19)
+primary random sources exciting dynamic systems. The primary
+sources are assumed to be independent gaussian random                      where ∆*(t) is an n × p matrix, and the star refers to “optimal
+processes with zero mean; the dynamic systems will be linear. The          filtering”.
+random processes are therefore described by models such as (15).              The component of y(t) lying in Y(t – 1) is y (t|t – 1) =
+The question of how the numbers specifying the model are                   M(t)x*(t|t – 1). Hence
+obtained from experimental data will not be considered.
+                                                                            ~
+                                                                            y (t|t – 1) = y(t) – y (t|t – 1) = y(t) – M(t)x*(t|t – 1). (20)
+Solution of the Wiener problem
+                                                                           Combining (18-20) (see Fig. 3) we obtain
+  Let us now define the principal problem of the paper.
+  Problem I. Consider the dynamic model                                                x*(t + 1|t) = Φ*(t + 1; t)x*(t|t – 1) + ∆*(t)y(t)                                          (21)
+                     x(t + 1) = Φ(t + 1; t)x(t) + u(t)              (16)   where
+                                   y(t) = M(t)x(t)                  (17)                          Φ*(t + 1; t) = Φ(t + 1; t) – ∆*(t)M(t)                                          (22)
+where u(t) is an independent gaussian random process of n-                    Thus optimal estimation is performed by a linear dynamic
+vectors with zero mean, x(t) is an n-vector, y(t) is a p-vector (p ≤       system of the same form as (14). The state of the estimator is the
+n), Φ(t + 1; t), M(t) are n × n, resp. p × n, matrices whose               previous estimate, the input is the last measured value of the
+elements are nonrandom functions of time.                                  observable random variable y(t) , the transition matrix is given by
+   Given the observed values of y(t0), ..., y(t) find an estimate          (22). Notice that physical realization of the optimal filter requires
+x*(t1|t) of x(t1) which minimizes the expected loss. (See Fig. 2,          only (i) the model of the random process (ii) the operator ∆*(t).
+where ∆(t) = I.)                                                              The estimation error is also governed by a linear dynamic
+   This problem includes as a special case the problems of filter-         system. In fact,
+ing, prediction, and data smoothing mentioned earlier. It in-               ~
+cludes also the problem of reconstructing all the state variables of        x (t + 1|t) = x(t + 1) – x*(t + 1|t)
+a linear dynamic system from noisy observations of some of the                          = Φ(t + 1; t)x(t) + u(t) – Φ*(t + 1; t)x*(t|t – 1)
+state variables (p < n!).                                                                        – ∆*(t)M(t)x(t)
+   From Theorem 2-a we know that the solution of Problem I is                                                                                                                  x*(t + s|t)
+simply the orthogonal projection of x(t1) on the linear manifold                                                                                             Φ(t + s; t + 1)
+Y(t) generated by the observed random variables. As remarked in                   ~
+                                                                                  y (t|t – 1)
+the Introduction, this is to be accomplished by means of a linear                                                   MODEL            OF     RANDOM       PROCESS
+                                                                                                               x*(t|t – 1)
+(not necessarily stationary!) dynamic system of the general form           y(t)                                                            x*(t + 1|t)                         y (t|t – 1)
+(14). With this in mind, we proceed as follows.                                   ∑             ∆*(t)          ∑              unit
+                                                                                                                             delay
+                                                                                                                                                                   M(t)
+
+   Assume that y(t0), ..., y(t – 1) have been measured, i.e., that Y(t
+– 1) is known. Next, at time t, the random variable y(t) is
+                              ~
+measured. As before let y (t|t – 1) be the component of y(t)                                                                Φ (t + 1; t)
+                               ~
+orthogonal to Y(t – 1). If y     (t|t – 1) ≡ 0, which means that the
+                                                                                                          x*(t + 1|t – 1)
+values of all components of this random vector are zero for almost
+every possible event, then Y(t) is obviously the same as Y(t – 1)                                                              –I
+and therefore the measurement of y(t) does not convey any addi-
+tional information. This is not likely to happen in a physically
+                                         ~
+meaningful situation. In any case, y (t|t – 1) generates a linear                               Fig. 3 Matrix block diagram of optimal filter
+
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+                            ~
+             = Φ*(t + 1; t) x (t|t – 1) + u(t)                          (23)   x*(t + s|t) = Ê [x(t + s)|Y(t)]
+Thus Φ* is also the transition matrix of the linear dynamic system
+                                                                                           = Ê [Φ(t + s; t + 1)x(t + 1)|Y(t)]
+governing the error.
+  From (23) we obtain at once a recursion relation for the co-
+                                                  ~                                        = Φ(t + s; t + 1)x*(t + 1|t)     (s ≥ 1)
+variance matrix P*(t) of the optimal error x (t|t – 1). Noting that
+                                                  ~
+u(t) is independent of x(t) and therefore of x (t|t – 1) we get                   If s < 0, the results are similar, but x*(t – s|t) will have (1 –
+                                                                               s)(n – p) co-ordinates.
+               ~          ~
+P*(t + 1) = E x (t + 1|t) x '(t + 1|t)                                            The results of this section may be summarized as follows:
+                           ~           ~                                       Theorem 3. (Solution of the Wiener Problem)
+           = Φ*(t + 1; t)E x (t|t – 1) x '(t|t – 1)Φ*' (t + 1; t) + Q(t)          Consider Problem I. The optimal estimate x*(t + 1|t) of x(t +
+                           ~           ~
+           = Φ*(t + 1; t)E x (t|t – 1) x '(t|t – 1)Φ'(t + 1; t) + Q(t)         1) given y(t0), ..., y(t) is generated by the linear dynamic system
+           = Φ*(t + 1; t)P*(t)Φ'(t + 1; t) + Q(t)                   (24)                 x*(t + 1|t) = Φ*(t + 1; t)x*(t|t – 1) + ∆*(t)y(t)       (21)
+where Q(t) = Eu(t)u'(t).                                                       The estimation error is given by
+  There remains the problem of obtaining an explicit formula for                           ~                          ~
+∆* (and thus also for Φ*). Since,                                                          x (t + 1|t) = Φ*(t + 1; t) x (t|t – 1) + u(t)         (23)
+            ~                                                                  The covariance matrix of the estimation error is
+            x (t + 1)|Z(t)) = x(t + 1) – Ê [x(t + 1)|Z(t)]
+                                                                                            ~              ~           ~
+                 ~
+is orthogonal to y (t |t – 1), it follows that by (19) that                            cov x (t|t – 1) = E x (t|t – 1) x '(t|t – 1) = P*(t)      (26)
+                                   ~         ~                                 The expected quadratic loss is
+        0 = E[x(t + 1) – ∆*(t) y (t|t – 1)] y '(t|t – 1)
+                                                                                                    n
+                        ~                      ~         ~
+          = Ex(t + 1) y '(t|t – 1) – ∆*(t)E y (t|t – 1) y '(t|t – 1).                             ∑ Ex~i 2 (t | t − 1) = trace P*(t)             (27)
+                                                                                                   i =1
+Noting that x (t + 1|t – 1) is orthogonal to Z(t), the definition of
+                                                                               The matrices ∆*(t), Φ*(t + 1; t), P*(t) are generated by the
+P(t) given earlier, and (17), it follows further
+                                                                               recursion relations
+      ~               ~
+0 = E x (t + 1|t – 1) y '(t|t – 1) – ∆*(t)M(t)P*(t)M'(t)                       ∆*(t) = Φ(t + 1; t)P*(t)M'(t)[M(t)P*(t)M'(t)]–1
+                                                                                                                              
+                                                                                                                                                 (28)
+                   ~                        ~
+  = E[Φ(t + 1; t) x (t|t – 1) + u(t|t – 1)] x '(t|t – 1)M'(t)                  Φ*(t + 1; t) = Φ(t + 1; t) – ∆*(t)M(t)
+                                                                                                                               t≥t
+                                                                                                                                                 (29)
+                                                   – ∆*(t)M(t)P*(t)M'(t).                                                                    0
+                                                                               P*(t + 1) = Φ*(t + 1; t)P*(t)Φ'(t + 1; t)
+Finally, since u(t) is independent of x(t),                                                                            + Q(t)                   (30)
+          0 = Φ(t + 1; t)P*(t)M'(t) – ∆*(t)M(t)P*(t)M'(t).
+                                                                               In order to carry out the iterations, one must specify the
+Now the matrix M(t)P*(t)M'(t)will be positive definite and hence               covariance P*(t0) of x(t0) and the covariance Q(t) of u(t).
+invertible whenever P*(t) is positive definite, provided that none             Finally, for any s ≥ 0, if Φ is invertible
+of the rows of M(t) are linearly dependent at any time, in other
+words, that none of the observed scalar random variables yl(t), ...,
+ym(t), is a linear combination of the others. Under these                      x*(t + s|t) = Φ(t + s; t + 1)x*(t + 1)|t)
+circumstances we get finally:                                                             = Φ(t + s; t + 1)Φ*(t + 1; t)Φ(t; t + s – 1)
+           ∆*(t) = Φ(t + 1; t)P*(t)M'(t)[M(t)P*(t)M'(t)]–1        (25)                                                           × x*(t + s – 1|t – 1)
+                                   ~                                                      + Φ(t + s; t + 1)∆*(t)y(t)                              (31)
+   Since observations start at t0, x (t0|t0 – 1) = x(t0); to begin the
+iterative evaluation of P*(t) by means of equation (24), we must               so that the estimate x*(t + s|t) (s ≥ 0) is also given by a linear dy-
+obviously specify P*(t0) = Ex(t0)x'(t0). Assuming this matrix is               namic system of the type (21).
+positive definite, equation (25) then yields ∆*(t0); equation (22)                Remarks. (h) Eliminating ∆* and Φ* from (28–30), a nonlinear
+Φ*(t0 + 1; t0), and equation (24) P*(t0 + 1), completing the cycle.            difference equation is obtained for P*(t):
+If now Q(t) is positive definite, then all the P*(t) will be positive
+definite and the requirements in deriving (25) will be satisfied at            P*(t + 1) = Φ(t + 1; t){P*(t) – P*(t)M'(t)[M(t)P*(t)M'(t)]–1
+each step.                                                                                 × P*(t)M(t)}Φ'(t + 1; t) + Q(t)        t ≥ t0    (32)
+   Now we remove the restriction that t1 = t + 1. Since u(t) is                This equation is linear only if M(t) is invertible but then the
+orthogonal to Y(t), we have                                                    problem is trivial since all components of the random vector x(t)
+                                                                               are observable P*(t + 1) = Q(t). Observe that equation (32) plays
+   x*(t + 1|t) = Ê [Φ(t + 1; t)x(t) + u(t)|Y(t)] = Φ(t + 1; t)x*(t|t)
+                                                                               a role in the present theory analogous to that of the Wiener-Hopf
+Hence if Φ(t + 1; t) has an inverse Φ(t; t + 1) (which is always the           equation in the conventional theory.
+case when Φ is the transition matrix of a dynamic system                          Once P*(t) has been computed via (32) starting at t = t0, the
+describable by a differential equation) we have                                explicit specification of the optimal linear filter is immediately
+                   x*(t|t) = Φ(t; t + 1)x*(t + 1|t)                            available from formulas (29-30). Of course, the solution of
+                                                                               Equation (32), or of its differential-equation equivalent, is a much
+If t1 ≥ t + 1, we first observe by repeated application of (16) that           simpler task than solution of the Wiener-Hopf equation.
+x(t + s) = Φ(t + s; t + 1)x(t + 1)                                             (i) The results stated in Theorem 3 do not resolve completely
+                                                                               Problem I. Little has been said, for instance, about the physical
+                               s −1                                            significance of the assumptions needed to obtain equation (25),
+                            + ∑ Φ(t + s; t + r)u(t + r)           (s ≥ 1)      the convergence and stability of the nonlinear difference equa-
+                               r1
+                                                                               tion (32), the stability of the optimal filter (21), etc. This can
+Since u(t + s – 1), …, u(t + 1) are all orthogonal to Y(t),                    actually be done in a completely satisfactory way, but must be
+                                                                               left to a future paper. In this connection, the principal guide and
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+tool turns out to be the duality theorem mentioned briefly in the                                   x(t + 1) = Φ̂ *(t + 1; t)x(t)
+next section. See [29].
+    (j) By letting the sampling period (equal to one so far) ap-          and the minimum performance index at time t is given by
+proach zero, the method can be used to obtain the specification of                         V*[x(t)] = x'(t)P*(t – 1)x(t)
+a differential equation for the optimal filter. To do this, i.e., to
+pass from equation (14) to equation (12), requires computing the            The matrices ∆ˆ *(t), Φ̂ *(t + 1; t), P̂ *(t) are determined by
+logarithm F* of the matrix Φ*. But this can be done only if Φ* is         the recursion relations:
+                                                                          ∆ˆ *(t) = [M̂ '(t) P̂ *(t) M̂ (t)]–1 M̂ '(t) P̂ *(t) Φ̂ (t + 1; t)
+                                                                                                                                       (36)
+nonsingular—which is easily seen not to be the case. This is                                                                                                 (35)
+because it is sufficient for the optimal filter to have n – p state
+                                                                          Φ̂ *(t + 1; t) = Φ̂ (t + 1; t) – M̂ (t) ∆ˆ *(t)
+variables, rather than n, as the formalism of equation (22) would
+seem to imply. By appropriate modifications, therefore, equation          P̂ *(t – 1) = Φ̂ '(t + 1; t) P̂ *(t) Φ̂ *(t + 1; t)         t ≤ T
+                                                                                                                              + Q̂ (t)
+(22) can be reduced to an equivalent set of only n – p equations
+                                                                                                                                             (37)
+whose transition matrix is nonsingular. Details of this type will be
+                                                                          Initially we must set P̂ *(T) = Q̂ (T + 1).
+covered in later publications.
+                                                                                           PHYSICAL   SYSTEM      TO        BE   CONTROLLED
+    (k) The dynamic system (21) is, in general, nonstationary. This
+is due to two things: (1) The time dependence of Φ(t + 1; t) and                                            x(t + 1)
+                                                                                                                                         x(t)
+M(t); (2) the fact that the estimation starts at t = t0 and improves as         u*(t)
+                                                                                                                    unit
+                                                                                            ˆ           ∑                                          ∆ˆ *(t)
+more data are accumulated. If Φ, M are constants, it can be shown                           M (t)                  delay
+
+that (21) becomes a stationary dynamic system in the limit t → ∞.
+This is the case treated by the classical Wiener theory.
+    (l) It is noteworthy that the derivations given are not affected                                             Φ̂ (t + 1; t)
+
+by the nonstationarity of the model for x(t) or the finiteness of
+available data. In fact, as far as the author is aware, the only
+explicit recursion relations given before for the growing-memory                                                       –I
+filter are due to Blum [12]. However, his results are much more
+complicated than ours.                                                                  Fig. 4 Matrix block diagram of optimal controller
+    (m) By inspection of Fig. 3 we see that the optimal filter is a
+feedback system, and that the signal after the first summer is                Comparing equations (35–37) with (28–30) and Fig. 3 with
+                      ~                                                   Fig. 4 we notice some interesting things which are expressed
+white noise since y     (t|t – 1) is obviously an orthogonal random
+process. This corresponds to some well-known results in Wiener            precisely by
+                                                                              Theorem 4. (Duality Theorem) Problem I and Problem II are
+filtering, see, e.g., Smith [28], Chapter 6, Fig. 6–4. However, this
+is apparently the first rigorous proof that every Wiener filter is        duals of each other in the following sense:
+realizable by means of a feedback system. Moreover, it will be                Let τ ≥ 0. Replace every matrix X(t) = X(t0 + τ) in (28–30) by
+shown in another paper that such a filter is always stable, under          X̂ '(t) = X̂ '(T – τ). Then One has (35–37). Conversely, replace
+very mild assumptions on the model (16–17). See [29].                     every matrix X̂ (T – τ) in (35–37) by X'(t0 + τ). Then one has
+                                                                          (28–30).
+The Dual Problem                                                              Proof. Carry out the substitutions. For ease of reference, the
+  Let us now consider another problem which is conceptually               dualities between the two problems are given in detail in Table 1.
+very different from optimal estimation, namely, the noise-free
+                                                                                                                  Table 1
+regulator problem. In the simplest cases, this is:
+                                                                                          Problem I                                        Problem II
+  Problem II. Consider the dynamic system
+                                                                          1    x(t) (unobservable) state                         x(t) (observable) state varia-
+             x(t + 1) = Φ̂ (t + 1; t)x(t) + M̂ (t)u(t)            (33)           variables of random proc-                        bles of plant to be
+                                                                                 ess.                                             regulated.
+where x(t) is an n-vector, u(t) is an m-vector (m ≤ n), Φ̂ , M̂ are       2    y(t) observed random varia-                       u(t) control variables
+n × n resp. n × m matrices whose elements are nonrandom func-                    bles.
+                                                                          3    t0 first observation.                             T last control action.
+tions of time. Given any state x(t) at time t, we are to find a                Φ(t0 + τ +1; t0 + τ) transition
+sequence u(t), ..., u(T) of control vectors which minimizes the
+                                                                          4                                                      Φ̂ (T – τ + 1; T – τ) transi-
+                                                                                 matrix.                                            tion matrix.
+performance index                                                              P*(t0 + τ) covariance of
+                               T +1
+                                                                          5                                                      P̂ *(T – τ) matrix of quad-
+                                                                                 optimized estimation error.
+                    V[x(t)] = ∑ x'(τ)Q(τ)x(τ)
+                                                                                                                                   ratic form for performance
+                                                                                                                                   index under optimal regu-
+                               τ=t                                                                                                 lation.
+Where Q̂ (t) is a positive definite matrix whose elements are             6    ∆*(t0 + τ) weighting of ob-                       ∆ˆ *(T – τ) weighting of
+                                                                                servation for optimal esti-
+nonrandom functions of time. See Fig. 2, where ∆ = M̂ and M = I.                mation.                                             state for optimal control.
+   Probabilistic considerations play no part in Problem II; it is         7    Φ*(t0 + τ + 1; t0 + τ) transi-                    Φ̂ *(T – τ + 1; T – τ) transi-
+implicitly assumed that every state variable can be measured                    tion matrix for optimal es-                        tion matrix under optimal
+                                                                                timation error.
+exactly at each instant t, t + 1, ..., T. It is customary to call T ≥ t                                                            regulation.
+the terminal time (it may be infinity).                                   8    M(t0 + τ) effect of state on                      M̂ (T – τ) effect of control
+                                                                                observation.                                       vectors on state.
+   The first general solution of the noise-free regulator problem is
+due to the author [18]. The main result is that the optimal control       9    Q(t0 + τ) covariance of ran-                      Q̂ (T – τ)      matrix     of
+                                                                                dom excitation.                                    quadratic form defining
+vectors u*(t) are nonstationary linear functions of x(t). After a
+change in notation, the formulas of the Appendix, Reference [18]                                                                   error criterion.
+(see also Reference [23]) are as follows:                                   Remarks. (n) The mathematical significance of the duality be-
+                       u*(t) = – ∆ˆ *(t)x(t)                       (34)   tween Problem I and Problem II is that both problems reduce to
+                                                                          the solution of the Wiener-Hopf-like equation (32).
+Under optimal control as given by (34), the “closed-loop” equa-             (o) The physical significance of the duality is intriguing. Why
+tions for the system are (see Fig. 4)                                     are observations and control dual quantities?
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+   Recent research [29] has shown that the essence of the Duality      to the measurement y1(t) ; this is what one would expect when the
+Theorem lies in the duality of constraints at the output (repre-       measured data are very noisy.
+                                                                          In any case, x2*(t|t – 1) = 0 at all times; one cannot predict
+sented by the matrix M̂ (t) in Problem I) and constraints at the
+                                                                       independent noise! This means that φ *12 can be set equal to zero.
+input (represented by the matrix M̂ (t) in Problem II).                The optimal predictor is a first-order dynamic system. See
+   (p) Applications of Wiener's methods to the solution of noise-      Remark (j).
+free regulator problem have been known for a long time; see the           To find the stationary Wiener filter, let t = ∞ on both sides of
+recent textbook of Newton, Gould, and Kaiser [27]. However, the        (38), solve the resulting quadratic equation in C(∞), etc.
+connections between the two problems, and in particular the               Example 2. A number or particles leave the origin at time t0 = 0
+duality, have apparently never been stated precisely before.           with random velocities; after t = 0, each particle moves with a
+   (q) The duality theorem offers a powerful tool for developing       constant (unknown) velocity. Suppose that the position of one of
+more deeply the theory (as opposed to the computation) of Wiener       these particles is measured, the data being contaminated by
+filters, as mentioned in Remark (i). This will be published            stationary, additive, correlated noise. What is the optimal estimate
+elsewhere [29].                                                        of the position and velocity of the particle at the time of the last
+                                                                       measurement?
+Applications                                                              Let x1(t) be the position and x2(t) the velocity of the particle;
+   The power of the new approach to the Wiener problem, as ex-         x3(t) is the noise. The problem is then represented by the model,
+pressed by Theorem 3, is most obvious when the data of the                         x1(t + 1) = x1(t) + x2(t)
+problem are given in numerical form. In that case, one simply
+                                                                                   x2(t + 1) = x2(t)
+performs the numerical computations required by (28–30). Re-
+suits of such calculations, in some cases of practical engineering                 x3(t + 1) = φ33(t + 1; t)x3(t) + u3(t)
+interest, will be published elsewhere.                                                 y1(t) = x1(t) + x3(t)
+   When the answers are desired in closed analytic form, the itera-    and the additional conditions
+tions (28–30) may lead to very unwieldy expressions. In a few
+cases, ∆* and Φ* can be put into “closed form.” Without dis-              1 t1 = t; t0 = 0
+cussing here how (if at all) such closed forms can be obtained, we        2 Ex12(0) = Ex2(0) = 0, Ex22(0) = a2 > 0;
+now give two examples indicative of the type of results to be ex-         3 Eu3(t) = 0, Eu32(t) = b2.
+pected.                                                                   4 φ33(t + 1; t) = φ33 = const.
+   Example 1. Consider the problem mentioned under “Optimal                According to Theorem 3, x*(t|t) is calculated using the
+Estimates.” Let x1(t) be the signal and x2(t) the noise. We assume     dynamic system (31).
+the model:                                                                 First we solve the problem of predicting the position and ve-
+          x1(t + 1) = φ11(t + 1; t)x1(t) + u1(t)                       locity of the particle one step ahead. Simple considerations show
+                                                                       that
+          x2(t + 1) = u2(t)                                                                  a 2 a 2 0                     0
+                                                                                                                            
+          y1(t) = x1(t) + x2(t)                                                    P*(1) =  a 2 a 2 0  and ∆*(0) = 0 
+                                                                                              0 0 b2                        1
+The specific data for which we desire a solution of the estimation                                       
+problem are as follows:                                                It is then easy to check by substitution into equations (28–30) that
+  1 t1 = t + 1; t0 = 0                                                              b2
+  2 Ex12(0) = 0, i.e., x1(0) = 0                                       P*(t) =
+                                                                                 C1 (t − 1)
+  3 Eu12(t) = a2, Eu2(t) = b2, Eu1(t) u2(t) = 0 (for all t)
+  4 φ11(t + 1; t) = φ11 = const.                                                              t2               t           − φ 33t (t − 1)  
+  A simple calculation shows that the following matrices satisfy                                                                            
+                                                                                      ×        t              1            − φ 33 (t − 1)   
+the difference equations (28–30), for all t ≥ t0:                                        − φ t (t − 1) − φ (t − 1) φ 2 (t − 1) 2 + C (t − 1)
+                                 φ C(t )                                                33                33         33               1   
+                         ∆*(t) =  11                                 is the correct expression for the covariance matrix of the predic-
+                                  0                                             ~
+                                                                       tion error x (t|t – 1) for all t ≥ 1, provided that we define
+                                 φ [1 − C(t )] 0 
+                  Φ*(t + 1; t) =  11                                           C1(0) = b2/a2
+                                        0        0                             C1(t) = C1(t – 1) + [t – φ33(t – 1)]2, t ≥ 1
+                             a 2 + φ112 b 2C(t ) 0                      It is interesting to note that the results just obtained are valid
+                 P*(t + 1) =                          
+                                    0           b 2                also when φ33 depends on t. This is true also in Example 1. In
+                                                                       conventional treatments of such problems there seems to be an
+                                     b2                                essential difference between the cases of stationary and nonsta-
+where     C(t + 1) = 1 −                              t≥0      (38)
+                           a 2 + b 2 + φ11 b 2C(t )
+                                          2                            tionary noise. This misleading impression created by the con-
+                                                                       ventional theory is due to the very special methods used in
+   Since it was assumed that x1(0) = 0, neither x1(1) nor x2(1) can    solving the Wiener-Hopf equation.
+be predicted from the measurement of y1(0). Hence the meas-              Introducing the abbreviation
+urement at time t = 0 is useless, which shows that we should set
+C(0) = 0. This fact, with the iterations (38), completely deter-                 C2(0) = 0
+mines the function C(t). The nonlinear difference equation (38)                  C2(t) = t – φ33(t – 1), t ≥ 1
+plays the role of the Wiener-Hopf equation.
+   If b2/a2 <<1, then C(t) ≈ 1 which is essentially pure prediction.   and observing that
+If b2/a2 >>1, then C(t) ≈ 0, and we depend mainly on x1*(t|t – 1)             ~
+                                                                         cov x (t + 1|t) = P*(t + 1)
+for the estimation of x1*(t +1|t) and assign only very small weight                                        ~
+                                                                                         = Φ(t + 1; t)[cov x (t|t)]Φ'(t + 1; t) + Q(t)
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+the matrices occurring in equation (31) and the covariance matrix
+   ~                                                                                        References
+of x (t|t) are found after simple calculations. We have, for all t ≥
+0,                                                                                             1 N. Wiener, “The Extrapolation, Interpolation and Smoothing of
+                                                                                            Stationary Time Series,” John Wiley & Sons, Inc., New York, N.Y.,
+                                                   tC2 (t )                               1949.
+                                           1                                                 2 L. A. Zadeh and J. R. Ragazzini, “An Extension of Wiener's Theory
+                 Φ(t; t + 1)∆*(t) =                      C2 ( t )      
+                                          C1 (t ) 
+                                                                                            of Prediction,” Journal of Applied Physics, vol. 21, 1950, pp. 645–655.
+                                                  C1 (t ) − tC2 (t )                       3 H. W. Bode and C. E. Shannon, “A Simplified Derivation of Linear
+                                                                                            Least-Squares Smoothing and Prediction Theory,” Proceedinqs IRE, vol.
+                                                                                            38, 1950, pp. 417–425.
+Φ(t; t + 1)Φ*(t + 1; t)Φ(t + 1; t)                                                             4 R. C. Booton, “An Optimization Theory for Time-Varying Linear
+                                                                                            Systems With Nonstationary Statistical Inputs,” Proceedings IRE, vol. 40,
+                   C1 (t ) − tC2 (t )    C1 (t ) − tC3 (t ) − φ 33tC2 (t )                1952, pp. 977–981.
+           1                                                                
+      =                 −  C    ( t )     C1 (t ) − C2 (t )   − φ 33C2 (t )                   5 J. H. Laning and R. H. Battin, “Random Processes in Automatic
+          C1 (t ) 
+                              2
+                                                                                            Control,” McGraw-Hill Book Company, Inc., New York, N. Y., 1956.
+                  − C1 (t ) + tC2 (t ) − C1 (t ) + tC2 (t ) + φ 33tC2 (t )                 6 W. B. Davenport, Jr., and W. L. Root, “An Introduction to the
+                                                                                            Theory of Random Signals and Noise,” McGraw-Hill Book Company,
+and                                                                                         Inc., New York, N. Y., 1958.
+                                                                                               7 S. Darlington, “Linear Least-Squares Smoothing and Prediction,
+                                                   t2                 t  − t2             With Applications,” Bell System Tech. Journal, vol. 37, 1958, pp.1221–
+                                           b 2
+                                                                                          1294.
+       cov x (t|t) = E x (t|t) x '(t|t) =
+           ~           ~       ~
+                                                   t                 1 −t                    8 G. Franklin, “The Optimum Synthesis of Sampled-Data Systems”
+                                          C1 (t )  2
+                                                    −t                − t t2               Doctoral dissertation, Dept. of Elect. Engr., Columbia University, 1955.
+                                                                                             9 A. B. Lees, “Interpolation and Extrapolation of Sampled Data,”
+                                                                                            Trans. IRE Prof. Grou.p on Information Theory, IT-2, 1956, pp. 173–175.
+To gain some insight into the behavior of this system, let us                                  10 R. C. Davis. “On the Theory of Prediction of Nonstationary
+examine the limiting case t → ∞ of a large number of observa-                               Stochastic Processes,” Journal of Applied Physics, vol. 23. 1952, pp.
+tions. Then C1(t) obeys approximately the differential equation                             1047–1053.
+                                                                                               11 M. Shinbrot, “Optimization of Tirne-Varying Linear Systems With
+                       dC1(t)/dt ≈ C22(t)              (t >> 1)                             Nonstationary Inputs,” TRANS. ASME, vol. 80, 1958. pp. 457–462.
+                                                                                               12 M. Blum, “Recursion Formulas for Growing Memory Digital
+                                                                                            Filters,” Trans. IRE Prof. Group on Information Theory. IT-4. 1958, pp.
+from which we find                                                                          24–30.
+C1(t) ≈ (1 – φ33)2t3/3 + φ33(1 – φ33)t2 + φ332t + b2/a2                                        13 V. S. Pugachev, “The Use of Canonical Expansions of Random
+                                                                                            Functions in Determining an Optimum Linear System,” Automatics and
+                                                                      (t >> 1)      (39)    Remote Control (USSR), vol. 17, 1956, pp. 489–499; translation pp. 545–
+                                                                                            556.
+Using (39), we get further,                                                                    14 V. V. Solodovnikov and A. M. Batkov. “On the Theory of Self-
+                                                                                            Optimizing Systems (in German and Russian),” Proc. Heidelberg
+         1     1 0                                         0                            Conference on Automatic Control, 1956. pp. 308–323.
+                                                            
+Φ–1Φ*Φ ≈  0    1 0  and Φ–1∆* ≈                            0                 (t >> 1)      15 J. L. Doob, “Stochastic Processes,” John Wiley & Sons, Inc., New
+                                                                                            York, N. Y., 1955.
+         − 1 − 1 0                                        1                            16 M. Loève, “Probability Theory,” Van Nostrand Company, Inc.,
+                                                                                            New York, N. Y., 1955.
+Thus as the number of observations becomes large, we depend                                    17 R. E. Bellman, I. Glicksberg, and 0. A. Gross, “Some Aspects of
+almost exclusively on x1*(t|t) and x2*(t|t) to estimate x1*(t + 1|t +                       the Mathematical Theory of Control Processes,” RAND Report R-313,
+                                                                                            1958, 244 pp.
+1) and x2*(t + 1|t + 1). Current observations are used almost                                  18 R. E. Kalman and R. W. Koepcke, “Optimal Synthesis of Linear
+exclusively to estimate the noise                                                           Sampling Control Systems Using Generalized Performance Indexes,”
+                  x3*(t|t) ≈ y1*(t) – x1*(t|t)              (t >> 1)                        TRANS. ASME, vol. 80, 1958, pp. 1820–1826.
+                                                                                               19 J. E. Bertram, “Effect of Quantization in Sampled-Feedback
+   One would of course expect something like this since the prob-                           Systems,” Trans. AlEE, vol. 77, II, 1958, pp. 177–182.
+lem is analogous to fitting a straight line to an increasing number                            20 R. E. Kalman and J. E. Bertram, “General Synthesis Procedure for
+of points.                                                                                  Computer Control of Single and Multi-Loop Linear Systems” Trans.
+                                                                                            AlEE, vol. 77, II, 1958, pp. 602–609.
+  As a second check on the reasonableness of the results given,                                21 C. W. Merriam, III, “A Class of Optimum Control Systems,”
+observe that the case t >> 1 is essentially the same as prediction                          Journal of the Franklin Institute, vol. 267, 1959, pp. 267–281.
+based on continuous observations. Setting φ33 = 0, we have                                     22 R. E. Kalman and J. E. Bertram, “A Unified Approach to the
+                                                                                            Theory of Sampling Systems,” Journal of the Franklin Institute, vol. 267,
+                                                                                            1959, pp. 405–436.
+                                  a2b2t 2
+             E x~1 (t | t ) ≈                         (t >> 1; φ33 = 0)
+                  2                                                                            23 R. E. Kalman and R. W. Koepcke, “The Role of Digital Com-
+                                b2 + a2t 3 / 3                                              puters in the Dynamic Optimization of Chemical Reactors,” Proc.
+                                                                                            Western Joint Computer Conference, 1959, pp. 107–116.
+which is identical with the result obtained by Shinbrot [11],                                  24 R. E. Kalman, “Dynamic Optimization of Linear Control Sys-
+Example 1, and Solodovnikov [14], Example 2, in their treat-                                tems, I. Theory,” to appear.
+ment of the Wiener problem in the finite-length, continuous-data                               25 S. Sherman, “Non-Mean-Square Error Criteria,” Trans. IRE Prof.
+case, using an approach entirely different from ours.                                       Group on Information Theory, IT-4, 1958, pp. 125–126.
+                                                                                               26 V. S. Pugachev, “On a Possible General Solution of the Problem of
+                                                                                            Determining Optimum Dynamic Systems,” Automatics and Remote
+Conclusions                                                                                 Control (USSR), vol. 17, 1956, pp. 585–589.
+                                                                                               27 G. C. Newton, Jr., L. A. Gould, and J. F. Kaiser, “Analytical
+   This paper formulates and solves the Wiener problem from the                             Design of Linear Feedback Controls,” John Wiley & Sons, Inc., New
+“state” point of view. On the one hand, this leads to a very gen-                           York, N. Y., 1957.
+eral treatment including cases which cause difficulties when at-                               28 0. J. M. Smith, “Feedback Control Systems,” McGraw-Hill Book
+tacked by other methods. On the other hand, the Wiener problem                              Company, Inc., New York, N. Y., 1958.
+                                                                                               29 R. E. Kalman, “On the General Theory of Control Systems,”
+is shown to be closely connected with other problems in the                                 Proceedings First International Conference on Automatic Control,
+theory of control. Much remains to be done to exploit these                                 Moscow, USSR, 1960.
+connections.
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+               APPENDIX                                                        A random process may be specified explicitly by stating the
+                                                                            probability of simultaneous occurrence of any finite number of
+     RANDOM PROCESSES: BASIC CONCEPTS                                       events of the type
+                                                                            x(t1) ≤ ξ1, …, x(tn) ≤ ξn; (t1 ≠ … ≠ tn), i.e.,
+   For convenience of the reader, we review here some elementary                Pr[(x(t1) ≤ ξ1, …, x(tn) ≤ ξn)] = Fx(t1), ..., x(tn)(ξ1, …, ξn) (43)
+definitions and facts about probability and random processes.
+Everything is presented with the utmost possible simplicity; for            where Fx(t1), ..., x(tn) is called the joint probability distribution
+greater depth and breadth, consult Laning and Battin [5] or Doob            function of the random variables x(t1), …, x(tn). The joint
+[15].                                                                       probability density function is then
+   A random variable is a function whose values depend on the
+                                                                                      fx(t1), ..., x(tn)(ξ1, …, ξn) = ∂nFn(t1), ..., x(tn)/∂ξ1, …, ∂ξn
+outcome of a chance event. The values of a random variable may
+be any convenient mathematical entities; real or complex                    provided the required derivatives exist. The expected value
+numbers, vectors, etc. For simplicity, we shall consider here only          Eg[x(t1), …, x(tn)] of any nonrandom function of n random varia-
+real-valued random variables, but this is no real restriction.              bles is defined by an n-fold integral analogous to (40).
+Random variables will be denoted by x, y, ... and their values by ξ,
+                                                                              A random process is independent if for any finite t1 ≠ … ≠ tn,
+η, …. Sums, products, and functions of random variables are also
+                                                                            (43) is equal to the product of the first-order distributions
+random variables.
+   A random variable x can be explicitly defined by stating the                                  Pr[x(t1) ≤ ξ1] … Pr[x(tn) ≤ ξn]
+probability that x is less than or equal to some real constant ξ.           If a set of random variables is independent, then they are obvi-
+This is expressed symbolically by writing                                   ously also uncorrelated. The converse is not true in general. For a
+                                                                            set of more than 2 random variables to be independent, it is not
+            Pr(x ≤ ξ) = Fx(ξ); Fx(– ∞) = 0, Fx(+ ∞) = 1                     sufficient that any pair of random variables be independent.
+Fx(ξ) is called the probability distribution function of the random            Frequently it is of interest to consider the probability distribu-
+variable x. When Fx(ξ) is differentiable with respect to ξ, then            tion of a random variable x(tn + 1) of a random process given the
+fx(ξ) = dFx(ξ)/dξ is called the probability density function of x.          actual values ξ(t1), …, ξ(tn) with which the random variables
+                                                                            x(t1), …, x(tn) have occurred. This is denoted by
+   The expected value (mathematical expectation, statistical
+average, ensemble average, mean, etc., are commonly used                    Pr[x(tn + 1) ≤ ξn + 1|x(t1) = ξ1, …, x(tn) = ξn]
+synonyms) of any nonrandom function g(x) of a random variable x                                             ξ n +1
+is defined by                                                                                           ∫ f x(t ),...,x(t ) (ξ1 ,..., ξ n+1 )dξ n+1
+                                                                                                       = −∞
+                                                                                                                      1          n +1
+                                                                                                                                                               (44)
+                             ∞                 ∞
+        Eg( x ) = E[g( x )] = ∫ g(ξ)dFx (ξ) = ∫ g(ξ) f x (ξ)dξ       (40)                                            f x ( t1 ),...,x ( tn ) (ξ1 ,..., ξ n )
+                             −∞                −∞
+As indicated, it is often convenient to omit the brackets after the         which is called the conditional probability distribution function
+symbol E. A sequence of random variables (finite or infinite)               of x(tn + 1) given x(t1), …, x(tn). The conditional expectation
+               {x(t)} = …, x(–1), x(0), x(1), …                      (41)                          E{g[x(tn + 1)]|x(t1), …, x(tn)}
+is called a discrete (or discrete-parameter) random (or stochastic)         is defined analogously to (40). The conditional expectation is a
+process. One particular set of observed values of the random                random variable; it follows that
+process (41)
+                                                                                      E[E{g[x(tn + 1)]|x(t1), …, x(tn)}] = E{g[x(tn + 1)]}
+                      …, ξ(–1), ξ(0), ξ(1), …
+                                                                              In all cases of interest in this paper, integrals of the type (40) or
+is called a realization (or a sample function) of the process. In-
+                                                                            (44) need never be evaluated explicitly, only the concept of the
+tuitively, a random process is simply a set of random variables
+                                                                            expected value is needed.
+which are indexed in such a way as to bring the notion of time
+into the picture.                                                             A random variable x is gaussian (or normally distributed) if
+   A random process is uncorrelated if                                                           1                  1 (ξ − Ex) 2 
+                                                                                  fx(ξ) =  exp −                           2
+                Ex(t)x(s) = Ex(t)Ex(s)          (t ≠ s)                                   [2πE(x – Ex)2]1/2         2 E ( x − Ex) 
+If, furthermore,
+                                                                            which is the well-known bell-shaped curve. Similarly, a random
+                     Ex(t)x(s) = 0         (t ≠ s)                          vector x is gaussian if
+then the random process is orthogonal. Any uncorrelated random                                 1            1                         
+process can be changed into orthogonal random process by re-                  fx(ξ) =  exp  – (ξ – Ex)’C–1(ξ – Ex) 
+placing x(t) by x’(t) = x(t) – Ex(t) since then                                            n/2
+                                                                                       (2π) (det C) 1/2
+                                                                                                              2                       
+Ex’(t)x’(s) = E[x(t) – Ex(t)]•[x(s) – Ex(s)]                                where C–1 is the inverse of the covariance matrix (42) of x. A
+                                          = Ex(t)x(s) – Ex(t)Ex(s) = 0      gaussian random process is defined similarly.
+
+It is useful to remember that, if a random process is orthogonal,             The importance of gaussian random variables and processes is
+then                                                                        largely due to the following facts:
+    E[x(t1) + x(t2) + …]2 = Ex2(t1) + Ex2 (t2) + … (t1 ≠ t2 ≠ ...)            Theorem 5. (A) Linear functions (and therefore conditional ex-
+                                                                            pectations) on a gaussian random process are gaussian random
+If x is a vector-valued random variable with components x1, …, xn           variables.
+(which are of course random variables), the matrix
+                                                                              (B) Orthogonal gaussian random variables are independent.
+[E(xi – Exi)(xj – Exj)] = E(x – Ex)(x' – Ex')
+                                            = cov x                  (42)     (C) Given any random process with means Ex(t) and
+                                                                            covariances Ex(t)x(s), there exists a unique gaussian random
+is called the covariance matrix of x.                                       process with the same means and covariances.
+
+Transactions of the ASME–Journal of Basic Engineering, 82 (Series D): 35-45. Copyright © 1960 by ASME
+ Explanation of this transcription, John Lukesh, 20 January 2002.
+  Using a photo copy of R. E. Kalman’s 1960 paper from an
+original of the ASME “Journal of Basic Engineering”, March
+1960 issue, I did my best to make an accurate version of this
+rather significant piece, in an up-to-date computer file format. For
+this I was able to choose page formatting and type font spacings
+that resulted in a document that is a close match to the original.
+(All pages start and stop at about the same point, for example;
+even most individual lines of text do.) I used a recent version of
+Word for Windows and a recent Hewlett Packard scanner with
+OCR (optical character recognition) software. The OCR software
+is very good on plain text, even distinguishing between italic
+versus regular characters quite reliably, but it does not do well
+with subscripts, superscripts, and special fonts, which were quite
+prevalent in the original paper. And I found there was no point in
+trying to work from the OCR results for equations. A lot of
+manual labor was involved.
+  Since I wanted to make a faithful reproduction of the original, I
+did not make any changes to correct (what I believed were)
+mistakes in it. For example, equation (32) has a P*(t)M(t)
+product that should be reversed, I think. I left this, and some
+other things that I thought were mistakes in the original, as is. (I
+didn’t find very many other problems with the original.) There
+may, of course, be problems with my transcription. The plain text
+OCR results, which didn’t require much editing, are pretty
+accurate I think. But the subscripts etc and the equations which I
+copied essentially manually, are suspect. I’ve reviewed the
+resulting document quite carefully, several times finding mistakes
+in what I did each time. The last time there were five, four
+cosmetic and one fairly inconsequential. There are probably
+more. I would be very pleased to know about it if any reader of
+this finds some of them; jlukesh@deltanet.com.
+

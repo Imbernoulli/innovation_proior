@@ -81,7 +81,7 @@ points), the cross polytope (2n points), the regular icosahedron (n = 3, N = 12)
 minimal vectors of the E_8 root lattice (n = 8, N = 240) and of the Leech lattice
 (n = 24, N = 196560), and several kissing configurations derived from them. Each is a
 high-strength spherical design with only a few distinct inner products. The vertices
-of the regular 600-cell (n = 4, N = 120) are an 11-design with six inner products and
+of the regular 600-cell (n = 4, N = 120) are an 11-design with eight inner products and
 behave almost as well. These same objects recur across number theory, lattice theory,
 and analysis, and the recurring question is whether their optimality is one
 phenomenon or many.
@@ -146,42 +146,38 @@ at once.
 
 The existing tools are: spherical-harmonic / Gegenbauer polynomial evaluation
 (three-term recurrence, available as a special-function routine), a general-purpose
-linear-programming solver, and a sphere-constrained gradient descent for finding
-candidate configurations. The pieces that do not yet exist are the *certificate*
-machinery: how to choose the auxiliary polynomial that turns positive-definiteness into
-an energy lower bound, and how to construct, in closed form, the polynomial that makes
-that bound tight for a special configuration.
+linear-programming solver, and direct energy evaluation for candidate configurations.
+The numerical slot is a finite-dimensional LP over Gegenbauer coefficients: choose
+nonnegative coefficients, enforce the lower-polynomial inequality at sampled inner
+products, and evaluate the resulting bound. The mathematical slot still missing is the
+closed-form choice of the auxiliary polynomial that makes the lower bound exact for the
+special configurations.
 
 ```python
 import numpy as np
 from scipy.special import gegenbauer
 from scipy.optimize import linprog
 
-def gegenbauer_value(i, lam, t):
-    # ultraspherical C_i^{lam}(t): C_0=1, C_1=2*lam*t, recurrence as above.
-    return gegenbauer(i, lam)(t)
+def lp_energy_lower_bound(n, N, f_of_squared_dist, degree=12, grid=600):
+    # TODO: expand h(t) in Gegenbauer polynomials and optimize
+    # N^2 * alpha_0 - N * h(1) subject to alpha_i >= 0 and
+    # h(t) <= f(2 - 2*t) on a sampled grid in [-1, 1).
+    pass
 
-def candidate_energy(P, f_of_squared_dist):
-    # primal: energy of a concrete configuration P on the sphere.
+def coulomb(R):
+    # TODO: potential as a function of squared distance R.
+    pass
+
+def icosahedron():
+    # TODO: construct a known candidate configuration on S^2.
+    pass
+
+def energy(P, f):
+    # Direct energy of a concrete configuration P on the sphere.
     E = 0.0
     for i in range(len(P)):
         for j in range(len(P)):
             if i != j:
-                E += f_of_squared_dist(np.sum((P[i] - P[j]) ** 2))
+                E += f(np.sum((P[i] - P[j]) ** 2))
     return E
-
-def steepest_descent_candidate(n, N, f, steps=2000):
-    # primal search: returns a low-energy configuration. Finds, never proves.
-    pass  # TODO: random init on S^{n-1}, project gradient to tangent, descend
-
-def energy_lower_bound(n, N, f_of_squared_dist):
-    # dual certificate: a single bound valid for EVERY N-point configuration.
-    # TODO: choose an auxiliary polynomial h(t) = sum_i alpha_i C_i^{n/2-1}(t)
-    #       with alpha_i >= 0 and h(t) <= f(2-2t) on [-1,1); return the bound.
-    pass
-
-def sharp_certificate(n, inner_products, f_of_squared_dist):
-    # TODO: construct in closed form the h that makes the bound tight for a
-    #       configuration whose distinct inner products are `inner_products`.
-    pass
 ```

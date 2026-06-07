@@ -1,0 +1,2831 @@
+2.6. COMPLEXITY THEORY FOR MAPREDUCE
+
+57
+
+number of bytes communicated is now 106 × 999 × 106 , or about 1015 bytes.
+While that is still a huge amount of data to communicate, it is 1000 times
+less than that of the obvious algorithm. Moreover, there are still about half a
+million reducers. Since we are unlikely to have available that many compute
+nodes, we can divide all the reducers into a smaller number of Reduce tasks
+and still keep all the compute nodes busy; i.e., we can get as much parallelism
+as our computing cluster offers us. ✷
+The computation cost for algorithms in this family is independent of the
+number of groups g, as long as the input to each reducer fits in main memory.
+The reason is that the bulk of the computation is the application of function s
+to the pairs of pictures. No matter what value g has, s is applied to each pair
+once and only once. Thus, although the work of algorithms in the family may
+be divided among reducers in widely different ways, all members of the family
+do the same computation.
+
+2.6.3
+
+A Graph Model for MapReduce Problems
+
+In this section, we begin the study of a technique that will enable us to prove
+lower bounds on the replication rate, as a function of reducer size for a number
+of problems. Our first step is to introduce a graph model of problems. For each
+problem solvable by a MapReduce algorithm there is:
+1. A set of inputs.
+2. A set of outputs.
+3. A many-many relationship between the inputs and outputs, which describes which inputs are necessary to produce which outputs.
+Example 2.13 : Figure 2.9 shows the graph for the similarity-join problem
+discussed in Section 2.6.2, if there were four pictures rather than a million. The
+inputs are the pictures, and the outputs are the six possible pairs of pictures.
+Each output is related to the two inputs that are members of its pair. ✷
+Example 2.14 : Matrix multiplication presents a more complex graph. If we
+multiply n × n matrices M and N to get matrix P , then there are 2n2 inputs,
+mij and njk , and there are n2 outputs pik . Each output pik is related to 2n
+inputs: mi1 , mi2 , . . . , min and n1k , n2k , . . . , nnk . Moreover, each input is related
+to n outputs. For example, mij is related to pi1 , pi2 , . . . , pin . Figure 2.10 shows
+the input-output relationship for matrix multiplication for the simple case of
+2 × 2 matrices, specifically
+
+
+ 
+
+a b
+e f
+i j
+=
+c d
+g h
+k l
+✷
+
+58
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+{P 1 , P 2 }
+P1
+{P 1 , P 3 }
+P2
+{P 1 , P 4 }
+
+P3
+
+{P 2 , P 3 }
+
+{P 2 , P 4 }
+P4
+{P 3 , P 4 }
+
+Figure 2.9: Input-output relationship for a similarity join
+In the problems of Examples 2.13 and 2.14, the inputs and outputs were
+clearly all present. However, there are other problems where the inputs and/or
+outputs may not all be present in any instance of the problem. An example
+of such a problem is the natural join of R(A, B) and S(B, C) discussed in
+Section 2.3.7. We assume the attributes A, B, and C each have a finite domain,
+so there are only a finite number of possible inputs and outputs. The inputs are
+all possible R-tuples, those consisting of a value from the domain of A paired
+with a value from the domain of B, and all possible S-tuples – pairs from the
+domains of B and C. The outputs are all possible triples, with components from
+the domains of A, B, and C in that order. The output (a, b, c) is connected to
+two inputs, namely R(a, b) and S(b, c).
+But in an instance of the join computation, only some of the possible inputs
+will be present, and therefore only some of the possible outputs will be produced.
+That fact does not influence the graph for the problem. We still need to know
+how every possible output relates to inputs, whether or not that output is
+produced in a given instance.
+
+2.6.4
+
+Mapping Schemas
+
+Now that we see how to represent problems addressable by MapReduce as
+graphs, we can define the requirements for a MapReduce algorithm to solve
+a given problem. Each such algorithm must have a mapping schema, which
+expresses how outputs are produced by the various reducers used by the algorithm. That is, a mapping schema for a given problem with a given reducer
+size q is an assignment of inputs to one or more reducers, such that:
+1. No reducer is assigned more than q inputs.
+
+2.6. COMPLEXITY THEORY FOR MAPREDUCE
+
+59
+
+a
+i
+b
+c
+j
+d
+e
+k
+f
+g
+l
+h
+
+Figure 2.10: Input-output relationship for matrix multiplication
+2. For every output of the problem, there is at least one reducer that is
+assigned all the inputs that are related to that output. We say this reducer
+covers the output.
+It can be argued that the existence of a mapping schema for any reducer size
+is what distinguishes problems that can be solved by a single MapReduce job
+from those that cannot.
+Example 2.15 : Let us reconsider the “grouping” strategy we discussed in
+connection with the similarity join in Section 2.6.2. To generalize the problem,
+suppose the input is p pictures, which weplace in g equal-sized groups of p/g
+inputs each. The number of outputs is p2 , or approximately p2 /2 outputs. A
+reducer will get the inputs from two groups – that is 2p/g inputs – so the reducer
+size we need is q = 2p/g. Each picture is sent to the reducers corresponding to
+the pairs consisting of its group and any of the g − 1 other groups. Thus, the
+replication rate is g − 1, or approximately g. If we replace g by the replication
+rate r in q = 2p/g, we conclude that r = 2p/q. That is, the replication rate
+is inversely proportional to the reducer size. That relationship is common; the
+smaller the reducer size, the larger the replication rate, and therefore the higher
+the communication.
+This family of algorithms is described by a family of mapping schemas, one
+for each possible q. In the mapping schema for q = 2p/g, there are g2 , or
+approximately g 2 /2 reducers. Each reducer corresponds to a pair of groups,
+and an input P is assigned to all the reducers whose pair includes the group of
+P . Thus, no reducer is assigned more than 2p/g inputs; in fact each reducer
+is assigned exactly that number. Moreover, every output is covered by some
+reducer. Specifically, if the output is a pair from two different groups u and v,
+then this output is covered by the reducer for the pair of groups {u, v}. If the
+
+60
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+
+output corresponds to inputs from only one group u, then the output is covered
+by several reducers – those corresponding to the set of groups {u, v} for any
+v 6= u. Note that the algorithm we described has only one of these reducers
+computing the output, but any of them could compute it. ✷
+The fact that an output depends on a certain input means that when that
+input is processed at the Map task, there will be at least one key-value pair
+generated to be used when computing that output. The value might not be
+exactly the input (as was the case in Example 2.15), but it is derived from
+that input. What is important is that for every related input and output there
+is a unique key-value pair that must be communicated. Note that there is
+technically never a need for more than one key-value pair for a given input and
+output, because the input could be transmitted to the reducer as itself, and
+whatever transformations on the input were applied by the Map function could
+instead be applied by the Reduce function at the reducer for that output.
+
+2.6.5
+
+When Not All Inputs Are Present
+
+Example 2.15 describes a problem where we know every possible input is present, because we can define the input set to be those pictures that actually
+exist in the dataset. However, as discussed at the end of Section 2.6.3, there
+are problems like computing the join, where the graph of inputs and outputs
+describes inputs that might exist, and outputs that are only made when at least
+one of the inputs exists in the dataset. In fact, for the join, both inputs related
+to an output must exist if we are to make that output.
+An algorithm for a problem where outputs can be missing still needs a
+mapping schema. The justification is that all inputs, or any subset of them,
+might be present, so an algorithm without a mapping schema would not be
+able to produce every possible output if all the inputs related to that output
+happened to be present, and yet no reducer covered that output.
+The only way the absence of some inputs makes a difference is that we
+may wish to rethink the desired value of the reducer size q when we select an
+algorithm from the family of possible algorithms. Especially, if the value of q
+we select is that number such that we can be sure the input will just fit in main
+memory, then we may wish to increase q to take into account that some fraction
+of the inputs are not really there.
+Example 2.16 : Suppose that we know we can execute the Reduce function
+in main memory on a key and its associated list of q values. However, we also
+know that only 5% of the possible inputs are really present in the data set.
+Then a mapping schema for reducer size q will really send about q/20 of the
+inputs that exist to each reducer. Put another way, we could use the algorithm
+for reducer size 20q and expect that an average of q inputs will actually appear
+on the list for each reducer. We can thus choose 20q as the reducer size, or since
+there will be some randomness in the number of inputs actually appearing at
+
+2.6. COMPLEXITY THEORY FOR MAPREDUCE
+
+61
+
+each reducer, we might wish to pick a slightly smaller value of reducer size, such
+as 18q. ✷
+
+2.6.6
+
+Lower Bounds on Replication Rate
+
+The family of similarity-join algorithms described in Example 2.15 lets us trade
+off communication against the reducer size, and through reducer size to trade
+communication against parallelism or against the ability to execute the Reduce
+function in main memory. How do we know we are getting the best possible
+tradeoff? We can only know we have the minimum possible communication if
+we can prove a matching lower bound. Using existence of a mapping schema as
+the starting point, we can often prove such a lower bound. Here is an outline
+of the technique.
+1. Prove an upper bound on how many outputs a reducer with q inputs can
+cover. Call this bound g(q). This step can be difficult, but for examples
+like similarity join, it is actually quite simple.
+2. Determine the total number of outputs produced by the problem.
+3. Suppose that there
+Pk are k reducers, and the ith reducer has qi < q inputs.
+Observe that
+i=1 g(qi ) must be no less than the number of outputs
+computed in step (2).
+Pk
+4. Manipulate the inequality from (3) to get a lower bound on
+i=1 qi .
+Often, the trick used at this step is to replace some factors of qi by their
+upper bound q, but leave a single factor of qi in the term for i.
+Pk
+5. Since i=1 qi is the total communication from Map tasks to Reduce tasks,
+divide the lower bound from (4) on this quantity by the number of inputs.
+The result is a lower bound on the replication rate.
+Example 2.17 : This sequence of steps may seem mysterious, but let us consider the similarity join as an example that we hope will make things clear.
+Recall that in Example 2.15 we gave an upper bound on the replication rate
+r of r ≤ 2p/q, where p was the number of inputs and q was the reducer size.
+We shall show a lower bound on r that is half that amount, which implies that,
+although improvements to the algorithm might be possible, any reduction in
+communication for a given reducer size will be by a factor of 2 at most.
+For step (1), observe that if a reducer gets q inputs, it cannot cover more
+2
+than q2 , or
+ approximately q /22 outputs. For step (2), we know there are a
+p
+total of 2 , or approximately p /2 outputs that each must be covered. The
+inequality constructed at step (3) is thus
+k
+X
+i=1
+
+qi2 /2 ≥ p2 /2
+
+62
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+
+or, multiplying both sides by 2,
+k
+X
+i=1
+
+qi2 ≥ p2
+
+(2.1)
+
+Now, we must do the manipulation of step (4). Following the hint, we note
+that there are two factors of qi in each term on the left of Equation (2.1), so
+we replace one factor by q and leave the other as qi . Since q ≥ qi , we can only
+increase the left side by doing so, and thus the inequality continues to hold:
+q
+
+k
+X
+i=1
+
+qi ≥ p2
+
+or, dividing by q:
+k
+X
+i=1
+
+qi ≥ p2 /q
+
+(2.2)
+
+The final step, which is step (5), is to divide both sides of Equation 2.2 by
+Pk
+p, the number of inputs. As a result, the left side, which is ( i=1 qi )/p is equal
+to the replication rate, and the right side becomes p/q. That is, we have proved
+the lower bound on r:
+r ≥ p/q
+As claimed, this shows that the family of algorithms from Example 2.15 all have
+a replication rate that is at most twice the lowest possible replication rate. ✷
+
+2.6.7
+
+Case Study: Matrix Multiplication
+
+In this section we shall apply the lower-bound technique to one-pass matrixmultiplication algorithms. We saw one such algorithm in Section 2.3.10, but
+that is only an extreme case of a family of possible algorithms. In particular,
+for that algorithm, a reducer corresponds to a single element of the output
+matrix. Just as we grouped inputs in the similarity-join problem to reduce the
+communication at the expense of a larger reducer size, we can group rows and
+columns of the two input matrices into bands. Each pair consisting of a band of
+rows of the first matrix and a band of columns of the second matrix is used by
+one reducer to produce a square of elements of the output matrix. An example
+is suggested by Fig. 2.11.
+In more detail, suppose we want to compute M N = P , and all three matrices
+are n × n. Group the rows of M into g bands of n/g rows each, and group the
+columns of N into g bands of n/g columns each. This grouping is as suggested
+by Fig. 2.11. Keys correspond to two groups (bands), one from M and one
+from N .
+The Map Function: For each element of M , the Map function generates g
+key-value pairs. The value in each case is the element itself, together with its
+
+2.6. COMPLEXITY THEORY FOR MAPREDUCE
+
+63
+
+=
+
+Figure 2.11: Dividing matrices into bands to reduce communication
+row and column number so it can be identified by the Reduce function. The
+key is the group to which the element belongs, paired with any of the groups
+of the matrix N . Similarly, for each element of N , the Map function generates
+g key-value pairs. The key is the group of that element paired with any of the
+groups of M , and the value is the element itself plus its row and column.
+The Reduce Function: The reducer corresponding to the key (i, j), where i
+is a group of M and j is a group of N , gets a value list consisting of all the
+elements in the ith band of M and the jth band of N . It thus has all the
+values it needs to compute the elements of P whose row is one of those rows
+comprising the ith band of M and whose column is one of those comprising the
+jth band of N . For instance, Fig. 2.11 suggests the third group of M and the
+fourth group of N , combining to compute a square of P at the reducer (3, 4).
+Each reducer gets n(n/g) elements from each of the two matrices, so q =
+2n2 /g. The replication rate is g, since each element of each matrix is sent to
+g reducers. That is, r = g. Combining r = g with q = 2n2 /g we can conclude
+that r = 2n2 /q. That is, just as for similarity join, the replication rate varies
+inversely with the reducer size.
+It turns out that this upper bound on replication rate is also a lower bound.
+That is, we cannot do better than the family of algorithms we described above
+in a single round of MapReduce. Interestingly, we shall see that we can get a
+lower total communication for the same reducer size, if we use two passes of
+MapReduce as we discussed in Section 2.3.9. We shall not give the complete
+proof of the lower bound, but will suggest the important elements.
+For step (1) we need to get an upper bound on how many outputs a reducer
+of size q can cover. First, notice that if a reducer gets some of the elements in
+a row of M , but not all of them, then the elements of that row are useless; the
+reducer cannot produce any output in that row of P . Similarly, if a reducer
+receives some but not all of a column of N , these inputs are also useless. Thus,
+we may assume that the best mapping schema will send to each reducer some
+number of full rows of M and some number of full columns of N . This reducer
+
+64
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+
+is then capable of producing output element pik if and only if it has received
+the entire ith row of M and the entire kth column of N . The remainder of the
+argument for step (1) is to prove that the largest number of outputs are covered
+when the reducer receives the same number of rows as columns. We leave this
+part as an exercise.
+However, assuming a reducer receives k rows of M and k columns of N ,
+then q = 2nk, and k 2 outputs are covered. That is, g(q), the maximum number
+of outputs covered by a reducer that receives q inputs, is q 2 /4n2 .
+For step (2), we know the number of outputs is n2 . In step (3) we observe
+that if there are k reducers, with the ith reducer receiving qi ≤ q inputs, then
+k
+X
+i=1
+
+qi2 /4n2 ≥ n2
+
+or
+k
+X
+i=1
+
+qi2 ≥ 4n4
+
+From this inequality, you can derive
+r ≥ 2n2 /q
+We leave the algebraic manipulation, which is similar to that in Example 2.17,
+as an exercise.
+Now, let us consider the generalization of the two-pass matrix-multiplication
+algorithm that we described in Section 2.3.9. First, notice that we could have
+designed the first pass to use one reducer for each triple (i, j, k). This reducer
+would get only the two elements mij and njk . We can generalize this idea to
+use reducers that get larger sets of elements from each matrix; these sets of
+elements form squares within their respective matrices. The idea is suggested
+by Fig. 2.12. We may divide the rows and columns of both input matrices M
+and N into g groups of n/g rows or columns each. The intersections of the
+groups partition each matrix into g 2 squares of n2 /g 2 elements each.
+The square of M corresponding to set of rows I and set of columns J combines with the square of N corresponding to set of rows J and set of columns
+K. These two squares compute some of the terms that are needed to produce
+the square of the output matrix P that has set of rows I and set of columns K.
+However, these two squares do not compute the full value of these elements of
+P ; rather they produce a contribution to the sum. Other pairs of squares, one
+from M and one from N , contribute to the same square of P . These contributions are suggested in Fig. 2.12. There, we see how all the squares of M with
+a fixed value for set of rows I pair with all the squares of N that have a fixed
+value for the set of columns K by letting the set J vary.
+So in the first pass, we compute the products of the square (I, J) of M with
+the square (J, K) of N , for all I, J, and K. Then, in the second pass, for each
+
+2.6. COMPLEXITY THEORY FOR MAPREDUCE
+
+65
+
+=
+
+Figure 2.12: Partitioning matrices into squares for a two-pass MapReduce algorithm
+I and K we sum the products over all possible sets J. In more detail, the first
+MapReduce job does the following.
+The Map Function: The keys are triples of sets of rows and/or column numbers (I, J, K). Suppose the element mij belongs to group of rows I and group
+of columns J. Then from mij we generate g key-value pairs with value equal to
+mij , together with its row and column numbers, i and j, to identify the matrix
+element. There is one key-value pair for each key (I, J, K), where K can be any
+of the g groups of columns of N . Similarly, from element njk of N , if j belongs
+to group J and k to group K, the Map function generates g key-value pairs
+with value consisting of njk , j, and k, and with keys (I, J, K) for any group I.
+The Reduce Function: The reducer corresponding to (I, J, K) receives as
+input all the elements mij where i is in I and j is in J, and it also receives all
+the elements njk , where j is in J and k is in K. It computes
+X
+xiJk =
+mij njk
+j in J
+
+for all i in I and k in K.
+Notice that the replication rate for the first MapReduce job is g, and the total communication is therefore 2gn2 . Also notice
+that each reducer gets 2n2 /g 2
+p
+2
+2
+inputs, so q = 2n /g . Equivalently, g = n√ 2/q. Thus, the total communica√
+tion 2gn2 can be written in terms of q as 2 2n3 / q.
+
+66
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+The second MapReduce job is simple; it sums up the xiJk ’s over all sets J.
+
+The Map Function: We assume that the Map tasks execute at whatever
+compute nodes executed the Reduce tasks of the previous job. Thus, no communication is needed between the jobs. The Map function takes as input one
+element xiJk , which we assume the previous reducers have left labeled with i
+and k so we know to what element of matrix P this term contributes. One
+key-value pair is generated. The key is (i, k) and the value is xiJk .
+The Reduce Function: The Reduce function simply sums the values associated with key (i, k) to compute the output element Pik .
+The communication between the Map and Reduce tasks of the second job is
+gn2 , since there are n possible values of i, n possible values of k, and g possible
+values of the set J, and each xiJk is communicated only
+p once. If we recall from
+our analysis of the first MapReduce job that
+g
+=
+n
+2/q, we can write the
+√
+√
+communication for the second job as n2 g = 2n3 / q. This amount is exactly
+half the communication√for the first job, so the total communication for the
+√
+two-pass algorithm is 3 2n3 / q. Although we shall not examine this point
+here, it turns out that we can do slightly better if we divide the matrices M
+and N not into squares but into rectangles that are twice as long on one side
+as on
+√ the other. In that case, we get the slightly smaller constant 4 in place
+of 3 2 = 4.24, and we get a two-pass algorithm with communication equal to
+√
+4n3 / q.
+Now, recall that the communication cost we computed for the one-pass
+algorithm is 4n4 /q. We may as well assume q is less than n2 , or else we can
+just use a serial algorithm at one compute node and not use MapReduce at all.
+√
+Thus, n3 / q is smaller than n4 /q, and if q is close to its minimum possible
+value of 2n,10
+√ then the two-pass algorithm beats the one-pass algorithm by a
+factor of O( n) in communication. Moreover, we can expect the difference
+in communication to be the significant cost difference. Both algorithms do
+the same O(n3 ) arithmetic operations. The two-pass method naturally has
+more overhead managing tasks than does the one-job method. On the other
+hand, the second pass of the two-pass algorithm applies a Reduce function
+that is associative and commutative. Thus, it might be possible to save some
+communication cost by using a combiner on that pass.
+
+2.6.8
+
+Exercises for Section 2.6
+
+Exercise 2.6.1 : Describe the graphs that model the following problems.
+(a) The multiplication of an n × n matrix by a vector of length n.
+(b) The natural join of R(A, B) and S(B, C), where A, B, and C have domains of sizes a, b, and c, respectively.
+10 If q is less than 2n, then a reducer cannot get even one row and one column, and therefore
+cannot compute any outputs at all.
+
+2.7. SUMMARY OF CHAPTER 2
+
+67
+
+(c) The grouping and aggregation on the relation R(A, B), where A is the
+grouping attribute and B is aggregated by the MAX operation. Assume
+A and B have domains of size a and b, respectively.
+! Exercise 2.6.2 : Provide the details of the proof that a one-pass matrixmultiplication algorithm requires replication rate at least r ≥ 2n2 /q, including:
+(a) The proof that, for a fixed reducer size, the maximum number of outputs
+are covered by a reducer when that reducer receives an equal number of
+rows of M and columns of N .
+Pk
+(b) The algebraic manipulation needed, starting with i=1 qi2 ≥ 4n4 .
+
+!! Exercise 2.6.3 : Suppose our inputs are bit strings of length b, and the outputs
+correspond to pairs of strings at Hamming distance 1.11
+(a) Prove that a reducer of size q can cover at most (q/2) log2 q outputs.
+(b) Use part (a) to show the lower bound on replication rate: r ≥ b/ log2 q.
+(c) Show that there are algorithms with replication rate as given by part (b)
+for the cases q = 2, q = 2b , and q = 2b/2 .
+
+2.7
+
+Summary of Chapter 2
+
+✦ Cluster Computing: A common architecture for very large-scale applications is a cluster of compute nodes (processor chip, main memory, and
+disk). Compute nodes are mounted in racks, and the nodes on a rack are
+connected, typically by gigabit Ethernet. Racks are also connected by a
+high-speed network or switch.
+✦ Distributed File Systems: An architecture for very large-scale file systems has developed recently. Files are composed of chunks of about 64
+megabytes, and each chunk is replicated several times, on different compute nodes or racks.
+✦ MapReduce: This programming system allows one to exploit parallelism
+inherent in cluster computing, and manages the hardware failures that
+can occur during a long computation on many nodes. Many Map tasks
+and many Reduce tasks are managed by a Master process. Tasks on a
+failed compute node are rerun by the Master.
+✦ The Map Function: This function is written by the user. It takes a
+collection of input objects and turns each into zero or more key-value
+pairs. Keys are not necessarily unique.
+11 Bit strings have Hamming distance 1 if they differ in exactly one bit position. You may
+look ahead to Section 3.5.6 for the general definition.
+
+68
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+✦ The Reduce Function: A MapReduce programming system sorts all the
+key-value pairs produced by all the Map tasks, forms all the values associated with a given key into a list and distributes key-list pairs to Reduce
+tasks. Each Reduce task combines the elements on each list, by applying
+the function written by the user. The results produced by all the Reduce
+tasks form the output of the MapReduce process.
+✦ Reducers: It is often convenient to refer to the application of the Reduce
+function to a single key and its associated value list as a “reducer.”
+✦ Hadoop: This programming system is an open-source implementation of a
+distributed file system (HDFS, the Hadoop Distributed File System) and
+MapReduce (Hadoop itself). It is available through the Apache Foundation.
+✦ Managing Compute-Node Failures: MapReduce systems support restart
+of tasks that fail because their compute node, or the rack containing
+that node, fail. Because Map and Reduce tasks deliver their output only
+after they finish, it is possible to restart a failed task without concern for
+possible repetition of the effects of that task. It is necessary to restart the
+entire job only if the node at which the Master executes fails.
+✦ Applications of MapReduce: While not all parallel algorithms are suitable
+for implementation in the MapReduce framework, there are simple implementations of matrix-vector and matrix-matrix multiplication. Also,
+the principal operators of relational algebra are easily implemented in
+MapReduce.
+✦ Workflow Systems: MapReduce has been generalized to systems that support any acyclic collection of functions, each of which can be instantiated
+by any number of tasks, each responsible for executing that function on
+a portion of the data.
+✦ Recursive Workflows: When implementing a recursive collection of functions, it is not always possible to preserve the ability to restart any failed
+task, because recursive tasks may have produced output that was consumed by another task before the failure. A number of schemes for checkpointing parts of the computation to allow restart of single tasks, or restart
+all tasks from a recent point, have been proposed.
+✦ Communication-Cost : Many applications of MapReduce or similar systems do very simple things for each task. Then, the dominant cost is
+usually the cost of transporting data from where it is created to where
+it is used. In these cases, efficiency of a MapReduce algorithm can be
+estimated by calculating the sum of the sizes of the inputs to all the
+tasks.
+
+2.8. REFERENCES FOR CHAPTER 2
+
+69
+
+✦ Multiway Joins: It is sometimes more efficient to replicate tuples of the
+relations involved in a join and have the join of three or more relations
+computed as a single MapReduce job. The technique of Lagrangean multipliers can be used to optimize the degree of replication for each of the
+participating relations.
+✦ Star Joins: Analytic queries often involve a very large fact table joined
+with smaller dimension tables. These joins can always be done efficiently
+by the multiway-join technique. An alternative is to distribute the fact
+table and replicate the dimension tables permanently, using the same
+strategy as would be used if we were taking the multiway join of the fact
+table and every dimension table.
+✦ Replication Rate and Reducer Size: It is often convenient to measure
+communication by the replication rate, which is the communication per
+input. Also, the reducer size is the maximum number of inputs associated
+with any reducer. For many problems, it is possible to derive a lower
+bound on replication rate as a function of the reducer size.
+✦ Representing Problems as Graphs: It is possible to represent many problems that are amenable to MapReduce computation by a graph in which
+nodes represent inputs and outputs. An output is connected to all the
+inputs that are needed to compute that output.
+✦ Mapping Schemas: Given the graph of a problem, and given a reducer size,
+a mapping schema is an assignment of the inputs to one or more reducers
+so that no reducer is assigned more inputs than the reducer size permits,
+and yet for every output there is some reducer that gets all the inputs
+needed to compute that output. The requirement that there be a mapping
+schema for any MapReduce algorithm is a good expression of what makes
+MapReduce algorithms different from general parallel computations.
+✦ Matrix Multiplication by MapReduce: There is a family of one-pass MapReduce algorithms that performs multiplication of n × n matrices with
+the minimum possible replication rate r = 2n2 /q, where q is the reducer
+size. On the other hand, a two-pass MapReduce algorithm for the same
+problem with the same reducer size can use up to a factor of n less communication.
+
+2.8
+
+References for Chapter 2
+
+GFS, the Google File System, was described in [10]. The paper on Google’s
+MapReduce is [8]. Information about Hadoop and HDFS can be found at [11].
+More detail on relations and relational algebra can be found in [16].
+Clustera is covered in [9]. Hyracks (previously called Hyrax) is from [4].
+The Dryad system [13] has similar capabilities, but requires user creation of
+
+70
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+
+parallel tasks. That responsibility was automated through the introduction of
+DryadLINQ [17]. For a discussion of cluster implementation of recursion, see
+[1]. Pregel is from [14].
+A different approach to recursion was taken in HaLoop [5]. There, recursion
+is seen as an iteration, with the output of one round being input to the next
+round. Efficiency is obtained by managing the location of the intermediate data
+and the tasks that implement each round.
+There are a number of other systems built on a distributed file system and/or
+MapReduce, which have not been covered here, but may be worth knowing
+about. [6] describes BigTable, a Google implementation of an object store of
+very large size. A somewhat different direction was taken at Yahoo! with Pnuts
+[7]. The latter supports a limited form of transaction processing, for example.
+PIG [15] is an implementation of relational algebra on top of Hadoop. Similarly, Hive [12] implements a restricted form of SQL on top of Hadoop.
+The communication-cost model for MapReduce algorithms and the optimal
+implementations of multiway joins is from [3]. The material on replication rate,
+reducer size, and their relationship is from [2]. Solutions to Exercises 2.6.2 and
+2.6.3 can be found there.
+1. F.N. Afrati, V. Borkar, M. Carey, A. Polyzotis, and J.D. Ullman, “Cluster computing, recursion, and Datalog,” to appear in Proc. Datalog 2.0
+Workshop, Elsevier, 2011.
+2. F.N. Afrati, A. Das Sarma, S. Salihoglu, and J.D. Ullman, “Upper and
+lower bounds on the cost of a MapReduce computation.” to appear in
+Proc. Intl. Conf. on Very Large Databases, 2013. Also available as CoRR,
+abs/1206.4377.
+3. F.N. Afrati and J.D. Ullman, “Optimizing joins in a MapReduce environment,” Proc. Thirteenth Intl. Conf. on Extending Database Technology,
+2010.
+4. V. Borkar and M. Carey, “Hyrax: demonstrating a new foundation for
+data-parallel computation,”
+http://asterix.ics.uci.edu/pub/hyraxdemo.pdf
+Univ. of California, Irvine, 2010.
+5. Y. Bu, B. Howe, M. Balazinska, and M. Ernst, “HaLoop: efficient iterative data processing on large clusters,” Proc. Intl. Conf. on Very Large
+Databases, 2010.
+6. F. Chang, J. Dean, S. Ghemawat, W.C. Hsieh, D.A. Wallach, M. Burrows,
+T. Chandra, A. Fikes, and R.E. Gruber, “Bigtable: a distributed storage
+system for structured data,” ACM Transactions on Computer Systems
+26:2, pp. 1–26, 2008.
+
+2.8. REFERENCES FOR CHAPTER 2
+
+71
+
+7. B.F. Cooper, R. Ramakrishnan, U. Srivastava, A. Silberstein, P. Bohannon, H.-A. Jacobsen, N. Puz, D. Weaver, and R. Yerneni, “Pnuts: Yahoo!’s hosted data serving platform,” PVLDB 1:2, pp. 1277–1288, 2008.
+8. J. Dean and S. Ghemawat, “Mapreduce: simplified data processing on
+large clusters,” Comm. ACM 51:1, pp. 107–113, 2008.
+9. D.J. DeWitt, E. Paulson, E. Robinson, J.F. Naughton, J. Royalty, S.
+Shankar, and A. Krioukov, “Clustera: an integrated computation and
+data management system,” PVLDB 1:1, pp. 28–41, 2008.
+10. S. Ghemawat, H. Gobioff, and S.-T. Leung, “The Google file system,”
+19th ACM Symposium on Operating Systems Principles, 2003.
+11. hadoop.apache.org, Apache Foundation.
+12. hadoop.apache.org/hive, Apache Foundation.
+13. M. Isard, M. Budiu, Y. Yu, A. Birrell, and D. Fetterly. “Dryad: distributed data-parallel programs from sequential building blocks,” Proceedings of the 2nd ACM SIGOPS/EuroSys European Conference on Computer Systems, pp. 59–72, ACM, 2007.
+14. G. Malewicz, M.N. Austern, A.J.C. Sik, J.C. Denhert, H. Horn, N. Leiser,
+and G. Czajkowski, “Pregel: a system for large-scale graph processing,”
+Proc. ACM SIGMOD Conference, 2010.
+15. C. Olston, B. Reed, U. Srivastava, R. Kumar, and A. Tomkins, “Pig latin:
+a not-so-foreign language for data processing,” Proc. ACM SIGMOD Conference, pp. 1099–1110, 2008.
+16. J.D. Ullman and J. Widom, A First Course in Database Systems, Third
+Edition, Prentice-Hall, Upper Saddle River, NJ, 2008.
+17. Y. Yu, M. Isard, D. Fetterly, M. Budiu, I. Erlingsson, P.K. Gunda, and
+J. Currey, “DryadLINQ: a system for general-purpose distributed dataparallel computing using a high-level language,” OSDI, pp. 1–14, USENIX
+Association, 2008.
+
+72
+
+CHAPTER 2. MAPREDUCE AND THE NEW SOFTWARE STACK
+
+Chapter 3
+
+Finding Similar Items
+A fundamental data-mining problem is to examine data for “similar” items. We
+shall take up applications in Section 3.1, but an example would be looking at a
+collection of Web pages and finding near-duplicate pages. These pages could be
+plagiarisms, for example, or they could be mirrors that have almost the same
+content but differ in information about the host and about other mirrors.
+We begin by phrasing the problem of similarity as one of finding sets with
+a relatively large intersection. We show how the problem of finding textually
+similar documents can be turned into such a set problem by the technique known
+as “shingling.” Then, we introduce a technique called “minhashing,” which
+compresses large sets in such a way that we can still deduce the similarity of
+the underlying sets from their compressed versions. Other techniques that work
+when the required degree of similarity is very high are covered in Section 3.9.
+Another important problem that arises when we search for similar items of
+any kind is that there may be far too many pairs of items to test each pair for
+their degree of similarity, even if computing the similarity of any one pair can be
+made very easy. That concern motivates a technique called “locality-sensitive
+hashing,” for focusing our search on pairs that are most likely to be similar.
+Finally, we explore notions of “similarity” that are not expressible as intersection of sets. This study leads us to consider the theory of distance measures
+in arbitrary spaces. It also motivates a general framework for locality-sensitive
+hashing that applies for other definitions of “similarity.”
+
+3.1
+
+Applications of Near-Neighbor Search
+
+We shall focus initially on a particular notion of “similarity”: the similarity of
+sets by looking at the relative size of their intersection. This notion of similarity
+is called “Jaccard similarity,” and will be introduced in Section 3.1.1. We then
+examine some of the uses of finding similar sets. These include finding textually
+similar documents and collaborative filtering by finding similar customers and
+similar products. In order to turn the problem of textual similarity of documents
+73
+
+74
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+into one of set intersection, we use a technique called “shingling,” which is
+introduced in Section 3.2.
+
+3.1.1
+
+Jaccard Similarity of Sets
+
+The Jaccard similarity of sets S and T is |S ∩ T |/|S ∪ T |, that is, the ratio
+of the size of the intersection of S and T to the size of their union. We shall
+denote the Jaccard similarity of S and T by SIM(S, T ).
+Example 3.1 : In Fig. 3.1 we see two sets S and T . There are three elements
+in their intersection and a total of eight elements that appear in S or T or both.
+Thus, SIM(S, T ) = 3/8. ✷
+
+1
+0
+1
+0
+1
+0
+1
+0
+
+1
+0
+1
+0
+
+1
+0
+1
+0
+1
+0
+1
+0
+
+1
+0
+1
+0
+1
+0
+1
+0
+1
+0
+1
+0
+
+S
+T
+
+Figure 3.1: Two sets with Jaccard similarity 3/8
+
+3.1.2
+
+Similarity of Documents
+
+An important class of problems that Jaccard similarity addresses well is that
+of finding textually similar documents in a large corpus such as the Web or a
+collection of news articles. We should understand that the aspect of similarity
+we are looking at here is character-level similarity, not “similar meaning,” which
+requires us to examine the words in the documents and their uses. That problem
+is also interesting but is addressed by other techniques, which we hinted at in
+Section 1.3.1. However, textual similarity also has important uses. Many of
+these involve finding duplicates or near duplicates. First, let us observe that
+testing whether two documents are exact duplicates is easy; just compare the
+two documents character-by-character, and if they ever differ then they are not
+the same. However, in many applications, the documents are not identical, yet
+they share large portions of their text. Here are some examples:
+
+3.1. APPLICATIONS OF NEAR-NEIGHBOR SEARCH
+
+75
+
+Plagiarism
+Finding plagiarized documents tests our ability to find textual similarity. The
+plagiarizer may extract only some parts of a document for his own. He may alter
+a few words and may alter the order in which sentences of the original appear.
+Yet the resulting document may still contain 50% or more of the original. No
+simple process of comparing documents character by character will detect a
+sophisticated plagiarism.
+Mirror Pages
+It is common for important or popular Web sites to be duplicated at a number
+of hosts, in order to share the load. The pages of these mirror sites will be
+quite similar, but are rarely identical. For instance, they might each contain
+information associated with their particular host, and they might each have
+links to the other mirror sites but not to themselves. A related phenomenon
+is the appropriation of pages from one class to another. These pages might
+include class notes, assignments, and lecture slides. Similar pages might change
+the name of the course, year, and make small changes from year to year. It
+is important to be able to detect similar pages of these kinds, because search
+engines produce better results if they avoid showing two pages that are nearly
+identical within the first page of results.
+Articles from the Same Source
+It is common for one reporter to write a news article that gets distributed,
+say through the Associated Press, to many newspapers, which then publish
+the article on their Web sites. Each newspaper changes the article somewhat.
+They may cut out paragraphs, or even add material of their own. They most
+likely will surround the article by their own logo, ads, and links to other articles
+at their site. However, the core of each newspaper’s page will be the original
+article. News aggregators, such as Google News, try to find all versions of such
+an article, in order to show only one, and that task requires finding when two
+Web pages are textually similar, although not identical.1
+
+3.1.3
+
+Collaborative Filtering as a Similar-Sets Problem
+
+Another class of applications where similarity of sets is very important is called
+collaborative filtering, a process whereby we recommend to users items that were
+liked by other users who have exhibited similar tastes. We shall investigate
+collaborative filtering in detail in Section 9.3, but for the moment let us see
+some common examples.
+1 News aggregation also involves finding articles that are about the same topic, even though
+not textually similar. This problem too can yield to a similarity search, but it requires
+techniques other than Jaccard similarity of sets.
+
+76
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+On-Line Purchases
+Amazon.com has millions of customers and sells millions of items. Its database
+records which items have been bought by which customers. We can say two customers are similar if their sets of purchased items have a high Jaccard similarity.
+Likewise, two items that have sets of purchasers with high Jaccard similarity
+will be deemed similar. Note that, while we might expect mirror sites to have
+Jaccard similarity above 90%, it is unlikely that any two customers have Jaccard similarity that high (unless they have purchased only one item). Even a
+Jaccard similarity like 20% might be unusual enough to identify customers with
+similar tastes. The same observation holds for items; Jaccard similarities need
+not be very high to be significant.
+Collaborative filtering requires several tools, in addition to finding similar
+customers or items, as we discuss in Chapter 9. For example, two Amazon
+customers who like science-fiction might each buy many science-fiction books,
+but only a few of these will be in common. However, by combining similarityfinding with clustering (Chapter 7), we might be able to discover that sciencefiction books are mutually similar and put them in one group. Then, we can
+get a more powerful notion of customer-similarity by asking whether they made
+purchases within many of the same groups.
+Movie Ratings
+Netflix records which movies each of its customers rented, and also the ratings
+assigned to those movies by the customers. We can see movies as similar if they
+were rented or rated highly by many of the same customers, and see customers
+as similar if they rented or rated highly many of the same movies. The same
+observations that we made for Amazon above apply in this situation: similarities
+need not be high to be significant, and clustering movies by genre will make
+things easier.
+When our data consists of ratings rather than binary decisions (bought/did
+not buy or liked/disliked), we cannot rely simply on sets as representations of
+customers or items. Some options are:
+1. Ignore low-rated customer/movie pairs; that is, treat these events as if
+the customer never watched the movie.
+2. When comparing customers, imagine two set elements for each movie,
+“liked” and “hated.” If a customer rated a movie highly, put the “liked”
+for that movie in the customer’s set. If they gave a low rating to a movie,
+put “hated” for that movie in their set. Then, we can look for high Jaccard
+similarity among these sets. We can do a similar trick when comparing
+movies.
+3. If ratings are 1-to-5-stars, put a movie in a customer’s set n times if
+they rated the movie n-stars. Then, use Jaccard similarity for bags when
+measuring the similarity of customers. The Jaccard similarity for bags
+
+3.2. SHINGLING OF DOCUMENTS
+
+77
+
+B and C is defined by counting an element n times in the intersection if
+n is the minimum of the number of times the element appears in B and
+C. In the union, we count the element the sum of the number of times it
+appears in B and in C.2
+Example 3.2 : The bag-similarity of bags {a, a, a, b} and {a, a, b, b, c} is 1/3.
+The intersection counts a twice and b once, so its size is 3. The size of the
+union of two bags is always the sum of the sizes of the two bags, or 9 in this
+case. Since the highest possible Jaccard similarity for bags is 1/2, the score
+of 1/3 indicates the two bags are quite similar, as should be apparent from an
+examination of their contents. ✷
+
+3.1.4
+
+Exercises for Section 3.1
+
+Exercise 3.1.1 : Compute the Jaccard similarities of each pair of the following
+three sets: {1, 2, 3, 4}, {2, 3, 5, 7}, and {2, 4, 6}.
+Exercise 3.1.2 : Compute the Jaccard bag similarity of each pair of the following three bags: {1, 1, 1, 2}, {1, 1, 2, 2, 3}, and {1, 2, 3, 4}.
+!! Exercise 3.1.3 : Suppose we have a universal set U of n elements, and we
+choose two subsets S and T at random, each with m of the n elements. What
+is the expected value of the Jaccard similarity of S and T ?
+
+3.2
+
+Shingling of Documents
+
+The most effective way to represent documents as sets, for the purpose of identifying lexically similar documents is to construct from the document the set
+of short strings that appear within it. If we do so, then documents that share
+pieces as short as sentences or even phrases will have many common elements
+in their sets, even if those sentences appear in different orders in the two documents. In this section, we introduce the simplest and most common approach,
+shingling, as well as an interesting variation.
+
+3.2.1
+
+k-Shingles
+
+A document is a string of characters. Define a k-shingle for a document to be
+any substring of length k found within the document. Then, we may associate
+2 Although the union for bags is normally (e.g., in the SQL standard) defined to have the
+sum of the number of copies in the two bags, this definition causes some inconsistency with
+the Jaccard similarity for sets. Under this definition of bag union, the maximum Jaccard
+similarity is 1/2, not 1, since the union of a set with itself has twice as many elements as the
+intersection of the same set with itself. If we prefer to have the Jaccard similarity of a set
+with itself be 1, we can redefine the union of bags to have each element appear the maximum
+number of times it appears in either of the two bags. This change does not simply double the
+similarity in each case, but it also gives a reasonable measure of bag similarity.
+
+78
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+with each document the set of k-shingles that appear one or more times within
+that document.
+Example 3.3 : Suppose our document D is the string abcdabd, and we pick
+k = 2. Then the set of 2-shingles for D is {ab, bc, cd, da, bd}.
+Note that the substring ab appears twice within D, but appears only once
+as a shingle. A variation of shingling produces a bag, rather than a set, so each
+shingle would appear in the result as many times as it appears in the document.
+However, we shall not use bags of shingles here. ✷
+There are several options regarding how white space (blank, tab, newline,
+etc.) is treated. It probably makes sense to replace any sequence of one or more
+white-space characters by a single blank. That way, we distinguish shingles that
+cover two or more words from those that do not.
+Example 3.4 : If we use k = 9, but eliminate whitespace altogether, then we
+would see some lexical similarity in the sentences “The plane was ready for
+touch down”. and “The quarterback scored a touchdown”. However, if we
+retain the blanks, then the first has shingles touch dow and ouch down, while
+the second has touchdown. If we eliminated the blanks, then both would have
+touchdown. ✷
+
+3.2.2
+
+Choosing the Shingle Size
+
+We can pick k to be any constant we like. However, if we pick k too small, then
+we would expect most sequences of k characters to appear in most documents.
+If so, then we could have documents whose shingle-sets had high Jaccard similarity, yet the documents had none of the same sentences or even phrases. As
+an extreme example, if we use k = 1, most Web pages will have most of the
+common characters and few other characters, so almost all Web pages will have
+high similarity.
+How large k should be depends on how long typical documents are and how
+large the set of typical characters is. The important thing to remember is:
+• k should be picked large enough that the probability of any given shingle
+appearing in any given document is low.
+Thus, if our corpus of documents is emails, picking k = 5 should be fine.
+To see why, suppose that only letters and a general white-space character appear in emails (although in practice, most of the printable ASCII characters
+can be expected to appear occasionally). If so, then there would be 275 =
+14,348,907 possible shingles. Since the typical email is much smaller than 14
+million characters long, we would expect k = 5 to work well, and indeed it does.
+However, the calculation is a bit more subtle. Surely, more than 27 characters appear in emails, However, all characters do not appear with equal probability. Common letters and blanks dominate, while ”z” and other letters that
+
+3.2. SHINGLING OF DOCUMENTS
+
+79
+
+have high point-value in Scrabble are rare. Thus, even short emails will have
+many 5-shingles consisting of common letters, and the chances of unrelated
+emails sharing these common shingles is greater than would be implied by the
+calculation in the paragraph above. A good rule of thumb is to imagine that
+there are only 20 characters and estimate the number of k-shingles as 20k . For
+large documents, such as research articles, choice k = 9 is considered safe.
+
+3.2.3
+
+Hashing Shingles
+
+Instead of using substrings directly as shingles, we can pick a hash function
+that maps strings of length k to some number of buckets and treat the resulting
+bucket number as the shingle. The set representing a document is then the
+set of integers that are bucket numbers of one or more k-shingles that appear
+in the document. For instance, we could construct the set of 9-shingles for a
+document and then map each of those 9-shingles to a bucket number in the
+range 0 to 232 − 1. Thus, each shingle is represented by four bytes instead
+of nine. Not only has the data been compacted, but we can now manipulate
+(hashed) shingles by single-word machine operations.
+Notice that we can differentiate documents better if we use 9-shingles and
+hash them down to four bytes than to use 4-shingles, even though the space used
+to represent a shingle is the same. The reason was touched upon in Section 3.2.2.
+If we use 4-shingles, most sequences of four bytes are unlikely or impossible to
+find in typical documents. Thus, the effective number of different shingles is
+much less than 232 − 1. If, as in Section 3.2.2, we assume only 20 characters are
+frequent in English text, then the number of different 4-shingles that are likely
+to occur is only (20)4 = 160,000. However, if we use 9-shingles, there are many
+more than 232 likely shingles. When we hash them down to four bytes, we can
+expect almost any sequence of four bytes to be possible, as was discussed in
+Section 1.3.2.
+
+3.2.4
+
+Shingles Built from Words
+
+An alternative form of shingle has proved effective for the problem of identifying
+similar news articles, mentioned in Section 3.1.2. The exploitable distinction for
+this problem is that the news articles are written in a rather different style than
+are other elements that typically appear on the page with the article. News
+articles, and most prose, have a lot of stop words (see Section 1.3.1), the most
+common words such as “and,” “you,” “to,” and so on. In many applications,
+we want to ignore stop words, since they don’t tell us anything useful about
+the article, such as its topic.
+However, for the problem of finding similar news articles, it was found that
+defining a shingle to be a stop word followed by the next two words, regardless
+of whether or not they were stop words, formed a useful set of shingles. The
+advantage of this approach is that the news article would then contribute more
+shingles to the set representing the Web page than would the surrounding ele-
+
+80
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+ments. Recall that the goal of the exercise is to find pages that had the same
+articles, regardless of the surrounding elements. By biasing the set of shingles
+in favor of the article, pages with the same article and different surrounding
+material have higher Jaccard similarity than pages with the same surrounding
+material but with a different article.
+Example 3.5 : An ad might have the simple text “Buy Sudzo.” However, a
+news article with the same idea might read something like “A spokesperson
+for the Sudzo Corporation revealed today that studies have shown it is
+good for people to buy Sudzo products.” Here, we have italicized all the
+likely stop words, although there is no set number of the most frequent words
+that should be considered stop words. The first three shingles made from a
+stop word and the next two following are:
+A spokesperson for
+for the Sudzo
+the Sudzo Corporation
+There are nine shingles from the sentence, but none from the “ad.”
+
+3.2.5
+
+✷
+
+Exercises for Section 3.2
+
+Exercise 3.2.1 : What are the first ten 3-shingles in the first sentence of Section 3.2?
+Exercise 3.2.2 : If we use the stop-word-based shingles of Section 3.2.4, and
+we take the stop words to be all the words of three or fewer letters, then what
+are the shingles in the first sentence of Section 3.2?
+Exercise 3.2.3 : What is the largest number of k-shingles a document of n
+bytes can have? You may assume that the size of the alphabet is large enough
+that the number of possible strings of length k is at least as n.
+
+3.3
+
+Similarity-Preserving Summaries of Sets
+
+Sets of shingles are large. Even if we hash them to four bytes each, the space
+needed to store a set is still roughly four times the space taken by the document.
+If we have millions of documents, it may well not be possible to store all the
+shingle-sets in main memory.3
+Our goal in this section is to replace large sets by much smaller representations called “signatures.” The important property we need for signatures is
+that we can compare the signatures of two sets and estimate the Jaccard similarity of the underlying sets from the signatures alone. It is not possible that
+3 There is another serious concern: even if the sets fit in main memory, the number of pairs
+may be too great for us to evaluate the similarity of each pair. We take up the solution to
+this problem in Section 3.4.
+
+3.3. SIMILARITY-PRESERVING SUMMARIES OF SETS
+
+81
+
+the signatures give the exact similarity of the sets they represent, but the estimates they provide are close, and the larger the signatures the more accurate
+the estimates. For example, if we replace the 200,000-byte hashed-shingle sets
+that derive from 50,000-byte documents by signatures of 1000 bytes, we can
+usually get within a few percent.
+
+3.3.1
+
+Matrix Representation of Sets
+
+Before explaining how it is possible to construct small signatures from large
+sets, it is helpful to visualize a collection of sets as their characteristic matrix.
+The columns of the matrix correspond to the sets, and the rows correspond to
+elements of the universal set from which elements of the sets are drawn. There
+is a 1 in row r and column c if the element for row r is a member of the set for
+column c. Otherwise the value in position (r, c) is 0.
+Element
+a
+b
+c
+d
+e
+
+S1
+1
+0
+0
+1
+0
+
+S2
+0
+0
+1
+0
+0
+
+S3
+0
+1
+0
+1
+1
+
+S4
+1
+0
+1
+1
+0
+
+Figure 3.2: A matrix representing four sets
+Example 3.6 : In Fig. 3.2 is an example of a matrix representing sets chosen
+from the universal set {a, b, c, d, e}. Here, S1 = {a, d}, S2 = {c}, S3 = {b, d, e},
+and S4 = {a, c, d}. The top row and leftmost columns are not part of the matrix,
+but are present only to remind us what the rows and columns represent. ✷
+It is important to remember that the characteristic matrix is unlikely to be
+the way the data is stored, but it is useful as a way to visualize the data. For one
+reason not to store data as a matrix, these matrices are almost always sparse
+(they have many more 0’s than 1’s) in practice. It saves space to represent a
+sparse matrix of 0’s and 1’s by the positions in which the 1’s appear. For another
+reason, the data is usually stored in some other format for other purposes.
+As an example, if rows are products, and columns are customers, represented
+by the set of products they bought, then this data would really appear in a
+database table of purchases. A tuple in this table would list the item, the
+purchaser, and probably other details about the purchase, such as the date and
+the credit card used.
+
+3.3.2
+
+Minhashing
+
+The signatures we desire to construct for sets are composed of the results of a
+large number of calculations, say several hundred, each of which is a “minhash”
+
+82
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+of the characteristic matrix. In this section, we shall learn how a minhash is
+computed in principle, and in later sections we shall see how a good approximation to the minhash is computed in practice.
+To minhash a set represented by a column of the characteristic matrix, pick
+a permutation of the rows. The minhash value of any column is the number of
+the first row, in the permuted order, in which the column has a 1.
+Example 3.7 : Let us suppose we pick the order of rows beadc for the matrix
+of Fig. 3.2. This permutation defines a minhash function h that maps sets to
+rows. Let us compute the minhash value of set S1 according to h. The first
+column, which is the column for set S1 , has 0 in row b, so we proceed to row e,
+the second in the permuted order. There is again a 0 in the column for S1 , so
+we proceed to row a, where we find a 1. Thus. h(S1 ) = a.
+Element
+b
+e
+a
+d
+c
+
+S1
+0
+0
+1
+1
+0
+
+S2
+0
+0
+0
+0
+1
+
+S3
+1
+1
+0
+1
+0
+
+S4
+0
+0
+1
+1
+1
+
+Figure 3.3: A permutation of the rows of Fig. 3.2
+Although it is not physically possible to permute very large characteristic
+matrices, the minhash function h implicitly reorders the rows of the matrix of
+Fig. 3.2 so it becomes the matrix of Fig. 3.3. In this matrix, we can read off
+the values of h by scanning from the top until we come to a 1. Thus, we see
+that h(S2 ) = c, h(S3 ) = b, and h(S4 ) = a. ✷
+
+3.3.3
+
+Minhashing and Jaccard Similarity
+
+There is a remarkable connection between minhashing and Jaccard similarity
+of the sets that are minhashed.
+• The probability that the minhash function for a random permutation of
+rows produces the same value for two sets equals the Jaccard similarity
+of those sets.
+To see why, we need to picture the columns for those two sets. If we restrict
+ourselves to the columns for sets S1 and S2 , then rows can be divided into three
+classes:
+1. Type X rows have 1 in both columns.
+2. Type Y rows have 1 in one of the columns and 0 in the other.
+
+3.3. SIMILARITY-PRESERVING SUMMARIES OF SETS
+
+83
+
+3. Type Z rows have 0 in both columns.
+Since the matrix is sparse, most rows are of type Z. However, it is the ratio
+of the numbers of type X and type Y rows that determine both SIM(S1 , S2 )
+and the probability that h(S1 ) = h(S2 ). Let there be x rows of type X and y
+rows of type Y . Then SIM(S1 , S2 ) = x/(x + y). The reason is that x is the size
+of S1 ∩ S2 and x + y is the size of S1 ∪ S2 .
+Now, consider the probability that h(S1 ) = h(S2 ). If we imagine the rows
+permuted randomly, and we proceed from the top, the probability that we shall
+meet a type X row before we meet a type Y row is x/(x + y). But if the
+first row from the top other than type Z rows is a type X row, then surely
+h(S1 ) = h(S2 ). On the other hand, if the first row other than a type Z row
+that we meet is a type Y row, then the set with a 1 gets that row as its minhash
+value. However the set with a 0 in that row surely gets some row further down
+the permuted list. Thus, we know h(S1 ) 6= h(S2 ) if we first meet a type Y row.
+We conclude the probability that h(S1 ) = h(S2 ) is x/(x + y), which is also the
+Jaccard similarity of S1 and S2 .
+
+3.3.4
+
+Minhash Signatures
+
+Again think of a collection of sets represented by their characteristic matrix M .
+To represent sets, we pick at random some number n of permutations of the
+rows of M . Perhaps 100 permutations or several hundred permutations will do.
+Call the minhash functions determined by these permutations h1 , h2 , . . . , hn .
+From the column representing set S, construct the minhash signature for S, the
+vector [h1 (S), h2 (S), . . . , hn (S)]. We normally represent this list of hash-values
+as a column. Thus, we can form from matrix M a signature matrix, in which
+the ith column of M is replaced by the minhash signature for (the set of) the
+ith column.
+Note that the signature matrix has the same number of columns as M but
+only n rows. Even if M is not represented explicitly, but in some compressed
+form suitable for a sparse matrix (e.g., by the locations of its 1’s), it is normal
+for the signature matrix to be much smaller than M .
+
+3.3.5
+
+Computing Minhash Signatures
+
+It is not feasible to permute a large characteristic matrix explicitly. Even picking
+a random permutation of millions or billions of rows is time-consuming, and
+the necessary sorting of the rows would take even more time. Thus, permuted
+matrices like that suggested by Fig. 3.3, while conceptually appealing, are not
+implementable.
+Fortunately, it is possible to simulate the effect of a random permutation by
+a random hash function that maps row numbers to as many buckets as there
+are rows. A hash function that maps integers 0, 1, . . . , k − 1 to bucket numbers
+0 through k − 1 typically will map some pairs of integers to the same bucket and
+leave other buckets unfilled. However, the difference is unimportant as long as
+
+84
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+k is large and there are not too many collisions. We can maintain the fiction
+that our hash function h “permutes” row r to position h(r) in the permuted
+order.
+Thus, instead of picking n random permutations of rows, we pick n randomly
+chosen hash functions h1 , h2 , . . . , hn on the rows. We construct the signature
+matrix by considering each row in their given order. Let SIG(i, c) be the element
+of the signature matrix for the ith hash function and column c. Initially, set
+SIG(i, c) to ∞ for all i and c. We handle row r by doing the following:
+1. Compute h1 (r), h2 (r), . . . , hn (r).
+2. For each column c do the following:
+(a) If c has 0 in row r, do nothing.
+(b) However, if c has 1 in row r, then for each i = 1, 2, . . . , n set SIG(i, c)
+to the smaller of the current value of SIG(i, c) and hi (r).
+Row
+0
+1
+2
+3
+4
+
+S1
+1
+0
+0
+1
+0
+
+S2
+0
+0
+1
+0
+0
+
+S3
+0
+1
+0
+1
+1
+
+S4
+1
+0
+1
+1
+0
+
+x + 1 mod 5
+1
+2
+3
+4
+0
+
+3x + 1 mod 5
+1
+4
+2
+0
+3
+
+Figure 3.4: Hash functions computed for the matrix of Fig. 3.2
+Example 3.8 : Let us reconsider the characteristic matrix of Fig. 3.2, which
+we reproduce with some additional data as Fig. 3.4. We have replaced the
+letters naming the rows by integers 0 through 4. We have also chosen two hash
+functions: h1 (x) = x+1 mod 5 and h2 (x) = 3x+1 mod 5. The values of these
+two functions applied to the row numbers are given in the last two columns of
+Fig. 3.4. Notice that these simple hash functions are true permutations of the
+rows, but a true permutation is only possible because the number of rows, 5, is
+a prime. In general, there will be collisions, where two rows get the same hash
+value.
+Now, let us simulate the algorithm for computing the signature matrix.
+Initially, this matrix consists of all ∞’s:
+h1
+h2
+
+S1
+∞
+∞
+
+S2
+∞
+∞
+
+S3
+∞
+∞
+
+S4
+∞
+∞
+
+First, we consider row 0 of Fig. 3.4. We see that the values of h1 (0) and
+h2 (0) are both 1. The row numbered 0 has 1’s in the columns for sets S1 and
+
+3.3. SIMILARITY-PRESERVING SUMMARIES OF SETS
+
+85
+
+S4 , so only these columns of the signature matrix can change. As 1 is less than
+∞, we do in fact change both values in the columns for S1 and S4 . The current
+estimate of the signature matrix is thus:
+h1
+h2
+
+S1
+1
+1
+
+S2
+∞
+∞
+
+S3
+∞
+∞
+
+S4
+1
+1
+
+Now, we move to the row numbered 1 in Fig. 3.4. This row has 1 only in
+S3 , and its hash values are h1 (1) = 2 and h2 (1) = 4. Thus, we set SIG(1, 3) to 2
+and SIG(2, 3) to 4. All other signature entries remain as they are because their
+columns have 0 in the row numbered 1. The new signature matrix:
+h1
+h2
+
+S1
+1
+1
+
+S2
+∞
+∞
+
+S3
+2
+4
+
+S4
+1
+1
+
+The row of Fig. 3.4 numbered 2 has 1’s in the columns for S2 and S4 , and
+its hash values are h1 (2) = 3 and h2 (2) = 2. We could change the values in the
+signature for S4 , but the values in this column of the signature matrix, [1, 1], are
+each less than the corresponding hash values [3, 2]. However, since the column
+for S2 still has ∞’s, we replace it by [3, 2], resulting in:
+h1
+h2
+
+S1
+1
+1
+
+S2
+3
+2
+
+S3
+2
+4
+
+S4
+1
+1
+
+Next comes the row numbered 3 in Fig. 3.4. Here, all columns but S2 have
+1, and the hash values are h1 (3) = 4 and h2 (3) = 0. The value 4 for h1 exceeds
+what is already in the signature matrix for all the columns, so we shall not
+change any values in the first row of the signature matrix. However, the value
+0 for h2 is less than what is already present, so we lower SIG(2, 1), SIG(2, 3) and
+SIG(2, 4) to 0. Note that we cannot lower SIG(2, 2) because the column for S2 in
+Fig. 3.4 has 0 in the row we are currently considering. The resulting signature
+matrix:
+h1
+h2
+
+S1
+1
+0
+
+S2
+3
+2
+
+S3
+2
+0
+
+S4
+1
+0
+
+Finally, consider the row of Fig. 3.4 numbered 4. h1 (4) = 0 and h2 (4) = 3.
+Since row 4 has 1 only in the column for S3 , we only compare the current
+signature column for that set, [2, 0] with the hash values [0, 3]. Since 0 < 2, we
+change SIG(1, 3) to 0, but since 3 > 0 we do not change SIG(2, 3). The final
+signature matrix is:
+h1
+h2
+
+S1
+1
+0
+
+S2
+3
+2
+
+S3
+0
+0
+
+S4
+1
+0
+
+86
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+We can estimate the Jaccard similarities of the underlying sets from this
+signature matrix. Notice that columns 1 and 4 are identical, so we guess that
+SIM(S1 , S4 ) = 1.0. If we look at Fig. 3.4, we see that the true Jaccard similarity
+of S1 and S4 is 2/3. Remember that the fraction of rows that agree in the
+signature matrix is only an estimate of the true Jaccard similarity, and this
+example is much too small for the law of large numbers to assure that the
+estimates are close. For additional examples, the signature columns for S1 and
+S3 agree in half the rows (true similarity 1/4), while the signatures of S1 and
+S2 estimate 0 as their Jaccard similarity (the correct value). ✷
+
+3.3.6
+
+Exercises for Section 3.3
+
+Exercise 3.3.1 : Verify the theorem from Section 3.3.3, which relates the Jaccard similarity to the probability of minhashing to equal values, for the particular case of Fig. 3.2.
+(a) Compute the Jaccard similarity of each of the pairs of columns in Fig. 3.2.
+! (b) Compute, for each pair of columns of that figure, the fraction of the 120
+permutations of the rows that make the two columns hash to the same
+value.
+Exercise 3.3.2 : Using the data from Fig. 3.4, add to the signatures of the
+columns the values of the following hash functions:
+(a) h3 (x) = 2x + 4 mod 5.
+(b) h4 (x) = 3x − 1 mod 5.
+Element
+0
+1
+2
+3
+4
+5
+
+S1
+0
+0
+1
+0
+0
+1
+
+S2
+1
+1
+0
+0
+0
+0
+
+S3
+0
+0
+0
+1
+1
+0
+
+S4
+1
+0
+1
+0
+1
+0
+
+Figure 3.5: Matrix for Exercise 3.3.3
+Exercise 3.3.3 : In Fig. 3.5 is a matrix with six rows.
+(a) Compute the minhash signature for each column if we use the following
+three hash functions: h1 (x) = 2x + 1 mod 6; h2 (x) = 3x + 2 mod 6;
+h3 (x) = 5x + 2 mod 6.
+
+3.4. LOCALITY-SENSITIVE HASHING FOR DOCUMENTS
+
+87
+
+(b) Which of these hash functions are true permutations?
+(c) How close are the estimated Jaccard similarities for the six pairs of columns
+to the true Jaccard similarities?
+! Exercise 3.3.4 : Now that we know Jaccard similarity is related to the probability that two sets minhash to the same value, reconsider Exercise 3.1.3. Can
+you use this relationship to simplify the problem of computing the expected
+Jaccard similarity of randomly chosen sets?
+! Exercise 3.3.5 : Prove that if the Jaccard similarity of two columns is 0, then
+minhashing always gives a correct estimate of the Jaccard similarity.
+!! Exercise 3.3.6 : One might expect that we could estimate the Jaccard similarity of columns without using all possible permutations of rows. For example,
+we could only allow cyclic permutations; i.e., start at a randomly chosen row
+r, which becomes the first in the order, followed by rows r + 1, r + 2, and so
+on, down to the last row, and then continuing with the first row, second row,
+and so on, down to row r − 1. There are only n such permutations if there are
+n rows. However, these permutations are not sufficient to estimate the Jaccard
+similarity correctly. Give an example of a two-column matrix where averaging
+over all the cyclic permutations does not give the Jaccard similarity.
+! Exercise 3.3.7 : Suppose we want to use a MapReduce framework to compute
+minhash signatures. If the matrix is stored in chunks that correspond to some
+columns, then it is quite easy to exploit parallelism. Each Map task gets some
+of the columns and all the hash functions, and computes the minhash signatures
+of its given columns. However, suppose the matrix were chunked by rows, so
+that a Map task is given the hash functions and a set of rows to work on. Design
+Map and Reduce functions to exploit MapReduce with data in this form.
+
+3.4
+
+Locality-Sensitive Hashing for Documents
+
+Even though we can use minhashing to compress large documents into small
+signatures and preserve the expected similarity of any pair of documents, it
+still may be impossible to find the pairs with greatest similarity efficiently. The
+reason is that the number of pairs of documents may be too large, even if there
+are not too many documents.
+Example 3.9 : Suppose we have a million documents, and we use signatures
+of length 250. Then we use 1000 bytes per document for the signatures, and
+the entire data fits in a gigabyte
+ – less than a typical main memory of a laptop.
+However, there are 1,000,000
+or half a trillion pairs of documents. If it takes a
+2
+microsecond to compute the similarity of two signatures, then it takes almost
+six days to compute all the similarities on that laptop. ✷
+
+88
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+If our goal is to compute the similarity of every pair, there is nothing we
+can do to reduce the work, although parallelism can reduce the elapsed time.
+However, often we want only the most similar pairs or all pairs that are above
+some lower bound in similarity. If so, then we need to focus our attention only
+on pairs that are likely to be similar, without investigating every pair. There is
+a general theory of how to provide such focus, called locality-sensitive hashing
+(LSH) or near-neighbor search. In this section we shall consider a specific form
+of LSH, designed for the particular problem we have been studying: documents,
+represented by shingle-sets, then minhashed to short signatures. In Section 3.6
+we present the general theory of locality-sensitive hashing and a number of
+applications and related techniques.
+
+3.4.1
+
+LSH for Minhash Signatures
+
+One general approach to LSH is to “hash” items several times, in such a way that
+similar items are more likely to be hashed to the same bucket than dissimilar
+items are. We then consider any pair that hashed to the same bucket for any
+of the hashings to be a candidate pair. We check only the candidate pairs for
+similarity. The hope is that most of the dissimilar pairs will never hash to the
+same bucket, and therefore will never be checked. Those dissimilar pairs that
+do hash to the same bucket are false positives; we hope these will be only a
+small fraction of all pairs. We also hope that most of the truly similar pairs
+will hash to the same bucket under at least one of the hash functions. Those
+that do not are false negatives; we hope these will be only a small fraction of
+the truly similar pairs.
+If we have minhash signatures for the items, an effective way to choose the
+hashings is to divide the signature matrix into b bands consisting of r rows
+each. For each band, there is a hash function that takes vectors of r integers
+(the portion of one column within that band) and hashes them to some large
+number of buckets. We can use the same hash function for all the bands, but
+we use a separate bucket array for each band, so columns with the same vector
+in different bands will not hash to the same bucket.
+Example 3.10 : Figure 3.6 shows part of a signature matrix of 12 rows divided
+into four bands of three rows each. The second and fourth of the explicitly
+shown columns each have the column vector [0, 2, 1] in the first band, so they
+will definitely hash to the same bucket in the hashing for the first band. Thus,
+regardless of what those columns look like in the other three bands, this pair
+of columns will be a candidate pair. It is possible that other columns, such as
+the first two shown explicitly, will also hash to the same bucket according to
+the hashing of the first band. However, since their column vectors are different,
+[1, 3, 0] and [0, 2, 1], and there are many buckets for each hashing, we expect the
+chances of an accidental collision to be very small. We shall normally assume
+that two vectors hash to the same bucket if and only if they are identical.
+Two columns that do not agree in band 1 have three other chances to become
+a candidate pair; they might be identical in any one of these other bands.
+
+3.4. LOCALITY-SENSITIVE HASHING FOR DOCUMENTS
+
+band 1
+
+...
+
+10002
+32122
+01311
+
+89
+
+...
+
+band 2
+
+band 3
+
+band 4
+
+Figure 3.6: Dividing a signature matrix into four bands of three rows per band
+However, observe that the more similar two columns are, the more likely it is
+that they will be identical in some band. Thus, intuitively the banding strategy
+makes similar columns much more likely to be candidate pairs than dissimilar
+pairs. ✷
+
+3.4.2
+
+Analysis of the Banding Technique
+
+Suppose we use b bands of r rows each, and suppose that a particular pair of
+documents have Jaccard similarity s. Recall from Section 3.3.3 that the probability the minhash signatures for these documents agree in any one particular
+row of the signature matrix is s. We can calculate the probability that these
+documents (or rather their signatures) become a candidate pair as follows:
+1. The probability that the signatures agree in all rows of one particular
+band is sr .
+2. The probability that the signatures disagree in at least one row of a particular band is 1 − sr .
+3. The probability that the signatures disagree in at least one row of each
+of the bands is (1 − sr )b .
+4. The probability that the signatures agree in all the rows of at least one
+band, and therefore become a candidate pair, is 1 − (1 − sr )b .
+It may not be obvious, but regardless of the chosen constants b and r, this
+function has the form of an S-curve, as suggested in Fig. 3.7. The threshold, that
+is, the value of similarity s at which the probability of becoming a candidate
+is 1/2, is a function of b and r. The threshold is roughly where the rise is
+the steepest, and for large b and r there we find that pairs with similarity
+above the threshold are very likely to become candidates, while those below the
+threshold are unlikely to become candidates – exactly the situation we want.
+
+90
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+Probability
+of becoming
+a candidate
+
+0
+
+Jaccard similarity
+of documents
+
+1
+
+Figure 3.7: The S-curve
+An approximation to the threshold is (1/b)1/r . For example, if b = 16 and
+r = 4, then the threshold is approximately at s = 1/2, since the 4th root of
+1/16 is 1/2.
+Example 3.11 : Let us consider the case b = 20 and r = 5. That is, we suppose
+we have signatures of length 100, divided into twenty bands of five rows each.
+Figure 3.8 tabulates some of the values of the function 1 − (1 − s5 )20 . Notice
+that the threshold, the value of s at which the curve has risen halfway, is just
+slightly more than 0.5. Also notice that the curve is not exactly the ideal step
+function that jumps from 0 to 1 at the threshold, but the slope of the curve
+in the middle is significant. For example, it rises by more than 0.6 going from
+s = 0.4 to s = 0.6, so the slope in the middle is greater than 3.
+s
+.2
+.3
+.4
+.5
+.6
+.7
+.8
+
+1 − (1 − sr )b
+.006
+.047
+.186
+.470
+.802
+.975
+.9996
+
+Figure 3.8: Values of the S-curve for b = 20 and r = 5
+For example, at s = 0.8, 1 − (0.8)5 is about 0.672. If you raise this number
+to the 20th power, you get about 0.00035. Subtracting this fraction from 1
+
+3.4. LOCALITY-SENSITIVE HASHING FOR DOCUMENTS
+
+91
+
+yields 0.99965. That is, if we consider two documents with 80% similarity, then
+in any one band, they have only about a 33% chance of agreeing in all five rows
+and thus becoming a candidate pair. However, there are 20 bands and thus 20
+chances to become a candidate. Only roughly one in 3000 pairs that are as high
+as 80% similar will fail to become a candidate pair and thus be a false negative.
+✷
+
+3.4.3
+
+Combining the Techniques
+
+We can now give an approach to finding the set of candidate pairs for similar
+documents and then discovering the truly similar documents among them. It
+must be emphasized that this approach can produce false negatives – pairs of
+similar documents that are not identified as such because they never become
+a candidate pair. There will also be false positives – candidate pairs that are
+evaluated, but are found not to be sufficiently similar.
+1. Pick a value of k and construct from each document the set of k-shingles.
+Optionally, hash the k-shingles to shorter bucket numbers.
+2. Sort the document-shingle pairs to order them by shingle.
+3. Pick a length n for the minhash signatures. Feed the sorted list to the
+algorithm of Section 3.3.5 to compute the minhash signatures for all the
+documents.
+4. Choose a threshold t that defines how similar documents have to be in
+order for them to be regarded as a desired “similar pair.” Pick a number
+of bands b and a number of rows r such that br = n, and the threshold
+t is approximately (1/b)1/r . If avoidance of false negatives is important,
+you may wish to select b and r to produce a threshold lower than t; if
+speed is important and you wish to limit false positives, select b and r to
+produce a higher threshold.
+5. Construct candidate pairs by applying the LSH technique of Section 3.4.1.
+6. Examine each candidate pair’s signatures and determine whether the fraction of components in which they agree is at least t.
+7. Optionally, if the signatures are sufficiently similar, go to the documents
+themselves and check that they are truly similar, rather than documents
+that, by luck, had similar signatures.
+
+3.4.4
+
+Exercises for Section 3.4
+
+Exercise 3.4.1 : Evaluate the S-curve 1 − (1 − sr )b for s = 0.1, 0.2, . . . , 0.9, for
+the following values of r and b:
+• r = 3 and b = 10.
+
+92
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+• r = 6 and b = 20.
+• r = 5 and b = 50.
+
+! Exercise 3.4.2 : For each of the (r, b) pairs in Exercise 3.4.1, compute the
+threshold, that is, the value of s for which the value of 1−(1−sr )b is exactly 1/2.
+How does this value compare with the estimate of (1/b)1/r that was suggested
+in Section 3.4.2?
+! Exercise 3.4.3 : Use the techniques explained in Section 1.3.5 to approximate
+the S-curve 1 − (1 − sr )b when sr is very small.
+! Exercise 3.4.4 : Suppose we wish to implement LSH by MapReduce. Specifically, assume chunks of the signature matrix consist of columns, and elements
+are key-value pairs where the key is the column number and the value is the
+signature itself (i.e., a vector of values).
+(a) Show how to produce the buckets for all the bands as output of a single
+MapReduce process. Hint : Remember that a Map function can produce
+several key-value pairs from a single element.
+(b) Show how another MapReduce process can convert the output of (a) to
+a list of pairs that need to be compared. Specifically, for each column i,
+there should be a list of those columns j > i with which i needs to be
+compared.
+
+3.5
+
+Distance Measures
+
+We now take a short detour to study the general notion of distance measures.
+The Jaccard similarity is a measure of how close sets are, although it is not
+really a distance measure. That is, the closer sets are, the higher the Jaccard
+similarity. Rather, 1 minus the Jaccard similarity is a distance measure, as we
+shall see; it is called the Jaccard distance.
+However, Jaccard distance is not the only measure of closeness that makes
+sense. We shall examine in this section some other distance measures that have
+applications. Then, in Section 3.6 we see how some of these distance measures
+also have an LSH technique that allows us to focus on nearby points without
+comparing all points. Other applications of distance measures will appear when
+we study clustering in Chapter 7.
+
+3.5.1
+
+Definition of a Distance Measure
+
+Suppose we have a set of points, called a space. A distance measure on this
+space is a function d(x, y) that takes two points in the space as arguments and
+produces a real number, and satisfies the following axioms:
+1. d(x, y) ≥ 0 (no negative distances).
+
+93
+
+3.5. DISTANCE MEASURES
+
+2. d(x, y) = 0 if and only if x = y (distances are positive, except for the
+distance from a point to itself).
+3. d(x, y) = d(y, x) (distance is symmetric).
+4. d(x, y) ≤ d(x, z) + d(z, y) (the triangle inequality).
+The triangle inequality is the most complex condition. It says, intuitively, that
+to travel from x to y, we cannot obtain any benefit if we are forced to travel via
+some particular third point z. The triangle-inequality axiom is what makes all
+distance measures behave as if distance describes the length of a shortest path
+from one point to another.
+
+3.5.2
+
+Euclidean Distances
+
+The most familiar distance measure is the one we normally think of as “distance.” An n-dimensional Euclidean space is one where points are vectors of n
+real numbers. The conventional distance measure in this space, which we shall
+refer to as the L2 -norm, is defined:
+v
+u n
+uX
+d([x1 , x2 , . . . , xn ], [y1 , y2 , . . . , yn ]) = t (xi − yi )2
+i=1
+
+That is, we square the distance in each dimension, sum the squares, and take
+the positive square root.
+It is easy to verify the first three requirements for a distance measure are
+satisfied. The Euclidean distance between two points cannot be negative, because the positive square root is intended. Since all squares of real numbers are
+nonnegative, any i such that xi 6= yi forces the distance to be strictly positive.
+On the other hand, if xi = yi for all i, then the distance is clearly 0. Symmetry
+follows because (xi − yi )2 = (yi − xi )2 . The triangle inequality requires a good
+deal of algebra to verify. However, it is well understood to be a property of
+Euclidean space: the sum of the lengths of any two sides of a triangle is no less
+than the length of the third side.
+There are other distance measures that have been used for Euclidean spaces.
+For any constant r, we can define the Lr -norm to be the distance measure d
+defined by:
+n
+X
+|xi − yi |r )1/r
+d([x1 , x2 , . . . , xn ], [y1 , y2 , . . . , yn ]) = (
+i=1
+
+The case r = 2 is the usual L2 -norm just mentioned. Another common distance
+measure is the L1 -norm, or Manhattan distance. There, the distance between
+two points is the sum of the magnitudes of the differences in each dimension.
+It is called “Manhattan distance” because it is the distance one would have to
+
+94
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+travel between points if one were constrained to travel along grid lines, as on
+the streets of a city such as Manhattan.
+Another interesting distance measure is the L∞ -norm, which is the limit
+as r approaches infinity of the Lr -norm. As r gets larger, only the dimension
+with the largest difference matters, so formally, the L∞ -norm is defined as the
+maximum of |xi − yi | over all dimensions i.
+Example 3.12 : Consider the two-dimensional Euclidean space (the customarypplane) and the points √
+(2, 7) and (6, 4). The L2 -norm gives a distance
+of (2 − 6)2 + (7 − 4)2 = 42 + 32 = 5. The L1 -norm gives a distance of
+|2 − 6| + |7 − 4| = 4 + 3 = 7. The L∞ -norm gives a distance of
+max(|2 − 6|, |7 − 4|) = max(4, 3) = 4
+✷
+
+3.5.3
+
+Jaccard Distance
+
+As mentioned at the beginning of the section, we define the Jaccard distance
+of sets by d(x, y) = 1 − SIM(x, y). That is, the Jaccard distance is 1 minus the
+ratio of the sizes of the intersection and union of sets x and y. We must verify
+that this function is a distance measure.
+1. d(x, y) is nonnegative because the size of the intersection cannot exceed
+the size of the union.
+2. d(x, y) = 0 if x = y, because x ∪ x = x ∩ x = x. However, if x 6= y, then
+the size of x ∩ y is strictly less than the size of x ∪ y, so d(x, y) is strictly
+positive.
+3. d(x, y) = d(y, x) because both union and intersection are symmetric; i.e.,
+x ∪ y = y ∪ x and x ∩ y = y ∩ x.
+4. For the triangle inequality, recall from Section 3.3.3 that SIM(x, y) is the
+probability a random minhash function maps x and y to the same value.
+Thus, the Jaccard distance d(x, y) is the probability that a random minhash function does not send x and y to the same value. We can therefore
+translate the condition d(x, y) ≤ d(x, z) + d(z, y) to the statement that if
+h is a random minhash function, then the probability that h(x) 6= h(y)
+is no greater than the sum of the probability that h(x) 6= h(z) and the
+probability that h(z) 6= h(y). However, this statement is true because
+whenever h(x) 6= h(y), at least one of h(x) and h(y) must be different
+from h(z). They could not both be h(z), because then h(x) and h(y)
+would be the same.
+.
+
+3.5. DISTANCE MEASURES
+
+3.5.4
+
+95
+
+Cosine Distance
+
+The cosine distance makes sense in spaces that have dimensions, including Euclidean spaces and discrete versions of Euclidean spaces, such as spaces where
+points are vectors with integer components or Boolean (0 or 1) components. In
+such a space, points may be thought of as directions. We do not distinguish between a vector and a multiple of that vector. Then the cosine distance between
+two points is the angle that the vectors to those points make. This angle will
+be in the range 0 to 180 degrees, regardless of how many dimensions the space
+has.
+We can calculate the cosine distance by first computing the cosine of the
+angle, and then applying the arc-cosine function to translate to an angle in the
+0-180 degree range. Given two vectors x and y, the cosine of the angle between
+them is the dot product x.y divided by the L2 -norms of x and y (i.e., their
+Euclidean distances from the origin).
+Recall that the dot product of vectors
+Pn
+[x1 , x2 , . . . , xn ].[y1 , y2 , . . . , yn ] is i=1 xi yi .
+
+Example 3.13 : Let our two vectors be x = [1, 2, −1] and = [2, 1, 1]. The dot
+product x.y is 1 × 2 + 2 × 1 + (−1)
+-norm of both vectors is
+p × 1 = 3. The L2 √
+√
+6. For example, x has L2 -norm√ √
+12 + 22 + (−1)2 = 6. Thus, the cosine of
+the angle between x and y is 3/( 6 6) or 1/2. The angle whose cosine is 1/2
+is 60 degrees, so that is the cosine distance between x and y. ✷
+
+We must show that the cosine distance is indeed a distance measure. We
+have defined it so the values are in the range 0 to 180, so no negative distances
+are possible. Two vectors have angle 0 if and only if they are the same direction.4
+Symmetry is obvious: the angle between x and y is the same as the angle
+between y and x. The triangle inequality is best argued by physical reasoning.
+One way to rotate from x to y is to rotate to z and thence to y. The sum of
+those two rotations cannot be less than the rotation directly from x to y.
+
+3.5.5
+
+Edit Distance
+
+This distance makes sense when points are strings. The distance between two
+strings x = x1 x2 · · · xn and y = y1 y2 · · · ym is the smallest number of insertions
+and deletions of single characters that will convert x to y.
+Example 3.14 : The edit distance between the strings x = abcde and y =
+acfdeg is 3. To convert x to y:
+1. Delete b.
+2. Insert f after c.
+4 Notice that to satisfy the second axiom, we have to treat vectors that are multiples of
+
+one another, e.g. [1, 2] and [3, 6], as the same direction, which they are. If we regarded these
+as different vectors, we would give them distance 0 and thus violate the condition that only
+d(x, x) is 0.
+
+96
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+3. Insert g after e.
+
+No sequence of fewer than three insertions and/or deletions will convert x to y.
+Thus, d(x, y) = 3. ✷
+Another way to define and calculate the edit distance d(x, y) is to compute
+a longest common subsequence (LCS) of x and y. An LCS of x and y is a
+string that is constructed by deleting positions from x and y, and that is as
+long as any string that can be constructed that way. The edit distance d(x, y)
+can be calculated as the length of x plus the length of y minus twice the length
+of their LCS.
+Example 3.15 : The strings x = abcde and y = acfdeg from Example 3.14
+have a unique LCS, which is acde. We can be sure it is the longest possible,
+because it contains every symbol appearing in both x and y. Fortunately, these
+common symbols appear in the same order in both strings, so we are able to
+use them all in an LCS. Note that the length of x is 5, the length of y is 6, and
+the length of their LCS is 4. The edit distance is thus 5 + 6 − 2 × 4 = 3, which
+agrees with the direct calculation in Example 3.14.
+For another example, consider x = aba and y = bab. Their edit distance is
+2. For example, we can convert x to y by deleting the first a and then inserting
+b at the end. There are two LCS’s: ab and ba. Each can be obtained by
+deleting one symbol from each string. As must be the case for multiple LCS’s
+of the same pair of strings, both LCS’s have the same length. Therefore, we
+may compute the edit distance as 3 + 3 − 2 × 2 = 2. ✷
+Edit distance is a distance measure. Surely no edit distance can be negative,
+and only two identical strings have an edit distance of 0. To see that edit
+distance is symmetric, note that a sequence of insertions and deletions can be
+reversed, with each insertion becoming a deletion, and vice versa. The triangle
+inequality is also straightforward. One way to turn a string s into a string t
+is to turn s into some string u and then turn u into t. Thus, the number of
+edits made going from s to u, plus the number of edits made going from u to t
+cannot be less than the smallest number of edits that will turn s into t.
+
+3.5.6
+
+Hamming Distance
+
+Given a space of vectors, we define the Hamming distance between two vectors
+to be the number of components in which they differ. It should be obvious
+that Hamming distance is a distance measure. Clearly the Hamming distance
+cannot be negative, and if it is zero, then the vectors are identical. The distance does not depend on which of two vectors we consider first. The triangle
+inequality should also be evident. If x and z differ in m components, and z
+and y differ in n components, then x and y cannot differ in more than m + n
+components. Most commonly, Hamming distance is used when the vectors are
+Boolean; they consist of 0’s and 1’s only. However, in principle, the vectors can
+have components from any set.
+
+3.5. DISTANCE MEASURES
+
+97
+
+Non-Euclidean Spaces
+Notice that several of the distance measures introduced in this section are
+not Euclidean spaces. A property of Euclidean spaces that we shall find
+important when we take up clustering in Chapter 7 is that the average
+of points in a Euclidean space always exists and is a point in the space.
+However, consider the space of sets for which we defined the Jaccard distance. The notion of the “average” of two sets makes no sense. Likewise,
+the space of strings, where we can use the edit distance, does not let us
+take the “average” of strings.
+Vector spaces, for which we suggested the cosine distance, may or may
+not be Euclidean. If the components of the vectors can be any real numbers, then the space is Euclidean. However, if we restrict components to
+be integers, then the space is not Euclidean. Notice that, for instance, we
+cannot find an average of the vectors [1, 2] and [3, 1] in the space of vectors
+with two integer components, although if we treated them as members of
+the two-dimensional Euclidean space, then we could say that their average
+was [2.0, 1.5].
+
+Example 3.16 : The Hamming distance between the vectors 10101 and 11110
+is 3. That is, these vectors differ in the second, fourth, and fifth components,
+while they agree in the first and third components. ✷
+
+3.5.7
+
+Exercises for Section 3.5
+
+! Exercise 3.5.1 : On the space of nonnegative integers, which of the following
+functions are distance measures? If so, prove it; if not, prove that it fails to
+satisfy one or more of the axioms.
+(a) max(x, y) = the larger of x and y.
+(b) diff(x, y) = |x − y| (the absolute magnitude of the difference between x
+and y).
+(c) sum(x, y) = x + y.
+Exercise 3.5.2 : Find the L1 and L2 distances between the points (5, 6, 7) and
+(8, 2, 4).
+!! Exercise 3.5.3 : Prove that if i and j are any positive integers, and i < j,
+then the Li norm between any two points is greater than the Lj norm between
+those same two points.
+Exercise 3.5.4 : Find the Jaccard distances between the following pairs of
+sets:
+
+98
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+(a) {1, 2, 3, 4} and {2, 3, 4, 5}.
+(b) {1, 2, 3} and {4, 5, 6}.
+Exercise 3.5.5 : Compute the cosines of the angles between each of the following pairs of vectors.5
+(a) (3, −1, 2) and (−2, 3, 1).
+(b) (1, 2, 3) and (2, 4, 6).
+(c) (5, 0, −4) and (−1, −6, 2).
+(d) (0, 1, 1, 0, 1, 1) and (0, 0, 1, 0, 0, 0).
+! Exercise 3.5.6 : Prove that the cosine distance between any two vectors of 0’s
+and 1’s, of the same length, is at most 90 degrees.
+Exercise 3.5.7 : Find the edit distances (using only insertions and deletions)
+between the following pairs of strings.
+(a) abcdef and bdaefc.
+(b) abccdabc and acbdcab.
+(c) abcdef and baedfc.
+! Exercise 3.5.8 : There are a number of other notions of edit distance available.
+For instance, we can allow, in addition to insertions and deletions, the following
+operations:
+i. Mutation, where one symbol is replaced by another symbol. Note that a
+mutation can always be performed by an insertion followed by a deletion,
+but if we allow mutations, then this change counts for only 1, not 2, when
+computing the edit distance.
+ii. Transposition, where two adjacent symbols have their positions swapped.
+Like a mutation, we can simulate a transposition by one insertion followed
+by one deletion, but here we count only 1 for these two steps.
+Repeat Exercise 3.5.7 if edit distance is defined to be the number of insertions,
+deletions, mutations, and transpositions needed to transform one string into
+another.
+! Exercise 3.5.9 : Prove that the edit distance discussed in Exercise 3.5.8 is
+indeed a distance measure.
+Exercise 3.5.10 : Find the Hamming distances between each pair of the following vectors: 000000, 110011, 010101, and 011100.
+5 Note that what we are asking for is not precisely the cosine distance, but from the cosine
+of an angle, you can compute the angle itself, perhaps with the aid of a table or library
+function.
+
+3.6. THE THEORY OF LOCALITY-SENSITIVE FUNCTIONS
+
+3.6
+
+99
+
+The Theory of Locality-Sensitive Functions
+
+The LSH technique developed in Section 3.4 is one example of a family of functions (the minhash functions) that can be combined (by the banding technique)
+to distinguish strongly between pairs at a low distance from pairs at a high distance. The steepness of the S-curve in Fig. 3.7 reflects how effectively we can
+avoid false positives and false negatives among the candidate pairs.
+Now, we shall explore other families of functions, besides the minhash functions, that can serve to produce candidate pairs efficiently. These functions can
+apply to the space of sets and the Jaccard distance, or to another space and/or
+another distance measure. There are three conditions that we need for a family
+of functions:
+1. They must be more likely to make close pairs be candidate pairs than
+distant pairs. We make this notion precise in Section 3.6.1.
+2. They must be statistically independent, in the sense that it is possible to
+estimate the probability that two or more functions will all give a certain
+response by the product rule for independent events.
+3. They must be efficient, in two ways:
+(a) They must be able to identify candidate pairs in time much less
+than the time it takes to look at all pairs. For example, minhash
+functions have this capability, since we can hash sets to minhash
+values in time proportional to the size of the data, rather than the
+square of the number of sets in the data. Since sets with common
+values are colocated in a bucket, we have implicitly produced the
+candidate pairs for a single minhash function in time much less than
+the number of pairs of sets.
+(b) They must be combinable to build functions that are better at avoiding false positives and negatives, and the combined functions must
+also take time that is much less than the number of pairs. For example, the banding technique of Section 3.4.1 takes single minhash
+functions, which satisfy condition 3a but do not, by themselves have
+the S-curve behavior we want, and produces from a number of minhash functions a combined function that has the S-curve shape.
+Our first step is to define “locality-sensitive functions” generally. We then
+see how the idea can be applied in several applications. Finally, we discuss
+how to apply the theory to arbitrary data with either a cosine distance or a
+Euclidean distance measure.
+
+3.6.1
+
+Locality-Sensitive Functions
+
+For the purposes of this section, we shall consider functions that take two items
+and render a decision about whether these items should be a candidate pair.
+
+100
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+In many cases, the function f will “hash” items, and the decision will be based
+on whether or not the result is equal. Because it is convenient to use the
+notation f (x) = f (y) to mean that f (x, y) is “yes; make x and y a candidate
+pair,” we shall use f (x) = f (y) as a shorthand with this meaning. We also use
+f (x) 6= f (y) to mean “do not make x and y a candidate pair unless some other
+function concludes we should do so.”
+A collection of functions of this form will be called a family of functions.
+For example, the family of minhash functions, each based on one of the possible
+permutations of rows of a characteristic matrix, form a family.
+Let d1 < d2 be two distances according to some distance measure d. A
+family F of functions is said to be (d1 , d2 , p1 , p2 )-sensitive if for every f in F:
+1. If d(x, y) ≤ d1 , then the probability that f (x) = f (y) is at least p1 .
+2. If d(x, y) ≥ d2 , then the probability that f (x) = f (y) is at most p2 .
+
+p1
+Probabilty
+of being
+declared a
+candidate
+
+p2
+
+d1
+
+d2
+
+Distance
+
+Figure 3.9: Behavior of a (d1 , d2 , p1 , p2 )-sensitive function
+Figure 3.9 illustrates what we expect about the probability that a given
+function in a (d1 , d2 , p1 , p2 )-sensitive family will declare two items to be a candidate pair. Notice that we say nothing about what happens when the distance
+between the items is strictly between d1 and d2 , but we can make d1 and d2 as
+close as we wish. The penalty is that typically p1 and p2 are then close as well.
+As we shall see, it is possible to drive p1 and p2 apart while keeping d1 and d2
+fixed.
+
+3.6.2
+
+Locality-Sensitive Families for Jaccard Distance
+
+For the moment, we have only one way to find a family of locality-sensitive
+functions: use the family of minhash functions, and assume that the distance
+
+3.6. THE THEORY OF LOCALITY-SENSITIVE FUNCTIONS
+
+101
+
+measure is the Jaccard distance. As before, we interpret a minhash function h
+to make x and y a candidate pair if and only if h(x) = h(y).
+• The family of minhash functions is a (d1 , d2 , 1−d1 , 1−d2 )-sensitive family
+for any d1 and d2 , where 0 ≤ d1 < d2 ≤ 1.
+The reason is that if d(x, y) ≤ d1 , where d is the Jaccard distance, then
+SIM(x, y) = 1 − d(x, y) ≥ 1 − d1 . But we know that the Jaccard similarity
+of x and y is equal to the probability that a minhash function will hash x and
+y to the same value. A similar argument applies to d2 or any distance.
+Example 3.17 : We could let d1 = 0.3 and d2 = 0.6. Then we can assert that
+the family of minhash functions is a (0.3, 0.6, 0.7, 0.4)-sensitive family. That is,
+if the Jaccard distance between x and y is at most 0.3 (i.e., SIM(x, y) ≥ 0.7)
+then there is at least a 0.7 chance that a minhash function will send x and y to
+the same value, and if the Jaccard distance between x and y is at least 0.6 (i.e.,
+SIM(x, y) ≤ 0.4), then there is at most a 0.4 chance that x and y will be sent
+to the same value. Note that we could make the same assertion with another
+choice of d1 and d2 ; only d1 < d2 is required. ✷
+
+3.6.3
+
+Amplifying a Locality-Sensitive Family
+
+Suppose we are given a (d1 , d2 , p1 , p2 )-sensitive family F. We can construct a
+new family F′ by the AND-construction on F, which is defined as follows. Each
+member of F′ consists of r members of F for some fixed r. If f is in F′ , and f is
+constructed from the set {f1 , f2 , . . . , fr } of members of F, we say f (x) = f (y)
+if and only if fi (x) = fi (y) for all i = 1, 2, . . . , r. Notice that this construction
+mirrors the effect of the r rows in a single band: the band makes x and y a
+candidate pair if every one of the r rows in the band say that x and y are equal
+(and therefore a candidate pair according to that row).
+′
+Since the members of F are independently
+ chosen to make a member of F ,
+′
+r
+r
+we can assert that F is a d1 , d2 , (p1 ) , (p2 ) -sensitive family. That is, for any
+p, if p is the probability that a member of F will declare (x, y) to be a candidate
+pair, then the probability that a member of F′ will so declare is pr .
+There is another construction, which we call the OR-construction, that turns
+
+a (d1 , d2 , p1 , p2 )-sensitive family F into a d1 , d2 , 1 − (1 − p1 )b , 1 − (1 − p2 )b sensitive family F′ . Each member f of F′ is constructed from b members of F,
+say f1 , f2 , . . . , fb . We define f (x) = f (y) if and only if fi (x) = fi (y) for one or
+more values of i. The OR-construction mirrors the effect of combining several
+bands: x and y become a candidate pair if any band makes them a candidate
+pair.
+If p is the probability that a member of F will declare (x, y) to be a candidate
+pair, then 1−p is the probability it will not so declare. (1−p)b is the probability
+that none of f1 , f2 , . . . , fb will declare (x, y) a candidate pair, and 1 − (1 − p)b
+is the probability that at least one fi will declare (x, y) a candidate pair, and
+therefore that f will declare (x, y) to be a candidate pair.
+
+102
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+Notice that the AND-construction lowers all probabilities, but if we choose F
+and r judiciously, we can make the small probability p2 get very close to 0, while
+the higher probability p1 stays significantly away from 0. Similarly, the ORconstruction makes all probabilities rise, but by choosing F and b judiciously,
+we can make the larger probability approach 1 while the smaller probability
+remains bounded away from 1. We can cascade AND- and OR-constructions in
+any order to make the low probability close to 0 and the high probability close
+to 1. Of course the more constructions we use, and the higher the values of r
+and b that we pick, the larger the number of functions from the original family
+that we are forced to use. Thus, the better the final family of functions is, the
+longer it takes to apply the functions from this family.
+Example 3.18 : Suppose we start with a family F. We use the AND-construction with r = 4 to produce a family F1 . We then apply the OR-construction
+to F1 with b = 4 to produce a third family F2 . Note that the members of F2
+each are built from 16 members of F, and the situation is analogous to starting
+with 16 minhash functions and treating them as four bands of four rows each.
+p
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+
+1 − (1 − p4 )4
+0.0064
+0.0320
+0.0985
+0.2275
+0.4260
+0.6666
+0.8785
+0.9860
+
+Figure 3.10: Effect of the 4-way AND-construction followed by the 4-way ORconstruction
+The 4-way AND-function converts any probability p into p4 . When we
+follow it by the 4-way OR-construction, that probability is further converted
+into 1 − (1 − p4)4 . Some values of this transformation are indicated in Fig. 3.10.
+This function is an S-curve, staying low for a while, then rising steeply (although
+not too steeply; the slope never gets much higher than 2), and then leveling
+off at high values. Like any S-curve, it has a fixedpoint, the value of p that is
+left unchanged when we apply the function of the S-curve. In this case, the
+fixedpoint is the value of p for which p = 1 − (1 − p4 )4 . We can see that the
+fixedpoint is somewhere between 0.7 and 0.8. Below that value, probabilities are
+decreased, and above it they are increased. Thus, if we pick a high probability
+above the fixedpoint and a low probability below it, we shall have the desired
+effect that the low probability is decreased and the high probability is increased.
+Suppose F is the minhash functions, regarded as a (0.2, 0.6, 0.8, 0.4)-sensitive family. Then F2 , the family constructed by a 4-way AND followed by a
+
+3.6. THE THEORY OF LOCALITY-SENSITIVE FUNCTIONS
+
+103
+
+4-way OR, is a (0.2, 0.6, 0.8785, 0.0985)-sensitive family, as we can read from the
+rows for 0.8 and 0.4 in Fig. 3.10. By replacing F by F2 , we have reduced both
+the false-negative and false-positive rates, at the cost of making application of
+the functions take 16 times as long. ✷
+p
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+
+1 − (1 − p)4
+0.0140
+0.1215
+0.3334
+0.5740
+0.7725
+0.9015
+0.9680
+0.9936
+
+4
+
+Figure 3.11: Effect of the 4-way OR-construction followed by the 4-way ANDconstruction
+Example 3.19 : For the same cost, we can apply a 4-way OR-construction
+followed by a 4-way AND-construction. Figure 3.11 gives the transformation
+on probabilities implied by this construction. For instance, suppose that F is a
+(0.2, 0.6, 0.8, 0.4)-sensitive family. Then the constructed family is a
+(0.2, 0.6, 0.9936, 0.5740)-sensitive
+family. This choice is not necessarily the best. Although the higher probability
+has moved much closer to 1, the lower probability has also raised, increasing
+the number of false positives. ✷
+Example 3.20 : We can cascade constructions as much as we like. For example, we could use the construction of Example 3.18 on the family of minhash
+functions and then use the construction of Example 3.19 on the resulting family.
+The constructed family would then have functions each built from 256 minhash
+functions. It would, for instance transform a (0.2, 0.8, 0.8, 0.2)-sensitive family
+into a (0.2, 0.8, 0.9991285, 0.0000004)-sensitive family. ✷
+
+3.6.4
+
+Exercises for Section 3.6
+
+Exercise 3.6.1 : What is the effect on probability of starting with the family
+of minhash functions and applying:
+(a) A 2-way AND construction followed by a 3-way OR construction.
+(b) A 3-way OR construction followed by a 2-way AND construction.
+
+104
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+(c) A 2-way AND construction followed by a 2-way OR construction, followed
+by a 2-way AND construction.
+(d) A 2-way OR construction followed by a 2-way AND construction, followed
+by a 2-way OR construction followed by a 2-way AND construction.
+Exercise 3.6.2 : Find the fixedpoints for each of the functions constructed in
+Exercise 3.6.1.
+! Exercise 3.6.3 : Any function of probability p, such as that of Fig. 3.10, has
+a slope given by the derivative of the function. The maximum slope is where
+that derivative is a maximum. Find the value of p that gives a maximum slope
+for the S-curves given by Fig. 3.10 and Fig. 3.11. What are the values of these
+maximum slopes?
+!! Exercise 3.6.4 : Generalize Exercise 3.6.3 to give, as a function of r and b, the
+point of maximum slope and the value of that slope, for families of functions
+defined from the minhash functions by:
+(a) An r-way AND construction followed by a b-way OR construction.
+(b) A b-way OR construction followed by an r-way AND construction.
+
+3.7
+
+LSH Families for Other Distance Measures
+
+There is no guarantee that a distance measure has a locality-sensitive family of
+hash functions. So far, we have only seen such families for the Jaccard distance.
+In this section, we shall show how to construct locality-sensitive families for
+Hamming distance, the cosine distance and for the normal Euclidean distance.
+
+3.7.1
+
+LSH Families for Hamming Distance
+
+It is quite simple to build a locality-sensitive family of functions for the Hamming distance. Suppose we have a space of d-dimensional vectors, and h(x, y)
+denotes the Hamming distance between vectors x and y. If we take any one
+position of the vectors, say the ith position, we can define the function fi (x)
+to be the ith bit of vector x. Then fi (x) = fi (y) if and only if vectors x and
+y agree in the ith position. Then the probability that fi (x) = fi (y) for a randomly chosen i is exactly 1 − h(x, y)/d; i.e., it is the fraction of positions in
+which x and y agree.
+This situation is almost exactly like the one we encountered for minhashing.
+Thus, the family F consisting of the functions {f1 , f2 , . . . , fd } is a
+(d1 , d2 , 1 − d1 /d, 1 − d2 /d)-sensitive
+family of hash functions, for any d1 < d2 . There are only two differences
+between this family and the family of minhash functions.
+
+3.7. LSH FAMILIES FOR OTHER DISTANCE MEASURES
+
+105
+
+1. While Jaccard distance runs from 0 to 1, the Hamming distance on a
+vector space of dimension d runs from 0 to d. It is therefore necessary to
+scale the distances by dividing by d, to turn them into probabilities.
+2. While there is essentially an unlimited supply of minhash functions, the
+size of the family F for Hamming distance is only d.
+The first point is of no consequence; it only requires that we divide by d at
+appropriate times. The second point is more serious. If d is relatively small,
+then we are limited in the number of functions that can be composed using
+the AND and OR constructions, thereby limiting how steep we can make the
+S-curve be.
+
+3.7.2
+
+Random Hyperplanes and the Cosine Distance
+
+Recall from Section 3.5.4 that the cosine distance between two vectors is the
+angle between the vectors. For instance, we see in Fig. 3.12 two vectors x
+and y that make an angle θ between them. Note that these vectors may be
+in a space of many dimensions, but they always define a plane, and the angle
+between them is measured in this plane. Figure 3.12 is a “top-view” of the
+plane containing x and y.
+
+x
+
+θ
+
+y
+
+Figure 3.12: Two vectors make an angle θ
+Suppose we pick a hyperplane through the origin. This hyperplane intersects
+the plane of x and y in a line. Figure 3.12 suggests two possible hyperplanes,
+one whose intersection is the dashed line and the other’s intersection is the
+dotted line. To pick a random hyperplane, we actually pick the normal vector
+to the hyperplane, say v. The hyperplane is then the set of points whose dot
+product with v is 0.
+
+106
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+First, consider a vector v that is normal to the hyperplane whose projection
+is represented by the dashed line in Fig. 3.12; that is, x and y are on different
+sides of the hyperplane. Then the dot products v.x and v.y will have different
+signs. If we assume, for instance, that v is a vector whose projection onto the
+plane of x and y is above the dashed line in Fig. 3.12, then v.x is positive,
+while v.y is negative. The normal vector v instead might extend in the opposite
+direction, below the dashed line. In that case v.x is negative and v.y is positive,
+but the signs are still different.
+On the other hand, the randomly chosen vector v could be normal to a
+hyperplane like the dotted line in Fig. 3.12. In that case, both v.x and v.y
+have the same sign. If the projection of v extends to the right, then both dot
+products are positive, while if v extends to the left, then both are negative.
+What is the probability that the randomly chosen vector is normal to a
+hyperplane that looks like the dashed line rather than the dotted line? All
+angles for the line that is the intersection of the random hyperplane and the
+plane of x and y are equally likely. Thus, the hyperplane will look like the
+dashed line with probability θ/180 and will look like the dotted line otherwise.
+Thus, each hash function f in our locality-sensitive family F is built from
+a randomly chosen vector vf . Given two vectors x and y, say f (x) = f (y) if
+and only if the dot products vf .x and vf .y have the same sign. Then F is a
+locality-sensitive family for the cosine distance. The parameters are essentially
+the same as for the Jaccard-distance family described in Section 3.6.2, except
+the scale of distances is 0–180 rather than 0–1. That is, F is a
+(d1 , d2 , (180 − d1 )/180, (180 − d2 )/180)-sensitive
+family of hash functions. From this basis, we can amplify the family as we wish,
+just as for the minhash-based family.
+
+3.7.3
+
+Sketches
+
+Instead of chosing a random vector from all possible vectors, it turns out to be
+sufficiently random if we restrict our choice to vectors whose components are
++1 and −1. The dot product of any vector x with a vector v of +1’s and −1’s
+is formed by adding the components of x where v is +1 and then subtracting
+the other components of x – those where v is −1.
+If we pick a collection of random vectors, say v1 , v2 , . . . , vn , then we can
+apply them to an arbitrary vector x by computing v1 .x, v2 .x, . . . , vn .x and then
+replacing any positive value by +1 and any negative value by −1. The result is
+called the sketch of x. You can handle 0’s arbitrarily, e.g., by chosing a result +1
+or −1 at random. Since there is only a tiny probability of a zero dot product,
+the choice has essentially no effect.
+Example 3.21 : Suppose our space consists of 4-dimensional vectors, and we
+pick three random vectors: v1 = [+1, −1, +1, +1], v2 = [−1, +1, −1, +1], and
+v3 = [+1, +1, −1, −1]. For the vector x = [3, 4, 5, 6], the sketch is [+1, +1, −1].
+
+3.7. LSH FAMILIES FOR OTHER DISTANCE MEASURES
+
+107
+
+That is, v1 .x = 3−4+5+6 = 10. Since the result is positive, the first component
+of the sketch is +1. Similarly, v2 .x = 2 and v3 .x = −4, so the second component
+of the sketch is +1 and the third component is −1.
+Consider the vector y = [4, 3, 2, 1]. We can similarly compute its sketch to
+be [+1, −1, +1]. Since the sketches for x and y agree in 1/3 of the positions,
+we estimate that the angle between them is 120 degrees. That is, a randomly
+chosen hyperplane is twice as likely to look like the dashed line in Fig. 3.12 than
+like the dotted line.
+The above conclusion turns out to be quite wrong. We can calculate the
+cosine of the angle between x and y to be x.y, which is
+6 × 1 + 5 × 2 + 4 × 3 + 3 × 4 = 40
+divided by the magnitudes of the two vectors. These magnitudes are
+p
+62 + 52 + 42 + 32 = 9.274
+√
+and 12 + 22 + 32 + 42 = 5.477. Thus, the cosine of the angle between x and
+y is 0.7875, and this angle is about 38 degrees. However, if you look at all
+16 different vectors v of length 4 that have +1 and −1 as components, you
+find that there are only four of these whose dot products with x and y have
+a different sign, namely v2 , v3 , and their complements [+1, −1, +1, −1] and
+[−1, −1, +1, +1]. Thus, had we picked all sixteen of these vectors to form a
+sketch, the estimate of the angle would have been 180/4 = 45 degrees. ✷
+
+3.7.4
+
+LSH Families for Euclidean Distance
+
+Now, let us turn to the Euclidean distance (Section 3.5.2), and see if we can
+develop a locality-sensitive family of hash functions for this distance. We shall
+start with a 2-dimensional Euclidean space. Each hash function f in our family
+F will be associated with a randomly chosen line in this space. Pick a constant
+a and divide the line into segments of length a, as suggested by Fig. 3.13, where
+the “random” line has been oriented to be horizontal.
+The segments of the line are the buckets into which function f hashes points.
+A point is hashed to the bucket in which its projection onto the line lies. If the
+distance d between two points is small compared with a, then there is a good
+chance the two points hash to the same bucket, and thus the hash function f
+will declare the two points equal. For example, if d = a/2, then there is at least
+a 50% chance the two points will fall in the same bucket. In fact, if the angle
+θ between the randomly chosen line and the line connecting the points is large,
+then there is an even greater chance that the two points will fall in the same
+bucket. For instance, if θ is 90 degrees, then the two points are certain to fall
+in the same bucket.
+However, suppose d is larger than a. In order for there to be any chance of
+the two points falling in the same bucket, we need d cos θ ≤ a. The diagram of
+Fig. 3.13 suggests why this requirement holds. Note that even if d cos θ ≪ a it
+
+108
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+Points at
+distance d
+θ
+
+Bucket
+width a
+
+Figure 3.13: Two points at distance d ≫ a have a small chance of being hashed
+to the same bucket
+is still not certain that the two points will fall in the same bucket. However,
+we can guarantee the following. If d ≥ 2a, then there is no more than a 1/3
+chance the two points fall in the same bucket. The reason is that for cos θ to
+be less than 1/2, we need to have θ in the range 60 to 90 degrees. If θ is in the
+range 0 to 60 degrees, then cos θ is more than 1/2. But since θ is the smaller
+angle between two randomly chosen lines in the plane, θ is twice as likely to be
+between 0 and 60 as it is to be between 60 and 90.
+We conclude that the family F just described forms a (a/2, 2a, 1/2, 1/3)sensitive family of hash functions. That is, for distances up to a/2 the probability is at least 1/2 that two points at that distance will fall in the same bucket,
+while for distances at least 2a the probability points at that distance will fall in
+the same bucket is at most 1/3. We can amplify this family as we like, just as
+for the other examples of locality-sensitive hash functions we have discussed.
+
+3.7.5
+
+More LSH Families for Euclidean Spaces
+
+There is something unsatisfying about the family of hash functions developed
+in Section 3.7.4. First, the technique was only described for two-dimensional
+Euclidean spaces. What happens if our data is points in a space with many
+dimensions? Second, for Jaccard and cosine distances, we were able to develop
+locality-sensitive families for any pair of distances d1 and d2 as long as d1 < d2 .
+In Section 3.7.4 we appear to need the stronger condition d1 < 4d2 .
+However, we claim that there is a locality-sensitive family of hash functions for any d1 < d2 and for any number of dimensions. The family’s hash
+functions still derive from random lines through the space and a bucket size
+a that partitions the line. We still hash points by projecting them onto the
+line. Given that d1 < d2 , we may not know what the probability p1 is that two
+
+3.7. LSH FAMILIES FOR OTHER DISTANCE MEASURES
+
+109
+
+points at distance d1 hash to the same bucket, but we can be certain that it
+is greater than p2 , the probability that two points at distance d2 hash to the
+same bucket. The reason is that this probability surely grows as the distance
+shrinks. Thus, even if we cannot calculate p1 and p2 easily, we know that there
+is a (d1 , d2 , p1 , p2 )-sensitive family of hash functions for any d1 < d2 and any
+given number of dimensions.
+Using the amplification techniques of Section 3.6.3, we can then adjust the
+two probabilities to surround any particular value we like, and to be as far apart
+as we like. Of course, the further apart we want the probabilities to be, the
+larger the number of basic hash functions in F we must use.
+
+3.7.6
+
+Exercises for Section 3.7
+
+Exercise 3.7.1 : Suppose we construct the basic family of six locality-sensitive
+functions for vectors of length six. For each pair of the vectors 000000, 110011,
+010101, and 011100, which of the six functions makes them candidates?
+Exercise 3.7.2 : Let us compute sketches using the following four “random”
+vectors:
+v1 = [+1, +1, +1, −1]
+v3 = [+1, −1, +1, +1]
+
+v2 = [+1, +1, −1, +1]
+v4 = [−1, +1, +1, +1]
+
+Compute the sketches of the following vectors.
+(a) [2, 3, 4, 5].
+(b) [−2, 3, −4, 5].
+(c) [2, −3, 4, −5].
+For each pair, what is the estimated angle between them, according to the
+sketches? What are the true angles?
+Exercise 3.7.3 : Suppose we form sketches by using all sixteen of the vectors
+of length 4, whose components are each +1 or −1. Compute the sketches of
+the three vectors in Exercise 3.7.2. How do the estimates of the angles between
+each pair compare with the true angles?
+Exercise 3.7.4 : Suppose we form sketches using the four vectors from Exercise 3.7.2.
+! (a) What are the constraints on a, b, c, and d that will cause the sketch of
+the vector [a, b, c, d] to be [+1, +1, +1, +1]?
+!! (b) Consider two vectors [a, b, c, d] and [e, f, g, h]. What are the conditions on
+a, b, . . . , h that will make the sketches of these two vectors be the same?
+
+110
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+Exercise 3.7.5 : Suppose we have points in a 3-dimensional Euclidean space:
+p1 = (1, 2, 3), p2 = (0, 2, 4), and p3 = (4, 3, 2). Consider the three hash functions
+defined by the three axes (to make our calculations very easy). Let buckets be
+of length a, with one bucket the interval [0, a) (i.e., the set of points x such that
+0 ≤ x < a), the next [a, 2a), the previous one [−a, 0), and so on.
+(a) For each of the three lines, assign each of the points to buckets, assuming
+a = 1.
+(b) Repeat part (a), assuming a = 2.
+(c) What are the candidate pairs for the cases a = 1 and a = 2?
+! (d) For each pair of points, for what values of a will that pair be a candidate
+pair?
+
+3.8
+
+Applications of Locality-Sensitive Hashing
+
+In this section, we shall explore three examples of how LSH is used in practice.
+In each case, the techniques we have learned must be modified to meet certain
+constraints of the problem. The three subjects we cover are:
+1. Entity Resolution: This term refers to matching data records that refer to
+the same real-world entity, e.g., the same person. The principal problem
+addressed here is that the similarity of records does not match exactly
+either the similar-sets or similar-vectors models of similarity on which the
+theory is built.
+2. Matching Fingerprints: It is possible to represent fingerprints as sets.
+However, we shall explore a different family of locality-sensitive hash functions from the one we get by minhashing.
+3. Matching Newspaper Articles: Here, we consider a different notion of
+shingling that focuses attention on the core article in an on-line newspaper’s Web page, ignoring all the extraneous material such as ads and
+newspaper-specific material.
+
+3.8.1
+
+Entity Resolution
+
+It is common to have several data sets available, and to know that they refer to
+some of the same entities. For example, several different bibliographic sources
+provide information about many of the same books or papers. In the general
+case, we have records describing entities of some type, such as people or books.
+The records may all have the same format, or they may have different formats,
+with different kinds of information.
+There are many reasons why information about an entity may vary, even if
+the field in question is supposed to be the same. For example, names may be
+
+3.8. APPLICATIONS OF LOCALITY-SENSITIVE HASHING
+
+111
+
+expressed differently in different records because of misspellings, absence of a
+middle initial, use of a nickname, and many other reasons. For example, “Bob
+S. Jomes” and “Robert Jones Jr.” may or may not be the same person. If
+records come from different sources, the fields may differ as well. One source’s
+records may have an “age” field, while another does not. The second source
+might have a “date of birth” field, or it may have no information at all about
+when a person was born.
+
+3.8.2
+
+An Entity-Resolution Example
+
+We shall examine a real example of how LSH was used to deal with an entityresolution problem. Company A was engaged by Company B to solicit customers for B. Company B would pay A a yearly fee, as long as the customer
+maintained their subscription. They later quarreled and disagreed over how
+many customers A had provided to B. Each had about 1,000,000 records, some
+of which described the same people; those were the customers A had provided
+to B. The records had different data fields, but unfortunately none of those
+fields was “this is a customer that A had provided to B.” Thus, the problem
+was to match records from the two sets to see if a pair represented the same
+person.
+Each record had fields for the name, address, and phone number of the
+person. However, the values in these fields could differ for many reasons. Not
+only were there the misspellings and other naming differences mentioned in
+Section 3.8.1, but there were other opportunities to disagree as well. A customer
+might give their home phone to A and their cell phone to B. Or they might
+move, and tell B but not A (because they no longer had need for a relationship
+with A). Area codes of phones sometimes change.
+The strategy for identifying records involved scoring the differences in three
+fields: name, address, and phone. To create a score describing the likelihood
+that two records, one from A and the other from B, described the same person, 100 points was assigned to each of the three fields, so records with exact
+matches in all three fields got a score of 300. However, there were deductions for
+mismatches in each of the three fields. As a first approximation, edit-distance
+(Section 3.5.5) was used, but the penalty grew quadratically with the distance.
+Then, certain publicly available tables were used to reduce the penalty in appropriate situations. For example, “Bill” and “William” were treated as if they
+differed in only one letter, even though their edit-distance is 5.
+However, it is not feasible to score all one trillion pairs of records. Thus,
+a simple LSH was used to focus on likely candidates. Three “hash functions”
+were used. The first sent records to the same bucket only if they had identical
+names; the second did the same but for identical addresses, and the third did
+the same for phone numbers. In practice, there was no hashing; rather the
+records were sorted by name, so records with identical names would appear
+consecutively and get scored for overall similarity of the name, address, and
+phone. Then the records were sorted by address, and those with the same
+
+112
+
+CHAPTER 3. FINDING SIMILAR ITEMS
+
+When Are Record Matches Good Enough?
+While every case will be different, it may be of interest to know how the
+experiment of Section 3.8.3 turned out on the data of Section 3.8.2. For
+scores down to 185, the value of x was very close to 10; i.e., these scores
+indicated that the likelihood of the records representing the same person
+was essentially 1. Note that a score of 185 in this example represents a
+situation where one field is the same (as would have to be the case, or the
+records would never even be scored), one field was completely different,
+and the third field had a small discrepancy. Moreover, for scores as low as
+115, the value of x was noticeably less than 45, meaning that some of these
+pairs did represent the same person. Note that a score of 115 represents
+a case where one field is the same, but there is only a slight similarity in
+the other two fields.
+
+address were scored. Finally, the records were sorted a third time by phone,
+and records with identical phones were scored.
+This approach missed a record pair that truly represented the same person
+but none of the three fields matched exactly. Since the goal was to prove in
+a court of law that the persons were the same, it is unlikely that such a pair
+would have been accepted by a judge as sufficiently similar anyway.
+
+3.8.3
+
+Validating Record Matches
+
+What remains is to determine how high a score indicates that two records truly
+represent the same individual. In the example at hand, there was an easy
+way to make that decision, and the technique can be applied in many similar
+situations. It was decided to look at the creation-dates for the records at hand,
+and to assume that 90 days was an absolute maximum delay between the time
+the service was bought at Company A and registered at B. Thus, a proposed
+match between two records that were chosen at random, subject only to the
+constraint that the date on the B-record was between 0 and 90 days after the
+date on the A-record, would have an average delay of 45 days.
+It was found that of the pairs with a perfect 300 score, the average delay was
+10 days. If you assume that 300-score pairs are surely correct matches, then you
+can look at the pool of pairs with any given score s, and compute the average
+delay of those pairs. Suppose that the average delay is x, and the fraction of
+true matches among those pairs with score s is f . Then x = 10f + 45(1 − f ),
+or x = 45 − 35f . Solving for f , we find that the fraction of the pairs with score
+s that are truly matches is (45 − x)/35.
+The same trick can be used whenever:
+1. There is a scoring system used to evaluate the likelihood that two records
+
+

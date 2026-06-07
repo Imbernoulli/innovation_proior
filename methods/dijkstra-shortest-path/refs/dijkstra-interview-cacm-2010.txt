@@ -1,0 +1,473 @@
+                                                                               V
+                                                                                                    viewpoints
+
+
+
+
+                                                                                DOI:10.1145/1787234.1787249                                                      Thomas J. Misa, Editor
+
+
+                                                                               Interview
+                                                                               An Interview with
+                                                                               Edsger W. Dijkstra
+                                                                               The computer science luminary, in one of his last interviews
+                                                                               before his death in 2002, reflects on a programmer’s life.
+
+
+
+
+                                                                               T
+                                                                                         HE CHARLES BABBAGE INSTITUTE
+                                                                                          holds one of the world’s
+                                                                                          largest collections of re-
+                                                                                          search-grade oral history
+                                                                                          interviews relating to the
+                                                                               history of computers, software, and
+                                                                               networking. Most of the 350 inter-
+                                                                               views have been conducted in the
+                                                                               context of specific research projects,
+                                                                               which facilitate the interviewer’s ex-
+                                                                               tensive preparation and often sug-
+                                                                               gest specific lines of questions. Tran-
+                                                                               scripts from these oral histories are a
+                                                                               key source in understanding the his-
+                                                                               tory of computing, since traditional
+                                                                               historical sources are frequently in-
+                                                                               complete. This interview with pro-
+                                                                               gramming pioneer Edsger Dijkstra
+                                                                               (1930–2002) was conducted by CBI
+                                                                               researcher Phil Frana at Dijkstra’s
+                                                                               home in Austin, TX, in August 2001
+                                                                               for a NSF-KDI project on “Building a
+                                                                               Future for Software History.”
+                                                                                  Winner of ACM’s A.M. Turing
+                                                                               Award in 1972, Dijkstra is well known
+                                                                               for his contributions to computer
+
+
+
+
+PH OTO GR A P H C O U RT ESY OF T H E U NI V ER SIT Y O F T EXAS AT AU ST IN
+                                                                               science as well as his colorful assess-
+                                                                               ments of the field. His contributions
+                                                                               to this magazine continue to enrich
+                                                                               new generations of computing scien-
+                                                                               tists and practitioners.
+                                                                                  We present this interview post-
+                                                                               humously on the eighth anniver-
+                                                                               sary of Dijkstra’s death at age 72 in
+                                                                               August 2002; this interview has been
+                                                                               condensed from the complete tran-
+                                                                               script, available at http://www.cbi.umn.
+                                                                               edu/oh.
+                                                                                                        —Thomas J. Misa
+
+                                                                                                                                              AU GUST 2010 | VO L . 53 | NO. 8 | C OMM U NIC ATION S OF T H E AC M   41
+viewpoints
+
+  How did your career start?                                                                                 Sydney or Melbourne. The final part of
+      It all started in 1951, when my father                                                                 the journey was on an F27 to Canber-
+  enabled me to go to a programming                          I had never                                     ra. And we arrived and I met my host,
+  course in Cambridge, England. It was                       used someone                                    whom I had never met before. And he
+  a frightening experience: the first time                                                                   was very apologetic that this world
+  that I left the Netherlands, the first time                else’s software.                                traveler had to do the last leg of the
+  I ever had to understand people speak-                     If something                                    journey on such a shaky two-engine
+  ing English. I was all by myself, trying                                                                   turboprop. And it gave me the dear
+  to follow a course on a totally new topic.                 went wrong, I had                               opportunity for a one-upmanship that
+  But I liked it very much. The Nether-                      done it. And it was                             I never got again. I could honestly say,
+  lands was such a small country that                                                                        “Dr. Stanton, I felt quite safe: I calcu-
+  Aad van Wijngaarden, who was the di-                       that unforgivingness                            lated the resonance frequencies of the
+  rector of the Computation Department                       that challenged me.                             wings myself.” [laughter]
+  of the Mathematical Centre in Amster-                                                                         In 1956, as soon as I had decided to
+  dam, knew of this, and he offered me a                                                                     become a programmer, I finished my
+  job. And on a part-time basis, I became                                                                    studies as quickly as possible, since I
+  the programmer of the Mathematical                                                                         no longer felt welcome at the univer-
+  Centre in March of 1952. They didn’t                                                                       sity: the physicists considered me as
+  have computers yet; they were trying to                                                                    a deserter, and the mathematicians
+  build them. The first eight years of my                    friends, because if you asked them              were dismissive and somewhat con-
+  programming there I developed the                          what their professional competence              temptuous about computing. In the
+  basic software for a series of machines                    consisted of, they could point out that         mathematical culture of those days
+  being built at the Mathematical Cen-                       they knew everything about triodes,             you had to deal with infinity to make
+  tre. In those years I was a very conser-                   pentodes, and other electronic gear.            your topic scientifically respectable.
+  vative programmer. The way in which                        And there was nothing I could point to!
+  programs were written down, the form                          I spoke with van Wijngaarden in              There’s a curious story behind your
+  of the instruction code on paper, the                      1955, and he agreed that there was no           “shortest path” algorithm.
+  library organization; it was very much                     such thing as a clear scientific compo-             In 1956 I did two important things,
+  modeled after what I had seen in 1951                      nent in computer programming, but               I got my degree and we had the festive
+  in Cambridge.                                              that I might very well be one of the peo-       opening of the ARMAC.c We had to have
+                                                             ple called to make it a science. And at         a demonstration. Now the ARRA, a few
+  When you got married in 1957, you                          the time, I was the kind of guy to whom         years earlier, had been so unreliable
+  could not enter the term “programmer”                      you could say such things. As I said, I         that the only safe demonstration we
+  into your marriage record?                                 was trained to become a scientist.              dared to give was the generation of ran-
+     That’s true. I think that “program-                                                                     dom numbers, but for the more reliable
+  mer” became recognized in the early                        What projects did you work on in Am-            ARMAC I could try something more am-
+  1960s. I was supposed to study theoreti-                   sterdam?                                        bitious. For a demonstration for non-
+  cal physics, and that was the reason for                      When I came in 1952, they were               computing people you have to have a
+  going to Cambridge. However, in 1955                       working on the ARRA,a but they could            problem statement that non-mathema-
+  after three years of programming, while                    not get it reliable, and an updated ver-        ticians can understand; they even have
+  I was still a student, I concluded that the                sion was built, using selenium diodes.          to understand the answer. So I designed
+  intellectual challenge of programming                      And then the Mathematical Centre                a program that would find the shortest
+  was greater than the intellectual chal-                    built a machine for Fokker Aircraft             route between two cities in the Nether-
+  lenge of theoretical physics, and as a                     Industry. So the FERTA,b an updated             lands, using a somewhat reduced road-
+  result I chose programming. Program-                       version of the ARRA, was built and in-          map of the Netherlands, on which I had
+  ming was so unforgiving. If something                      stalled at Schiphol. The installation           selected 64 cities (so that in the coding
+  went wrong, I mean a zero is a zero and                    I did together with the young Gerrit            six bits would suffice to identify a city).
+  a one is a one. I had never used some-                     Blaauw who later became one of the                  What’s the shortest way to travel
+  one else’s software. If something went                     designers of the IBM 360, with Gene             from Rotterdam to Groningen? It is the
+  wrong, I had done it. And it was that un-                  Amdahl and Fred Brooks.                         algorithm for the shortest path, which
+  forgivingness that challenged me.                             One funny story about the Fairchild          I designed in about 20 minutes. One
+     I also began to realize that in some                    F27: On my first visit to Australia, I flew     morning I was shopping in Amsterdam
+  strange way, programs could become                         on a big 747 from Amsterdam to Los              with my young fiancée, and tired, we sat
+  very complicated or tricky. So it was                      Angeles, then on another 747 I flew to          down on the café terrace to drink a cup
+  in 1955 when I decided not to become                                                                       of coffee and I was just thinking about
+  a physicist, to become a programmer                                                                        whether I could do this, and I then
+  instead. At the time programming                           a Automatische Relais Rekenmachine Amster-
+                                                               dam = Automatic Relay Calculator Amsterdam.
+  didn’t look like doing science; it was                     b Fokker Electronische Rekenmachine Te Am-      c Automatische Rekenmachine MAthematische
+  just a mixture of being ingenious and                        sterdam = Fokker Electronic Calculator In       Centrum = Automatic Calculator Mathemati-
+  being accurate. I envied my hardware                         Amsterdam                                       cal Centre
+
+
+  42   C OM M U NIC AT IONS OF T H E AC M   | AU GUST 201 0 | VO L . 53 | NO. 8
+                                                                                                                                   viewpoints
+
+designed the algorithm for the short-         would write down the formal specifi-            The OS/360 monitor idea would have
+est path. As I said, it was a 20-minute       cation of the machine, and all three of         never occurred to a European?
+invention. In fact, it was published in       us would sign it with our blood, so to              No, we were too poor to consider it
+1959, three years later. The publication      speak. And then our ways parted. All the        and we also decided that we should try
+is still quite nice. One of the reasons       programming I did was on paper. So I            to structure our designs in such a way
+that it is so nice was that I designed        was quite used to developing programs           that we could keep things under our in-
+it without pencil and paper. Without          without testing them.                           tellectual control. This was a major dif-
+pencil and paper you are almost forced           There was not a way to test them, so         ference between European and Ameri-
+to avoid all avoidable complexities.          you’ve got to convince yourself of their        can attitudes about programming.
+Eventually that algorithm became, to          correctness by reasoning about them.
+my great amazement, one of the cor-           A simple writing error did not matter           How did the notion of program proofs
+nerstones of my fame. I found it in the       as long as the machine wasn’t there yet,        arise?
+early 1960s in a German book on man-          and as soon as errors would show up                 In 1959, I had challenged my col-
+agement science—“Das Dijkstra’sche            on the machine, they would be simple            leagues at the Mathematical Centre
+Verfahren” [“Dijkstra’s procedure”].          to correct. But in 1957, the idea of a          with the following programming task.
+Suddenly, there was a method named            real-time interrupt created a vision of         Consider two cyclic programs, and in
+after me. And it jumped again recently        a program with non-reproducible er-             each cycle a section occurs called the
+because it is extensively used in all trav-   rors, because a real-time interrupt oc-         critical section. The two programs
+el planners. If, these days, you want to      curs at an unpredictable moment. My             can communicate by single reads
+go from here to there and you have a          hardware friends said, “Yes, yes, we            and single writes, and about the rela-
+car with a GPS and a screen, it can give      see your problem, but surely you must           tive speeds of the programs nothing
+you the shortest way.                         be up to it…” I learned to cope with it. I      is known. Try to synchronize these
+                                              wrote a real-time interrupt handler that        programs in such a way that at any
+When was the “shortest path” algo-            was flawless and that became the topic          moment in time at most one of them
+rithm originally published?                   of my Ph.D. thesis.3 Later I would learn        is engaged in its critical section.d I
+   It was originally published in 1959        that this would almost be considered an         looked at it and realized it was not
+in Numerische Mathematik edited by            un-American activity.                           trivial at all, there were all sorts of side
+F.L. Bauer. Now, at the time, an algo-                                                        conditions. For instance, if one of the
+rithm for the shortest path was hardly        How was the computing culture in                programs would stay for a very long
+considered mathematics: there was a           America different?                              time in its noncritical section, the
+finite number of ways of going from A            Well, the American reaction was very         other one should go on unhampered.
+to B and obviously there is a shortest        different. When IBM had to develop the          We did not allow ‘After-you-after-you’
+one, so what’s all the fuss about? It re-     software for the 360, they built one or         blocking, where the programs would
+mained unpublished until Bauer asked          two machines especially equipped with           compete for access to the critical sec-
+whether we could contribute some-             a monitor. That is an extra piece of ma-        tion and the dilemma would never be
+thing. In the meantime I had also de-         chinery that would exactly record when          solved. Now, my friends at the Math-
+signed the shortest sub-spanning tree         interrupts took place. And if something         ematical Centre handed in their so-
+for my hardware friends. You know,            went wrong, it could replay it again. So        lutions, but they were all wrong. For
+on the big panel you have to connect a        they made it reproducible, yes, but at          each, I would sketch a scenario that
+whole lot of points with the same cop-        the expense of much more hardware               would reveal the bug. People made
+per wire because they have to have the        than we could afford. Needless to say,          their programs more sophisticated
+same voltage. How do you minimize the         they never got the OS/360 right.                and more complicated. The construc-
+amount of copper wire that connects                                                           tion and counterexamples became
+these points? So I wrote “A note on two                                                       even more time-consuming, and I had
+problems in connection with graphs.”2         In the mathematical                             to change the rules of the game. I said,
+Years later when I went to my ophthal-                                                        “Sir, sorry, from now onward I only ac-
+mologist—he did not even know that            culture of those                                cept a solution with an argument why
+I was a computing scientist—he said,          days you had                                    it is correct.”
+“Have you designed the algorithm for                                                              Within three hours or so Th. J.
+GPS?” It turned out he had seen the Sci-      to deal with infinity                           Dekker came with a perfect solution
+entific American of November 2000.10          to make your                                    and a proof of its correctness. He had
+                                                                                              analyzed what kind of proof would be
+How could you tell if early programs          topic scientifically                            needed. What are the things I have to
+were correct?                                 respectable.                                    show? How can I prove them? Having
+    For those first five years I had always
+been programming for non-existing
+machines. We would design the instruc-                                                        d This is an implementation of the mutual ex-
+                                                                                                clusion problem, which later became a corner-
+tion code, I would check whether I could                                                        stone of the THE multiprogramming system
+live with it, and my hardware friends                                                           [THE = Technische Hogeschool Eindhoven
+would check that they could build it. I                                                         (Technical University Eindhoven)].
+
+
+                                                                           AU GUST 2010 | VO L . 53 | NO. 8 | C OMM UNIC ATION S OF T H E AC M   43
+viewpoints
+
+  settled that, he wrote down a program                      ing into a rigorous discipline, no longer    who had to agree with the report, none
+  that met the proof’s requirement. You                      a lot of handwaving. But perhaps more        saw that sentence. That’s how recur-
+  lose a lot when you restrict the role of                   important, it made compiler writing          sion was explicitly included.
+  mathematics to program verification                        and language definition topics worthy
+  as opposed to program construction or                      of academic attention. It played a ma-       Was this called recursion at that time?
+  derivation.                                                jor role in making computing science            Oh yes. The concept was quite well
+     Another experience in 1959 was at-                      academically respectable. The third          known. It was included in LISP, which
+  tending the “zeroth” IFIP Congress                         novelty was the introduction of the          was beginning to emerge at that time.
+  in Paris. My international contacts                        type “Boolean” as a first-class citizen.     We made it overlookable. And F.L.
+  had started in December 1958, with                         It turns the Boolean expression from a       Bauer would never have admitted it in
+  the meetings for the design of ALGOL                       statement of fact that may be wrong or       the final version of the ALGOL 60 Re-
+  60. My boss, Aad van Wijingaarden,                         right into an expression that has a val-     port, had he known it. He immediately
+  had had a serious car accident, and                        ue, say, “true” or “false.” How great that   founded the ALCOR Group. It was a
+  Jaap Zonneveld and I, as his immedi-                       step was I learned from my mother’s          group that together would implement
+  ate underlings, had to replace him.                        reaction. She was a gifted mathemati-        a subset of ALGOL 60, with recursion
+  Zonneveld was a numerical analyst,                         cian, but she could not make that step.      emphatically ruled out.
+  while I did the programming work.                          For her, “three plus five is ten” was not
+  The ALGOL 60 meetings were about                           a complicated way of saying “false”; it      What were other novelties in ALGOL 60?
+  the first time that I had to carry out dis-                was just wrong.                                 A fifth novelty that should be men-
+  cussions spontaneously in English. It                          Potentially this is going to have        tioned was the block structure. It was a
+  was tough.                                                 a very profound influence on how             tool for structuring the program, with
+                                                             mathematics is done, because math-           the same use of the word “structure”
+  You’ve remarked that learning many                         ematical proofs, can now be rendered         as I used nine years later in the term
+  different languages is useful to pro-                      as simple calculations that reduce           “structured programming.” The con-
+  gramming.                                                  a Boolean expression by value-pre-           cept of lexical scope was beautifully
+     Oh yes, it’s useful. There is an enor-                  serving transformations to the value         blended with nested lifetimes during
+  mous difference between one who                            “true.” The fourth novelty was the in-       execution, and I have never been able
+  is monolingual and someone who at                          troduction of recursion into impera-         to figure out who was responsible for
+  least knows a second language well,                        tive programming. Recursion was              that synthesis, but I was deeply im-
+  because it makes you much more con-                        a major step. It was introduced in a         pressed when I saw it.
+  scious about language structure in                         sneaky way. The draft ALGOL 60 report           Finally, the definition of the seman-
+  general. You will discover that certain                    was circulated in one of the last weeks      tics was much less operational than
+  constructions in one language you just                     of December 1959. We studied it and          it was for existing programming lan-
+  can’t translate. I was once asked what                     realized that recursive calls were all       guages. FORTRAN was essentially de-
+  were the most vital assets of a compe-                     but admitted, though it wasn’t stated.       fined by its implementation, whereas
+  tent programmer. I said “mathemati-                        And I phoned Peter Naur—that call            with ALGOL 60 the idea emerged that
+  cal inclination” because at the time it                    to Copenhagen was my first interna-          the programming language should be
+  was not clear how mathematics could                        tional telephone call; I’ll never forget     defined independent of computers,
+  contribute to a programming chal-                          the excitement!—and dictated to him          compilers, stores, etc.; the definition
+  lenge. And I said “exceptional mas-                        one suggestion. It was something like        should define what the implementa-
+  tery” of his native tongue because you                     “Any other occurrence of the proce-          tion should look like. Now these are
+  have to think in terms of words and                        dure identifier denotes reactivation         five or six issues that for many years
+  sentences using a language you are fa-                     of the procedure.” That sentence was         the United States has missed, and I
+  miliar with.                                               inserted sneakily. And of all the people     think that is a tragedy. It was the ob-
+                                                                                                          session with speed, the power of IBM,
+  How was ALGOL 60 a turning point?                                                                       the general feeling at the time that
+     Computing science started with AL-                      All the programming                          programming was something that
+  GOL 60. Now the reason that ALGOL 60                                                                    should be doable by uneducated mo-
+  was such a miracle was that it was not                     I did was on paper.                          rons picked from the street, it should
+  a university project but a project cre-                    So I was quite                               not require any sophistication. Yes…
+  ated by an international committee.                                                                     false dreams paralyzed a lot of Ameri-
+  It also introduced about a half-dozen                      used to developing                           can computing science.
+  profound novelties. First of all, it in-                   programs without
+  troduced the absence of such arbitrary                                                                  When did you understand that pro-
+  constraints as, say, ruling out the sub-                   testing them.                                gramming was a deep subject?
+  scripted subscript, the example I men-                                                                     I had published a paper called “Re-
+  tioned. A second novelty was that at                                                                    cursive Programming,” again in Nu-
+  least for the context-free syntax, a for-                                                               merische Mathematik.8 In 1961, I was
+  mal definition was given. That made a                                                                   beginning to realize that programming
+  tremendous difference! It turned pars-                                                                  really was an intellectual challenge.
+
+  44   C OM M U NIC AT ION S OF TH E AC M   | AUG UST 2010 | VO L . 53 | NO. 8
+                                                                                                                                  viewpoints
+
+Peter Naur and I were main speakers                                                          On the blackboard he wrote wall-to-
+at a workshop or a summer school in                                                          wall formulae and I didn’t understand
+Brighton, England; there were quite          Thanks to                                       a single word of it. But there were many
+a number of well-known British sci-          my isolation,                                   people that joined the discussion and
+entists in that audience. In the audi-                                                       posed questions. And I couldn’t under-
+ence was Tony Hoare, but neither of          I would do things                               stand those questions either. During
+us remembers that. I don’t remember          differently than                                a reception, I voiced my worry that I
+him because he was one of the many                                                           was there on false premises. “The first
+people in the audience, and he doesn’t       people subjected                                speaker, I did not understand a word
+remember it because in his memory            to the standard                                 of it.” “Oh,” he said, “none of us did.
+Peter Naur and I, both bearded and                                                           That was all nonsense and gibberish,
+both with a Continental accent, have         pressures of                                    but IBM is sponsoring this, so we had
+merged into one person. [laughter] We        conformity.                                     to give the first slot to an IBM speaker.”
+reconstructed years later that we were                                                       Well, that was totally new for me. Let’s
+both there.                                  I was a free man.                               say that the fence between science and
+    In 1962, my thinking about program                                                       industry, the fence around a university
+synchronization resulted in the P- & V-                                                      campus, is here [in the U.S.] not as high
+operations. The other thing I remem-                                                         as I was used to.
+ber was a conference in Rome on sym-
+bol manipulation, in April or so. Peter                                                      How did GO TO become ‘harmful’?
+Naur was there, with his wife. There         was [laughter] the darkest week in my               In 1967 was the ACM Conference
+were panel discussions and Peter and I       professional life. In a NATO Confer-            on Operating Systems Principles in
+were sitting next to each other and we       ence on Software Engineering in 1969            Gatlinburg. That, I think, was the first
+had all sorts of nasty comments, but         in Rome,11 I characterized the Russian          time that I had a large American audi-
+we made it the rule that we would go         decision to build a bit-compatible copy         ence. It was at that meeting where one
+to the microphone in turn. This had          of the IBM 360 as the greatest Ameri-           afternoon I explained to Brian Randell
+gone on for an hour or so, and van Wi-       can victory in the Cold War.                    and a few others why the GO TO state-
+jngaarden, my boss, was sitting next to         Okay now, 1964–1965. I had general-          ment introduced complexity. And they
+an American and at a given moment            ized Dekker’s solution for N processes          asked me to publish it. So I sent an ar-
+the American grabs his shoulder and          and the last sentence of that one-page          ticle called “A Case Against the GO TO
+says “My God! There are two of them.”        article is, “And this, the author believes,     Statement” to Communications of the
+[laughter] This may be included in an        completes the proof.” According to              ACM. The editor of the section wanted
+oral history? It’s not mathematics, it       Doug Ross, it was the first publication         to publish it as quickly as possible, so
+isn’t computer science either, but it is     of an algorithm that included its cor-          he turned it from an article into a Let-
+a true story….                               rectness proof. I wrote “Cooperating            ter to the Editor. And in doing so, he
+    In September 1962, I went to the first   Sequential Processes,” and I invented           changed the title into, “GO TO State-
+IFIP Congress, in Munich, and gave an        the Problem of the Dining Quintuple,            ment Considered Harmful.”4 That title
+invited speech on advancing program-         which Tony Hoare later named the                became a template. Hundreds of writ-
+ming. I got a number of curtain calls:       Problem of the Dining Philosophers.5            ers have “X considered harmful,” with
+clearly I was saying something unusu-                                                        X anything. The editor who made this
+al. Then I became a professor of Mathe-      When did you first visit the U.S.?              change was Niklaus Wirth.
+matics in Eindhoven, and for two years          My first trip to the U.S. was in 1963.
+I lectured on numerical analysis. By         That was to an ACM Conference in                Why is “elegance” in programming im-
+1963–1964, I had designed with Carel         Princeton. And I visited a number of            portant?
+S. Scholten the hardware channels and        Burroughs offices; that was the first               1968 was exciting because of the
+the interrupts of the Electrologica X8,      time I met Donald Knuth. I must al-             first NATO Conference on Software
+the last machine my friends built, and       ready have had some fame in 1963,               Engineering, in Garmisch. In BIT I
+then I started on the design of THE          because there was an ACM workshop               published a paper, on “A Constructive
+multiprogramming system.                     with about 60 to 80 participants and I          Approach to the Problem of Program
+    Of course, 1964 was the year in          was invited to join. And they paid me           Correctness.”1 1968 was also the year
+which IBM announced the 360. I was           $500. I didn’t need to give a speech, I         of the IBM advertisement in Datama-
+extremely cross with Gerry Blaauw,           didn’t need to sit in a panel discussion,       tion, of a beaming Susie Meyer who
+because there were serious flaws built       they just would like me to be there.            had just solved all her programming
+into the I/O organization of that ma-        Quite an amazing experience.                    problems by switching to PL/I. Those
+chine.7 He should have known about                                                           were the days we were led to believe
+the care that has to go into the design      What about your first two trips to Amer-        that the problems of programming
+of such things, but that was clearly not     ica surprised you about the profession?         were the problems of the deficiencies
+a part of the IBM culture. In my Tur-           Well, the first lecture at that ACM          of the programming language you
+ing Lecture I described the week that I      workshop was given by a guy from IBM.           were working with. How did I char-
+studied the specifications of the 360, it    It was very algebraic and complicated.          acterize it? “APL is a mistake, carried
+
+                                                                          AU GUST 2010 | VO L . 53 | NO. 8 | C OMM UNIC ATION S OF T H E AC M   45
+viewpoints
+
+                                                             through to perfection. It is the lan-        was a very heavy use of anthropomor-
+                                                             guage of the future for the program-         phic terminology, the “electronic
+                                                             ming techniques of the past: it creates      brain” or “machines that think.” That
+                                                             a new generation of coding bums.”            is absolutely killing. The use of anthro-
+                                                             I thought that programmers should            pomorphic terminology forces you
+    Content Written                                          not be puzzle-minded, which was one          linguistically to adopt an operational
+                                                             of the criteria on which IBM selected        view. And it makes it practically impos-
+    by Experts                                               programmers. We would be much bet-           sible to argue about programs inde-
+                                                             ter served by clean, systematic minds,       pendently of their being executed.
+                                                             with a sense of elegance. And APL, with
+                                                             its one-liners, went in the other direc-     Is this why artificial intelligence re-
+                                                             tion. I have been exposed to more APL        search seemingly doesn’t take hold in
+                                                             than I’d like because Alan Perlis had        Europe?
+                                                             an APL period. I think he outgrew it be-        There was a very clear financial
+                              Blogs                          fore his death, but for many years APL       constraint: at the time we had to use
+                                                             was “it.”                                    the machines we could build with the
+                            Articles                                                                      available stuff. There is also a great
+                       Roundtables                           Why did your “structured program-            cultural barrier. The European mind
+                                                             ming” have such impact?                      tends to maintain a greater distinction
+                       Case Studies                             In 1969, I wrote “Notes on Struc-         between man and machine. It’s less in-
+                                                             tured Programming,”6 which I think           clined to describe machines in anthro-
+                        Multimedia                           owed its American impact to the fact         pomorphic terminology; it’s also less
+                                RSS                          that it had been written at the other        inclined to describe the human mind
+                                                             side of the Atlantic Ocean; which has        in mechanical terminology. Freud
+                                                             two very different sides. I can talk         never became the rage in Europe as he
+                                                             about this with some authority, hav-         became in the United States.
+                                                             ing lived here [in the U.S.] for the bet-
+                                                             ter part of 17 years. I think that thanks    You’ve said, “The tools we use have a
+   queue.acm.org                                             to the greatly improved possibility of       profound and devious influence on
+                                                             communication, we overrate its im-           our thinking habits, and therefore on
+                                                             portance. Even stronger, we underrate        our thinking abilities.”
+           IMAGINE...                                        the importance of isolation. See, look
+                                                             at what that 1963 invitation to the ACM
+                                                                                                              The devious influence was in-
+                                                                                                          spired by the experience with a bright
+   a graduate computer science program                       workshop illustrates, at a time when I       student. In the oral examination we
+   that offers you the convenience and access of online      had published very little. I had imple-      solved a problem. Together we con-
+   learning, combined with the benefits of participating
+       in live classroom discussion and interaction.
+                                                             mented ALGOL 60 and I had written a          structed the program, decided what
+                                                             real-time interrupt handler, I had just      had to be done, but very close to the
+           It’s here... the Brooklyn Campus                  become a professional programmer.            end, the kid got stuck. I was amazed
+        of Long Island University is offering                Yet I turned out to be quite well known.     because he had understood the prob-
+       a NEW BLENDED LEARNING program                        How come? Thanks to my isolation, I          lem perfectly. It turned out he had to
+   that fuses online learning with traditional classroom     would do things differently than peo-        write a subscripted value in a subscript
+     studies, significantly reducing the amount of time      ple subjected to the standard pres-          position, the idea of a subscripted sub-
+    you’ll spend on campus and maximizing interaction        sures of conformity. I was a free man.       script, something that was not allowed
+        with faculty members and fellow students.                                                         in FORTRAN. And having been educat-
+                                                             What were other differences between          ed in FORTRAN, he couldn’t think of
+            M.S. in Computer Science                         Europe and the U.S.?                         it, although it was a construction that
+                  Brooklyn Campus                               One of the things that saved Europe       he had seen me using at my lectures.
+                 Information Session                         was that until 1960 or so, it was not con-
+            Wednesday, August 18, 6:00 p.m.
+            Saturday, August 21, 10:30 a.m.
+                                                             sidered an interesting market. So we         So the use of FORTRAN made him un-
+        718-488-1011 • gradadmissions@liu.edu                were ignored. We were spared the pres-       able to solve that?
+                                                             sure. I had no idea of the power of large        Indeed. When young students have
+                                                             companies. Only recently I learned that      difficulty in understanding recursion,
+                                                             in constant dollars the development of       it is always due to the fact that they had
+                                                             the IBM 360 has been more expensive          learned programming in a program-
+                                                             than the Manhattan Project.                  ming language that did not permit it.
+                                                                I was beginning to see American           If you are now trained in such an op-
+                                                             publications in the first issue of Com-      erational way of thinking, at a given
+                                                             munications of the ACM. I was shocked        moment your pattern of understand-
+                                                             by the clumsy, immature way in which         ing becomes visualizing what happens
+       greater access to excellent education
+                                                             they talked about computing. There           during the execution of the algorithm.
+
+  46    C OM M UNIC AT IONS OF T H E AC M   | AU GUST 2010 | VO L . 53 | NO. 8
+                                                                                                                                     viewpoints
+
+The only way in which you can see the                                                       pressure on the universities to supply
+algorithm is as a FORTRAN program.                                                          them, even if the university did not
+                                             In many places,                                quite know how. In many places, de-
+And what’s the answer then for our fu-       departments of                                 partments of computer science were
+ture students to avoid the same trap?                                                       founded before the shape of the intel-
+    Teach them, as soon as possible, a       computer science                               lectual discipline stood out clearly.
+decent programming language that ex-         were founded before                               You also find it reflected in the
+ercises their power of abstraction. Dur-                                                    names of scientific societies, such as
+ing 1968 in Garmisch I learned that in       the shape of the                               the Association for Computing Ma-
+the ears of the Americans, a “math-          intellectual discipline                        chinery. It’s the British Computer Soci-
+ematical engineer” [such as we educat-                                                      ety and it was the Dutch who had Het
+ed in Eindhoven] was a contradiction         stood out clearly.                             Nederlands Rekenmachine Genootsc-
+in terms: the American mathematician                                                        hap; without knowing Dutch, you can
+is an impractical academic, whereas                                                         hear the word “machine” in that name.
+the American engineer is practical                                                          And you got the departments of Com-
+but hardly academically trained. You                                                        puter Science. Rather than the depart-
+notice that all important words carry                                                       ment of computing science or the de-
+different, slightly different meanings.                                                     partment of computation. Europe was
+I was disappointed in America by the         of the population it is supposed to ad-        later, it coined the term Informatics.
+way in which it rejected ALGOL 60. I         dress have changed radically. That al-         Tony Hoare was a Professor of Compu-
+had not expected it. I consider it a trag-   ready started in the 1970s. So whatever        tation.
+edy because it is a symptom of how           I say about the [European] university
+the United States is becoming more           is probably idealized by memory. Yes.          “Information” came a bit later on?
+and more a-mathematical, as Morris           But a major difference was that the               It was the French that pushed in-
+Kline illustrates eloquently.9 Precisely     fence around the university campus             formatique. Today the English prefer
+in the century which witnesses the           was higher. To give you an example,            Information Technology, IT, and In-
+emergence of computing equipment,            when we started to design a comput-            formation Systems, IS. I think the tim-
+it pays so much to have a well-trained       ing science curriculum in the 1960s,           ing has forced the American depart-
+mathematical mind.                           one of the firm rules was that no in-          ments to start too early. And they still
+                                             dustrial product would be the subject          suffer from it. Here, at the University
+In 1963 Peter Patton, in Communica-          of an academic course. It’s lovely. This       of Texas, you can still observe it is the
+tions of the ACM, wrote that European        immediately rules out all Java courses,        Department of Computer Sciences. If
+programmers are fiercely independent         and at the time it ruled out all FOR-          you start to think about it, you can only
+loners whereas Americans are team            TRAN courses. We taught ALGOL 60,              laugh, but that time there were at least
+players. Or is it the other way?             it was a much greater eye-opener than          as many computer sciences as there
+    At the Mathematical Centre, we           FORTRAN.                                       were professors.
+used to cooperate on large projects
+and apply a division of labor; it was        Is there a relationship between the            References
+something of a shock when I went to          curriculum and the nature of funding           1. Dijkstra, E.W. A constructive approach to the problem
+                                                                                                of program correctness. BIT 8, 3 (1968), 174–186.
+the Department of Mathematics at             of universities?                               2. Dijkstra, E.W. A note on two problems in connection
+Eindhoven where everybody worked                Yes. It has the greatest influence on           with graphs. Numerische Mathematik 1 (1959),
+                                                                                                269–271.
+all by himself. After we had completed       the funding of research projects. Quite        3. Dijkstra, E.W. Communication with an automatic
+the THE System, for instance, Nico           regularly I see firm XYZ proposing to              computer. Ph.D. dissertation, University of
+                                                                                                Amsterdam, 1959.
+Habermann wrote a thesis about the           give student fellowships or something          4. Dijkstra, E.W. Go To statement considered harmful,
+                                                                                                Commun. ACM 11, 3 (Mar. 1968), 147–148.
+Banker’s Algorithm, and about sched-         and then, somewhere in the small               5. Dijkstra, E.W. Hierarchical ordering of sequential
+uling, sharing, and deadlock preven-         print, that preference will be given to            processes. Acta Informatica 1 (1971), 115–138.
+                                                                                            6. Dijkstra, E.W. Notes on structured programming.
+tion. The department did not like that       students who are supervised by pro-                In O.-J. Dahl, E.W. Dijkstra, and C.A.R. Hoare, Eds.,
+because it was not clear how much he         fessors who already have professional              Structured Programming. Academic Press, London,
+                                                                                                1972, 1–82.
+had done by himself. They made so            contact with the company.                      7. Dijkstra, E.W. Over de IBM 360, EWD 255, n.d.,
+much protest that Cor Ligtmans, who                                                             circulated privately; http://www.cs.utexas.edu/ users/
+                                                                                                EWD/ewd02xx/EWD255.PDF
+should have written his Ph.D. thesis on      Why do computer science depart-                8. Dijkstra, E.W. Recursive programming. Numerische
+another aspect of THE System, refused        ments often come out of electrical                 Mathematik 2 (1960), 312–318.
+                                                                                            9. Kline, M. Mathematics in Western Culture. Penguin
+to do so.                                    engineering in the U.S.—but not in Eu-             Books Ltd., Harmondsmorth, Middlesex, England,
+                                             rope?                                              1972.
+                                                                                            10. Menduno, M. Atlas shrugged: When it comes to online
+Is the outcome of the curricula differ-         A major reason is timing. For fi-               road maps, why you can’t (always) get there from
+ent in Europe and America?                   nancial reasons, Europe, damaged by                here. Scientific American 283, 11 (Nov. 2000), 20–22.
+                                                                                            11. Randell, B. and Buxton, J.N., Eds., Software
+    I must be very careful with answer-      World War II, was later. So the Ameri-             Engineering Techniques: A Report on a Conference
+ing this because during my absence,          can computing industry emerged ear-                Sponsored by the NATO Science Committee (Rome,
+                                                                                                Italy, Oct. 1969), NATO, 1970.
+the role of the university, the financ-      lier. The computing industry asked
+ing of the university, and the fraction      for graduates, which increased the             Copyright held by author.
+
+
+                                                                        AU GUST 2010 | VO L . 53 | NO. 8 | C OMM U NIC ATION S OF T H E AC M       47
+

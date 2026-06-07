@@ -15,12 +15,13 @@ Engineer a contradiction around one feature: a **monochromatic √3-equilateral 
 - **Engine (rhombus).** A unit rhombus = two unit equilateral triangles sharing an edge. In
   any 3-colouring its two acute (60°) vertices — which are √3 apart — are forced to the same
   colour. The **Moser spindle** (two rhombi sharing an acute vertex, the far acute vertices
-  rotated to unit distance by 2·arcsin(1/(2√3))) is the 7-vertex, 11-edge graph with χ = 4
-  built from this.
+  rotated to unit distance by 2·arcsin(1/(2√3)), equivalently cos = 5/6 and sin = √11/6)
+  is the 7-vertex, 11-edge graph with χ = 4 built from this.
 
 - **Classifier (H).** The hexagon-with-centre, 7 vertices, 12 unit edges, has exactly four
-  essentially-distinct 4-colourings; two contain a monochromatic √3-triple ("structured"),
-  two don't. So "is this copy of H structured?" is a binary handle on any 4-colouring.
+  essentially-distinct colourings with at most four colours; two contain a monochromatic
+  √3-triple ("structured"), two don't. So "is this copy of H structured?" is a binary handle
+  on any 4-colouring.
 
 - **Forcer (L).** Assemble 52 rotated copies of H (built in stages J→K→L) so that **every**
   4-colouring makes at least one copy structured. The construction is recursive spindle logic:
@@ -32,27 +33,30 @@ Engineer a contradiction around one feature: a **monochromatic √3-equilateral 
 
 - **Anti-forcer (M).** Build a unit-distance graph M (1345 v) around one H from a dense,
   interlocking mesh of spindles so that **no** 4-colouring makes its central H structured. A
-  mono triple is a local concentration of mono √3-pairs; densely interlocked spindles force
-  those pairs to spread out uniformly, forbidding the concentration. Plain 60°-rotation
-  meshes (only 3 edge classes, max degree 18) are too slack; enriching the edge directions
-  with the offsets of tightly-linked spindles — angles i·arcsin(√3/2)+j·arcsin(1/√12),
-  i∈0…5, j∈−2…2 (graph V, max degree 30) — stiffens the mesh enough to work.
+  mono triple is a local concentration of mono √3-pairs; densely interlocked spindles are
+  used to constrain those pairs away from such concentration. Plain 60°-rotation meshes
+  (only 3 edge classes, max degree 18) are too slack; enriching the edge directions with the
+  offsets of tightly-linked spindles — angles i·arcsin(√3/2)+j·arcsin(1/√12), i∈0…5,
+  j∈−2…2 (graph V, max degree 30) — stiffens the mesh enough to work.
 
 - **Compose (N).** Glue 52 copies of M onto L so each M's central H is one of L's copies.
   L forces some H structured; M forbids that H structured; contradiction. N (20425 v after
   merging) is not 4-colourable, so **CNP ≥ 5**.
 
 - **Shrink + certify (G).** Stepwise vertex deletions reduce N by ~13× to a 1581-vertex graph
-  G, small enough that standard SAT solvers confirm χ(G) = 5 directly, with a DRAT
-  certificate an independent checker validates — no trust in custom code.
+  G, small enough that standard SAT solvers check both halves of χ(G) = 5 directly: a
+  5-colouring exists, and the 4-colour CNF is UNSAT. Proof logging can make the UNSAT half
+  independently checkable.
 
 ## Certifying (un)colourability
 
 M's property is checked by a one-sided depth-first colourer: fix the central H to a structured
 pattern (two cases suffice by symmetry), colour the rest most-constrained-vertex first, and
 propagate forced colours; the spindle density makes the search collapse in minutes. This is
-the standard one-hot SAT encoding — x[v,c]; an at-least-one clause per vertex; an edge clause
-(¬x[u,c] ∨ ¬x[w,c]) per edge and colour — UNSAT for k = 4 meaning not 4-colourable.
+the standard one-hot SAT encoding with extra clauses fixing the central H pattern — x[v,c];
+an at-least-one clause per vertex; an edge clause (¬x[u,c] ∨ ¬x[w,c]) per edge and colour.
+UNSAT in that constrained formula means no 4-colouring makes the central H structured; for
+the final graph G, UNSAT of the unconstrained 4-colour formula means non-4-colourability.
 
 ## Code
 
@@ -60,88 +64,184 @@ the standard one-hot SAT encoding — x[v,c]; an at-least-one clause per vertex;
 from fractions import Fraction as F
 from itertools import combinations
 
-# exact arithmetic in Q[sqrt(3)]: value = a + b*sqrt(3)
-class Q3:
-    def __init__(self, a=0, b=0): self.a, self.b = F(a), F(b)
-    def __add__(s,o): o=_c(o); return Q3(s.a+o.a, s.b+o.b)
-    def __sub__(s,o): o=_c(o); return Q3(s.a-o.a, s.b-o.b)
-    def __mul__(s,o):
-        o=_c(o)                                  # (a+b√3)(c+d√3)=(ac+3bd)+(ad+bc)√3
-        return Q3(s.a*o.a + 3*s.b*o.b, s.a*o.b + s.b*o.a)
-    def __eq__(s,o): o=_c(o); return s.a==o.a and s.b==o.b
-def _c(x): return x if isinstance(x,Q3) else Q3(x,0)
-SQRT3 = Q3(0,1)
+class Qsqrt:
+    __slots__ = ("a", "b", "c", "d")
 
-def dist2(p,q):
-    dx,dy = p[0]-q[0], p[1]-q[1]; return dx*dx + dy*dy
-def is_unit(p,q): return dist2(p,q) == Q3(1,0)
+    def __init__(self, a=0, b=0, c=0, d=0):
+        self.a = F(a)
+        self.b = F(b)
+        self.c = F(c)
+        self.d = F(d)
 
-# rhombus: acute pair A,B is sqrt(3) apart and monochromatic in every 3-colouring
+    def __add__(s, o): o = _q(o); return Qsqrt(s.a + o.a, s.b + o.b, s.c + o.c, s.d + o.d)
+    def __radd__(s, o): return s + o
+    def __sub__(s, o): o = _q(o); return Qsqrt(s.a - o.a, s.b - o.b, s.c - o.c, s.d - o.d)
+    def __rsub__(s, o): return _q(o) - s
+
+    def __mul__(s, o):
+        o = _q(o)
+        a = s.a * o.a + 3 * s.b * o.b + 11 * s.c * o.c + 33 * s.d * o.d
+        b = s.a * o.b + s.b * o.a + 11 * (s.c * o.d + s.d * o.c)
+        c = s.a * o.c + s.c * o.a + 3 * (s.b * o.d + s.d * o.b)
+        d = s.a * o.d + s.b * o.c + s.c * o.b + s.d * o.a
+        return Qsqrt(a, b, c, d)
+
+    def __rmul__(s, o): return s * o
+    def __eq__(s, o): o = _q(o); return (s.a, s.b, s.c, s.d) == (o.a, o.b, o.c, o.d)
+    def __hash__(s): return hash((s.a, s.b, s.c, s.d))
+    def __repr__(s): return f"{s.a}+{s.b}√3+{s.c}√11+{s.d}√33"
+
+
+def _q(x):
+    return x if isinstance(x, Qsqrt) else Qsqrt(x, 0, 0, 0)
+
+
+ZERO = Qsqrt(0)
+ONE = Qsqrt(1)
+SQRT3 = Qsqrt(0, 1, 0, 0)
+SQRT11 = Qsqrt(0, 0, 1, 0)
+
+
+def dist2(p, q):
+    dx = p[0] - q[0]
+    dy = p[1] - q[1]
+    return dx * dx + dy * dy
+
+
+def is_unit(p, q):
+    return dist2(p, q) == ONE
+
+
 def rhombus():
-    A=(Q3(0),Q3(0)); B=(SQRT3,Q3(0))
-    C=(Q3(0,F(1,2)),Q3(F(1,2))); D=(Q3(0,F(1,2)),Q3(F(-1,2)))
-    V={"A":A,"B":B,"C":C,"D":D}
-    E=[("A","C"),("A","D"),("B","C"),("B","D"),("C","D")]
-    return V,E,("A","B")
+    A = (ZERO, ZERO)
+    B = (SQRT3, ZERO)
+    C = (SQRT3 * F(1, 2), Qsqrt(F(1, 2)))
+    D = (SQRT3 * F(1, 2), Qsqrt(F(-1, 2)))
+    V = {"A": A, "B": B, "C": C, "D": D}
+    E = [("A", "C"), ("A", "D"), ("B", "C"), ("B", "D"), ("C", "D")]
+    return V, E, ("A", "B")
 
-# Moser spindle: chi = 4
+
 def moser_spindle():
-    import math; s3=math.sqrt(3)
-    base={"O":(0.,0.),"P":(s3,0.),"c":(s3/2,.5),"d":(s3/2,-.5)}
-    th=2*math.asin(1/(2*s3))                      # chord 2*sqrt3*sin(th/2)=1
-    rot=lambda p:(p[0]*math.cos(th)-p[1]*math.sin(th),
-                  p[0]*math.sin(th)+p[1]*math.cos(th))
-    V={"O":base["O"],"P1":base["P"],"c1":base["c"],"d1":base["d"],
-       "P2":rot(base["P"]),"c2":rot(base["c"]),"d2":rot(base["d"])}
-    E=[("O","c1"),("O","d1"),("P1","c1"),("P1","d1"),("c1","d1"),
-       ("O","c2"),("O","d2"),("P2","c2"),("P2","d2"),("c2","d2"),("P1","P2")]
-    return V,E
+    cos_t = Qsqrt(F(5, 6))
+    sin_t = SQRT11 * F(1, 6)
+    base = {
+        "O": (ZERO, ZERO),
+        "P": (SQRT3, ZERO),
+        "c": (SQRT3 * F(1, 2), Qsqrt(F(1, 2))),
+        "d": (SQRT3 * F(1, 2), Qsqrt(F(-1, 2))),
+    }
 
-# one-hot SAT search for k-colourability (the DFS colourer)
+    def rot(p):
+        x, y = p
+        return (x * cos_t - y * sin_t, x * sin_t + y * cos_t)
+
+    V = {
+        "O": base["O"], "P1": base["P"], "c1": base["c"], "d1": base["d"],
+        "P2": rot(base["P"]), "c2": rot(base["c"]), "d2": rot(base["d"]),
+    }
+    E = [("O", "c1"), ("O", "d1"), ("P1", "c1"), ("P1", "d1"), ("c1", "d1"),
+         ("O", "c2"), ("O", "d2"), ("P2", "c2"), ("P2", "d2"), ("c2", "d2"),
+         ("P1", "P2")]
+    return V, E
+
+
 def k_colour(vertices, edges, k):
-    adj={v:set() for v in vertices}
-    for u,v in edges: adj[u].add(v); adj[v].add(u)
-    order=sorted(vertices, key=lambda v:-len(adj[v]))   # most-constrained first
-    colour={}
+    adj = {v: set() for v in vertices}
+    for u, v in edges:
+        adj[u].add(v)
+        adj[v].add(u)
+    order = sorted(vertices, key=lambda v: -len(adj[v]))
+    colour = {}
+
+    def forbidden(v):
+        return {colour[w] for w in adj[v] if w in colour}
+
     def search(i):
-        if i==len(order): return True
-        v=order[i]; bad={colour[w] for w in adj[v] if w in colour}
+        if i == len(order):
+            return True
+        v = order[i]
+        bad = forbidden(v)
         for c in range(k):
-            if c in bad: continue
-            colour[v]=c
-            if search(i+1): return True
+            if c in bad:
+                continue
+            colour[v] = c
+            if search(i + 1):
+                return True
             del colour[v]
         return False
+
     return dict(colour) if search(0) else None
 
-def chromatic_number(vertices, edges, hi=7):
-    for k in range(1,hi+1):
-        if k_colour(vertices,edges,k) is not None: return k
 
-# standard one-hot CNF: UNSAT for k=4 == not 4-colourable (DRAT-certifiable)
+def chromatic_number(vertices, edges, hi=7):
+    for k in range(1, hi + 1):
+        if k_colour(vertices, edges, k) is not None:
+            return k
+    return None
+
+
 def dimacs_kcol(vertices, edges, k):
-    idx={v:i for i,v in enumerate(vertices)}
-    var=lambda v,c: idx[v]*k + c + 1
-    cl=[[var(v,c) for c in range(k)] for v in vertices]
-    cl+=[[-var(v,a),-var(v,b)] for v in vertices for a,b in combinations(range(k),2)]
-    cl+=[[-var(u,c),-var(w,c)] for u,w in edges for c in range(k)]
-    return f"p cnf {len(vertices)*k} {len(cl)}\n" + \
-           "\n".join(" ".join(map(str,c))+" 0" for c in cl)
+    idx = {v: i for i, v in enumerate(vertices)}
+    var = lambda v, c: idx[v] * k + c + 1
+    clauses = []
+    for v in vertices:
+        clauses.append([var(v, c) for c in range(k)])
+    for v in vertices:
+        for c1, c2 in combinations(range(k), 2):
+            clauses.append([-var(v, c1), -var(v, c2)])
+    for u, w in edges:
+        for c in range(k):
+            clauses.append([-var(u, c), -var(w, c)])
+    lines = [f"p cnf {len(vertices) * k} {len(clauses)}"]
+    lines += [" ".join(map(str, cl)) + " 0" for cl in clauses]
+    return "\n".join(lines)
+
 
 if __name__ == "__main__":
-    V,E,(a,b)=rhombus()
-    assert all(is_unit(V[u],V[w]) for u,w in E)
-    assert dist2(V[a],V[b]) == Q3(3,0)            # acute pair sqrt(3) apart
-    Vs,Es=moser_spindle()
-    assert len(Vs)==7 and len(Es)==11
-    assert k_colour(list(Vs),Es,3) is None        # not 3-colourable
-    assert k_colour(list(Vs),Es,4) is not None    # is  4-colourable -> chi = 4
-    print("OK: rhombus unit + sqrt(3) acute pair; Moser spindle chi = 4")
+    V, E, (a, b) = rhombus()
+    for u, w in E:
+        assert is_unit(V[u], V[w]), (u, w, dist2(V[u], V[w]))
+    assert dist2(V[a], V[b]) == Qsqrt(3)
+
+    verts = list(V)
+    adj = {v: set() for v in V}
+    for u, w in E:
+        adj[u].add(w)
+        adj[w].add(u)
+
+    def all_colourings(k):
+        out = []
+        def rec(i, col):
+            if i == len(verts):
+                out.append(dict(col))
+                return
+            v = verts[i]
+            for c in range(k):
+                if all(col.get(w) != c for w in adj[v]):
+                    col[v] = c
+                    rec(i + 1, col)
+                    del col[v]
+        rec(0, {})
+        return out
+
+    cols = all_colourings(3)
+    assert len(cols) == 6
+    assert all(col["A"] == col["B"] for col in cols)
+
+    Vs, Es = moser_spindle()
+    assert len(Vs) == 7 and len(Es) == 11
+    for u, w in Es:
+        assert is_unit(Vs[u], Vs[w]), (u, w, dist2(Vs[u], Vs[w]))
+    assert chromatic_number(list(Vs), Es, hi=6) == 4
+    assert k_colour(list(Vs), Es, 3) is None
+    assert k_colour(list(Vs), Es, 4) is not None
+    assert dimacs_kcol(list(Vs), Es, 3).splitlines()[0] == "p cnf 21 61"
+    print("OK: rhombus forced pair and Moser spindle chi = 4")
 ```
 
 Running it confirms the two load-bearing gadget facts exactly: the rhombus is unit-distance
 with a √3 acute pair forced monochromatic under 3 colours, and the Moser spindle is exactly
-4-chromatic. These are the engine the forcer/anti-forcer architecture is built on; scaled up
-through L, M, N and shrunk to the 1581-vertex G, the same SAT verdict (UNSAT for 4 colours)
+4-chromatic. The larger construction uses those facts through L, M, N and the 1581-vertex G;
+SAT verification of G's 5-colourability and non-4-colourability gives χ(G) = 5 and
 establishes CNP ≥ 5.
-```

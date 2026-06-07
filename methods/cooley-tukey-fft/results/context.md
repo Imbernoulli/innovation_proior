@@ -10,14 +10,17 @@ $W$ is a primitive $N$-th root of unity, so $W^N = 1$. The transform is the fund
 
 Read literally, the formula is a multiplication of the data vector $A$ by the $N \times N$ matrix whose $(j,k)$ entry is $W^{jk}$. That matrix multiplication takes $N^2$ complex multiplications and about $N^2$ additions. For the sizes that matter in practice — spectroscopy, radar, seismic exploration, X-ray scattering, harmonic analysis of tides and orbits, time-series with thousands to millions of points — the quadratic cost is the bottleneck. At $N = 10^6$, $N^2 = 10^{12}$ operations is the difference between roughly seconds and roughly weeks of machine time. The question is whether the DFT can be computed in fundamentally fewer than $N^2$ operations.
 
+Two concrete applications around 1963 make the wall sharp rather than abstract. The route into the computation runs through Richard Garwin, who brings John Tukey's factor-$N$ split idea from President Kennedy's Scientific Advisory Council. First, nuclear-test-ban verification: a credible US/Soviet test-ban regime requires detecting Soviet underground tests *without* on-site inspection, and the proposed scheme is to ring the Soviet Union with seismometers and analyze the resulting seismological time series — separating a clandestine explosion from an earthquake means computing spectra of long records from many stations, a transform volume that the computers of the day cannot process by direct evaluation. Second, the application handed forward as the immediate programming target is a three-dimensional solid-state calculation: determining periodicities in the spin orientations of helium-3 in a crystal requires a 3-D discrete Fourier transform on a grid that is a power of two along each axis, where the per-axis lengths again push the direct $N^2$ cost past what the available machines can deliver. In both, the bottleneck is not accuracy but raw operation count, and only a sub-quadratic algorithm makes the computation feasible at all.
+
 ## Background
 
 The continuous trigonometric series goes back to Euler, who gave formulas for the coefficients of a series representation of a function, and to Clairaut (1754), who published what appears to be the earliest explicit formula for computing series coefficients from equally spaced samples — a cosine DFT. Lagrange extended this to finite sine series. Clairaut and Lagrange were driven by orbital mechanics: given a finite set of equally spaced observations of a periodic phenomenon, recover the harmonic coefficients. In modern terms, an even periodic $f$ of period one is represented as $f(x) = \sum_k a_k \cos 2\pi k x$, and forcing $f$ to equal the observed samples at $x_n = n/N$ makes the $\{a_k\}$ exactly the cosine DFT of the observations. So from its origin, the object of interest is the *interpolation* of periodic data, and the cost of computing it by hand was always the practical wall.
 
-The structure to exploit lives entirely in the matrix $[W^{jk}]$. Its entries are not arbitrary: each is a power of one root of unity $W$, and the exponent only matters modulo $N$ because $W^N = 1$. Two facts about roots of unity carry all the weight:
+The structure to exploit lives entirely in the matrix $[W^{jk}]$. Its entries are not arbitrary: each is a power of one root of unity $W$, and the exponent only matters modulo $N$ because $W^N = 1$. Three facts about roots of unity carry all the weight:
 
 - **Periodicity.** $W^{m+N} = W^m$. The exponents wrap.
-- **Halving.** If $N$ is even, $W^{N/2} = e^{-\pi i} = -1$, so $W^{j(k+N/2)} = W^{jk}\,W^{jN/2} = (-1)^j W^{jk}$, and $W^2 = e^{-2\pi i/(N/2)}$ is itself a primitive $(N/2)$-th root of unity.
+- **Half-length root.** If $N$ is even, $W^2 = e^{-2\pi i/(N/2)}$ is itself a primitive $(N/2)$-th root of unity, so even powers of $W$ are exactly the powers needed for a half-length transform.
+- **Sign flip across the upper half.** $W^{N/2} = e^{-\pi i} = -1$, so $W^{j+N/2} = -W^j$. A length-$N/2$ transform is periodic in its output index with period $N/2$, so the same half-transform values can serve both $j$ and $j+N/2$; only the twiddle factor changes sign.
 
 These mean the $N^2$ matrix entries take far fewer than $N^2$ distinct values, and the same partial sums recur across different output indices. That redundancy is the latent inefficiency a fast method must convert into reuse.
 
@@ -27,9 +30,11 @@ A diagnostic example fixes scale. By hand, a 64-point Fourier analysis was a sub
 
 ## Baselines
 
-**Direct evaluation (the matrix multiply).** Compute each $X(j)$ as $\sum_k A(k) W^{jk}$ independently. Precompute the powers of $W$ once. Cost: $N^2$ complex multiplications. Correct, simple, in-place-able, and the universal fallback. Its gap is exactly its order: it never reuses a partial sum from one output row in another, although the periodicity of $W$ guarantees enormous reuse is available.
+**Direct evaluation (the matrix multiply).** Compute each $X(j)$ as $\sum_k A(k) W^{jk}$ independently. Precompute the powers of $W$ once. Cost: $N^2$ complex multiplications. Correct, simple, easy to store, and the universal fallback. Its gap is exactly its order: it never reuses a partial sum from one output row in another, although the periodicity of $W$ guarantees enormous reuse is available.
 
 **Term-grouping / common-factor schemes (Carlini 1828 for $n=12$, Hansen 1835 for $n=64$, Archibald Smith 1846, used by Kelvin and by G. H. Darwin for tidal analysis).** Collect terms in the series that multiply the same $\cos$ or $\sin$ value and add them before multiplying. This removes repeated multiplications by equal trigonometric values and was the standard hand technique through the nineteenth century. It typically only computed harmonics up to the fourth, because measurement noise swamped higher ones, so these were fixed-size tabulated recipes, not general procedures. The gap: the savings are a bounded constant factor; the work still grows as $N^2$ because no shorter DFT is ever formed.
+
+**Gauss's interpolation factorization (1805, published posthumously).** For orbit interpolation, a composite number of equally spaced samples can be arranged as a product of shorter cyclic grids. The trigonometric notation is different, but the substance is a decomposition of one long finite Fourier calculation into shorter ones, with phase corrections between the stages. Its gap for the present machine problem is historical and practical: it remained buried in interpolation tables and was not available as a general programming recipe for complex DFTs, arbitrary composite lengths, and regular machine storage.
 
 **Runge's doubling (Runge 1903/1905; Runge & König).** A length-$2N$ transform can be assembled from two length-$N$ transforms with about $N$ extra operations. This is a real order-reducing step — it forms shorter DFTs and recombines them — but only in the doubling direction: it builds $2N$ from $N$, so it is naturally limited to power-of-two-style growth and was presented as a doubling rule rather than a general factorization.
 
@@ -45,7 +50,7 @@ The natural yardstick is the operation count — complex multiplications and add
 
 ## Code framework
 
-The primitives already exist: complex arithmetic, a routine to form powers of a root of unity, and the direct transform as both a baseline and a small-$N$ base case. The fast routine is the empty slot.
+The primitives already exist: complex arithmetic, a routine to form powers of a root of unity, and the direct transform as both a baseline and a small-$N$ correctness oracle. The open slots are a faster transform, whatever size validation it requires, an optional storage-conscious loop form, and the inverse wrapper.
 
 ```python
 import cmath
@@ -60,16 +65,23 @@ def dft_direct(A, sign=-1):
     W = root_of_unity(N, sign)
     return [sum(A[k] * W**(j * k) for k in range(N)) for j in range(N)]
 
-def fast_transform(A, sign=-1):
-    # TODO: compute the same X(j) = sum_k A(k) W^{jk} in far fewer than N^2 ops,
-    # by decomposing a length-N transform into shorter transforms and recombining.
+def _validate_length(n):
+    # TODO: enforce the size condition required by the faster transform.
     pass
 
-def _reorder(A):
-    # TODO: the input/output index reordering the decomposition implies
+def transform_recursive(A, sign=-1):
+    # TODO: fill the faster transform slot; it must agree with dft_direct.
     pass
 
-def _combine(lo, hi, twiddle):
-    # TODO: the two-output recombination step that merges shorter transforms
+def _reorder_for_iteration(A):
+    # TODO: arrange a working copy if the loop form needs a fixed traversal order.
+    pass
+
+def transform_iterative(A, sign=-1):
+    # TODO: fill a storage-conscious loop form of the faster transform.
+    pass
+
+def inverse_transform(X):
+    # TODO: run the conjugate-root transform and apply the normalization.
     pass
 ```

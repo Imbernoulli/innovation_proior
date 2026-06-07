@@ -1,0 +1,870 @@
+Ellipsoid Method
+S. Boyd
+Notes for EE364b, Stanford University
+April 1, 2018
+These notes were taken from the book Linear Controller Design: Limits of Performance,
+by Boyd and Barratt [?], and edited (at various times over many years) by Stephen Boyd,
+Joelle Skaf, and Nicholas Moehle.
+
+Contents
+1 Basic ellipsoid algorithm
+
+2
+
+2 Deep-cut ellipsoid algorithm
+
+6
+
+3 Ellipsoid algorithm with constraints
+
+8
+
+4 Numerical examples
+
+9
+
+5 Ellipsoid method for other problems
+
+12
+
+A Notes and references
+
+14
+
+1
+
+E (k)
+g (k)
+E (k+1)
+
+r x(k)
+r x(k+1)
+
+r
+
+Figure 1: The shaded half ellipsoid, known to contain a minimizer, is enclosed by
+the ellipsoid of smallest volume, denoted E (k+1) , centered at x(k+1) .
+
+1
+
+Basic ellipsoid algorithm
+
+Ellipsoid method idea. We consider the problem of minimizing a convex function f :
+Rn → R. The ellipsoid algorithm generates a “decreasing” sequence of ellipsoids in Rn that
+are guaranteed to contain a minimizing point, using the idea that given a subgradient (or
+quasigradient) at a point, we can find a half-space containing the point that is guaranteed
+not to contain any minimizers of f , i.e., a cutting-plane.
+Suppose that we have an ellipsoid E (k) that is guaranteed to contain a minimizer of f . In
+the basic ellipsoid algorithm, we compute a subgradient g (k) of f at the center, x(k) , of E (k) .
+We then know that the half ellipsoid
+E (k) ∩ {z | g (k)T (z − x(k) ) ≤ 0}
+contains a minimizer of f . We compute the ellipsoid E (k+1) of minimum volume that contains
+the sliced half ellipsoid; E (k+1) is then guaranteed to contain a minimizer of f , as shown in
+figure 1. The process is then repeated.
+We will see that the volume of the ellipsoid decreases, geometrically, which will allow us
+to show that the method converges, indeed with a complexity estimate that is good (at least
+in theory).
+Special case: Bisection on R. When n = 1, this algorithm is the standard bisection
+method on R. To see this, we note that an ellipsoid in R is nothing but an interval. We
+evaluate the derivative (or a subgradient) of f at the midpoint (which is the center), and
+depending on its sign, the sliced half ellipsoid is either the left or right half of the interval. In
+R, a half ellipsoid is also an interval, so the minimum volume (in this case, length) ellipsoid
+that covers the half ellipsoid is just the interval, which has exactly half the length of the
+previous ellipsoid.
+2
+
+Ellipsoid method update. We now describe the algorithm more explicitly. An ellipsoid
+E can be described as
+E = {z | (z − x)T P −1 (z − x) ≤ 1}.
+
+where P ∈ Sn++ . The center of the ellipsoid is x, and the matrix P gives the size and shape
+or orientation of E: the square roots of the eigenvalues of P are the lengths of the semi-axes
+of E. The volume of E is given by
+√
+vol(E) = βn detP ,
+where βn = π n/2 /Γ(n/2 + 1) is the volume of the unit ball in Rn .
+For n > 1, the minimum volume ellipsoid that contains the half ellipsoid
+{z | (z − x)T P −1 (z − x) ≤ 1, g T (z − x) ≤ 0}
+is given by
+E + = {z | (z − x+ )T (P + )−1 (z − x+ ) ≤ 1},
+where
+x+ = x −
+P
+
++
+
+1
+P g̃,
+n+1
+
+(1)
+
+n2
+2
+=
+P−
+P g̃g̃ T P ,
+2
+n −1
+n+1
+
+
+
+
+and
+g̃ = q
+
+1
+gT P g
+
+(2)
+
+g
+
+is a normalized subgradient.
+Let’s give some interpretations of these equations. The step given in (1) is in the direction
+of the negative subgradient, in the coordinates given by the matrix P . The step P g̃ is the
+step to the boundary of E + , so (1) is a step that is a fraction 1/(n + 1) to the boundary.
+From (2), we can think of E (k+1) as slightly thinner than E (k) in the direction g (k) , and slightly
+enlarged over all.
+Basic ellipsoid method. The basic ellipsoid algorithm is:
+Ellipsoid method
+given an initial ellipsoid (P (0) , x(0) ) containing a minimizer of f .
+k := 0.
+repeat
+Compute a subgradient: g (k) ∈ ∂f (x(k) ).
+Normalize the subgradient: g̃ := √ (k)T1 (k) (k) g (k) .
+g
+
+P
+
+3
+
+g
+
+1
+Update ellipsoid center: x(k+1) := x(k) − n+1
+P (k) g̃.
+
+2
+2
+P (k) g̃g̃ T P (k) .
+Update ellipsoid shape: P (k+1) := n2n−1 P (k) − n+1
+k := k + 1.
+
+The ellipsoid method is not a descent method, so we keep track of the best point found.
+We define
+(k)
+fbest = min f (x(j) ).
+j=0,...,k
+
+Proof of convergence. In this section we show that the ellipsoid algorithm converges,
+i.e.,
+(k)
+lim fbest = f ⋆ ,
+k→∞
+
+(0)
+
+provided our original ellipsoid E , which we take to be a ball, i.e., x(0) = 0, P (0) = R2 I,
+contains a minimizing point in its interior. Even though E (k+1) can be larger than E (k) in
+the sense of maximum semi-axis (λmax (P (k+1) ) > λmax (P (k) ) is possible), it turns out that
+its volume is less:
+(n+1)/2
+n
+n
+n+1
+n−1
+−1/2n
+(k)
+< e
+vol(E ),
+
+vol(E (k+1) ) =
+
+
+
+
+
+
+
+(n−1)/2
+
+vol(E (k) )
+
+by a factor that only depends on the dimension n. The first line is simple calculation from
+the formula for updating the matrix P that describes the ellipsoid (2) and basic determinant
+identities.
+(K)
+We suppose that x⋆ ∈ E (0) and that fbest ≥ f ⋆ + ǫ, where ǫ > 0. This means that for
+k = 1, . . . , K, f (x(k) ) > f ⋆ + ǫ. Then every point z excluded in iterations 0, . . . , K has
+f (z) ≥ f ⋆ + ǫ, since at iteration k the function values in each excluded half-space are at least
+f (x(k) ).
+We define
+G=
+max
+kgk,
+g ∈ ∂f (x), x ∈ E (0)
+
+as the maximum length of the subgradients over the initial ellipsoid. (In fact, G is a Lipschitz
+constant for f over the initial ellipsoid.)
+Then in the ball
+B = {z | kz − x⋆ k ≤ ǫ/G}.
+
+we have f (z) ≤ f ⋆ + ǫ. We assume without loss of generality that B ⊆ E (0) , and consequently
+no point of B was excluded in iterations 1, . . . , K, so we have
+B ⊆ E (k) .
+Thus, vol(E (k) ) ≥ vol(B), so
+e−K/2n vol(E (0) ) ≥ (ǫ/G)n βn .
+4
+
+For E (0) = {z | kzk ≤ R} we have vol(E (0) ) = Rn βn , so, taking logs,
+−
+
+ǫ
+K
++ n log R ≥ n log ,
+2n
+G
+
+and therefore
+
+RG
+.
+ǫ
+Thus to compute f ⋆ with error at most ǫ, it takes no more than 2n2 log RG/ǫ iterations of
+the ellipsoid algorithm; this number grows slowly with both dimension n and accuracy ǫ (at
+least, from the point of view of complexity theory).
+K ≤ 2n2 log
+
+Interpretation. From the initial ellipsoid (a ball of radius R) and the Lipschitz bound
+on f (i.e., G), we know that our original point is no more than RG suboptimal. After K
+steps we have produced a point that is ǫ suboptimal. Thus the ratio RG/ǫ is the fractional
+reduction in our ignorance about the number f ⋆ . The complexity analysis above says that
+the number of steps required is proportional to the log of this ratio. This is exactly like the
+bisection method in R (and indeed, it is the bisection method for n = 1). We might say
+that the ellipsoid method is a generalization of the bisection method to higher dimensions.
+Stopping criterion. Since we always know that there is a minimizer x⋆ ∈ E (k) , we have
+f ⋆ = f (x⋆ ) ≥ f (x(k) ) + g (k)T (x⋆ − x(k) )
+for some x⋆ ∈ E (k) , and hence
+f (x(k) ) − f ⋆ ≤ −g (k)T (x⋆ − x(k) )
+≤ max −g (k)T (z − x(k) )
+z∈E (k)
+
+=
+
+q
+
+g (k)T P (k) g (k) .
+
+Thus the simple stopping criterion
+q
+
+g (k)T P (k) g (k) ≤ ǫ
+
+guarantees that on exit, f (x(k) ) is within ǫ of f ⋆ . A more sophisticated stopping criterion is
+u(k) − l(k) ≤ ǫ,
+where
+u
+
+(k)
+
+(i)
+
+= min f (x ),
+1≤i≤k
+
+l
+
+(k)
+
+
+
+(i)
+
+= max f (x ) −
+1≤i≤k
+
+q
+
+g (i)T P (i) g (i)
+
+
+
+.
+
+While the ellipsoid algorithm works for quasiconvex functions (with the g (k) ’s quasigradients), this stopping criterion does not.
+5
+
+Ellipsoid update — Hessian form. We can express the ellipsoid algorithm in terms of
+H = P −1 instead of P . The update equations become (using basic linear algebra)
+1
+H −1 g̃,
+n+1
+
+
+
+1
+2
+T
+= 1− 2
+H+
+g̃g̃ ,
+n
+n−1
+
+x+ = x −
+P+
+where
+
+g̃ = q
+
+1
+g T H −1 g
+
+g
+
+is the normalized subgradient.
+In this form we can interpret H as an approximation of the ‘Hessian’ of f , and the
+ellipsoid algorithm then looks like a quasi-Newton method. But remember that f need not
+even be differentiable, let alone have a second derivative, i.e., a Hessian.
+
+2
+
+Deep-cut ellipsoid algorithm
+
+If an upper bound on the objective function is available at each iteration, deep cuts can be
+used to improve performance over the basic ellipsoid algorithm. Suppose that at iteration
+(k)
+k, we have an upper bound on the optimal objective value: f ⋆ ≤ fbest ≤ f (x(k) ). (One
+such bound is the best point found so far, since the iterates x(k) do not in general produce
+monotonically decreasing objective values). Given g ∈ ∂f (x), we have for all z
+f (z) ≥ f (x) + g T (z − x),
+so for every optimizer x⋆ , we have
+(k)
+
+g T (x⋆ − x) + f (x) ≤ f ⋆ ≤ fbest
+We can therefore exclude from consideration the half-space
+(k)
+
+{z | g T (z − x) > fbest − f (x)},
+which is bigger than the half-space {z | g T (z − x) > 0} excluded in the ellipsoid algorithm,
+(k)
+provided f (x(k) ) > fbest , as shown in figure 2.
+In the deep-cut method, we choose E (k+1) to be the minimum volume ellipsoid that
+contains the set
+(k)
+S (k) = E (k) ∩ {z | g (k)T (z − x(k) ) ≤ fbest − f (x(k) )}.
+Then E (k+1) is given by
+
+1 + nα (k) (k)
+P g̃ ,
+n+1
+!
+2(1 + nα)
+n2 (1 − α2 )
+(k)
+(k) (k) (k)T (k)
+P −
+,
+=
+P g̃ g̃
+P
+n2 − 1
+(n + 1)(1 + α)
+
+x(k+1) = x(k) −
+P (k+1)
+
+6
+
+E (k)
+g (k)
+r x(k)
+
+E (k+1)
+r x(k+1)
+
+Figure 2: The shaded sliced ellipsoid, which is known to cotnain a minimizer, is
+enclosed by the ellipsoid of smallest volume, denoted E (k+1) , and centered at x(k+1) .
+
+where
+,
+g (k)T P (k) g (k)
+1
+= q
+g (k) .
+g (k)T P (k) g (k)
+
+α =
+g̃ (k)
+
+f (x(k) )
+
+q
+
+The deep-cut ellipsoid algorithm is thus:
+Deep-cut ellipsoid method
+given an initial ellipsoid (P (0) , x(0) ) containing a minimizer of f , and a sequence
+(k)
+of upper bounds fbest .
+k := 0.
+repeat
+Compute a subgradient g (k) ∈ ∂f (x(k) ).
+(k)
+Update upper bound fbest .
+f (x(k) )−f
+
+(k)
+
+α := √ (k)T (k)best(k) .
+g
+
+P
+
+g
+
+Normalize the subgradient: g̃ (k) := √ (k)T1 (k) (k) g (k) .
+g
+
+P
+
+g
+
+P (k)
+g̃ (k) .
+Update ellipsoid center: x(k+1) := x(k) − 1+nα
+n+1
+
+
+2
+2(1+nα)
+P (k) g̃ (k) (g̃ (k) )T P (k) .
+Update ellipsoid shape: P (k+1) := n2n−1 (1 − α2 ) P (k) − (n+1)(1+α)
+k := k + 1.
+
+7
+
+3
+
+Ellipsoid algorithm with constraints
+
+The (deep-cut) ellipsoid algorithm is readily modified to solve the constrained problem
+minimize f0 (x)
+subject to fi (x) ≤ 0,
+
+i = 1, . . . , m.
+
+In this section we describe one such modification.
+Once again, we generate a sequence of ellipsoids of decreasing volume, each of which is
+guaranteed to contain a feasible minimizer. If x(k) is feasible (fi (x(k) ) ≤ 0 for i = 1, . . . , m)
+then we form E (k+1) exactly as in the (deep-cut) ellipsoid algorithm; we call this an objective
+iteration. If x(k) is infeasible (fi (x(k) ) > 0 for some i) then we form E (k+1) as in the ellipsoid algorithm, but using a subgradient of a violated constraint function fi instead of the
+objective. We call this a constraint iteration.
+The algorithm is thus:
+Ellipsoid method with constraints
+given an initial ellipsoid (P (0) , x(0) ) containing feasible minimizers.
+k := 0.
+repeat
+If fi (x(k) ) > 0 for some i,
+// x(k) is infeasible.
+Compute a subgradient g (k) ∈ ∂fi (x(k) ).
+Normalize the subgradient: g̃ (k) := √ (k)T1 (k) (k) g (k) .
+g
+
+P
+
+g
+
+fi (x(k) )
+
+α := √ (k)T (k) (k) .
+g
+
+P
+
+g
+
+Else,
+// x(k) is feasible.
+Compute a subgradient g (k) ∈ ∂f (x(k) ).
+Normalize the subgradient: g̃ (k) := √ (k)T1 (k) (k) g (k) .
+g
+
+P
+
+g
+
+(k)
+Update upper bound fbest .
+(k)
+f (x(k) )−fbest
+
+α := √ (k)T (k) (k) .
+g
+
+P
+
+g
+
+P (k)
+g̃ (k) .
+Update ellipsoid center: x(k+1) := x(k) − 1+nα
+n+1
+
+
+2
+2(1+nα)
+Update ellipsoid shape: P (k+1) := n2n−1 (1 − α2 ) P (k) − (n+1)(1+α)
+P (k) g̃ (k) (g̃ (k) )T P (k) .
+k := k + 1.
+In a constraint iteration, all points we discard are infeasible. In an objective iteration, all
+points we discard have objective value greater than or equal to the current, feasible point.
+Thus in each case, we do not discard any minimizers, so that the ellipsoids will always contain
+any minimizers that are in the initial ellipsoid.
+The same proof as for the basic ellipsoid algorithm shows that this modified algorithm
+works provided the set of feasible ǫ-suboptimal points has positive volume. (This can be
+related to Slater’s condition, assuming the constraint functions are Lipschitz.)
+8
+
+Stopping criterion. For an objective iteration, we can use the stopping criterion
+q
+
+g (k)T P (k) g (k) ≤ ǫ,
+
+fi (x(k) ) ≤ 0.
+
+For a constraint iteration with violated constraint i, we terminate the algorithm if all points
+in the new ellipsoid are known to violate constraint i:
+fi (x(k) ) >
+
+q
+
+g (k)T P (k) g (k) .
+
+Alternatively, if we allow slightly violated constraints, we can use the combined stopping
+criterion
+q
+g (k)T P (k) g (k) ≤ ǫobj , f (x(k) ) ≤ ǫfeas .
+With this stopping criterion, the modified algorithm will work even when the set of feasible
+points with nearly optimal objective value does not have positive volume, e.g., with equality
+constraints.
+
+4
+
+Numerical examples
+
+Unconstrained example. We consider the problem of minimizing a piecewise affine function:
+minimize f (x) = maxi=1,...,m (aTi x + bi ),
+(3)
+with variable x ∈ Rn . We use n = 20 variables and m = 100 terms, with problem data ai
+and bi generated from a unit normal distribution.
+Basic ellipsoid algorithm. We use the basic ellipsoid algorithm described in §1, starting
+with P (0) = I, and x(0) = 0.
+q
+Figure 3 shows the convergence of f (k) to the optimal value, as well as f (k) − g (k)T P (k) g (k)
+(k)
+
+(k)
+
+(which is a lower bound on f ⋆ ). Figure 4 shows the convergence of fbest − f ⋆ , where fbest =
+mini=1,...,k f (x(i) ) is the best point found at iteration k. The slow convergence shown in this
+example is in fact typical for this method.
+Figure 5 compares the convergence of the basic ellipsoid method and the deep-cut ellipsoid
+method. You might guess that the deep-cut method would perform better than the basic
+ellipsoid method, since it cuts more volume out of each ellipsoid. But in most cases it does
+not converge much faster.
+
+9
+
+3
+
+2
+f
+
+(k)
+
+✠ best
+
+f⋆
+
+1
+■
+❅ f (x(k) ) −
+
+0
+
+q
+
+g (k)T P (k) g (k)
+
+−1
+
+−2
+
+−3
+0
+
+500
+
+1000
+
+1500
+
+2000
+
+k
+(k)
+
+Figure 3: Convergence of fbest and f (x(k) ) −
+f ⋆ ), to f ⋆ with the iteration number k.
+
+q
+
+g (k)T P (k) g (k) (a lower bound on
+
+0
+
+10
+
+−1
+
+−2
+
+10
+
+(k)
+
+fbest − f ⋆
+
+10
+
+−3
+
+10
+
+−4
+
+10
+
+0
+
+500
+
+1000
+
+1500
+
+2000
+
+k
+(k)
+
+Figure 4: The suboptimality gap fbest − f ⋆ versus iteration k.
+
+10
+
+0
+
+10
+
+deep cuts
+shallow cuts
+−1
+
+−2
+
+10
+
+(k)
+
+fbest − f ⋆
+
+10
+
+−3
+
+10
+
+−4
+
+10
+
+0
+
+500
+
+1000
+
+1500
+
+2000
+
+k
+(k)
+
+Figure 5: The suboptimality gap fbest − f ⋆ versus iteration k for the basic ellipsoid
+algorithm and the deep-cut ellipsoid algorithm.
+
+11
+
+0
+
+10
+
+−1
+
+−2
+
+10
+
+(k)
+
+fbest − f ⋆
+
+10
+
+−3
+
+10
+
+−4
+
+10
+
+0
+
+500
+
+1000
+
+1500
+
+2000
+
+2500
+
+3000
+
+k
+(k)
+
+Figure 6: The suboptimality gap fbest − f ⋆ versus iteration k for the constrained
+ellipsoid algorithm.
+
+Constrained example. Here we address a box-constrained version of (3):
+minimize f (x) = maxi=1,...,m (aTi x + bi ),
+subject to |xi | ≤ 0.1,
+with problem data generated as in the first example. We use the constrained ellipsoid method
+(k)
+the solve the problem. Figure 6 shows the convergence of fbest − f ⋆ .
+
+5
+
+Ellipsoid method for other problems
+
+The ellipsoid and deep-cut ellipsoid methods only require the ability to find a neutral or
+deep cutting-plane at any given point. This problem comes up in several contexts beyond
+minimizing a convex function. We give two examples in this section.
+Fixed-point of nonexpansive operator. Suppose that F : Rn → Rn is nonexpansive,
+i.e., satisfies
+kF (x) − F (y)k2 ≤ kx − yk2
+
+for all x, y ∈ Rn . We seek a point x⋆ that is a fixed point of F , i.e., F (x⋆ ) = x⋆ . Assuming
+such a point exists, we can find it using the ellipsoid method.
+12
+
+We observe that
+kF (x) − x⋆ k22 = kF (x) − F (x⋆ )k22 ≤ kx − x⋆ k22 ,
+which we expand as
+kF (x)k22 − 2F (x)T x⋆ + kx⋆ k22 ≤ kxk22 − 2xT x⋆ + kx⋆ k22 ,
+which we rewrite as
+2(x − F (x))T x⋆ ≤ kxk22 − kF (x)k22 ,
+
+and finally,
+
+(x − F (x))T (x⋆ − x) + (1/2)kx − F (x)k22 ≤ 0.
+
+But this is a deep cut: it says that any fixed point of F must satisfy
+g T (x⋆ − x) + h ≤ 0,
+where
+g = x − F (x),
+
+h = (1/2)kx − F (x)k22 > 0.
+
+So we can directly use the deep-cut ellipsoid method to find a fixed point of F (if it exists).
+Zero of monotone operator. Suppose that T : Rn → Rn is a monotone operator, i.e.,
+it satisfies
+(T (x) − T (y))T (x − y) ≥ 0
+for all x, y ∈ Rn . We seek a zero of T , i.e., a point x⋆ with T (x⋆ ) = 0 (assuming such a
+point exists). Here too we can generate a cutting-plane at a point x, and then we can use
+the ellipsoid method.
+To do this, we start with
+0 ≤ (T (x⋆ ) − T (x))T (x⋆ − x) = −T (x)T (x⋆ − x),
+so any zero of F satisfies
+g T (x⋆ − x) ≤ 0,
+
+where g = T (x). This is a neutral cutting-plane.
+Let’s apply this to the monotone operator
+T (x, y) =
+
+"
+
+∇x L(x, y)
+−∇y L(x, y)
+
+#
+
+=
+
+"
+
+∇f (x) + AT y
+b − Ax
+
+#
+
+,
+
+where L(x, y) = f (x) + y T (Ax − b) is the Lagrangian of the problem of minimizing f (x)
+subject to Ax = b. (We can use any subgradient in place of ∇f (x) here when f is not
+differentiable.) Any zero of T is a primal-dual solution of the constrained problem.
+At the point (xk , y k ), we will use the condition
+"
+
+∇f (x) + AT y
+b − Ax
+
+#T "
+
+x⋆ − x
+y⋆ − y
+
+#
+
+≤0
+
+in the ellipsoid method, where (x⋆ , y ⋆ ) is any primal-dual solution.
+13
+
+A
+
+Notes and references
+
+Two early articles that give algorithms for minimizing a quasiconvex function using cuttingplanes are Newman [?] and Levin [?]. In these precursors of the ellipsoid algorithm, the
+localization set is a polyhedron, and its complexity (number of inequalities) increases as the
+algorithm proceeds, so that the computation per iteration grows.
+The ellipsoid algorithm was developed in the 1970’s in the Soviet Union by Shor, Yudin,
+and Nemirovsky. A detailed history of its development, including English and Russian
+references, appears in chapter 3 of Akgül [?]. It was used in 1979 by Khachiyan in his
+famous proof that linear programs can be solved in polynomial time; an English translation
+appears in [?] (see also Gács and Lovázs [?]).
+The 1981 survey by Bland, Goldfarb, and Todd [?] contains a very clear description of
+the method and has extensive references on its development and early history, concentrating
+on its application to linear programming. Our exposition follows Chapter 3 of the book by
+Grötschel, Lovász, and Schrijver [?]. In [?, ?], Goffin gives an interpretation of the ellipsoid
+algorithm as a variable-metric descent algorithm.
+
+14
+
+

@@ -1,0 +1,500 @@
+Approximate Nearest
+Neighbor Search in High
+Dimensions
+Piotr Indyk
+MIT
+
+Nearest Neighbor Search
+• Given: a set P of n distinct points in a
+d-dimensional space Rd under some
+norm ||.||
+• Goal: build a data structure which,
+given any query qÎRd returns a point
+pÎP minimizing ||p-q||
+• What is a data structure ?
+– A data structure of size M is an array D[1 . . . M] of
+numbers (“the memory”), together with an associated
+algorithm A that, given a point q, returns a point in P as
+specified above
+– Example in a moment
+– See [Fefferman-Klartag’09] for an exposition
+
+• Want:
+– Fast running time of the algorithm A
+– Small data structure size M
+
+q
+
+Nearest Neighbor Search
+• Best match problem [MinskyPapert’69], Post office problem
+[Knuth’73]
+• Broad applications in computer
+science, machine learning etc
+– E.g., searching for similar audio files,
+images, videos, etc
+– Google “wiki” “nearest neighbor search”
+– Think n ≫106, d>50
+
+• Many connections to geometric
+functional analysis, discrete metric
+spaces, etc.
+
+q
+
+Example: d=1
+• Pointset P: x1 < x2 … < xn, xiÎR
+• Query: qÎR
+• Nearest neighbor: equivalent to finding smallest xi greater
+than q (“successor” of q)
+• Performance:
+– Query time: O(log n) (binary search)
+– Space: O(n) (suffices to store sorted input)
+
+q
+1
+
+3
+
+4
+
+6
+
+8
+
+Example: d=2
+• Space partitioning: Voronoi
+diagram
+– Combinatorial complexity O(n)
+
+• Given q, find the cell q
+belongs to (point location)
+• Performance [Lipton-Tarjan’80]
+– Query time: O(log n)
+– Space: O(n)
+
+The case of d>2
+• Voronoi diagram has size n⌈d/2⌉
+
+– nO(d) space, (d+ log n)O(1) time [DobkinLipton’78,Meiser’93,Clarkson’88]
+
+• We can also perform a linear scan: O(dn)
+space, O(dn) time
+
+– Can speedup the scan time by roughly O(n1/d)
+
+• These are pretty much the only known
+general solutions !
+• In fact, exact algorithm with n1-β query time for
+some β>0 and poly(n) preprocessing would
+violate certain complexity-theoretic conjecture
+(SETH)
+– See next lecture by V. V. Williams
+
+Approximate Nearest Neighbor
+• Given: a set P of n points in a ddimensional space Rd under
+some norm ||.||, parameter c>1
+• Goal: data structure which,
+given any query q returns p’ÎP,
+where
+||p’-q|| ≤ c minpÎP ||p-q||
+
+r
+q
+cr
+
+(c,r)-Approximate Near Neighbor
+• Given: a set P of n points in a ddimensional space Rd under some norm
+||.||, parameters c>1 and r>0
+• Goal: build a data structure D which, for
+any query q:
+– If there is pÎP s.t. ||q-p|| ≤ r,
+– Then return p’ÎP s.t ||q-p’|| ≤ cr
+
+• Decision version of approximate nearest
+neighbor
+– Equivalent up to (log n)O(1) factors in space
+and query time
+
+• Randomized version (c,r,δ)-ANN: for any
+query q
+PrD[D answers q as above]>1-"
+
+r
+q
+cr
+
+Approximate Near(est)
+Neighbor Algorithms
+• Space/time exponential in d [Arya-
+
+Mount’93],[Clarkson’94], [Arya-Mount-NetanyahuSilverman-Wu’98] [Kleinberg’97], [Har-Peled’02], ….
+
+• Space/time polynomial in d [Indyk-
+
+Motwani’98], [Kushilevitz-Ostrovsky-Rabani’98], [Indyk’98],
+[Gionis-Indyk-Motwani’99], [Charikar’02], [Datar-ImmorlicaIndyk-Mirrokni’04], [Chakrabarti-Regev’04], [Panigrahy’06],
+[Ailon-Chazelle’06], [Andoni-Indyk’06],…., [Andoni-IndykNguyen-Razenshteyn’14], [Andoni-Razenshteyn’15] [AndoniIndyk-Laarhoven-Razenshteyn-Schmidt’15], [AndoniNguyen-Nikolov-Razenshteyn-Waingarten’17], [AndoniNaor-Nikolov-Razenshteyn-Waingarten’18], …
+
+Plan
+• Non-adaptive approach: !" , !# and friends
+– Dimensionality reduction
+– Randomized space partitions (a.k.a. LocalitySensitive Hashing)
+
+• Adaptive approach: faster, more general
+
+Non-adaptive data structures
+
+Dimensionality reduction
+• Consider approximation c=1+! ≤ 2
+• Two steps:
+– Design a data structure with
+• Space: (1/!)O(d)
+• Query time: O(d)
+
+– Use random projection [JohnsonLindenstrauss’84]
+
+•
+
+• Dimension: d → O(log(n)/! 2)
+• All distances preserved up to 1±! (in &' )
+)(+/-2)
+Yields space (
+and query time
+
+O(d log(n)/! 2) [Ostrovski-Rabani’98]
+• Space too large to be practical
+
+Locality-Sensitive Hashing
+(LSH)
+•
+
+[Broder’97, Indyk-Motwani’98]
+A family H of functions h: Rd → U is called
+
+(P1,P2,r,cr)-sensitive for ||.||, if for any pair of
+points p,q:
+– If ||p-q|| ≤ r then PrhÎH [ h(p)=h(q) ] ≥ P1
+– If ||p-q|| ≥ cr then PrhÎH [ h(p)=h(q) ] ≤ P2
+
+• Theorem [Indyk-Motwani’98]: Suppose there is H as
+above. Then there is a (c,r,0.1)-ANN data
+structure with:
+– Space: O(dn+nL)
+– Time: O(dL)
+where L=nr /P1, r=log(P1)/log(P2)
+
+Locality-Sensitive Hashing
+• A family H of functions h: Rd → U is
+called (P1,P2,r,cr)-sensitive for ||.||, if
+for any pair of points p,q:
+– If ||p-q|| ≤ r then PrhÎH [ h(p)=h(q) ] ≥ P1
+– If ||p-q|| ≥ cr then PrhÎH [ h(p)=h(q) ] ≤ P2
+• Theorem [Indyk-Motwani’98]: Suppose
+
+there is an H as above. Then there is
+a (c,r,0.1)-ANN data structure with
+space O(dn+nL) and time O(dL)
+where L=nr /P1, r=log(P1)/log(P2)
+• Non-adaptive: the memory cells
+accessed to answer queries depend
+on query q but not on data set P
+
+q
+
+h
+
+LSH: examples
+• {0,1}d under ||.||1 :
+
+– H={hi : hi(p)=pi , i=1..d}
+– PrhÎH [hi(p)=hi(q)]=1- ||p-q||1 /d
+– Yields exponent r=1/c
+
+• Works for Rd under ||. ||p, pÎ[1,2]
+ρ for
+c=2
+0.5
+
+1998
+
+Year
+
+LSH: examples
+• Rd under ||. ||2 [Datar-Indyk-Immorlica-Mirrokni’04]
+– Project on a random 1-dimensional space
+and round
+– Yields exponent r<1/c
+
+p
+
+w
+
+w
+ρ for !"
+c=2
+0.5
+0.45
+
+1998
+
+2004
+
+Year
+
+LSH: examples
+• Rd under ||.||2
+
+• Project (on a t-space) and round
+
+p
+
+[Charikar et al’98, Andoni-Indyk’06]
+
+– Intervals → lattice of balls
+– Can hit empty space, so hash until
+a ball is hit
+– Yields exponent r→1/c2 as t→ ∞
+ρ for #$
+c=2
+
+t=2
+
+0.5
+0.45
+
+[Motwani-Naor-Panigrahy’06, O’DonnellWu-Zhou’09]:
+Any LSH in l2 must have r ≥ 1/c2 – o(1) or
+P1<exp(-a d) for some a>0
+
+0.25
+
+1998
+
+2004
+
+2006
+
+Year
+
+Adaptive data structures
+
+The “idea”
+What if the data
+structure depended
+on …the data ?
+
+• Why is the answer not obvious ?
+• It is often possible to get a data structure that works
+well when the data has some structure (clusters, lowdimensional subspace, i.i.d. from some distribution,etc)
+• The tricky part is what to do when the data does not
+have that structure, or any structure in particular
+
+The actual idea
+• Every point-set has some
+structure that can be exploited
+algorithmically
+• Details depend on the
+context/problem, but at a high
+level:
+– Either there is dense cluster of small
+radius, or
+– Points are “spread” out
+
+• Applications:
+– Faster algorithms for !" , !#
+– Algorithms for general norms
+
+Faster Algorithms
+
+Basic Data Adaptive Method
+P=input pointset, r=radius, c=approximation
+
+Preprocessing:
+1.
+
+As long as there is a ball Bi of radius O(cr)
+containing T points in P
+
+q
+
+– P=P-Bi
+– i=i+1
+
+2.
+
+Build LSH data structure on P
+
+3.
+
+For each ball Bi build a specialized data
+structure for Bi ∩P
+
+No dense clusters – most points are >>cr from q
+
+Diameter bounded by O(cr) – better LSH functions
+
+Query procedure:
+1.
+2.
+
+Query the main data structure
+Query all data structures for
+balls that are “close” to the query
+
+q
+
+Results (for !" )
+• For c-approximation:
+Algorithm
+
+Query Time
+#$%/'
+
+Non-adaptive LSH
+
+Index Space
+
+(
+
+(
+
+Andoni, Indyk, Nguyen,
+Razenshteyn’14
+
+#$*.,-/' ).(%)/'
+
+Andoni-Razenshteyn’15
+
+#$%/("' 2%)
+
+$%)%/'
+1
+
+(
+
+(
+
+(
+
+$%)*.,-/' ).(%)/'
+
+1
+
+(
+
+$%)%/("' 2%)
+
+ρ for !"
+c=2
+0.5
+0.45
+0.25
+0.15
+1998
+
+2004
+
+2006
+
+2014 2015
+
+Year
+
+More general algorithms
+
+Generality
+• Non-adaptive methods:
+– Dimensionality reduction: mostly !"
+
+• No dimensionality reduction in !# [Brinkman-Charikar’03, LeeNaor’04]
+• Any space supporting dimensionality reduction with low
+distortion is “very close” to !" [Johnson-Naor’09]
+
+– Locality-sensitive hashing: !$ for pÎ[1,2], Jaccard
+coefficient, Angular distance etc
+• Does not work e.g., for !%
+
+– Reductions:
+
+• Small powers of the above
+• Low-distortion embeddings into the above (edit distance,
+Ulam metric, transportation norm,..)
+
+• What about general norms ?
+
+General norms
+• Every !-dimensional normed space is within ! from
+ℓ$# (after a linear transformation) [John’48]
+– Yields approximation factor of O( ! ) – pretty large
+
+• Low-distortion embedding of any symmetric norm
+[Andoni-Nguyen-Nikolov-Razenshteyn-Waingarten’17]
+
+– Embedding into ⨁ℓ& ⨁ℓ' ℓ(
+– Yields approximation factor of poly(log log -)
+
+• Algorithms for any norm via cutting modulus [AndoniNaor-Nikolov-Razenshteyn-Waingarten’18]
+
+– Yields approximation factor of O(log d)
+– The algorithm operates in the ”cell-probe” model (counts
+only memory accesses, not computation)
+– Can be converted into an “actual” algorithm for specific
+norms or with a weaker guarantee
+
+Cutting modulus
+• Parameter Ξ(#, %) defined for any metric
+space # = ((, )) and “error parameter”
+%>0
+• It is at most O(log(d)/% * ) for any normed
+space ||.|| over Rd [Naor’17]
+• Related to non-linear spectral gaps
+– See the talk by Assaf Naor next week
+
+The core partitioning procedure
+• Theorem:
+– Let ! = ($, &) with $ = ( and take
+), * > 0
+– There is a “small” collection ℱ ⊂ 20 s.t. for
+every 1-point dataset 2 ⊂ $:
+• Either there exists a ball of radius ≲ Ξ !, ) ⋅ *
+with Ω(1) points
+• Or there is a distribution 7 over “few” sets from
+ℱ that partition 2 (approximately) evenly and,
+for every 89 , 8: ∈ $ with & 89 , 8: ≤ *:
+Pr A separates 89 and 8: ≲ )
+?∼7
+
+• ANN data structure can be constructed
+using divide and conquer approach
+
+Conclusions + Open Problems
+• Approximate Nearest Neighbor Search
+
+!
+U
+O
+Y
+K
+N
+A
+H
+\
+T
+
+– Non-adaptive approach: !" , !# and friends
+– Adaptive approach: faster, more general
+
+• Connections to geometric and metric functional
+analysis
+• Open questions:
+– Deterministic algorithms ? Very little known
+– Better data structure for edit distance ?
+
+• No poly(n) space, n1-β query time, poly(log(d))-approx. known
+
+– Same for transportation norm, but replace poly(log(d))
+with poly(loglog(d))
+
+• Software: google “FALCONN”
+
+

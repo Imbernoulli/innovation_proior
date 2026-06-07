@@ -1,0 +1,468 @@
+% !TEX root =paper.tex
+\section{Probabilistic statements}
+\label{sec:probabilistic}
+
+
+
+\input{gurvits.tex}
+
+\input{maxflow.tex}
+
+\subsection{Good Edges}
+
+
+%\begin{definition}[Even-Sum Good]
+%We say an edge (bundle) $e=(u,v)$ such that $|x_e-1/2|\le \eps_{1/2}$ is Even-Sum good if 
+%\begin{eqnarray*} \P{\delta(u)_{-e} + \delta(v)_{-e} \leq 2} \geq \eps_{1/2}.\\
+%	\P{\delta(u)_{-e} + \delta(v)_{-e} \geq 4} \geq \eps_{1/2}
+%\end{eqnarray*}
+
+%and we say it is bad otherwise. 
+%\end{definition}
+
+\begin{definition}[Half Edges]\label{def:halfedges}
+We say an edge bundle $\bbe={\bf (u,v)}$ in a degree cut $S\in\cH$, i.e., $\p(\bbe)=S$, is a {\em half edge} if $|x_\bbe-1/2|\leq \eps_{1/2}$, where $\eps_{1/2}$ is defined in \ref{eq:constants}.
+\end{definition}
+
+\begin{definition}[Good Edges]\label{def:goodedges}
+	We say a top edge bundle $\bbe={\bf(u,v)}$ in a degree cut $S\in\cH$ is (2-2) good, if one of the following holds:
+	\begin{enumerate}
+		\item $\bbe$ is not a half edge or
+		\item $\bbe$ is a half edge and $\P{\delta(u)_T=\delta(v)_T= 2 | u,v\text{ trees}} \geq 3\eps_{1/2}.$
+	\end{enumerate}
+	We say a top edge $\bbe$ is bad otherwise. 
+	We say every bottom edge bundle is good (but generally do not refer to bottom edges as good or bad). We say any edge $e$ that is a neighbor of $u_0$ or $v_0$ is bad.
+\end{definition}
+
+In the next subsection we will see that for any top edge bundle $\bbe={\bf (u,v)}$ which is not a half edge, $\P{(\delta(u))_T=(\delta(v))_T=2 | u,v\text{ trees}} = \Omega(1)$. 
+%We also remark the main reason that we differentiate half edges is that a half edge is not necessarily 2-2 good \Shayan{see example??}. 
+The following theorem is the main result of this subsection:
+\begin{theorem}\label{thm:badedges}
+For $\eps_{1/2}\leq 0.0002$, $\eps_{\eta}\leq \eps_{1/2}^2$, a top edge bundle $\bbe={\bf (u,v)}$ is bad only if the following three conditions hold simultaneously: 
+\begin{itemize}
+\item $\bbe$ is a half edge, 
+\item $x(\delta^\uparrow(u)),x(\delta^\uparrow(v))\leq 1/2+9\eps_{1/2}$,
+\item Every other half edge bundle incident to $u$ or $v$ is (2-2) good.
+\end{itemize}
+\end{theorem}
+The proof of this theorem follows from \cref{lem:1/2+eps_1/2sendhigher} and \cref{lem:one-of-two-good} below. 
+
+
+In this subsection, we use repeatedly that for any atom $u$ in a degree cut $S$, $x(\delta(u))\leq 2+\eps_{\eta}$. We also repeatedly use that for a half edge bundle $\bbe={\bf (u,v)}$ in a degree cut, conditioned on $u,v$ trees, $\bbe$ is in or out with probability at least $1/2-\eps_{1/2}-3\eps_\eta>0.49$.
+
+\begin{lemma}\label{lem:2/2goodEvenSum}
+Let $\bbe={\bf (u,v)}$ be a good half edge bundle in a degree cut $S\in\cH$. Let $A=\delta(u)_{-\bbe}$ and $B=\delta(v)_{-\bbe}$.
+If $\eps_{1/2}\leq 0.001$ and $\eps_{\eta}<\eps_{1/2}/100$, then
+$$ \P{A_T+B_T\leq 2 | u,v\text{ trees}}, \P{A_T + B_T\geq 4 | u,v\text{ trees}} \geq 0.4\eps_{1/2}$$
+\end{lemma}
+\begin{proof}
+Throughout the proof all probabilistic statements are with respect to the measure $\mu$ conditioned on $u,v$ trees.
+%First condition on $u,v$ be trees. 
+Let $p_{\leq 2}=\P{A_T+B_T\leq 2}$ and similarly define $p_{\geq 4}$.
+Observe that whenever $\delta(u)_T=\delta(v)_T	=2$, we must have $A_T+B_T\neq 3$. Since $\bbe$ is 2-2 good, this event happens with probability at least $3\eps_{1/2}$, i.e., 
+\begin{equation}\label{eq:<=2+>=4}
+p_{\leq 2}+p_{\geq 4} \geq 3\eps_{1/2}
+\end{equation}
+By \cref{thm:rayleigh_expectconstprob},
+using the fact that $p_0=0$, we get $p_{=3} \ge 1/4$. %\anna{I'm getting 0.22}
+
+
+%We also claim $p_{=3}\geq 1/2$. If not, then since $3-3\eps_{1/2}\leq \E{A_T+B_T}\leq 3+3\eps_{1/2}$, and $\eps_{1/2}\leq 1/100$ we get $p_{\leq 2}, p_{\geq 4}\geq 1/5$ and we are done.
+
+ First, we show that $p_{\leq 2} \geq 0.4\eps_{1/2}$. 
+ We have
+\begin{eqnarray*}
+ 3+2\eps_{1/2} \geq  \E{A_T+B_T} \geq 4 p_{\geq 4} + 2 p_{= 2} + 3(1-p_{\geq 4}-p_{\leq 2}) = 3 + p_{\geq 4} - p_{=2} -3p_{ =1}.
+\end{eqnarray*}
+%\anna{Shouldn't there be a $-3p_0$ in the above?}
+Again, we are using $p_0=0$.
+By log-concavity $p_{=2}^2 \geq p_{=3}p_{=1}$, so
+ since $p_{=3}\geq 1/4$, $p_{=1}\leq 4p_{=2}^2\leq 4p_{\leq 2}^2$.
+Therefore, 
+$$p_{\geq 4}-2\eps_{1/2} \leq   p_{=2}+3p_{= 1} = p_{\leq 2} + 2p_{=1}\leq  p_{\leq 2}(1+8p_{\leq 2}).$$ 
+%where the left inequality uses $p_{\leq 2}=p_{=1}+p_{=2}$.
+
+Finally, since $\eps_{1/2}<0.001$, plugging this upper bound on $p_{\ge 4}$ into \cref{eq:<=2+>=4} we get $p_{\leq 2}\geq 0.4\eps_{1/2}$. %(For contradiction if $p_{\geq 4}\geq 2.6\eps_{1/2}$, then the LHS is at least $0.6\eps_{1/2}$ and we get $p_{\leq 2}\geq 0.4\eps_{1/2}$).
+
+Now, we show $p_{\geq 4} \geq 0.4 \eps_{1/2}/2$. 
+Assume $p_{\geq 4}<\eps_{1/2}/2$ (otherwise we are done).
+Since $p_{=3}\geq 1/4$ by \cref{lem:logconcaveexpecation} with $\gamma\le  (\eps_{1/2}/2)/(1/4) = 2\eps_{1/2}$
+$$\E{A_T+B_T | A_T+B_T\geq 4}\cdot p_{\geq 4} \leq \frac{p_{\geq 4}}{1-2\eps_{1/2}}(4+3\eps_{1/2})$$
+%3\eps_{1/2} = \gamma/(1-\gamma)$
+Therefore,
+$$ 3-2\eps_{1/2}-2\eps_\eta\leq \E{A_T+B_T} \leq 2p_{\leq 2} +  \frac{p_{\geq 4}}{1-2\eps_{1/2}}(4+3\eps_{1/2}) + 3(1-p_{\leq 2}-p_{\geq 4})$$
+So, $1.01p_{\geq 4}\geq p_{\leq 2}-2.02\eps_{1/2}$ where we used $\eps_{1/2}\leq 0.001$ and $\eps_{\eta}<\eps_{1/2}/100$.  Now, $p_{\geq 4}\geq 0.4\eps_{1/2}$ follows by \cref{eq:<=2+>=4}.
+%\anna{I'm confused. You started with the assumption $p_{\le 4} < \eps_{1/2}/2$ and showed that this implies $p_{\ge 4} \ge 0.487 \eps_{1/2}$ according to my calculations (which of course could be wrong), which isn't a contradiction.}
+\end{proof}
+
+
+%What about $p_1 = 1- \frac{\eps_{1,1}}{10}$ and $p_{\frac{20}{\eps}} = \frac{\eps}{10}$. 
+%$$1-\frac{\eps}{10} + \frac{20}{\eps}\cdot \frac{\eps}{10}  = 3 -\frac{\eps}{10}.$$
+%$$p_\ge 2 = \eps/10.$$
+%
+%Another way to do proof.
+%Let $\nu$ be conditional measure that $u$ and $v$ are trees.
+%$$\EE{\nu}{A_T + B_T} \in [3-2\eps_{1/2} - \eps_\eta, 3 + 2 \eps_{1/2} + \eps_\eta].$$
+%Therefore,
+%$$\EE{\nu}{A_T + B_T} - 3 \sum_{i=1}^{m} p_i = -2p_1 - p_2 + p_4 + 2p_5 + 3p_6 +\ldots \in [2\eps_{1/2} - \eps_\eta, 2 \eps_{1/2} + \eps_\eta].$$
+%If $p_{\ge 4} \ge 2.5 \eps_{1/2}$, then to satisfy the above, would need $p_{\le 2} \ge 0.25 \eps_{1/2}$. 
+%If  $p_{\ge 4} < 2.5 \eps_{1/2}$, then $p_{\le 2} \ge 0.5 \eps_{1/2}$ and $p_{\le 3} \ge 1-2.5 \eps_{1/2}$.
+%Also, the mode is either 2 or 3 (since the mode differs from the mean by at most 1) and has value at least 1/3.
+%In either case $p_{\ge 2} \ge 1/3$.
+
+
+\begin{figure}[htb]\centering
+	\begin{tikzpicture}
+		\draw [color=blue,line width=1.1pt] (0,0) ellipse   (1.5cm and 1.3cm);
+		\node at (-1,-1.2) () {${\color{blue}S}$};
+		\node [draw,circle] at (-1,0) (u) {$u$};
+		\node [draw,circle] at (0.5,0) (v) {$v$} edge node [below left] {$\bbe$} (u);
+		\draw [color=red, line width=1.1pt] (0.5,0) ellipse (0.8 and 1.1);
+		\node at (-0.3,-.9) () {${\color{red}W}$};
+
+		\node at (-1,1.5) () {} edge node [above left] {$\delta^\uparrow(u)$} (u);
+	\end{tikzpicture}
+	\caption{Setting of \cref{lem:1/2+eps_1/2sendhigher}}
+	\label{fig:halfkhigher}
+\end{figure}
+\begin{lemma}\label{lem:1/2+eps_1/2sendhigher}
+Let $\bbe={\bf (u,v)}$ be a half edge bundle in a degree cut $S\in\cH$, and suppose $x(\delta^\uparrow(u))\geq 1/2+k\eps_{1/2}$.
+If $k\geq 9$, $\eps_{1/2}\leq 0.0002$, and $\eps_\eta \le \eps_{1/2}^2$, then, $\bbe$ is 2-2 good.	
+\end{lemma}
+\begin{proof}
+First, condition $u,v,S$  to be trees.
+Let $W=S\smallsetminus \{u\}$. 
+Since $S$ is a near mincut,
+\begin{eqnarray*}
+x(\delta(W))=x(\delta(S))+x(\delta(u))-2x(\delta^\uparrow(u))\leq 2(2+\eps_\eta) - 2(1/2+k\eps_{1/2})=3-2k\eps_{1/2}+2\eps_{\eta}
+\end{eqnarray*}
+ So, by \cref{lem:treeconditioning}, 
+$\P{W\text{ is tree}} \geq 1/2+k\eps_{1/2}-\eps_\eta-\eps_\eta$. Note that the extra $-\eps_{\eta}$ comes from the fact that conditioning $u$ be a tree can decrease marginals of edges in $E(W)$ by at most $\eps_\eta$.
+
+Let $\nu$ be the resulting measure, namely the measure obtained by first conditioning $u,v,S$ to be trees and then $W$ to be a tree. Note that $\nu$ is a strongly Rayleigh distribution on the set of edges in $E(W) \cup E(u,W)\cup E(G/S)$; this is because $\nu$ is a product of 3 SR distributions each supported on one of the aforementioned sets. 
+
+Let $X=\delta^\uparrow(u)_T$ and $Y=\delta(v)_T-1$. Observe that, under $\nu$, $X=Y=1$ iff $\delta(u)_T=\delta(v)_T=2$. Furthermore, $Y\geq 0$ with probability 1, since $v$ is connected to the rest of the graph. So, we just need to lower bound $\PP{\nu}{X=Y=1}.$ First, notice
+\begin{equation}\begin{aligned}
+ &\EE{\nu}{X}\in [0.5+k\eps_{1/2}-\eps_\eta,1+\eps_\eta]
+ %\subset [0.5,1.01]
+ \\
+ &\EE{\nu}{Y} \in  [0.5+k\eps_{1/2}-4\eps_\eta,1.5-k\eps_{1/2}+3\eps_\eta]%\subset [0.5,1.5]
+%-4 eps_\eta because of conditionin on u,v,S and -eps_\eta for W
+%+3eps_eta one for S, 2 for W
+\label{eq:EnuXYeps1/2up}
+\end{aligned}\end{equation}
+We will give a brief explanation of this: first, note that $\frac{1}{2}+k\eps_{1/2} \le \E{X} \le 1+\eps_\eta$ before conditioning. By conditioning $u,v,S$ to be trees, we can increase $\E{|E(S)|_T}$ by at most $\eps_\eta$, therefore this may decrease $\E{X}$ by at most $\eps_\eta$. Under this measure, $E(S)$ is independent of $X$; therefore conditioning on $W$ to be a tree cannot change $\E{X}$. Second, note that $1 \le \E{Y} \le 1+\eps_\eta$ before conditioning. Now, conditioning on $u,v,S$ to be trees may decrease $\E{Y}$ by at most $2\eps_\eta$ and increase by at most $\eps_\eta$. Conditioning on $W$ to be a tree may increase or decrease $\E{Y}$ by a most $1/2-k\eps_{1/2}+2\eps_\eta$.
+
+Note that using \cref{lem:427gen}, we can immediately argue that $\PP{\nu}{X=Y=1}\geq \Omega(\eps_{1/2})$. We do the following more refined analysis to make sure that this probability is at least $6\eps_{1/2}$ (for $\eps_{1/2}\leq 0.0005$) and $k\geq 9$. Once we prove this, we obtain the lemma:
+\begin{align*}
+\P{\delta(u)_T=\delta(v)_T=2 \mid u,v \text{ trees}} &\geq \P{S,W\text{ trees} \mid u,v \text{ trees}} \PP{\nu}{X=Y=1} \ge 0.5 \cdot 6 \eps_{1/2}
+\end{align*}
+
+{\bf Case 1: $\PP{\nu}{X+Y=2}\geq 48\eps_{1/2}$.}
+%Since $\EE{\nu}{X},\EE{\nu}{Y}\geq 0.5$, 
+By \cref{lem:SR>=}, $\PP{\nu}{X\geq 1},\PP{\nu}{Y\geq 1}\geq 1-e^{-0.5}$.
+%The worst case is n bernoullis with prior 0.5/n
+On the other hand, %since $\EE{\nu}{X},\EE{\nu}{Y}\leq 1.5$, 
+by \cref{thm:hoeffding}, $\PP{\nu}{X\leq 1},\PP{\nu}{Y\leq 1}\geq 7/16$. This is because if we have one Bernoulli of value 1, $\PP{\nu}{X\leq 1} \ge (1-\frac{0.5}{n})^n$ is minimized at $n=1$, whereas if we have no Bernoullis of value 1, $\PP{\nu}{X\leq 1} \ge (1-\frac{1.5}{n})^n + 1.5(1-\frac{1.5}{n})^{n-1}$ which is minimized at $n=2$. 
+Therefore, by \cref{lem:SRA=nA}, $\PP{\nu}{X=1 | X+Y=2} \geq 0.1269$.
+%the worst case is 2 bernoullis, 1 always 1, and the other 1/2,1/2.
+Therefore, we get
+$$\PP{\nu}{X=1,Y=1} \geq 48\eps_{1/2} \cdot 0.1269 \geq 6\eps_{1/2}$$ 
+
+{\bf Case 2: $\PP{\nu}{X+Y=2}<48\eps_{1/2} < 0.01$.}  
+By \cref{thm:rayleigh_expectconstprob}, $\PP{\nu}{X+Y=1}\geq 0.25$ (if $\EE{\nu}{X+Y} \ge 1.2$ then the assumption of this case obviously fails). So, since $\PP{\nu}{X+Y=2}<0.01$, by log concavity, $\PP{\nu}{X+Y=3} \le 0.01/25$. Furthermore, by \cref{lem:logconcaveexpecation} (with $\gamma=1/25, i=1,k=3$), $\PP{\nu}{X+Y > 2}<0.0005$.
+
+Now, assume that $\PP{\nu}{X \ge 1},\PP{\nu}{Y \ge 1} \ge 0.47$ (we will prove this shortly). Now, applying stochastic dominance, we have
+\begin{align*}
+\PP{\nu}{X\geq 1| X+Y= 2} &\geq \PP{\nu}{X\geq 1 | X+Y\leq 2}\\
+&\geq \PP{\nu}{X\geq 1, X+Y\leq 2}\\
+&\geq \PP{\nu}{X\geq 1} - \PP{\nu}{X+Y> 2} \geq \PP{\nu}{X\geq 1}- 0.0005\geq 0.469.
+\end{align*}
+Similarly, $\PP{\nu}{X\leq 1 | X+Y=2} =\PP{\nu}{Y\geq 1 | X+Y=2} \geq \PP{\nu}{Y\geq  1}-0.0005\geq 0.469$.
+Finally since the distribution of $X$ conditioned on $X+Y=2$ is the same as the number of successes in  2 independent Bernoulli trials, with probabilities,  say, $p_1$ and $p_2$, we can minimize $p_1 (1-p_2) + (1-p_1)p_2$ subject to $1-p_1p_2 \ge 0.469$ and $1-(1-p_1)(1-p_2) \ge 0.469$. Solving this yields  $\PP{\nu}{X=1 | X+Y=2}\geq 0.395$.
+
+Lastly, observe that since by \cref{eq:EnuXYeps1/2up} $1.2 \ge \EE{\nu}{X+Y}\geq 1+(2k-1)\eps_{1/2}$, by  \cref{thm:rayleigh_expectconstprob} we can write
+$$\PP{\nu}{X+Y=2} \geq (2k-1)\eps_{1/2} e^{-(2k-1)\eps_{1/2}} \geq (2k-2)\eps_{1/2}.$$ 
+Therefore,
+\begin{align*}
+\PP{\nu}{X=Y=1} &= \PP{\nu}{X=1 | X+Y=2}\PP{\nu}{X+Y=2} \ge 0.395 (2k-2)\eps_{1/2}
+\end{align*}
+To get the RHS to be at least $6\eps_{1/2}$ it suffices that $k\geq 9$.
+
+
+Now we prove that $\PP{\nu}{X \ge 1} \ge 0.47$; $\PP{\nu}{Y \ge 1} \ge 0.47$ follows similarly.
+$$\PP{\nu}{X = 2} \le \PP{\nu}{X+Y \ge 2} \le 0.01 + 0.00042 \le 0.0105$$
+Also notice that $\PP{\nu}{X = 1} \ge 0.3$ by \cref{thm:rayleigh_expectconstprob}.
+Now, using \cref{lem:logconcaveexpecation} we can write, for $\gamma = 1/25$ and $i=1$,
+$$\EE{\nu}{X \mid X \ge 2}\PP{\nu}{X \ge 2} \le 0.0224$$ 
+Therefore, since $X$ is integer valued,
+$$\PP{\nu}{X \ge 1} \ge \EE{\nu}{X} - \EE{\nu}{X \mid X \ge 2}\PP{\nu}{X \ge 2} \ge \EE{\nu}{X} - 0.0224 \ge 0.47,$$
+as desired.
+%We know that $\EE{\nu}{X+Y}\leq 2.5$; so if it is also at least $1+50\eps_{1/2}$, then $\P{X+Y=2}\geq 50\eps_{1/2}e^{-50\eps_{1/2}} \ge 48\eps_{1/2}$ by \cref{thm:rayleigh_expectconstprob} and using $\eps_{1/2} \le 0.0002$. 
+%First note that since $\EE{\nu}{X+Y}\geq 1$, $X+Y=1$ must be the mode of the distribution. 
+%On the other hand, by \cref{eq:EnuXYeps1/2up}, since $\EE{\nu}{X+Y}<1.01$, we have  $0.5 \le \EE{\nu}{X},\EE{\nu}{Y}\leq 0.51$ (since each of them is at least 0.5 by \eqref{eq:EnuXYeps1/2up}).
+%It follows by \cref{thm:hoeffding} that $\PP{\nu}{X\le 1}, \PP{\nu}{Y\le 1} \ge (1-\frac{0.7}{n})^n + \frac{0.7}{n}(1-\frac{0.7}{n})^{n-1}$ for the integer $n \ge 1$ which minimizes this expression (where we use the maximal value of $\EE{\nu}{X},\EE{\nu}{Y}$ since it is a decreasing function of the expectation). Since this is a decreasing function of $n$ when $n \ge 1$, we obtain a bound of $e^{-0.7} + 0.7e^{-0.7} \ge 0.84$.
+%\cref{lem:SRA=nA} that $\PP{\nu}{X\le 1}, \PP{\nu}{Y\le 1}\geq 1-e^{-0.7}\geq 0.5$.
+\end{proof}
+
+
+
+
+\begin{figure}\centering
+\begin{tikzpicture}[scale=0.8]
+\tikzstyle{every node}=[draw,circle]
+\foreach \a/\x/\l in {u/-3/U, v/0/V , w/3/W}{
+\path  (\x,0) node  (\a) {$\a$};
+\path (\a)+(-0.7,0.5) node [color=red,draw=none] (){$\l$};
+\foreach \xx in {0,...,2}{
+\draw [-] (\a) -- ++(60+\xx*30: 1.5);}
+\draw [dashed,color=red,line width=1.2] (\a)+(45:1) arc (45:135:1);
+}
+\path [-](u) edge node [draw=none,below] {$\bbe$} (v);
+\path [-] (w) edge node [draw=none,below] {$\bbf$} (v);
+\end{tikzpicture}
+\caption{Setting of \cref{lem:one-of-two-good}} 
+\label{fig:incident_halfedges}
+\end{figure}
+
+\begin{lemma}\label{lem:one-of-two-good}
+Let $\bbe={\bf (u,v)},\bbf={\bf (v,w)}$ be two half edge bundles in a degree cut $S\in\cH$. If $\eps_{1/2} < 0.0005$ and $\eps_\eta \le \eps_{1/2}^2$, then one of $\bbe$ or $\bbf$ is good.
+\end{lemma}
+\begin{proof}
+We use the following notation $V=\delta(v)_{-\bbe-\bbf},U=\delta(u)_{-\bbe},W=\delta(w)_{-\bbf}$ (see \cref{fig:incident_halfedges} for an illustration). For a set $A$ of edges and an edge bundle $\bbe$ we write $A_{+\bbe}=A\cup\{\bbe\}$. Furthermore, for a measure $\nu$ we write $\nu_{-\bbe}$ to denote $\nu$ conditioned on $\bbe\notin T$. 
+
+Condition $u,v,w$ to be trees. %, then they can be treated as contracted vertices for \cref{lem:wpath}. 
+This occurs with probability at least $1-3\epsilon_\eta$.
+Let $\nu$ be this measure. By \cref{lem:crossingcorrelation}, without loss of generality, we can  assume 
+\begin{equation}\label{eq:Wtgoesup405}
+\EE{\nu}{W_T | \bbe\notin T}\leq \EE{\nu}{W_T}+0.405.
+\end{equation}
+Now, if $\EE{\nu}{V_T | \bbe\notin T}\geq \EE{\nu}{V_T}+0.03$, then we will show $\bbe$ is 2-2 good. First, 
+% 4.27 applied to u and v, because sum above 3.02
+\begin{align*}
+	& \EE{\nu_{-\bbe}}{(V_{+\bbf})_T}\in [1.53-\eps_{1/2}-3\eps_\eta, 2+\eps_{\eta}],\\
+	&\EE{\nu_{-\bbe}}{U_T}\in [1.5-\eps_{1/2}-3\eps_\eta, 2+\eps_{\eta}],\\
+	&\EE{\nu_{-\bbe}}{(V_{+\bbf})_T+U_T} \in [3.03-2\eps_{1/2}-3\eps_\eta, 3.5+2\eps_{1/2}+2\eps_\eta],
+\end{align*}
+where we may decrease the marginals by $3\eps_\eta$ due to conditioning $u,v,w$ to be trees.
+
+Therefore, by \cref{thm:rayleigh_expectconstprob}, $\PP{\nu_{-\bbe}}{(V_{+\bbf})_T+U_T=4} \geq 0.029$, where we use the fact that $U_T\geq 1$ and $(V_{+\bbf})_T\geq 1$ with probability 1 under $\nu_{-\bbe}$ and apply this and  the remaining calculations to $U_T-1,(V_{+\bbf})_T-1$. In addition, we have
+\begin{align*}
+&\PP{\nu_{-\bbe}}{U_T\leq 2},\PP{\nu_{-\bbe}}{(V_{+\bbf})_T\leq 2}\geq 0.499 \tag{Markov Inequality}\\
+& \PP{\nu_{-\bbe}}{U_T\geq 2},\PP{\nu_{-\bbe}}{(V_{+\bbf})_T\geq 2}\geq   0.39
+\tag{\cref{lem:SR>=}}
+\end{align*}
+It follows by \cref{lem:SRA=nA} applied to $U_T-1$ and $(V_{+\bbf})_T-1$ (with $\eps=0.194$ and $p_m=0.6$) that 
+$$\PP{\nu_{-\bbe}}{U_T= 2 | U_T+(V_{+\bbf})_T=4} \geq 0.13,$$
+where we use that $U_T \ge 1$, $(V_{+\bbf})_T \ge 1$ with probability 1 under $\nu_{-\bbe}$ because otherwise the tree would be disconnected.
+
+Therefore,
+\begin{align*} \P{\delta(u)_T=\delta(v)_T=2 \mid u,v \text{ trees}} &\geq \P{w\text{ is a tree},\bbe\notin T}\PP{\nu_{-\bbe}}{U_T=(V_{+\bbf})_T=2} \\
+& \geq (0.49)(0.029)(0.13)\geq 0.0018.
+\end{align*}
+The lemma follows (i.e., $e$ is 2-2 good) since $0.0018\geq 3\eps_{1/2}$ for $\eps_{1/2}\leq 0.0005$.
+
+% in this case, Shayan's lemma  in V, f, W
+% 
+Otherwise, if $\EE{\nu}{V_T | \bbe\notin T}\leq \EE{\nu}{V_T}+0.03$ then we will show that $\bbf$ is 2-2 good. We have,
+\begin{align*}
+	& \EE{\nu_{+\bbf}}{(V_{+\bbe})_T},\EE{\nu_{+\bbf}}{W_T} \in  [1-2 \eps_{1/2}-3\eps_\eta,1.5+2\eps_{1/2}+\eps_\eta]\\
+&\PP{\nu_{+\bbf}}{(V_{+\bbe})_T\leq 1},\PP{\nu_{+\bbf}}{W_T\leq 1}\geq 0.249 \tag{Markov} \\
+&\PP{\nu_{+\bbf}}{(V_{+\bbe})_T\geq 1},\PP{\nu_{+\bbf}}{W_T\geq 1}\geq 0.63 \tag{\cref{lem:SR>=}}
+\end{align*}
+So, by \cref{lem:SRA=nA} (with $\eps=0.15,p_m=0.7$), we get $\PP{\nu_{+\bbf}}{W_T=1 | (V_{+\bbe})_T+W_T=2}\geq 0.11$. 
+% (only three options 0,1,2, mid point>=0.15
+On the other hand, 
+\begin{align*}
+	&\PP{\nu_{+\bbf}}{(V_{+\bbe})_T+W_T=2} \geq \PP{\nu_{+\bbf}}{\bbe\notin T}\PP{\nu_{+\bbf-\bbe}}{(V_{+\bbe})_T+W_T=2} \geq (0.49)(0.0582)\geq 0.0285
+\end{align*}
+To derive the last inequality, we show  $\PP{\nu_{+\bbf-\bbe}}{(V_{+\bbe})_T+W_T=2}\geq 0.0582$. This is because by negative association and \cref{eq:Wtgoesup405} %we used $\eps_{1/2}
+\begin{align*} \EE{\nu_{+\bbf-\bbe}}{(V_{+\bbe})_T+W_T} &= \EE{\nu_{+\bbf-\bbe}}{V_T+W_T}\\
+&	
+\leq \EE{\nu_{-\bbe}}{V_T+W_T} \leq  \EE{\nu}{W_T}+0.405 + \EE{\nu}{V_T} + 0.03 \leq 2.94;
+\end{align*}
+So, since $(V_{+\bbe})_T+W_T$ is always at least $1$,   so by \cref{thm:hoeffding}, in the worst case, $\PP{\nu_{-\bbe+\bbf}}{(V_{+\bbe})_T+W_T=2}$ is the probability that the sum of two Bernoullis with success probability $1.94/2$ is 1, which is $0.0582$. 
+
+Therefore, similar to the previous case, 
+\begin{align*}\P{\delta(v)_T=\delta(w)_T=2 \mid v,w \text{ trees}}&\geq \P{u\text{ is a tree},f\in T}\PP{\nu_{+\bbf}}{(V_{+\bbe})_T+W_T=2} \\& \quad\quad \cdot \PP{\nu_{+\bbf}}{W_T=1 | (V_{+\bbe})_T+W_T=2}\\
+&\geq (0.49) (0.0285)(0.11) \geq 3\eps_{1/2}
+\end{align*}
+for $\eps_{1/2}\leq 0.0005$ as desired.
+\end{proof}
+
+
+\subsection{2-1-1 and 2-2-2 Good Edges}
+\label{sec:211goodedges}
+
+Consider a cut $u \in \cH$, and recall that $x(\delta(u)) \approx 2$. Normally, it is sufficient to have $\delta(u)_T = 2$ when an edge $e \in \delta(u)$ is reduced. In the worst case, the edges of $\delta(u)$ essentially come from two of its descendants $u',v'$, i.e. $x(\delta(u') \cap \delta(u)) \approx 1$ and $x(\delta(v') \cap \delta(u)) \approx 1$. Let $A=\delta(u') \cap \delta(u),B=\delta(v') \cap \delta(u),C=\delta(u)\smallsetminus (A \cup B)$. In such a case, if we condition on reducing an edge in $A$, we may have $A_T$ to be even with probability close to 1, and it will be very expensive to fix the constraint coming from $\delta(u')$, as $(\delta(u') \smallsetminus(\delta(u)))_T$ is 1, i.e. odd, with probability close to 1. Therefore, it is crucial to make sure that when we reduce an edge in $A$ ($B$), we have $A_T$ ($B_T$) is odd with some probability. Since when $\delta(u)$ is even and $A_T$ is odd, $B_T$ will be odd as well (discounting the leftovers $C$, which have negligible expectation), a natural criteria is to ask for $A_T=B_T=1$, hence motivating the upcoming definition of 2-1-1 happy. To get a more high level understanding of how we use these events, see the following two sections of the overview: \hyperlink{ABC-explanation}{dealing with $x_u$ close to 1} and \hyperlink{211-explanation}{dealing with triangles}.   
+ 
+\begin{definition}[$A,B,C$-Degree Partitioning]\label{def:abcdegpartitioning}
+\hypertarget{tar:degreepartition}{For $u\in\cH$ and $\eps_{1/1}$ defined in \ref{eq:constants}, we define a partitioning of edges in $\delta(u)$: Let $a,b\subsetneq u$ be {\em minimal} cuts in the hierarchy, i.e., $a,b\in\cH$, such that $a\neq b$  and $x(\delta(a)\cap\delta(u)),x(\delta(b)\cap\delta(u))\geq 1-\eps_{1/1}$. Note that since the hierarchy is laminar, $a,b$ cannot cross. Let $A=\delta(a)\cap\delta(u),B=\delta(b)\cap\delta(u),C=\delta(u)\smallsetminus A\smallsetminus B$. }
+
+If there is no cut $a\subsetneq u$ (in the hierarchy) such that $x(\delta(a)\cap\delta(u))\geq 1-\eps_{1/1}$, we just let $A,B$ be two arbitrary disjoint sets of edges in $\delta(u)$ for which $x(A),x(B)\geq 1-\eps_{1/1}$. As above set $C=\delta(u)\smallsetminus A\smallsetminus B$. Note that this exists WLOG because we may split any edge into an arbitrary number of parallel copies.
+%then we say $\bbe$ is 2-1-1 good if it is 2-2 good.
+
+If there is just one minimal cut $a\subsetneq u$ (in the hierarchy) with $x(\delta(a)\cap\delta(u))\geq 1-\eps_{1/1}$, i.e., $b$ does not exist in the above definition, then we define $A=\delta(a)\cap\delta(u)$. Let $a'\in\cH$ be the unique child of $u$ such that $a\subseteq a'$, i.e., $a$ is equal to $a'$ or a descendant of $a'$. Then we define $C=\delta(a')\cap\delta(u) \smallsetminus \delta(a)$ and $B=(\delta(u)\smallsetminus A) \smallsetminus C$.
+Note that in this case since $x(\delta^\uparrow(a'))\leq 1+\eps_{\eta}$, we have $x(B)\geq 1-\eps_\eta\geq 1-\eps_{1/1}$.
+% and we say $\bbe$ is 2-1-1 good (with respect to $u$) if $\P{A=1,B=1,C=0,\delta(v)=2}\geq p$.	
+\end{definition}
+See \cref{fig:topedgeABCmotivation} for an example.  The following inequalities on $A,B,C$ degree partitioning will be used in this section:
+\begin{equation}	
+\begin{aligned}
+	x(A),x(B) \in [1-\eps_{1,1},1+\eps_\eta],\\
+	x(C)\leq 2\eps_{1/1}+\eps_\eta. 
+\end{aligned}\label{eq:ABCDegParx}
+\end{equation}
+%For an edge bundle $\bbe={\bf (u,v)}$ and degree partitioning $A,B,C$ of $\delta(u)$ we write $\bbe(A)=\bbe\cap A$.
+%Note that $\bbe(A)$ is not really an edge bundle. 
+
+In this section we will define a constant $p>0$ which is the minimum  probability that a good edge bundle is happy.
+\begin{definition}[2-1-1 Happy/Good]
+\label{dfn:211happygood}
+Let  $\bbe={\bf (u,v)}$ be a top edge bundle. 
+Let $A,B,C\subseteq \delta(u)$ be a Degree Partitioning of edges $\delta(u)$ as defined in \cref{def:abcdegpartitioning}.
+We say that $\bbe$ is 2-1-1 happy with respect to $u$ if the event 
+$$A_T=1,B_T=1,C_T=0,\delta(v)_T=2,\text{ and $u$ and $v$ are both trees}$$ occurs.
+
+We say $\bbe$ is {\em 2-1-1 good with respect to $u$} if $$\P{\bbe \text{ is 2-1-1 happy wrt $u$}}\geq p.$$
+%If the $A,B,C$ partitioning is undefined for $u$, then we say $\bbe$ is 2-1-1 good with respect to $u$ if it is 2-2 good.
+\end{definition}
+\begin{remark}\label{rem:poly-and-degree-partition} Note we also use this $A,B,C$ partitioning to help deal with the triangle cut case. In the special case that $u$ is a polygon cut with $A,B,C$-polygon partitioning, let $A',B',C'$ be the degree partitioning of $\delta(u)$. Then, by \cref{def:hierarchy} we have $A' \subseteq A$, $B' \subseteq B$, $C \subseteq C'$. Therefore, if an edge in $\delta(u)$ is reduced and is 2-1-1 happy with respect to $u$, the polygon $u$ is also happy. See \hyperlink{211-explanation}{the overview} for an example.\end{remark}
+
+Many of the lemmas in this section are proved in \cref{app:probabilistic}. In the following, we assume that $\eps_\eta \le \eps_{1/2}^2$ and $12\eps_{1/1}\leq \eps_{1/2}$.
+
+\begin{restatable}{lemma}{lemxesmallhalfeps}\label{lem:x_e<=1/2-eps1}
+Let $\bbe={\bf (u,v)}$ be a top edge bundle such that $x_\bbe\leq 1/2-\eps_{1/2}$. If $\eps_{1/2}\leq 0.001$ then, $\bbe$ is 2-1-1 happy with probability at least $0.005\eps_{1/2}^2$.
+\end{restatable}
+
+
+\begin{restatable}{lemma}{xemoreepshalf}\label{lem:x_e>=1/2+eps_1/2}
+Let $\bbe={\bf (u,v)}$ be a top edge bundle such that $x_\bbe\geq 1/2+\eps_{1/2}$. If $\eps_{1/2}\leq 0.001$, then, $\bbe$ is 2-1-1 happy with respect to $u$ with probability at least $0.006\eps_{1/2}^2$.
+\end{restatable}
+
+Fix $u$ in the hierarchy with degree partitioning $A,B,C$. The above two lemmas show that any edge bundle $\bbe \in \delta(u)$ which is not a half edge bundle is 2-1-1 good, so the difficult case is when the majority of $x(\delta^\rightarrow(u))$ comes from half edge bundles. In \cref{thm:badedges} we showed that $\delta(u)$ can have at most one 2-2 bad edge. Oddly enough, one of the simplest cases of the reduction argument is when there \textit{is} a bad edge in $\delta(u)$. This is because we never reduce bad edges, and therefore we never need to increase edges which are matched to them.\footnote{The main problem with bad edges is that we cannot match them to edges going higher in the matching lemma \ref{lem:matching}. So, in order to prove the matching lemma we need to justify that there are not too many bad edges in any cut. Therefore we cannot simply ``pretend" that one half edge bundle of $\delta(u)$ is bad.}
+	So, the main problem is good edges which are not 2-1-1 good. The following key statement, \cref{lem:Ais211good}, shows that these problematic edges are rare in the sense that there is at most one good half edge bundle in $A$ (resp. $B$) which is not 2-1-1 good. 
+ %When arguing about the increase needed for top edges, a difficult case is when $A \cap \delta^\rightarrow(u) \approx 1$ and $A$ contains two good half edge bundles. In the lemma below, we show that both $A \cap \delta^\rightarrow(u)$ (resp. $B \cap \delta^\rightarrow(u)$) has at most fraction 1/2 of good edges that are not 2-1-1 good. 
+ 
+ To prove this we need the following two lemmas. In the first one we show that if $\bbe,\bbf$ are two half edge bundles which almost entirely land in $A$ (or $B$), at least one of them is 2-1-1 good. In the second, we show that if a good half edge bundle does not entirely land in $A$ (or $B$), then it is 2-1-1 good. This is the main tool we use to upper bound the expected increase of good top edges in \cref{sec:payment}.
+ 
+For a set of edges $D$, and an edge bundle $\bbe$, let
+$\bbe(D):= \bbe \cap D.$ Note that $\bbe(D)$ is not really an edge bundle. 
+ \begin{restatable}{lemma}{lemoneoftwotwooneone}
+\label{lem:one-of-two-211}
+Let $\bbe={\bf (v,u)}$ and $\bbf={\bf (v,w)}$ be good half top edge bundles and let $A,B,C$ be the \hyperlink{tar:degreepartition}{degree partitioning} of $\delta(v)$ such that $x_{\bbe(B)},x_{\bbf(B)}\leq \eps_{1/2}$.   
+Then, one of $\bbe,\bbf$ is 2-1-1 happy with probability at least $0.005\eps_{1/2}^2$.
+\end{restatable}
+
+\begin{restatable}{lemma}{lemeABpositivetwooneone}\label{lem:eABpositive211}
+Let $\bbe={\bf (u,v)}$ be a good half edge bundle and 	let $A,B,C$ be the \hyperlink{tar:degreepartition}{degree partitioning} of $\delta(u)$ (see \cref{fig:e(A)e(B)large}).  If $\eps_{1/2}\leq 0.001$ and $x_{\bbe(A)},x_{\bbe(B)}\geq \eps_{1/2}$, % (see \cref{fig:eABpositive211}),
+ then
+$$ \P{\bbe \text{ 2-1-1 happy w.r.t } u} \geq 0.02\eps_{1/2}^2. $$
+\end{restatable}
+
+\begin{lemma}\label{lem:Ais211good}
+For a degree cut $S\in\cH$, and $u\in \cA(S)$, let $A,B,C$ be the \hyperlink{tar:degreepartition}{degree partition} of $u$. Then, $A\cap\delta^\rightarrow(u)=:A^\rightarrow$ has fraction at most $1/2+4\eps_{1/2}$ of good edges that are not 2-1-1 good (w.r.t., $u$).
+\end{lemma}
+\begin{proof}  
+	Suppose by way of contradiction that there is a set $D \subseteq A^\rightarrow$ of good edges that are not 2-1-1 good w.r.t. $u$ with $x(D) \ge \frac{1}{2}+4\eps_{1/2}$. By \cref{lem:x_e<=1/2-eps1} and \cref{lem:x_e>=1/2+eps_1/2}, every edge in $D$ is part of a half edge bundle.  
+	
+	There are at least two half edge bundles $\bbe,\bbf$ such that $x(D \cap \bbe), x(D \cap \bbf) \ge \eps_{1/2}$, as there are at most four half edge bundles in $\delta^\rightarrow(u)$ (and using that for any half edge bundle $\bbe$, $x_\bbe \le \frac{1}{2}+\eps_{1/2}$). %Call two such half edge bundles $\bbe, \bbf$. 
+	Since $D\subseteq A^\rightarrow$, we have 
+	$$x(A \cap \bbe),x(A \cap \bbf) \ge \eps_{1/2}.$$ 
+	Since $x(A\cap \bbe)\geq \eps_{1/2}$, if $x(B\cap \bbe)\geq \eps_{1/2}$ then, by \cref{lem:eABpositive211} $\bbe$ is 2-1-1 good. But since  every edge in $D$ is not 2-1-1 good w.r.t $u$, we must have $x(B\cap \bbe) <\eps_{1/2}$. The same also holds for $\bbf$. %x(B \cap \bbf) < \eps_{1/2}$$ 
+	Finally, since $x(B\cap \bbe)<\eps_{1/2}$ and $x(B\cap \bbf)<\eps_{1/2}$ by \cref{lem:one-of-two-211}  at least one of $\bbe,\bbf$ is 2-1-1 good w.r.t $u$. This is a contradiction.
+\end{proof}
+
+\paragraph{2-2-2 Good Edges.} While \cref{lem:Ais211good} is sufficient for bounding the increase of top edges, it is not sufficient for bottom edges. Fix a polygon $u$ with partition $A,B,C$ and suppose $\p(u)=S$ is a degree cut (recall that by \cref{rem:poly-and-degree-partition}, the degree partitioning and polygon partitioning of $u$ are essentially the same). Roughly speaking, a bottom edge $g \in E(u)$ is ``matched" to all edges in $\delta(u)$, and needs to increase for edges $f \in A$ when $f$ is reduced and $A_T$ is even, and for edges $f \in B$ when $f$ is reduced and $B_T$ is even. Therefore, $g$ is matched to essentially twice its fraction. If most of the edges in $\delta(u)$ are 2-1-1 good, this is sufficient to bound the expected increase of $g$ because when such an edge is reduced and 2-1-1 happy with respect to $u$, $g$ does not need to increase. 
+%The bottom edges $g$ is matched to are ``cheap" due to marginal preserving properties from \cref{lem:maxflow} and the structure of near min cuts, so here we focus on the increase due to top edges. 
+
+It turns out that the above lemmas are sufficient to bound the expected increase of $g \in E(u)$ except when $A \cap \delta(S) \approx B \cap \delta(S) \approx 1/2$ and $\bbe \approx A \cap \delta^\rightarrow(u)$ and $\bbf \approx B \cap \delta^\rightarrow(u)$ are both good edge bundles which are not 2-1-1 good. In this extreme case, we employ a new strategy. In \cref{lem:222} below, we prove that the two edge bundles $\bbe,\bbf$ are 2-2 happy \textit{simultaneously} with a constant probability. We call such a pair 2-2-2 good. Later, in \cref{sec:payment}, we use this to ensure that $\bbe$ and $\bbf$ are always reduced simultaneously. The point is that since $\bbe,\bbf$ do not both come from $A$ (or $B$), no cut inside $u$ contains $\bbe$ and $\bbf$. Therefore, $g$ only needs to increase by the maximum of the decrease of $\bbe,\bbf$ (not the sum), effectively saving a factor of 2. 
+
+
+\begin{definition}[2-2-2 Happy/Good]
+\label{dfn:222happygood}
+	Let $\bbe={\bf (u,v)},\bbf={\bf (v,w)}$ be top half-edge bundles (with $\p(\bbe)=\p(\bbf)$). We say $\bbe,\bbf$ are 2-2-2 happy (with respect to $v$) if $\delta(u)_T=\delta(v)_T=\delta(w)_T=2$ and $u,v,w$ are all trees.
+	
+	We say $\bbe,\bbf$ are 2-2-2 good with respect to $v$ if $\P{\bbe,\bbf \text{ 2-2-2 happy}}\geq p$.
+\end{definition}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%\begin{lemma}\label{lem:fundamental-2-1-1}
+%Suppose we have partitioned $\delta(S)$ into three sets $A,B,C$, and  $x(\delta(S)), x(\delta(w))\leq 2+\eps_4, x(C)\leq \eps_4$.
+%Let $x=A\cap \delta(w), y=B\cap\delta(w)$. Assume $|x+y -1/2|\leq \eps_1$ and $y\leq \eps_1$.
+%Let $\tilde{A}=A\smallsetminus x$, $\tilde{B}=B\smallsetminus y$, $\tilde{D}=D\smallsetminus x\smallsetminus y$. 
+%If one of the following holds 
+%\begin{enumerate}[i)]
+%\item $\P{\tilde{A}+\tilde{B}+\tilde{D} \geq 4} > \eps_2$ and $\P{\tilde{A}+\tilde{D}\geq 3} \geq \eps_3$	, or
+%\item  $\P{\tilde{A}+\tilde{B}+\tilde{D} \leq 2} >\eps_2$ and $\P{\tilde{A}+\tilde{D}\leq 1}\geq \eps_3$,
+%\end{enumerate}
+%holds for $\eps_2,\eps_3,\eps_1 \gg \eps_4$, then
+%$$ \P{A=B=1,C=0,D=2}\geq f(\eps_2,\eps_3)$$
+%\end{lemma}
+%\begin{proof}
+%Similar to the previous lemma $\P{\tilde{A}+\tilde{B}+\tilde{D}\geq 4/2} \geq \eps_2/2-\eps_4$.
+%And, $\P{\tilde{A}+\tilde{D}=3/1} \geq \eps_3/2-\eps_4$.
+%So, first we condition $C=0$.
+%Then, condition $S$, and $w$ to be trees
+%Then we can condition $x+y=0$ either way works. (the other way also works)
+%Then by Shayan lemma $\tilde{A}=1,\tilde{B}=1,\tilde{D}=2$ has probability at least $f(\eps_2,\eps_3)$.
+%\end{proof}
+%
+
+%\begin{lemma}
+%Suppose we have partitioned $\delta(S)$ into three sets $A,B,C$, $x(\delta(S))\leq 2+\eps_4, x(C)\leq \eps_4$, and $x(A),x(B)\geq 1-\eps_4$.
+%Suppose there are two edge (bundles) $e,f\in A$ such that $|x_e-1/2|, |x_f-1/2|\leq \eps_1$.
+%
+%\end{lemma}
+
+
+%\path [-] (w) edge node [draw=none,below] {$f$} (v);
+
+
+\begin{restatable}{lemma}{lemtwotwotwo}
+\label{lem:222}
+	Let $\bbe={\bf (u,v)},\bbf={\bf (v,w)}$ be two good top half edge bundles and let $A,B,C$ be \hyperlink{tar:degreepartition}{degree partitioning} of $\delta(v)$ such that $x_{\bbe(B)},x_{\bbf(A)}\leq \eps_{1/2}$. 
+%	If $x(e\cap B)\leq \eps_1$ and $x(f\cap A)\leq \eps_1$, then, one of the following holds:
+If $\bbe,\bbf$ are not 2-1-1 good with respect to $v$, and $\eps_{1/2}\leq 0.0002$, then $\bbe,\bbf$ are 2-2-2 happy with probability at least $0.01$.
+\end{restatable}
+
+The following theorem summarizes the above results in a compact form. This is the main result used in the analysis of the increase for bottom edges in \cref{sec:payment}.
+\begin{theorem}
+	\label{thm:probabilistic}
+	Let $v, S \in \cH$ where $\p(v) =S$, and let $A,B,C$ be the \hyperlink{tar:degreepartition}{degree partitioning} of $\delta(v)$. For $p\geq 0.005\eps_{1/2}^2$, with $\eps_{1/2}\leq 0.0002$, $\eps_{1/1}\leq \eps_{1/2}/12$ and $\eps_{\eta}\leq \eps_{1/2}^2$, at least one of the following is true:
+	\begin{enumerate}[i)]
+		\item $\delta^\rightarrow(v)$ has at least $1/2-\eps_{1/2}$ fraction of bad edges,
+		\item $\delta^\rightarrow(v)$ has at least $1/2-\eps_{1/2}-\eps_\eta$ fraction of 2-1-1 good edges with respect to $v$.
+		\item There are two (top) half edge bundles $\bbe,\bbf\in\delta^\rightarrow(v)$ such that $x_{\bbe(B)}\leq \eps_{1/2}$, $x_{\bbf(A)}\leq \eps_{1/2}$, and $\bbe, \bbf$
+ are 2-2-2 good (with respect to $v$).
+	\end{enumerate}
+\end{theorem}
+\begin{proof}
+	Suppose case (i) does not happen. Since every bad edge has fraction at least $1/2-\eps_{1/2}$ this means that $\delta(v)$ has no bad edges.
+First, notice by \cref{lem:x_e<=1/2-eps1} and \cref{lem:x_e>=1/2+eps_1/2} any non half-edge in $\delta^\rightarrow(v)$ is 2-1-1 good (with respect to $v$). (Recall we define $\delta^\rightarrow(v) = \delta(v) \smallsetminus \delta(\p(v))$, where $\p(v)$ is the immediate parent of $v$ in the hierarchy).
+	If there is only one half edge in $\delta^\rightarrow(v)$, then we have at least fraction $1-\eps_{\eta} - (1/2+\eps_{1/2})$ fraction of 2-1-1 good edges and we are done with case (ii).
+	Otherwise,  there are two good half edges $\bbe,\bbf\in \delta^\rightarrow(v)$. 
+	
+	First, by \cref{lem:eABpositive211} if $x_{\bbe(A)},x_{\bbe(B)}\geq \eps_{1/2}$, then $\bbe$ is 2-1-1 good (w.r.t., $v$) and we are done.
+	Similarly, if $x_{\bbf(A)},x_{\bbf(B)}\geq  \eps_{1/2}$, then $\bbf$ is good. So assume none of these happens.
+	
+	Furthermore by \cref{lem:one-of-two-211} if $x_{\bbe(B)},x_{\bbf(B)}\leq \eps_{1/2}$ (or $x_{\bbe(A)},x_{\bbf(A)}\leq \eps_{1/2}$) then one of $\bbe,\bbf$ is 2-1-1 good.
+	
+	So, the only remaining case is when $\bbe,\bbf$ are not 2-1-1 good and $x_{\bbe(B)},x_{\bbf(A)}\leq \eps_{1/2}$. But in this case by \cref{lem:222}, $\bbe,\bbf$ are 2-2-2 good; so (iii) holds.
+\end{proof}
+
+
+
+

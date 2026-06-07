@@ -1,0 +1,2038 @@
+Acta Numerica (2008), pp. 191–234               Cambridge University Press, 2008
+                                               c
+doi: 10.1017/S0962492906370018                     Printed in the United Kingdom
+
+
+
+  Interior-point methods for optimization
+                            Arkadi S. Nemirovski
+                 School of Industrial and Systems Engineering,
+                        Georgia Institute of Technology,
+                         Atlanta, Georgia 30332, USA
+                   E-mail: arkadi.nemirovski@isye.gatech.edu
+
+
+                               Michael J. Todd
+          School of Operations Research and Information Engineering,
+                  Cornell University, Ithaca, NY 14853, USA
+                            E-mail: mjt7@cornell.edu
+
+
+
+  This article describes the current state of the art of interior-point methods
+  (IPMs) for convex, conic, and general nonlinear optimization. We discuss the
+  theory, outline the algorithms, and comment on the applicability of this class
+  of methods, which have revolutionized the ﬁeld over the last twenty years.
+
+
+
+         CONTENTS
+         1 Introduction                                             191
+         2 The self-concordance-based approach to IPMs              194
+         3 Conic optimization                                       210
+         4 IPMs for non-convex programming                          228
+         5 Summary                                                  230
+         References                                                 231
+
+1. Introduction
+During the last twenty years, there has been a revolution in the meth-
+ods used to solve optimization problems. In the early 1980s, sequential
+quadratic programming and augmented Lagrangian methods were favoured
+for nonlinear problems, while the simplex method was basically unchal-
+lenged for linear programming. Since then, modern interior-point methods
+(IPMs) have infused virtually every area of continuous optimization, and
+have forced great improvements in the earlier methods. The aim of this
+article is to describe interior-point methods and their application to convex
+programming, special conic programming problems (including linear and
+semideﬁnite programming), and general possibly non-convex programming.
+192                   A. S. Nemirovski and M. J. Todd
+
+We have also tried to complement the earlier articles in this journal by
+Wright (1992), Lewis and Overton (1996), and Todd (2001).
+   Almost twenty-ﬁve years ago, Karmarkar (1984) proposed his projective
+method to solve linear programming problems: from a theoretical point of
+view, this was a polynomial-time algorithm, in contrast to Dantzig’s sim-
+plex method. Moreover, with some reﬁnements it proved a very worthy
+competitor in practical computation, and substantial improvements to both
+interior-point and simplex methods have led to the routine solution of prob-
+lems (with hundreds of thousands of constraints and variables) that were
+considered untouchable previously. Most commercial software, for exam-
+ple CPlex (Bixby 2002) and XpressMP (Guéret, Prins and Sevaux 2002),
+includes interior-point as well as simplex options.
+   The majority of the early papers following Karmarkar’s dealt exclusively
+with linear programming and its near-relatives, convex quadratic program-
+ming and the (monotone) linear complementarity problem. Gill, Murray,
+Saunders, Tomlin and Wright (1986) showed the strong connection to earlier
+barrier methods in nonlinear programming; Renegar (1988) and Gonzaga
+(1989) introduced path-following methods with an improved iteration com-
+plexity; and Megiddo (1989) suggested, and Monteiro and Adler (1989) and
+Kojima, Mizuno and Yoshise (1989) realized, primal–dual versions of these
+algorithms, which are the most successful in practice.
+   At the same time, Nesterov and Nemirovski were investigating the new
+methods from a more fundamental viewpoint: What are the basic proper-
+ties that lead to polynomial-time complexity? It turned out that the key
+property is that the barrier function should be self-concordant. This seemed
+to provide a clear, complexity-based criterion to delineate the class of opti-
+mization problems that could be solved in a provably eﬃcient way using the
+new methods. The culmination of this work was the book by Nesterov and
+Nemirovski (1994), whose complexity emphasis contrasted with the classic
+text on barrier methods by Fiacco and McCormick (1968).
+   Fiacco and McCormick describe the history of (exterior) penalty and bar-
+rier (sometimes called interior penalty) methods; other useful references are
+Nash (1998) and Forsgren, Gill and Wright (2002). Very brieﬂy, Courant
+(1943) ﬁrst proposed penalty methods, while Frisch (1955) suggested the
+logarithmic barrier method and Carroll (1961) the inverse barrier method
+(which inspired Fiacco and McCormick). While these methods were among
+the most successful for solving constrained nonlinear optimization problems
+in the 1960s, they lost favour in the late 1960s and 1970s when it became ap-
+parent that the subproblems that needed to be solved became increasingly
+ill-conditioned as the solution was approached.
+   The new research alleviated these fears to some extent, at least for cer-
+tain problems. In addition, the ill-conditioning turned out to be relatively
+benign: see, e.g., Wright (1992) and Forsgren et al. (2002). Moreover,
+              Interior-point methods for optimization                     193
+
+Nesterov and Nemirovski (1994) showed that, at least in principle, any con-
+vex optimization problem could be provided with a self-concordant barrier.
+This was purely an existence result, however, as the generated barrier could
+not be eﬃciently evaluated in general. (So we should qualify our earlier
+statement: the class of optimization problems to which the new methods
+can be eﬃciently applied consists of those with a computationally tractable
+self-concordant barrier.) To contrast with the general case, Nesterov and
+Nemirovski listed a considerable number of important problems where com-
+putationally tractable self-concordant barriers were available, and provided
+a calculus for constructing such functions for more complicated sets. A very
+signiﬁcant special case was that of the positive semideﬁnite cone, leading
+to semideﬁnite programming. Independently, Alizadeh (1995) developed an
+eﬃcient interior-point method for semideﬁnite programming, with the moti-
+vation of obtaining strong bounds for combinatorial optimization problems.
+   The theory of self-concordant barriers is limited to convex optimization.
+However, this limitation has become less burdensome as more and more sci-
+entiﬁc and engineering problems have been shown to be amenable to convex
+optimization formulations. Researchers in control theory have been much
+inﬂuenced by the ability to solve semideﬁnite programming problems (or
+linear matrix inequalities, in their terminology) arising in their ﬁeld: see
+Boyd, El Ghaoui, Feron and Balakrishnan (1994). Moreover, a number
+of seemingly non-convex problems arising in engineering design can be re-
+formulated as convex optimization problems: see Boyd and Vandenberghe
+(2004) and Ben-Tal and Nemirovski (2001).
+   Besides the books we have cited, other useful references include the lec-
+ture notes of Nemirovski (2004) and the books of Nesterov (2003) and
+Renegar (2001) for general convex programming; for mostly linear pro-
+gramming, the books of Roos, Terlaky and Vial (1997), Vanderbei (2007),
+Wright (1997) and Ye (1997); for semideﬁnite programming, the handbook
+of Wolkowicz, Saigal and Vandenberghe (2000); and for general nonlinear
+programming, the survey articles of Forsgren et al. (2002) and Gould, Orban
+and Toint (2005).
+   In Section 2, we discuss self-concordant barriers and their properties, and
+then describe interior-point methods for both general convex optimization
+problems and conic problems, as well as the calculus of self-concordant
+barriers. Section 3 treats conic optimization in detail, concentrating on
+symmetric or self-scaled cones, including the non-negative orthant (linear
+programming) and the positive semideﬁnite cone (semideﬁnite program-
+ming). We also brieﬂy discuss some recent developments in hyperbolic-
+ity cones, global polynomial optimization, and copositive programming.
+Finally, Section 4 is concerned with the application of interior-point methods
+to general, possibly non-convex, nonlinear optimization. These methods are
+used in some of the most eﬀective codes for such problems, such as IPOPT
+194                        A. S. Nemirovski and M. J. Todd
+
+(Wächter and Biegler 2006), KNITRO (Byrd, Nocedal and Waltz 2006),
+and LOQO (Vanderbei and Shanno 1999).
+   We have concentrated on the theory and application in structured convex
+programming of interior-point methods, since the polynomial-time complex-
+ity of these methods and its range of applicability have been a major focus of
+the research of the last twenty years. For further coverage of interior-point
+methods for general nonlinear programming we recommend the survey ar-
+ticles of Forsgren et al. (2002) and Gould, Orban and Toint (2005). Also,
+to convey the main ideas of the methods, we have given short shrift to im-
+portant topics including attaining feasibility from infeasible initial points,
+dealing with infeasible problems, and superlinear convergence. The liter-
+ature on interior-point methods is huge, and the area is still very active;
+the reader wishing to follow the latest research is advised to visit the Opti-
+mization Online website www.optimization-online.org/ and the Interior-Point
+Methods Online page at www-unix.mcs.anl.gov/otc/InteriorPoint/. A very
+useful source is Helmberg’s semideﬁnite programming page www-user.tu-
+chemnitz.de/∼ helmberg/semidef.html. Software for optimization problems,
+including special-purpose algorithms for semideﬁnite and second-order cone
+programming, is available at the Network Enabled Optimization System
+(NEOS) homepage neos.mcs.anl.gov/neos/solvers/index.html.
+
+2. The self-concordance-based approach to IPMs
+Preliminaries
+The ﬁrst path-following interior-point polynomial-time methods for linear
+programming, analysed by Renegar (1988) and Gonzaga (1989), turned out
+to belong to the very well-known interior penalty scheme going back to
+Fiacco and McCormick (1968). Consider a convex program
+                                  min{cT x : x ∈ X},                     (2.1)
+X being a closed convex domain (i.e., a closed convex set with a non-empty
+interior) in Rn ; this is one of the universal forms of a convex program. In
+order to solve the problem with a path-following scheme, one equips X with
+an interior penalty or barrier function F – a smooth and strongly convex1
+function deﬁned on int X such that F (xk ) → +∞ on every sequence of
+points xk ∈ int X converging to a point x̄ ∈ ∂X – and considers the barrier
+family of functions
+                             Ft (x) = tcT x + F (x),                    (2.2)
+where t > 0 is the penalty parameter. Under mild assumptions (e.g., when
+X is bounded), every function Ft attains its minimum on int X at a unique
+point x∗ (t), and the central path {x∗ (t) : t ≥ 0} converges, as t → ∞,
+1
+    Hessian positive definite everywhere.
+                 Interior-point methods for optimization                             195
+
+to the optimal set of (2.1). The path-following scheme for solving (2.1)
+suggests ‘tracing’ this path as t → ∞ according to the following conceptual
+algorithm:
+     Given the current iterate (tk > 0, xk ∈ int X) with xk ‘reasonably
+     close’ to x∗ (tk ), we
+      (a) replace the current value tk of the penalty parameter with a
+          larger value tk+1 ; and
+      (b) run an algorithm for minimizing Ftk+1 (·), starting at xk , until a
+          point xk+1 close to x∗ (tk+1 ) = argmin int X Ftk+1 (·) is found.
+     As a result, we get a new iterate (tk+1 , xk+1 ) ‘close to the path’ and
+     loop to step k + 1.
+The main advantage of the scheme described above is that x∗ (t) is, es-
+sentially, the unconstrained minimizer of Ft , which allows the use in (b)
+of basically any method for smooth convex unconstrained minimization,
+e.g., the Newton method. Note, however, that the classical theory of
+the path-following scheme did not suggest its polynomiality; rather, the
+standard theory of unconstrained minimization predicted slow-down of the
+process as the penalty parameter grows. In sharp contrast to this com-
+mon wisdom, both Renegar and Gonzaga        proved that, when applied to
+the logarithmic barrier F (x) = − i ln(bi − aTi x) for a polyhedral set
+X = {x : aTi x ≤ bi , 1 ≤ i ≤ m}, a Newton-method-based implementation
+of the path-following scheme can be made polynomial. These breakthrough
+results were obtained via an ad hoc analysis of the behaviour of the Newton
+method as applied to the logarithmic barrier (augmented by a linear term).
+In a short time Nesterov realized what intrinsic properties of the standard
+log-barrier are responsible for this polynomiality, and this crucial under-
+standing led to the general self-concordance-based theory of polynomial-
+time interior-point methods developed in Nesterov and Nemirovski (1994);
+this theory explained the nature of existing interior-point methods (IPMs)
+for LP and allowed the extension of these methods to the entire ﬁeld of
+convex programming. We now provide an overview of the basic results of
+this theory.2
+
+2.1. Self-concordance
+In retrospect, the notion of self-concordance can be extracted from analy-
+sis of the classical results on the local quadratic convergence of Newton’s
+
+2
+    Up to minor refinements which can be found in Nemirovski (2004), all results quoted
+    in the next subsection without explicit references are taken from Nesterov and Nemir-
+    ovski (1994).
+196                    A. S. Nemirovski and M. J. Todd
+
+method as applied to a smooth convex function f with non-singular Hes-
+sian. These results state that a quantitative description of the domain of
+quadratic convergence depends on (a) the condition number of ∇2 f evalu-
+ated at the minimizer x∗ , and (b) the Lipschitz constant of ∇2 f . In hind-
+sight, such a description seems unnatural, since it is ‘frame-dependent’: it
+heavily depends on an ad hoc choice of the Euclidean structure in Rn ; in-
+deed, both the condition number of ∇2 f (x∗ ) and the Lipschitz constant of
+∇2 f (·) depend on this structure, which is in sharp contrast to the aﬃne in-
+variance of the Newton method itself. At the same time, a smooth strongly
+convex function f by itself deﬁnes at every point x a Euclidean structure
+u, vf,x = D2 f (x)[u, v]. With respect to this structure, ∇2 f (x) is as well-
+conditioned as it could be – it is just the unit matrix. The idea of Nesterov
+was to use this local Euclidean structure, intrinsically linked to the function
+f we intend to minimize, in order to quantify the Lipschitz constant of ∇2 f ,
+with the ultimate goal of getting a ‘frame-independent’ description of the
+behaviour of the Newton method. The resulting notion of self-concordance
+is deﬁned as follows.
+Definition 2.1. Let X ⊂ Rn be a closed convex domain. A function
+f : int X → R is called self-concordant (sc) on X if
+ (i) f is a three times continuously diﬀerentiable convex function with
+     f (xk ) → ∞ if xk → x̄ ∈ ∂X; and
+(ii) f satisﬁes the diﬀerential inequality
+                                             3/2
+        |D3 f (x)[h, h, h]| ≤ 2 D2 f (x)[h, h]     , ∀x ∈ int X, h ∈ Rn . (2.3)
+Given a real ϑ ≥ 1, F is called a ϑ-self-concordant barrier (ϑ-scb) for X if
+F is self-concordant on X and, in addition,
+                                      1/2
+      |DF (x)[h]| ≤ ϑ1/2 D2 F (x)[h, h]     , ∀x ∈ int X, h ∈ Rn .     (2.4)
+   (As above, we will use f for a general sc function and F for an scb in what
+follows.) Note that the powers 3/2 and 1/2 in (2.3) and (2.4) are a must,
+since both sides of the inequalities should be of the same homogeneity degree
+with respect to h. In contrast to this, the two sides of (2.3) are of diﬀerent
+homogeneity degrees with respect to f , meaning that if f satisﬁes a relation
+of the type (2.3) with some constant factor on the right-hand side, we can
+always make this factor equal to 2 by scaling f appropriately. The advantage
+of the speciﬁc factor 2 is that with this deﬁnition, the function x → − ln(x) :
+R++ → R becomes a 1-scb for R+ directly, without any scaling, and this
+function is the main building block of the theory we are presenting. Finally,
+we remark that (2.3) and (2.4) have a very transparent interpretation: they
+mean that D2 f and F are Lipschitz-continuous,with constants              1/2
+                                                                  2 and ϑ ,
+in the local Euclidean (semi)norm h f,x =            h, hf,x =        2
+                                                                    h ∇ f (x)h
+                                                                     T
+
+deﬁned by f or similarly by F .
+               Interior-point methods for optimization                         197
+
+  It turns out that self-concordant functions possess nice local properties
+and are perfectly well suited to Newton minimization. We are about to
+present the most important of the related results. In what follows, f is an
+sc function on a closed convex domain X.
+
+2.1.0. Bounds on third derivatives and the recession space of sc functions
+For all x ∈ int X and all h1 , h2 , h3 ∈ Rn , we have
+               |D3 f (x)[h1 , h2 , h3 ]| ≤ 2 h1 f,x h2 f,x h3 f,x .
+The recession subspace Ef = {h : D2 f (x)[h, h] = 0} of f is independent of
+x ∈ int X, and X = X + Ef . In particular, if ∇2 f (x) is positive deﬁnite at
+some point in int X, then ∇2 f (x) is positive deﬁnite for all x ∈ int X (in
+this case, f is called a non-degenerate sc function; this is always the case
+when X does not contain lines).
+  It is convenient to write A     0 (A  0) to denote that the symmetric
+matrix A is positive deﬁnite (semideﬁnite), and A  B and B  A (A B
+and B ≺ A) if A − B  0 (A − B 0).
+
+2.1.1. Dikin’s ellipsoid and the local behaviour of f
+For every x ∈ int X, the unit Dikin ellipsoid of f {y : y − x f,x ≤ 1} is
+contained in X, and within this ellipsoid, f is nicely approximated by its
+second-order Taylor expansion:
+              r := h f,x < 1 ⇒
+                                                       1
+              (1 − r)2 ∇2 f (x)  ∇2 f (x + h)              ∇2 f (x),    (2.5)
+                                                    (1 − r)2
+   f (x) + ∇f (x)T h + ρ(−r) ≤      f (x + h)    ≤ f (x) + ∇f (x)T h + ρ(r),
+where ρ(s) := − ln(1 − s) − s = s2 /2 + s3 /3 + · · · . (Indeed, the lower bound
+in the last line holds true for all h such that x + h ∈ int X.)
+
+2.1.2. The Newton decrement and the damped Newton method
+Let f be non-degenerate. Then · f,x is a norm, and its conjugate norm is
+    ∗
+              T             
+ η f,x = max h η : h f,x ≤ 1 = η T [∇2 f (x)]−1 η. The quantity
+
+              λ(x, f ) := ∇f (x) ∗f,x = [∇2 f (x)]−1 ∇f (x) f,x
+                                                          
+                       = max Df (x)[h] : D2 f (x)[h, h] ≤ 1 ,
+                           h
+
+called the Newton decrement of f at x, is a ﬁnite continuous function of
+x ∈ int X which vanishes exactly at the (unique, if any) minimizer xf of
+f on int X; this function can be considered as the ‘observable’ measure
+198                    A. S. Nemirovski and M. J. Todd
+
+of proximity of x to xf . The Newton decrement possesses the following
+properties:                
+                           
+                            argmin int X f = ∅,              (a)
+                           
+                           
+                           
+                            f (x) − minint X f ≤ ρ(λ(x, f )), (b)
+            λ(x, f ) < 1 ⇒                    λ(x,f )              (2.6)
+                           
+                             xf − x f,x ≤ 1−λ(x,f    ),       (c)
+                           
+                           
+                           
+                            x −x              λ(x,f )
+                                f     f,xf ≤ 1−λ(x,f ) .       (d)
+In particular, when it is at most 1/2, the Newton decrement is, within
+an absolute constant factor, the same as x − xf f,x , x − xf f,xf , and
+
+  f (x) − minint X f .
+  The damped Newton method as applied to f is the iterative process
+                                 1
+               xk+1 = xk −                 [∇2 f (xk )]−1 ∇f (xk )  (2.7)
+                            1 + λ(xk , f )
+starting at a point x0 ∈ int X. The damped Newton method is well deﬁned:
+all its iterates belong to int X. Besides this, setting λj := λ(xj , f ), we have
+  λk+1 ≤ 2λ2k    and f (xk ) − f (xk+1 ) ≥ ρ(−λk ) = λk − ln(1 + λk ).     (2.8)
+As a consequence of (2.8) and (2.7), we get the following ‘frame- and data-in-
+dependent’ description of the convergence properties of the damped Newton
+method as applied to an sc function f : the domain of quadratic convergence
+is {x : λ(x, f ) ≤ 1/4}; after this domain is reached, every step of the method
+nearly squares the Newton decrement, the · f,xf -distance to the minimizer
+and the residual in terms of f . Before the domain is reached, every step
+of the method decreases the objective by at least Ω(1) = 1/4 − ln(5/4).
+It follows that a non-degenerate sc function admits its minimum on the
+interior of its domain if and only if it is bounded below, and if and only if
+λ(x, f ) < 1 for certain x. Whenever this is the case, for every  ∈ (0, 0.1]
+the number of steps N of the damped Newton method which ensures that
+f (xk ) ≤ minint X f +  does not exceed O(1) ln ln(1/) + f (x0 ) − minint X f .
+(Here and below, O(1) denotes a suitably chosen absolute constant.)
+
+2.1.3. Self-concordance and Legendre transformations
+Let f be non-degenerate. Then the domain {y : f∗ (y) < ∞} of the (modi-
+ﬁed) Legendre transformation
+                        f∗ (y) = sup       −y T x − f (x)
+                                 x∈int X
+
+of f is an open convex set, f∗ is self-concordant on the closure X∗ of this
+set, and the mappings x → −∇f (x) and y → −∇f∗ (y) are bijections of
+int X and int X∗ that are inverse to each other. Besides this, X∗ is a closed
+cone with a non-empty interior, speciﬁcally, the cone dual to the recession
+cone of X.
+              Interior-point methods for optimization                           199
+
+  We next list speciﬁc properties of scbs not shared by more general sc
+functions. In what follows, F is a non-degenerate ϑ-scb for a closed convex
+domain X.
+
+2.1.4. Non-degeneracy, semiboundedness, attaining minimum
+F is non-degenerate if and only if X does not contain lines. We have
+                 ∀(x ∈ int X, y ∈ X) : ∇F (x)T (y − x) ≤ ϑ                     (2.9)
+(semiboundedness) and
+                                                           √
+ ∀(x ∈ int X, y ∈ X with ∇F (x)T (y−x) ≥ 0) : y−x F,x ≤ ϑ+2 ϑ. (2.10)
+F attains its minimum on int X if and only if X is bounded; otherwise
+λ(x, F ) ≥ 1 for all x ∈ int X.
+
+2.1.5. Useful bounds
+For x ∈ int X, let πx (y) = inf{t : t > 0, x + t−1 (y − x) ∈ X} be the
+Minkowski function of X with respect to x. We have
+                                                
+                   F (y) ≤ F (x) + ϑ ln 1−π1x (y) ,
+∀(x, y ∈ int X) :                                               
+                   F (y) ≥ F (x) + ∇F (x)T (y − x) + ln 1−π1x (y) − πx (y).
+                                                                       (2.11)
+
+2.1.6. Existence of the central path and its convergence to the optimal set
+Consider problem (2.1) and assume that the domain X of the problem is
+equipped with a self-concordant barrier F , and the level sets of the objective
+{x ∈ X : cT x ≤ α} are bounded. In the situation in question, F is non-
+degenerate, cT x attains its minimum on X, the central path
+          x∗ (t) := argmin Ft (x),   Ft (x) := tcT x + F (x),        t > 0,
+                    x∈int X
+
+is well-deﬁned, all functions Ft are self-concordant on X and
+                                                      ϑ
+                (x∗ (t)) := cT x∗ (t) − min cT x ≤     ,   t > 0.            (2.12)
+                                       x∈X            t
+Moreover, if λ(x, Ft ) ≤ 12 for some t > 0, then
+                                             √
+                                        ϑ+ ϑ
+                                 (x) ≤        .                      (2.13)
+                                           t
+Let us derive the claims in 2.1.6 from the preceding facts, mainly in order
+to explain why these facts are important. By 2.1.1, F is non-degenerate,
+since X does not contain lines. The fact that all Ft are sc is evident from
+the deﬁnition: self-concordance is clearly preserved when adding a linear
+or convex quadratic function to an sc one. Further, the level sets of the
+200                    A. S. Nemirovski and M. J. Todd
+
+objective on X are bounded, so that the objective attains its minimum over
+X at some point x∗ and, as is easily seen, is coercive on X: cT x ≥ α + β x
+for all x ∈ X with appropriate constants β > 0 and α ( · , without
+subscripts, always denotes the Euclidean norm). Now ﬁx a point ȳ in int X;
+                 ȳ−x
+then πx (ȳ) ≤ r+ȳ−x for all x ∈ int X, where r > 0 is such that a · -ball
+of radius r centred at ȳ belongs to X. Invoking the ﬁrst line of (2.11) with
+y = ȳ, we conclude that F (x) ≥ F (ȳ) + ϑ ln( r+x−ȳ
+                                                       r
+                                                            ) for all x ∈ int X.
+Recalling that the objective is coercive, we conclude that Ft (x) → ∞ as
+x ∈ X and x → ∞, so that the level sets of Ft are bounded. Since Ft
+is, along with F , an interior penalty for X, these sets are in fact compact
+subsets of int X, whence Ft attains its minimum on int X. Since Ft is convex
+and non-degenerate along with F , the minimizer is unique; thus, the central
+path is well-deﬁned. To verify (2.12), note that ∇F (x∗ (t)) = −tc, whence
+cT (x∗ (t) − y) = t−1 ∇F (x∗ (t)T (y − x∗ (t)). By (2.9), the right-hand side in
+this equality is at most ϑ/t, provided y ∈ X, and (2.12) follows. Finally,
+when λ(x, Ft ) ≤ 1/2, then x − x∗ (t) Ft ,x∗ (t) ≤ 1 by (2.6.d) as applied to Ft
+instead of F . Since · Ft ,u ≡ · F,u , we get x − x∗ (t) F,x∗ (t) ≤ 1, whence
+
+       cT (x − x∗ (t)) ≤ c ∗F,x∗ (t) x − x∗ (t) F,x∗ (t)
+                                                                      √
+                       ≤ c ∗F,x∗ (t) = t−1 ∇F (x∗ (t)) ∗F,x∗ (t) ≤ t−1 ϑ,
+which combines with (2.12) to imply (2.13).
+
+2.2. A primal polynomial-time path-following method
+As an immediate consequence of the above results, we arrive at the following
+important result.
+Theorem 2.1. Consider problem (2.1) and assume that the level sets of
+the objective are bounded, and we are given a ϑ-scb F for X; according
+to 2.1.6, c and F deﬁne a central path x∗ (·). Suppose we also have at our
+disposal a starting pair (t0 > 0, x0 ∈ int X) which is close to the path in the
+sense that λ(x0 , Ft0 ) ≤ 0.1, and consider the following implementation (the
+basic path-following algorithm) of the path-following scheme:
+                tk+1 = (1 + 0.1ϑ−1/2 )tk ,
+ (tk , xk ) →                                                               (2.14)
+                xk+1 = xk − 1+λ(xk1,Ft ) [∇2 F (xk )]−1 ∇Ftk+1 (xk ).
+                                        k+1
+
+This recurrence is well-deﬁned (i.e., xk ∈ int X for all k), maintains close-
+ness to the path (i.e., λ(xk , Ftk ) ≤ 0.1 for all k) and ensures the eﬃciency
+estimate
+                                    √           √                
+                               ϑ+ ϑ        ϑ+ ϑ            0.095
+     ∀k : c xk − min c x ≤
+           T            T
+                                        ≤           exp − √ k .         (2.15)
+                 x∈X              tk          t0              ϑ
+                Interior-point methods for optimization                           201
+
+In particular, for every  > 0, it takes at most
+                                                    
+                                      √        ϑ
+                        N () = O(1) ϑ ln          +2
+                                              t0 
+steps of the recurrence to get a strictly feasible (i.e., in int X) solution to
+the problem with residual in terms of the objective at most .
+
+Proof. In view of 2.1.2 and 2.1.6, all we need to prove by induction on k is
+that (2.14) maintains closeness to the path. Assume that (t = tk , x = xk ) is
+close to the path, and let us verify that the same is true for (t+ = tk+1 , x+ =
+xk+1 ). Taking into account that · Ft ,u = · F,u and similarly for the
+conjugate norms, we have 0.1 ≥ λ(x, Ft ) = tc + ∇F (x) ∗F,x so that
+
+                          t c ∗F,x ≤ 0.1 + ∇F (x) ∗F,x
+                                   ≤ 0.1 + ϑ1/2 ,
+using the fact that F is a ϑ-scb. This implies that
+   λ(x, Ft+ ) = [tc + ∇F (x)] + (t+ − t)c ∗F,x
+               ≤ tc + ∇F (x) ∗F,x + (t+ /t − 1)t c ∗F,x
+               ≤ 0.1 + 0.1ϑ−1/2 t c ∗F,x ≤ 0.1[1 + ϑ−1/2 [0.1 + ϑ1/2 ]] ≤ 0.21.
+Finally, we obtain
+                        λ(x+ , Ft+ ) ≤ 2λ2 (x, Ft+ ) ≤ 0.1,
+using (2.8).
+
+Remarks. A The algorithm presented in Theorem 2.1 is, in a sense, in-
+complete: it does not explain how to approach the central path in order to
+start path-tracing. There are many ways to resolve this issue. Assume, e.g.,
+that X is bounded and we know in advance a point y ∈ int X. When X is
+bounded, every linear form g T x generates a central path, and we can easily
+ﬁnd such a path passing through y: with g = −∇F (y), the corresponding
+path passes through y when t = 1. Now, as t → +0, all paths converge to
+the minimizer xF of F over X, and thus approach each other. At the same
+time, we can as easily trace the paths backwards as trace them forwards –
+with the parameter updating rule tk+1 = (1 − 0.1ϑ−1/2 )tk , the recurrence
+in Theorem 2.1 still maintains closeness to the path, now along a sequence
+of values of the parameter t decreasing geometrically. Thus, we can trace
+the auxiliary path passing through y backwards until coming close to the
+path of interest, and then start tracing the latter path forwards. A simple
+analysis demonstrates that with simple on-line termination and switching
+rules, the resulting algorithm, for every  > 0, produces a strictly feasible
+202                   A. S. Nemirovski and M. J. Todd
+
+-solution to the problem at the price of no more than
+                                                   
+                          √             ϑV
+                      O(1) ϑ ln                  +2
+                                  (1 − πxF (y))
+Newton steps of both phases, where V = maxx∈X cT x − minx∈X cT x.
+B The outlined path-following algorithm, using properly chosen sc barriers,
+yields the currently best polynomial-time complexity bounds for basically
+all ‘well-structured’ generic convex programs, such as those of linear, second-
+order cone, semideﬁnite, and geometric programming, to name just a few.
+At the same time, from a practical perspective a severe shortcoming of
+the algorithm is its worst-case-oriented nature: as presented, it will always
+perform according to its worst-case theoretical complexity bounds. There
+exist implementations of IPMs that are much more powerful in practice,
+using more aggressive parameter updating policies that are adjusted during
+the course of the algorithm. All known algorithms of this type are primal–
+dual : they work simultaneously on the problem and its dual, and nearly
+all of them, including all those implemented so far in professional software,
+work with conic problems, speciﬁcally, those of linear, second-order cone,
+and semideﬁnite programming (the only exceptions are the cone-free primal–
+dual methods proposed in Nemirovski and Tunçel (2005); these methods,
+however, have not yet been implemented). Our next goal is to describe the
+general theory of primal–dual interior-point methods for conic problems.
+
+2.3. Interior-point methods for conic problems
+Interior-point methods for conic problems are associated with speciﬁc ϑ-
+sc barriers for cones, those satisfying the so-called logarithmic homogeneity
+condition.
+Definition 2.2. Let K ⊂ Rn be a cone (from now on, all cones are closed
+and convex, have non-empty interiors, and contain no lines). A ϑ-self-con-
+cordant barrier F for K is called logarithmically homogeneous (an lhscb),
+if
+                ∀(τ > 0, x ∈ int K) : F (τ x) = F (x) − ϑ ln τ.     (2.16)
+  In fact, every self-concordant function on a cone K satisfying the identity
+(2.16) is automatically a ϑ-scb for K, since whenever a smooth function F
+satisﬁes the identity (2.16), we have
+       ∀(x ∈ int K) : ∇F (x)T x = −ϑ,     ∇2 F (x)x = −∇F (x);          (2.17)
+it follows that when F is self-concordant, we have
+                                                       √
+                          T    2     −1
+        λ(x, F ) = ∇F (x) [∇ F (x)] ∇F (x) = −∇F (x)T x = ϑ,
+               Interior-point methods for optimization                        203
+
+meaning that F is indeed a ϑ-scb for K. A nice and important fact is that
+the (modiﬁed) Legendre transformation F∗ (s) of a ϑ-lhscb F for a cone K
+is a ϑ-lhscb for the cone
+                     K∗ := {s ∈ Rn : sT x ≥ 0, ∀x ∈ K}                     (2.18)
+dual to K. The resulting symmetry of lhscbs complements the symmetry
+between cones and their duals. Moreover, we have the following result.
+Proposition 2.1. The mappings x → −∇F (x) and s → −∇F∗ (s) are
+inverse bijections between int K and int K∗ , and these bijections are homo-
+geneous of degree −1: −∇F (τ x) = −τ −1 ∇F (x), x ∈ int K, τ > 0, and
+similarly for F∗ . Finally, ∇2 F and ∇2 F∗ are homogeneous of degree −2,
+with ∇2 F∗ (−∇F (x)) = [∇2 F (x)]−1 and ∇2 F (−∇F∗ (s)) = [∇2 F∗ (s)]−1 .
+  Now assume that we want to solve a primal–dual pair of conic problems
+                                           
+                   min cT x : Ax = b, x ∈ K      (P ),
+                    x
+                                                                (2.19)
+                max bT y : AT y + s = c, s ∈ K∗ (D),
+                     y,s
+
+where the rows of A are linearly independent and both problems have strictly
+feasible solutions (i.e., feasible solutions with x ∈ int K and s ∈ int K∗ ).
+Assume also that we have at our disposal a ϑ-lhscb F for K along with its
+Legendre transformation F∗ , which is a ϑ-lhscb for K∗ . (P ) can be treated
+as a problem of the form (2.1), with the aﬃne set L = {x : Ax = b} playing
+the role of the ‘universe’ Rn and K ∩ L in the role of X. It is easily seen
+that the restriction of F to int K ∩ L is a ϑ-scb for the resulting problem
+(2.1) (see rule D in Section 2.4), and that this is a problem with bounded
+level sets. As a result, we can deﬁne the primal central path {x∗ (t)}, which
+comprises strictly feasible solutions to (P ) and converges, as t → ∞, to
+the primal optimal set. Similarly, setting Y = {y : c − AT y ∈ K∗ }, the
+dual problem can be written in the form of (2.1), namely, as miny∈Y [−b]T y.
+The domain Y of this problem can also be equipped with a ϑ-scb, namely,
+F∗ (c − AT y), and again the problem has bounded level sets, so that we can
+deﬁne the associated central path {y∗ (t)}. This induces the dual central path
+{s∗ (t) := c − AT y∗ (t)}; the latter path comprises interior points of K∗ . We
+have arrived at the primal–dual central path {z∗ (t) := (x∗ (t), s∗ (t))} ‘living’
+in the interior of K × K∗ . It is easily seen that for every t > 0, the point
+z∗ (t) is uniquely deﬁned by the following restrictions on its components x, s:
+x ∈ X o := int K ∩ {x : Ax = b} [strict primal feasibility],
+ s ∈ S o := int K∗ ∩ {s : ∃y such that AT y + s = c} [strict dual feasibility],
+                        
+       s = −t−1 ∇F (x)
+                           [augmented complementary slackness].         (2.20)
+      x = −t−1 ∇F∗ (s)
+204                   A. S. Nemirovski and M. J. Todd
+
+Note that, by Proposition 2.1, each of the complementary slackness equa-
+tions implies the other, so that we could eliminate either one of them; we
+keep both to highlight the primal–dual symmetry.
+   Primal–dual path-following interior-point methods trace simultaneously
+the primal and dual central paths basically in the same fashion as the
+method described in Theorem 2.1. It turns out that tracing the paths
+together is much more advantageous than tracing only one of them. In our
+general setting these advantages permit, for example,
+  • adaptive long-step strategies for path-tracing (Nesterov 1997);
+  • an elegant way (‘self-dual embedding’; see, e.g., Ye, Todd and Mizuno
+    (1994), Xu, Hung and Ye (1996), Andersen and Ye (1999), Luo, Sturm
+    and Zhang (2000), de Klerk, Roos and Terlaky (1997) and Potra and
+    Sheng (1998)) to initialize path-tracing even in the case when no strictly
+    feasible solutions to (P ) and (D) are available in advance; and
+  • building certiﬁcates of strict (i.e., preserved by small perturbations of
+    the data) primal or dual infeasibility (Nesterov, Todd and Ye 1999)
+    when it holds, etc.
+Primal–dual IPMs achieve their full power when the underlying cones are
+self-scaled , which is the case in linear, second-order cone, and semideﬁnite
+programming, considered in depth in Section 3. In the remaining part of
+this subsection, we overview, still in the general setting, another family of
+primal–dual IPMs, those based on potential reduction.
+
+Potential-reduction interior-point methods
+We now present two potential-reduction IPMs which are straightforward
+conic generalizations, developed by Nesterov and Nemirovski (1994), of al-
+gorithms originally proposed for LP.
+Karmarkar’s Algorithm. The ﬁrst polynomial-time interior-point method
+for LP was discovered by Karmarkar (1984). The conic generalization of
+the algorithm is as follows. Assume that we want to solve a strictly fea-
+sible problem (P ) in the following special setting: the primal feasible set
+X := {x ∈ K : Ax = b} is bounded, the optimal value is known to be 0,
+and we know a strictly feasible primal starting point x̄ (using conic duality,
+every strictly primal–dual feasible conic problem can be transformed into
+this form). Lastly, K is equipped with a ϑ-lhscb F . It is immediately seen
+that under our assumptions b = 0, so that we lose nothing when assuming
+that the ﬁrst equality constraint reads eT x = 1 for some vector e. Subtract-
+ing this equality with appropriate coeﬃcients from the remaining equality
+constraints in (P ), we can make all these constraints homogeneous, thus
+representing the problem in the form
+                                                     
+                      min cT x : x ∈ L ∩ K, eT x = 1 ,
+                       x
+               Interior-point methods for optimization                         205
+
+where L is a linear subspace in Rn . Note that since X is bounded, we have
+eT x > 0 for every 0 = x ∈ (L ∩ K). If we exclude the trivial case cT x̄ = 0
+(here already x̄ is an optimal solution), cT x is positive on the relative interior
+X o := X ∩ int K of X, so that the projective transformation x → p(x) :=
+x/cT x is well deﬁned on X o ; this transformation maps X o onto the relative
+interior Z o := Z ∩ int K of the set Z := {z : z ∈ L ∩ K, cT z = 1}, the inverse
+transformation being z → z/eT z. The point is that Z is unbounded , since
+otherwise the linear form eT z would be bounded and positive on Z due to
+eT x > 0 for 0 = x ∈ L ∩ K, and so cT x would be bounded away from 0 on
+X o , which is not the case. All we need is to generate a sequence zk ∈ Z o
+such that zk → ∞ as k → ∞; indeed, for such a sequence we clearly
+have eT zk → ∞ and cT zk = 1, whence the points xk = zk /eT zk , which are
+feasible solutions to the problem of interest, satisfy cT xk → 0 = minx∈X cT x
+as k → ∞. This is how we ‘run to ∞ along Z’ using Karmarkar’s algorithm.
+Let G(z) be the restriction of F to Z o . Treating Z as a subset of its aﬃne
+hull Aﬀ(Z), so that Z is a closed convex domain in a certain Rn , we ﬁnd
+that G is a ϑ-scb for Z (see rule D in Section 2.4). Since Z, along with
+K, does not contain lines, G is non-degenerate and therefore λ(z, G) ≥ 1
+for all z ∈ Z o by 2.1.4 (recall that Z is unbounded); applying 2.1.2, we
+conclude that the step z → z + (z) of the damped Newton method as applied
+to G, z maps Z o into Z o and reduces G by at least the absolute constant
+δ := 1 − ln(2) > 0. It follows that applying the damped Newton method
+to G, we push G to −∞, and therefore indeed run to ∞ along Z. To
+get an explicit eﬃciency estimate, let us look at the Karmarkar potential
+function φ : X o → R deﬁned by φ(x) = ϑ ln(cT x) + F (x); note that φ(x) =
+G(p(x)) due to the ϑ-logarithmical homogeneity of F . It follows that the
+basic Karmarkar step x → x+ (x) = p−1 (z + (p(x))) maps X o into itself and
+reduces the potential by at least δ. In Karmarkar’s algorithm, one iterates
+this step (usually augmented by a line search aimed at getting a larger
+reduction in the potential than the guaranteed reduction δ) starting with
+x0 := x̄, thus generating a sequence {xk }∞    k=0 of strictly feasible solutions
+to (P ) such that φ(xk ) ≤ φ(x̄) − kδ = F (x̄) + ϑ ln(cT x̄) − kδ. Recalling
+that X is bounded, so that F is bounded below on X o by 2.1.4, we have
+also F (x) ≥ F := minx∈X o F (x), whence F (x̄) + ϑ ln(cT x̄) − kδ ≥ φ(xk ) ≥
+F + ϑ ln(cT xk ). We arrive at the eﬃciency estimate
+                                                                    
+                                                    F (x̄) − F − kδ
+             c xk = c xk − min c x ≤ c x̄ exp
+              T       T           T       T
+                                                                       ,
+                             x∈X                            ϑ
+                                                    b    ln(1/) 
+meaning that, for every  ∈ (0, 1), at most [F (x̄)−F ]+ϑ
+                                                       δ            + 1 steps
+of the method are needed to arrive at a strictly feasible solution xk with
+cT xk = cT xk − minX cT x ≤ cT x̄. The advantage of the Karmarkar algo-
+rithm, as compared to that in Theorem 2.1, is that our only interest now
+206                     A. S. Nemirovski and M. J. Todd
+
+is driving the (on-line-observable) potential function φ(x) to −∞ as rapidly
+as possible, while staying strictly feasible at all times; this can be done,
+e.g., by augmenting the basic step with an appropriate line search, which
+usually leads to a much larger reduction in φ(·) at each step than the reduc-
+tion δ guaranteed by the theory. As a result, the practical performance of
+Karmarkar’s algorithm is typically much better than predicted by the theo-
+retical complexity estimate above. On the negative side, the latter estimate
+is worse than that for the basic path-following method from Theorem 2.1:
+now the complexity is proportional to ϑ rather than to ϑ1/2 and ϑ ≥ 1
+may well be large. To circumvent this diﬃculty, we now present a primal–
+dual potential-reduction algorithm, extending to the general conic case the
+algorithm of Ye (1991) originally developed for LP.
+Primal–dual potential-reduction algorithm. This algorithm is a ‘genuine
+primal–dual one’; it works on a strictly feasible pair (2.19) of conic prob-
+lems and associates with this pair the generalized Tanabe–Todd–Ye (Tanabe
+1988, Todd and Ye 1990) primal–dual potential function p : X o × S o → R
+deﬁned by
+                √                                           √
+ p(x, s) := (ϑ + ϑ) ln(sT x) + F (x) + F∗ (s) =: p0 (x, s) + ϑ ln(sT x). (2.21)
+It is easily seen that p0 is bounded below on X o ×S o and the set of minimizers
+of p0 on X o × S o is exactly the primal–dual central path, where p0 takes
+the value p∗ = ϑ ln(ϑ) − ϑ. It follows that for (x, s) ∈ X o × S o , the duality
+gap sT x can be bounded in terms of p:
+             (x, s) ∈ X o × S o ⇒ sT x ≤ exp{ϑ−1/2 [p(x, s) − p∗ ]}.         (2.22)
+(It can be readily checked – see Proposition 3.1 – that cT x − bT y = sT x ≥ 0
+for any feasible x and (y, s), so sT x bounds the distance from optimality of
+both the primal and dual objective function values.)
+   Hence all we need in order to approach primal–dual optimality is a ‘basic
+primal–dual step’: an update (x, s) → (x+ , s+ ) : X o × S o → X o × S o
+which ‘substantially’ reduces the potential p, at least by a positive absolute
+constant δ. Iterating this update (perhaps augmented by a line search
+aimed at further reduction in p) starting with a given initial point (x0 , s0 ) ∈
+X o × S o , we get a sequence of strictly feasible primal solutions xk and
+dual slacks sk ∈ int K∗ (which can be immediately extended to dual feasible
+solutions (yk , sk )), such that p(xk , sk ) ≤ p(x0 , s0 ) − kδ, which combines with
+(2.22) to yield the eﬃciency estimate
+         sTk xk ≤ exp{ϑ−1/2 [p0 (x0 , s0 ) − p∗ ]} exp{−δϑ−1/2 k}sT0 x0 .
+                       √
+Now it takes only O(1) ϑ steps to reduce the (upper bound on the) duality
+gap by an absolute constant factor, and we end up with complexity bounds
+almost identical to those in Theorem 2.1.
+               Interior-point methods for optimization                      207
+
+   It remains to explain how to make a basic primal–dual step. This can be
+done as follows. With a ﬁxed positive threshold λ̄, given (x, s) ∈ X o × S o ,
+we linearize the logarithmic term in the potential in x and in s, thus getting
+the functions
+                           √ sT ξ
+         ξ → px (ξ) = (ϑ + ϑ) T + F (ξ) + constx : int K → R,
+                                s x
+                           √    σT x
+         σ → ps (σ) = (ϑ + ϑ) T + F∗ (σ) + consts : int K∗ → R,
+                                s x
+which are non-degenerate self-concordant functions on K and K∗ , respec-
+tively. We compute the Newton direction         dx = argmin d {dT ∇px (x) +
+1 T 2 x                                    
+2 d ∇ p (x)d : x + d ∈ Aﬀ(X)} of p X at
+                                         x        ξ = x along with the cor-
+                                                     
+responding Newton decrement λ := λ(x, p X ) = −∇px (x)T dx . When
+                                             x
+
+λ ≥ λ̄, one can set s+ = s and take for x+ the damped Newton        iterate
+x + (1 + λ)−1 dx of x, the Newton method being applied to px X . When
+λ < λ̄, one can set
+                                    sT x
+            x+ = x and s+ =            √ [−∇F (x) − ∇2 F (x)dx ].
+                                 ϑ+ ϑ
+It can be shown that with a properly chosen absolute constant λ̄ > 0, this
+update indeed ensures that (x+ , s+ ) ∈ X o × S o and p(x+ , s+ ) ≤ p(x, s) − δ,
+where δ > 0 depends solely on λ̄. Note that the same is true for the
+‘symmetric’ updating obtained by similar construction with the primal and
+dual problems swapped, and one is welcome to use the better (the one with
+a larger reduction in the potential) of these two updates or their line-search
+augmentations.
+
+2.4. The calculus of self-concordant barriers
+The practical signiﬁcance of the nice results we have described depends
+heavily on our ability to equip the problem we are interested in (a convex
+program (2.1), or a primal–dual pair of conic programs (2.19)) with self-
+concordant barrier(s). In principle this can always be done: every closed
+convex domain X ⊂ Rn admits an O(1)n-scb; when the domain is a cone,
+this barrier can be chosen to be logarithmically homogeneous. Assuming
+without loss of generality that X does not contain lines, one can take as
+such a barrier the function
+             F (x) = O(1) ln mesn {y : y T (z − x) ≤ 1, ∀z ∈ X},
+where mesn denotes n-dimensional (Jordan or Lebesgue) measure. This
+function has a transparent geometric interpretation: the set whose measure
+we are taking is the polar of X − x. When X is a cone (closed, convex,
+containing no lines and with a non-empty interior), the universal barrier
+given by the expression above is automatically logarithmically homogeneous.
+208                   A. S. Nemirovski and M. J. Todd
+
+From a practical perspective, the existence theorem just formulated is not of
+much interest – the universal barrier is usually pretty diﬃcult to compute,
+and in the rare cases when this is possible, it may be non-optimal in terms of
+its self-concordance parameter. Fortunately, there exists a simple and fully
+algorithmic ‘calculus’ of self-concordant barriers which allows us to build
+systematically explicit eﬃciently computable scbs for seemingly all generic
+convex programs associated with ‘computationally tractable’ domains. We
+start with the list of the most basic rules (essentially, the only ones needed
+in practice) of ‘self-concordant calculus’.
+ A If F is a ϑ-scb for X and α ≥ 1, then αF is an (αϑ)-scb for X.
+  B Direct products. Let Fi , i = 1, . . . , m, be ϑi -scbs for closed
+                                                                    convex
+    domains Xi ⊂ R     ni                          1         m
+                           . The ‘direct sum’ F (x , . . . , x ) =         i
+                                                                    i Fi (x ) of
+    these barriers is a ( i ϑi )-scb for the direct product X = X1 ×· · ·×Xm
+    of the sets.
+  C Intersection. Let Fi , i = 1, . . . , m, be
+                                               ϑi -scbs for closed convex do-
+    mains Xi ⊂ Rn , and
+                         let the set    X i Xi possess a non-empty inte-
+                                           =
+    rior. Then F (x) = i Fi (x) is a ( i ϑi )-scb for X.
+ D Inverse aﬃne image. Let F be a ϑ-scb for a closed convex domain
+   X ⊂ Rn , and y → Ay + b : Rk → Rn be an aﬃne mapping whose image
+   intersects int X. Then the function G(y) = F (Ay + b) is a ϑ-scb for
+   the closed convex domain Y = {y : Ay + b ∈ X}.
+When the operands in the rules are cones and the original scbs are log-
+arithmically homogeneous, so are the resulting barriers (in the case of D,
+provided that b = 0). All the statements remain true when, instead of scbs,
+we are speaking about sc functions; in this case, the parameter-related parts
+should be skipped, and what remains become statements on preserving self-
+concordance.
+   Essentially all we need in addition to the outlined (and nearly evident)
+elementary calculus rules, are two more advanced rules, as follows.
+  E Taking the conic hull. Let X ⊂ Rn be a closed convex domain and let
+    F be a ϑ-scb for X. Then, with a properly chosen absolute constant
+    κ, the function F+ (x, t) = κ[F (x/t) − 2ϑ ln t] is a 2κϑ-scb for the conic
+    hull
+                                                                
+                 X+ := cl (x, t) ∈ Rn × R : t > 0, x/t ∈ int X
+      of X.
+To present the last calculus rule, which can be skipped on a ﬁrst reading, we
+need to introduce the notion of compatibility, as follows. Let K ⊂ RN and
+G− ⊆ Rn be a closed convex cone and a closed convex domain, respectively,
+let β ≥ 1, and let A(x) : int G− → RN be a mapping. We say that A
+              Interior-point methods for optimization                      209
+
+is β-compatible with K, if A is three times continuously diﬀerentiable on
+int G− , is K-concave (that is, D2 A(x)[h, h] ∈ −K for all x ∈ int G− and all
+h ∈ Rn ) and
+                   D3 A(x)[h, h, h] ≤K −3βD2 A(x)[h, h]
+for all x ∈ int G− and h ∈ Rn with x ± h ∈ G− , where a ≤K b means that
+b − a ∈ K. The calculus rule in question reads as follows.
+  F Let G− ⊂ Rn , G+ ⊂ RN be closed convex domains and A : int G− →
+    RN be a mapping, β-compatible with the recession cone of G+ , whose
+    image intersects int G+ . Given ϑ± -scbs F± for G+ and G− , respec-
+    tively, let us deﬁne F : X o := {x ∈ int G− : A(x) ∈ int G+ } → R by
+                          F (x) = F+ (A(x)) + β 2 F− (x).
+     Then F is a (ϑ+ + β 2 ϑ− )-scb for X = cl X o .
+The most non-trivial and important example of a mapping which can be
+used in the context of rule E is the fractional-quadratic substitution. Specif-
+ically, let T , E, F be Euclidean spaces, let Q(x, z) : E × E → F be a sym-
+metric bilinear mapping, and let A(t) be a symmetric linear operator on E,
+aﬃnely depending on t ∈ T , and such that the bilinear form Q(A(t)x, z)
+on E × E is symmetric in x, z for every t ∈ T . Further, let K be a closed
+convex cone in F such that Q(x, x) ∈ K for all x, and let H be a closed
+convex domain in T such that A(t) is positive deﬁnite for all t ∈ int H. It
+turns out that the mapping A(y, x, t) = y −Q([A(t)]−1 x, x) with the domain
+F × E × int H is 1-compatible with K.
+   It turns out (see examples in Nesterov and Nemirovski (1994) and Ne-
+mirovski (2004)) that the combination rules A–F used ‘from scratch’ (from
+the sole observation that the function − ln x is a 1-lhscb for the non-nega-
+tive ray) permit one to build ‘good’ scbs/lhscbs almost without calculation
+for all interesting convex domains/cones, including epigraphs of numerous
+convex functions (e.g., the elementary univariate functions such as powers
+and the exponential, and the multivariate p-norms), sets given by ﬁnite sys-
+tems of convex linear and quadratic inequalities, and much more. This list
+includes, in particular, ϑ-lhscbs underlying:
+                                                
+ (a) the non-negative orthant Rn+ (F (x) = − j ln xj , ϑ = n),
+(b) Lorentz cones
+     Lq = {(ξ, x) ∈ R × Rq : ξ ≥ x 2 } (F (ξ, x) = − ln(ξ 2 − xT x), ϑ = 2),
+(c) semideﬁnite cones Sp+ (the cone of all symmetric positive deﬁnite ma-
+    trices of order p) (F (x) = − ln det(x), ϑ = p), and
+(d) matrix norm cones {(ξ, x) : ξ ≥ 0, x ∈ Rp×q : ξ 2 Iq  xT x} (assuming
+    without loss of generality p ≥ q, F (ξ, x) = − ln det(ξIq −ξ −1 xT x)−ln ξ,
+    ϑ = q + 1).
+210                   A. S. Nemirovski and M. J. Todd
+
+   With regard to (a)–(d), (a) is self-evident, and the remaining three bar-
+riers can be obtained from (a) and F, without calculations, via the above
+result on fractional-quadratic substitution. For example, to get (b), we set
+T = F = R, E = Rn = Rn×1 , Q(x, z) = xT z, A(ξ) = ξIn , K = H = R+ ,
+thus concluding that the mapping A(y, x, ξ) = y − ξ −1 xT x with the do-
+main int G− , G− = {y ∈ R} × {x ∈ Rn } × {ξ ≥ 0}, taking values in R,
+is 1-compatible with K = R+ . Applying F to G− and with G+ = R+ ,
+F− (y, x, ξ) = − ln ξ, F+ (s) = − ln s, and using (a) and D to conclude that
+F− and F+ are scbs for G− and G+ with the parameters ϑ− = ϑ+ = 1,
+we see that − ln(y − ξ −1 xT x) − ln ξ is a 2-scb for the set {(y, x, ξ) : yξ ≥
+xT x, y, ξ ≥ 0}. It remains to note that Ln is the inverse aﬃne image of the
+latter set under the linear mapping (ξ, x) → (ξ, x, ξ), and to apply D.
+   Note that (a)–(c) combine with B to induce lhscbs for the direct products
+K of non-negative rays, Lorentz and semideﬁnite cones. All cones K one
+can get in this fashion are self-dual, and the resulting barriers F turn out to
+be ‘self-symmetric’ (F∗ (·) = F (·) + constK ), thus giving rise to primal–dual
+IPMs for linear, conic quadratic, and semideﬁnite programming. Moreover,
+it turns out that the barriers in question are ‘optimal’, with provably mini-
+mum possible values of the self-concordance parameter ϑ.
+
+
+3. Conic optimization
+Here we treat in more detail the case of the primal–dual conic problems in
+(2.19). We restate the primal problem:
+                                       min cT x
+                                        x
+                              (P )             Ax = b,
+                                                x ∈ K,
+where again c ∈ Rn , A ∈ Rm×n , b ∈ Rm , and K is a closed convex cone
+in Rn . We call this the conic programming problem in primal or standard
+form, since when K is the non-negative orthant, it becomes the standard-
+form linear programming problem.
+  Recall the dual cone deﬁned by
+                 K∗ := {s ∈ Rn : sT x ≥ 0, for all x ∈ K}.                (3.1)
+Then we can construct the conic programming problem in dual form using
+the same data:
+                           max bT y
+                                 y,s
+                        (D)                 AT y + s = c,
+                                                   s ∈ K∗ ,
+with y ∈ Rm , where we have introduced the dual slack variable s to make
+               Interior-point methods for optimization                        211
+
+the later analysis cleaner. In terms of the variables y, we have the conic
+constraints c − AT y ∈ K∗ , corresponding to the linear inequality constraints
+c − AT y ≥ 0 when (P ) is the standard linear programming problem.
+  In fact, it is easy to see that (D) is the Lagrangian dual
+                                                     
+                        max min{c x − (Ax − b) y}
+                                    T             T
+                         y    x∈K
+
+of (P ), using the fact that min{uT x : x ∈ K} is 0 if u ∈ K∗ and −∞
+otherwise. We can also easily check weak duality, as follows.
+Proposition 3.1.      If x is feasible in (P ) and (y, s) in (D), then
+                                    cT x ≥ bT y,
+with equality if and only if sT x = 0.
+Proof.   Indeed,
+              cT x − bT y = (AT y + s)T x − (Ax)T y = sT x ≥ 0,             (3.2)
+with the inequality following from the deﬁnition of the dual cone.
+  In the case of linear programming, when K (and then also K∗ ) is the non-
+negative orthant, then whenever (P ) or (D) is feasible, we have equality of
+their optimal values (possibly ±∞), and if both are feasible, we have strong
+duality: no duality gap, and both optimal values attained.
+  In the case of more general conic programming, these properties no longer
+hold (we will provide examples in the next subsection), and we need fur-
+ther regularity conditions. Nesterov and Nemirovski (1994, Theorem 4.2.1)
+derive the next result.
+Theorem 3.1. If either (P ) or (D) is bounded and has a strictly feasible
+solution (i.e., a feasible solution where x (respectively, s) lies in the interior
+of K (respectively, K∗ )), then their optimal values are equal. If both have
+strictly feasible solutions, then strong duality holds.
+   The existence of an easily stated dual problem provides one motivation
+for considering problems in conic form (but its usefulness depends on hav-
+ing a closed form expression for the dual cone). We will also see that many
+important applications naturally lead to conic optimization problems. Fi-
+nally, there are eﬃcient primal–dual interior-point methods for this class of
+problems, or at least for important subclasses.
+   In Section 3.1, we consider several interesting special cases of (P ) and
+(D). Section 3.2 discusses path-following interior-point methods. In Sec-
+tion 3.3, we consider a special class of conic optimization problems allowing
+symmetric primal–dual methods. Finally, Section 3.4 addresses recent ex-
+tensions.
+212                     A. S. Nemirovski and M. J. Todd
+
+3.1. Examples of conic programming problems
+First of all, it is worth pointing out that any convex programming problem
+can be put into conic form. Without loss of generality, after introducing a
+new variable if necessary to represent a convex nonlinear objective function,
+we can assume that the original problem is
+                                min{cT x : x ∈ X},
+                                 x
+
+with X a closed convex subset of Rn . This is equivalent to the conic opti-
+mization problem, but for one dimension higher:
+                         min{cT x : ξ = 1, (x, ξ) ∈ K},
+                          x,ξ
+
+where K := cl{(x, ξ) ∈ Rn × R : ξ > 0, x/ξ ∈ X}. However, this for-
+mal equivalence may not be very useful practically, partly because K and
+K∗ may not be easy to work with. More importantly, even if we have a
+good self-concordant barrier for X, it may be hard to obtain an eﬃcient
+self-concordant barrier for K (although general, if usually overconservative,
+procedures are available: see rule E in Section 2.4 and Freund, Jarre and
+Schaible (1996)).
+   Let us turn to examples with very concrete and useful cones. The ﬁrst
+example is of course linear programming, where K = Rn+ . Then it is easy to
+see that K∗ is also Rn+ , and so the dual constraints are just AT y ≤ c. The
+signiﬁcance and wide applicability of linear programming are well known.
+Our ﬁrst case with a non-polyhedral cone is what is known as second-order
+cone programming (SOCP). Here K is a second-order, or Lorentz, or ‘ice-
+cream’ cone,
+                     Lq := {(ξ, x̄) ∈ R × Rq : ξ ≥ x̄ },
+or the product of such cones. It is not hard to see, using the Cauchy–
+Schwarz inequality, that such cones are also self-dual, i.e., equal to their
+duals. We now provide an example showing the usefulness of SOCP prob-
+lems (many more examples can be found in Lobo, Vandenberghe, Boyd and
+Lebret (1998) and in Ben-Tal and Nemirovski (2001)), and also a particular
+instance demonstrating that strong duality does not always hold for such
+problems.
+   Suppose we are interested in solving a linear programming problem
+max{bT y : AT y ≤ c}, but the constraints are not known exactly: for the jth
+constraint aTj y ≤ cj , we just know that (cj ; aj ) ∈ {(c̄j ; āj )+Pj uj : uj ≤ 1},
+an ellipsoidal uncertainty set centred at the nominal values (c̄j ; āj ). (We use
+the MATLAB-like notation (u; v) to denote the concatenation of the vec-
+tors u and v.) Here Pj is a suitable matrix that determines the shape and
+size of this uncertainty set. We would like to choose our decision variable
+y so that it is feasible no matter what the constraint coeﬃcients turn out
+               Interior-point methods for optimization                       213
+
+to be, as long as they are in the corresponding uncertainty sets; with this
+limitation, we would like to maximize bT y. This is (a particular case of)
+the so-called robust linear programming problem. Since the minimum of
+cj − aTj y = (cj ; aj )T (1; −y) over the jth uncertainty set is
+
+                  (c̄j ; āj )T (1; −y) + min{(Pj uj )T (1; −y) : uj ≤ 1}
+                          = (c̄j ; āj )T (1; −y) − PjT (1; −y) ,
+this robust linear programming problem can be formulated as
+            max        bT y
+                   −c̄j + āTj y +        sj1 = 0,       j = 1, . . . , m,
+                   PjT (1; −y) +           s̄j = 0,      j = 1, . . . , m,
+                                     (sj1 ; s̄j ) ∈ Kj , j = 1, . . . , m,
+where each Kj is a second-order cone of appropriate dimension. This is a
+SOCP problem in dual form.
+  Next, consider the SOCP problem in dual form with data
+                                                     
+                                                  0
+                    −1 0 −1              −1
+             A=                 , b=         , c =  1 ,
+                    −1 0 1               0
+                                                      0
+and K the second-order cone in R3 . It can be checked that y is feasible
+in (D) if and only if y1 and y2 are positive, and 4y1 y2 ≥ 1. Subject to
+these constraints, we wish to maximize −y1 , so the problem is feasible, with
+objective function bounded above, but there is no optimal solution! In this
+case, the optimal values of primal and dual are equal: (ξ; x̄) = (1/2; 0; 1/2)
+is the unique feasible solution to (P ), with zero objective function value.
+   The second class of non-polyhedral cones we consider gives rise to semi-
+deﬁnite programming problems. These correspond to the case when K is the
+cone of positive semideﬁnite matrices of a given order (or possibly a Carte-
+sian product of such cones). Here we will restrict ourselves to the case of real
+symmetric matrices, and we use Sp to denote the space of all such matrices
+                                                  √ R for n := p(p + 1)/2,
+of order p. Of course, this can be identiﬁed with        n
+
+       √ a vector from the entries mii and 2mij , i < j. We use the
+by making
+factor 2 so that the usual scalar product of the vectors corresponding to
+two symmetric matrices U and V equals the Frobenius scalar product
+                                              
+                       U • V := Tr(U T V ) =      uij vij
+                                                   i,j
+
+of the matrices. However, we will just state these problems in terms of the
+matrices for clarity. We write Sp+ for the cone of (real symmetric) positive
+semideﬁnite matrices, and sometimes write X  0 to denote that X lies in
+214                   A. S. Nemirovski and M. J. Todd
+
+this cone for appropriate p. As in the case of the non-negative orthant and
+the second-order cone, Sp+ is self-dual. This can be shown using the spectral
+decomposition of a symmetric matrix. We note that the case of complex
+Hermitian positive semideﬁnite matrices can also be considered, and this is
+important in some applications.
+   In matrix form, the constraint AX = b is deﬁned using an operator A
+from Sp to Rm , and we can ﬁnd matrices Ai ∈ Sp , i = 1, . . . , m, so that
+        i •X)i=1 ; A is then the adjoint operator from R to S deﬁned by
+AX = (A        m     T                                    m      p
+  T
+A y = i yi Ai . The primal and dual semideﬁnite programming problems
+then become
+             min C • X,     Ai • X = bi , i = 1, . . . , m,   X  0,     (3.3)
+and
+                                
+                   max bT y,         yi Ai + S = C,     S  0.           (3.4)
+                                 i
+
+   Once again, we give examples of the importance of this class of conic
+optimization problems, and also an instance demonstrating the failure of
+strong duality.
+   Let us ﬁrst describe a very simple example that illustrates techniques
+used in optimal control. Suppose we have a linear dynamical system
+                                ż(t) = A(t)z(t),
+where the p×p matrices A(t) are known to lie in the convex hull of a number
+A1 , . . . , Ak of given matrices. We want conditions that guarantee that the
+trajectories of this system stay bounded. Certainly a suﬃcient condition
+is that there is a positive deﬁnite matrix Y ∈ Sp so that the Lyapunov
+function L(z(t)) := z(t)T Y z(t) remains bounded. And this will hold as long
+as L̇(z(t)) ≤ 0. Now using the dynamical system, we ﬁnd that
+                   L̇(z(t)) = z(t)T (A(t)T Y + Y A(t))z(t),
+and since we do not know where the current state might be, we want
+−A(t)T Y − Y A(t) to be positive semideﬁnite whatever A(t) is, and so we
+are led to the constraints
+               −ATi Y − Y Ai  0, i = 1, . . . , k,   Y − Ip  0,
+where the last constraint ensures that Y is positive deﬁnite. (Here Ip denotes
+the identity matrix of order p. Since the ﬁrst constraints are homogeneous
+in Y , we can assume that Y is scaled so its minimum eigenvalue is at least
+1.) To make an optimization problem, we could for instance minimize the
+condition number of Y by adding the constraint ηIp − Y  0 and then
+maximizing −η. This is a semideﬁnite programming problem in dual form.
+Note that the variables y are the entries of the symmetric matrix Y and the
+               Interior-point methods for optimization                         215
+
+scalar η, and the cone is the product of k + 2 copies of Sp+ . We can similarly
+ﬁnd suﬃcient conditions for z(t) to decay exponentially to zero.
+   Our second example is a relaxation of a quadratic optimization problem
+with quadratic constraints. Notice that we did not stipulate that the prob-
+lem be convex, so we can include constraints like x2j = xj , which implies
+that xj is 0 or 1, i.e., we have included binary integer programming prob-
+lems. Any quadratic function can be written as a linear function of a certain
+symmetric matrix (depending quadratically on x). Speciﬁcally, we see that
+                                        T           
+                      T      T           1      α bT      1
+               α + 2b x + x Cx =
+                                         x      b C       x
+                                                  T 
+                                         α bT          1     1
+                                     =            •
+                                         b C           x     x
+                                                           
+                                         α bT        1 xT
+                                     =            •            .
+                                         b C         x xxT
+                                
+The set of all matrices x1 xxxT    is certainly a subset of the set of all positive
+                               T
+semideﬁnite matrices with top left entry equal to 1, and so we can obtain a
+relaxation of the original hard problem in x by optimizing over a matrix X
+that is subject to the constraints deﬁning this superset. This technique has
+been very successful in a number of combinatorial problems, and has led to
+worthwhile approximations to the stable set problem, various satisﬁability
+problems, and notably the max-cut problem. Further details can be found,
+for example, in Goemans (1997) and Ben-Tal and Nemirovski (2001).
+   Let us give an example of two dual semideﬁnite programming problems
+where strong duality fails. The primal problem is
+                                                             
+           0 0 0                1 0 0                     0 1 0
+    min 0 0 0 • X, 0 0 0 • X = 0, 1 0 0 • X = 2,
+    X0
+           0 0 1                0 0 0                     0 0 2
+where the ﬁrst constraint implies that x11 , and hence x12 and x21 , are zero,
+and so the second constraint implies that x33 is 1. Hence one optimal
+solution is X = Diag(0; 0; 1) with optimal value 1. The dual problem is
+                                                            
+                      0 0 0             1 0 0            0 1 0
+    max 2y2 , S = 0 0 0 − y1 0 0 0 − y2 1 0 0  0,
+                      0 0 1             0 0 0            0 0 2
+so the dual slack matrix S has s22 = 0, implying that s12 and s21 must
+be zero, so y2 must be zero. So an optimal solution is y = (0; 0) with
+optimal value 0. Hence, while both problems have optimal solutions, their
+optimal values are not equal. Note that neither problem has a strictly
+feasible solution, and arbitrary small perturbations in the data can make
+the optimal values jump.
+216                   A. S. Nemirovski and M. J. Todd
+
+3.2. Basic interior-point methods for conic problems
+Recall that, for conic problems, we want to use logarithmically homogeneous
+scbs, those satisfying (2.16):
+                            F (τ x) = F (x) − ϑ ln τ.
+Examples of such ϑ-lhscbs are
+                           
+                 F (x) := −   ln xj ,            x ∈ int Rn+ ,
+                                j
+
+                F (ξ; x̄) := − ln(ξ 2 − x̄ 2 ), (ξ; x̄) ∈ int Lq ,
+                  F (X) := − ln det X,           X ∈ int Sp+ ,
+as in Section 2.4, with values of ϑ equal to n, 2, and p respectively. Each
+of these cones is self-dual, and it is easy to check that the corresponding
+dual barriers are F∗ (s) = F (s) − n, F∗ (σ; s̄) = F (σ; s̄) + 2 ln 2 − 2, and
+F∗ (S) = F (S) − p.
+   Henceforth, F and F∗ are ϑ-lhscbs for the cones K and K∗ respectively.
+The key properties of such functions are listed after (2.16) and in Proposi-
+tion 2.1, and from these we easily obtain the following result.
+Proposition 3.2.     For x ∈ int K, s ∈ int K∗ , and positive t, we have
+          s + t−1 ∇F (x) = 0 if and only if x + t−1 ∇F∗ (s) = 0,
+and if these hold,
+             sT x = t−1 ϑ   and t−1 ∇2 F∗ (s) = [t−1 ∇2 F (x)]−1 .         (3.5)
+Proof. If ts = −∇F (x), x = −∇F∗ (ts) since −∇F and −∇F∗ are inverse
+bijections. Using the homogeneity of ∇F∗ , we obtain x + t−1 ∇F∗ (s) = 0.
+The reverse implication follows the same reasoning. If ts = −∇F (x), then
+sT x = −t−1 ∇F (x)T x = t−1 ϑ by (2.17) and ∇2 F∗ (ts) = [∇2 F (x)]−1 , and
+the ﬁnal claim follows from the homogeneity of ∇2 F∗ of degree −2.
+  We now examine in more detail the path-following methods described in
+Section 2.3, both to see the computation involved and to see how these
+basic methods can be modiﬁed in some cases for increased eﬃciency. We
+assume that both (P ) and (D) have strictly feasible solutions available. As
+we noted, the basic primal path-following algorithm can be applied to the
+restriction of F to the relative interior of {x ∈ K : Ax = b}, which amounts
+to tracing the path of solutions for positive t to the primal barrier problems:
+                                min tcT x + F (x)
+                                    x
+                      (PB t )                   Ax = b,
+                                                  x ∈ K.
+                Interior-point methods for optimization                         217
+
+If we associate Lagrange multipliers λ ∈ Rm with the constraints, and then
+deﬁne y := −t−1 λ, we see that the optimality conditions for (PB t ) are
+                t(c − AT y) + ∇F (x) = 0,        Ax = b, x ∈ int K.
+Since −∇F maps int K into int K∗ , we see that s := c − AT y lies in int K∗ ,
+and so we have
+                                 AT y + s = c,       s ∈ int K∗ ,
+                       Ax                   = b,     x ∈ int K,                (3.6)
+                   ∇F (x)              + ts = 0.
+These equations deﬁne the primal–dual central path {(x∗ (t), s∗ (t))} as in
+Section 2.3. Note also that, using (3.2) and (3.5), the duality gap associ-
+ated with x∗ (t) and (y∗ (t), s∗ (t)) is s∗ (t)T x∗ (t) = t−1 ϑ. In view of Propo-
+sition 3.2, the conditions above are remarkably symmetric. Indeed, let us
+consider the dual barrier problem
+                              min −tbT y + F∗ (s)
+                               y,s
+                   (DB t )            AT y +        s = c,
+                                                    s ∈ int K∗ .
+If we associate Lagrange multipliers µ ∈ Rn with the constraints, and then
+deﬁne x := t−1 µ, we see that the optimality conditions for (DB t ) are
+       −tb + tAx = 0,        ∇F∗ (s) + tx = 0,    AT y + s = c, s ∈ int K∗ .
+We can now conclude that x ∈ int K, and so the optimality conditions
+can be written as (3.6) again, where the last equation is replaced by its
+equivalent form tx + ∇F∗ (s) = 0.
+   This nice symmetry is not preserved at ﬁrst sight when we consider
+Newton-like algorithms to trace the central path. Suppose we have strictly
+feasible solutions x and (y, s) to (P ) and (D), approximating a point on the
+central path: (x, y, s) ≈ (x∗ (t), y∗ (t), s∗ (t)) for some t > 0. We wish to ﬁnd
+strictly feasible points approximating a point further along the central path,
+say corresponding to t+ > t. Let us make a quadratic approximation to the
+objective function in (PB t+ ); for future analysis, we use the Hessian of F
+at a point v ∈ int K which may or may not equal x. If we let the variable
+be x+ =: x + ∆x, we have
+                 min    t+ cT ∆x + ∇F (x)T ∆x + 12 ∆xT ∇2 F (v)∆x
+                  ∆x
+       (PQP )                                                       A∆x = 0.
+Let λ̄ ∈ Rm be the Lagrange multipliers for this problem, and deﬁne ȳ+ :=
+−t−1
+  + λ̄. Then the optimality conditions for (PQP ) can be written as
+
+           t+ (c − AT ȳ+ ) + ∇F (x) + ∇2 F (v)∆x = 0,       A∆x = 0,
+218                      A. S. Nemirovski and M. J. Todd
+
+and if we deﬁne ∆y := ȳ+ − y and ∆s := −AT ∆y, we obtain
+
+                                      AT ∆y + ∆s = 0,
+       (PQPOC )                A∆x                   = 0,
+                       t−1 2
+                        + ∇ F (v)∆x           + ∆s = −s − t−1
+                                                           + ∇F (x).
+
+This system also arises as giving the Newton step for (3.6) with t+ replacing
+t, where ∇2 F (v) is used instead of ∇2 F (x). We will discuss the solution of
+this system of equations after comparing it with the corresponding system
+for the dual problem.
+   Hence let us make a quadratic approximation to the objective function
+of (DB t+ ), again evaluating the Hessian of F∗ at a point u ∈ int K∗ which
+may or may not equal s for future analysis. If we make the variables of the
+problem y+ =: y + ∆y and s+ =: s + ∆s, we obtain
+
+          min     −t+ bT ∆y + ∇F∗ (s)T ∆s + 12 ∆sT ∇2 F∗ (u)∆s
+          ∆y,∆s
+        (DQP )          AT ∆y +                                ∆s = 0.
+
+Let µ̄ ∈ Rn be the Lagrange multipliers for (DQP ), and deﬁne x̄+ := t−1
+                                                                      + µ̄.
+Then the optimality conditions become
+
+−t+ (b − Ax̄+ ) = 0,     ∇F∗ (s) + ∇2 F∗ (u)∆s + t+ x̄+ = 0,   AT ∆y + ∆s = 0.
+
+Writing ∆x := x̄+ − x, we obtain
+
+                            AT ∆y +               ∆s = 0,
+      (DQPOC ) A∆x                                    = 0,
+                       ∆x          + t−1 2                 −1
+                                      + ∇ F∗ (u)∆s = −x − t+ ∇F∗ (s).
+
+We note that this system can also be viewed as a Newton-like system for a
+modiﬁed form of (3.6), where t+ x + ∇F∗ (s) = 0 replaces ts + ∇F (x) = 0 as
+the ﬁnal equation. From this viewpoint, a natural way to adapt the methods
+to the case where x or (y, s) is not a strictly feasible solution of (P ) or (D)
+is apparent. As long as x ∈ int K and s ∈ int K∗ , we can deﬁne search direc-
+tions using (PQPOC ) or (DQPOC ) where the zero right-hand sides in the
+ﬁrst two equations are replaced by the appropriate residuals in the equal-
+ity constraints. These so-called infeasible-interior-point methods are simple
+and much used in practice, although their analysis is hard. Polynomial-
+time complexity for linear programming was established by Zhang (1994)
+and Mizuno (1994). The other possibility to deal with infeasible iterates is
+to use a self-dual embedding: see the references in Section 2.3.
+   There is clearly a strong similarity between the conditions (PQPOC ) and
+(DQPOC ), but they will only deﬁne the same directions (∆x = ∆x and
+               Interior-point methods for optimization                        219
+
+(∆y, ∆s) = (∆y, ∆s)) under rather strong hypotheses, for example, if
+                                 t−1 2           −1 2      −1
+                                  + ∇ F∗ (u) = [t+ ∇ F (v)] ,               (3.7)
+               t−1 2            −1                 −1
+                + ∇ F (v)(−x − t+ ∇F∗ (s)) = −s − t+ ∇F (x).                (3.8)
+Using Proposition 3.2, this holds if v = x = x∗ (t+ ) and u = s = s∗ (t+ ), but
+in this case all the directions are zero and it is pointless to solve the systems!
+(It also holds if (t+ /t)1/2 v = x = x∗ (t) and (t+ /t)1/2 u = s = s∗ (t), again a
+very special situation.) In the next subsection, we will describe situations
+where the equations above hold for any x and s by suitable choice of u
+and v.
+   The solution to (PQPOC ) can be obtained by solving for ∆s in terms of
+∆y and then ∆x in terms of ∆s. Substituting in the equation A∆x = 0, we
+see that we need to solve
+            (A[∇2 F (v)]−1 AT )∆y = A[∇2 F (v)]−1 (s + t−1
+                                                        + ∇F (x).           (3.9)
+Let us examine the form of these equations in the cases of linear and semidef-
+inite programming. (The analysis for the second-order cone is also straight-
+forward, but the formulae are rather cumbersome.) In the ﬁrst case, ∇2 F (v)
+for the usual log barrier function becomes [Diag(v)]−2 and ∇F (x) becomes
+−[Diag(x)]−1 e, with e a vector of ones. Hence (3.9) can be written
+    (A[Diag(v)]2 AT )∆y = A[Diag(v)]2 s − t−1          2         −1
+                                           + A[Diag(v)] [Diag(x)] e.
+In the large sparse case, the coeﬃcient matrix in the equation above can
+be formed fairly cheaply and usually retains some of the sparsity of A;
+its Cholesky factorization can be obtained somewhat cheaply. The typically
+very low number of iterations required then compensates to a large extent for
+the iterations being considerably more expensive than pivots in the simplex
+method. (Indeed, for the primal–dual algorithms of the next subsection, 10
+to 50 iterations almost always provide 8 digits of accuracy, even for very
+large LP problems.)
+   In the case of semideﬁnite programming, A can be thought of as an oper-
+ator from symmetric matrices to Rm and AT as the adjoint operator from
+Rm to the space of symmetric matrices; see the discussion preceding (3.3).
+With the usual log determinant barrier function, ∇2 F (V ) maps a symmetric
+matrix Z to V −1 ZV −1 and ∇F (X) is −X −1 , so (3.9) becomes
+           
+      Ai •    (V Aj V )∆y j = Ai • (V SV − t−1
+                                            + VX
+                                                 −1
+                                                    V ), i = 1, . . . , m.
+           j
+
+If we take V = X, as seems natural, then there is a large cost in even
+forming the m × m matrix with ijth entry Ai • (XAj X): the Ai s may well
+be sparse, but X is frequently not, and then we must compute the Cholesky
+factorization of the resulting usually dense matrix.
+   Let us return to the general case. Computing ∆x in this way using v = x
+220                    A. S. Nemirovski and M. J. Todd
+
+gives the primal path-following algorithm. We could also use ∆y and ∆s to
+update the dual solution, but it is easily seen that in fact ∆x is independent
+of y and s as long as AT y + s = c, so that the ‘true’ iterates are in x-
+space. However, updating the dual solution (if feasible) does give an easy
+way to determine the  quality of the primal points generated. If the Newton
+decrement for t (i.e., ∆xT ∇2 F (x)∆x, where ∆x is computed with t+ = t)
+is small, then updating t+ as in (2.14) and then using a damped Newton
+step will yield an updated primal point x+ at which the Newton decrement
+for t+ is also small (and the updated dual solution will be feasible). In
+practice, heuristics may be used to choose much longer steps and accept
+points whose Newton decrement is much larger.
+   A similar analysis for (DQPOC ) leads to the equations
+                   (A∇2 F∗ (u)AT )∆y = t+ Ax + A∇F∗ (s).
+Here it is more apparent that the dual direction (∆y, ∆s) is independent of
+x as long as Ax = b, so this is a pure dual path-following method, although
+again primal iterates can be carried along to assess the quality of the dual
+iterates. In the case of linear programming, the coeﬃcient matrix takes
+the form A[Diag(u)]−2 AT , while for semideﬁnite programming it becomes
+(Ai • (U −1 Aj U −1 ))m
+                      i,j=1 .
+   In the next subsection we consider the case that leads to a symmetric
+primal–dual path-following algorithm. This requires the notion of self-scaled
+barrier introduced by Nesterov; further details can be found in Nesterov and
+Todd (1997, 1998).
+
+3.3. Self-scaled barriers and cones and symmetric primal–dual algorithms
+Let us now consider barriers that satisfy a further property: a ϑ-lhscb F
+for K is called a ϑ-self-scaled barrier (ϑ-ssb) if, for all v ∈ int K, ∇2 F (v)
+maps int K to int K∗ and
+             (∀v, x ∈ int K) F∗ (∇2 F (v)x) = F (x) − 2F (v) − ϑ.         (3.10)
+If a cone admits such an ssb, we call it a self-scaled cone. It is easy to check
+that the three barriers we introduced above for the non-negative, Lorentz,
+and semideﬁnite cones are all self-scaled, and so these cones are self-scaled.
+Moreover, in these examples, v can be chosen so that ∇2 F (v) is the identity,
+so (as we saw) F∗ diﬀers from F by a constant.
+   The condition above implies many other strong properties: the dual bar-
+rier F∗ is also self-scaled; for all v ∈ int K, ∇2 F (v) maps int K onto int K∗ ;
+and we have the following result.
+Theorem 3.2. If F is a ϑ-ssb for K, then for every x ∈ int K and s ∈
+int K∗ , there is a unique w ∈ int K such that
+                                ∇2 F (w)x = s.
+                Interior-point methods for optimization                        221
+
+Moreover,
+   ∇2 F (w)∇F∗ (s) = ∇F (x)          and ∇2 F (w)∇2 F∗ (s)∇2 F (w) = ∇2 F (x).
+   We call w the scaling point for x and s. Clearly, −∇F (w) is the scaling
+point (using F∗ ) for s and x. Tunçel (1998) found a more symmetric form
+of the equation (3.10) deﬁning self-scaled barriers: if ∇2 F (v)x = −∇F (z)
+for v, x, z ∈ int K, then F (v) = (F (x) + F (z))/2, and by the result above
+we also have ∇2 F (v)z = −∇F (x).
+   The properties above imply that the cone K is symmetric: it is self-dual ,
+since K and K∗ are isomorphic by the non-singular linear mapping ∇2 F (v)
+for any v ∈ int K; and it is homogeneous, since there is an automorphism of
+K taking any point x1 of int K into any other such point x2 . Indeed, we can
+choose the automorphism [∇2 F (w2 )]−1 ∇2 F (w1 ), where wi is the scaling
+point for xi and some ﬁxed s ∈ int K∗ , i = 1, 2. Symmetric cones have
+been much studied and even characterized: see the comprehensive book of
+Faraut and Koranyi (1994). They also coincide with cones of squares in
+Euclidean Jordan algebras. These connections were established by Güler
+(1996). Because of this connection, we know that self-scaled cones do not
+extend far beyond the cones we have considered: non-negative, Lorentz, and
+semideﬁnite cones, and Cartesian products of these.
+   Let us now return to the conditions (3.7) and (3.8) for (PQPOC ) and
+                                                          1/2           1/2
+(DQPOC ) to deﬁne identical directions. If we set ū := t+ u and v̄ := t+ v,
+these can be rewritten as
+  ∇2 F∗ (ū) = [∇2 F (v̄)]−1 ,     ∇2 F (v̄)(−x − t−1                 −1
+                                                   + ∇F∗ (s)) = −s − t+ ∇F (x).
+
+When F is self-scaled, these conditions can be satisﬁed by setting v̄ to be
+the scaling point for x and s, and ū (equal to −∇F (v̄)) to be the scaling
+point (for F∗ ) for s and x. (Notice that, if (x, s) = (x∗ (t), s∗ (t)), then these
+scaling points are t−1/2 x and t−1/2 s respectively, and, except for a scalar
+multiple, we come back to the primal (or dual) direction.)
+   Let us describe the resulting symmetric primal–dual short-step path-
+following algorithm. We need a symmetric measure of proximity to the cen-
+tral path. Hence, for x and (y, s) strictly feasible solutions to (P ) and (D),
+deﬁne
+                           ϑ
+          t := t(x, s) := T     and λ2 (x, s) := ts + ∇F (x) F,x .
+                          s x
+It can be shown (Nesterov and Todd 1998, Section 3) that λ2 (x, s) = tx +
+∇F∗ (s) F∗ ,s also. Suppose x and s are such that
+                                     λ2 (x, s) ≤ 0.1,
+and we choose
+                                 t+ := (1 + 0.06ϑ−1/2 )t.
+222                    A. S. Nemirovski and M. J. Todd
+
+We compute the scaling point w for x and s, and let ∆x, ∆y, and ∆s be
+                                      −1/2
+the solution to (PQPOC ) with v := t+ w (or equivalently to (DQPOC )
+              −1/2
+with u := −t+ ∇F (w)). Finally, we set x+ := x + ∆x and (y+ , s+ ) :=
+(y + ∆y, s + ∆s). It can be shown (Nesterov and Todd 1998, Section 6) that
+                   t(x+ , s+ ) = t+   and λ2 (x+ , s+ ) ≤ 0.1,
+so we can continue the process.
+
+Theorem 3.3. Suppose (P ) and (D) have strictly feasible solutions, and
+we have a ϑ-ssb F for K. Suppose further we have a strictly feasible pair
+x0 , (y0 , s0 ) for (P ) and (D) with λ2 (x0 , s0 ) ≤ 0.1. Then the algorithm
+described above (with xk+1 and (yk+1 , sk+1 ) derived from xk and (yk , sk )
+as are x+ and (y+ , s+ ) from x and (y, s)) is well-deﬁned (all iterates are
+strictly feasible), maintains closeness to the path (λ2 (xk , sk ) ≤ 0.1 for all k)
+and has the eﬃciency estimate
+                                                                 
+                                       ϑ                   0.05
+                 c xk − b yk = sk xk =
+                  T       T     T
+                                          ≤ s0 x0 exp − √ k .
+                                               T
+                                       tk                    ϑ
+Hence, for every  > 0, it takes at most
+                                        T 
+                                  √      s x0
+                             O(1) ϑ ln 0
+                                           
+iterations to obtain strictly feasible solutions with duality gap at most .
+
+   Thus we have obtained an algorithm with complexity bounds of the same
+order as those for the primal path-following method in Theorem 2.1. In fact,
+the constants are a little worse than those for the primal method. However,
+it is important to realize that these are worst-case bounds, and that the
+primal–dual framework is much more conducive to allowing adaptive algo-
+rithms that can give much better results in practice: see, e.g., Algorithms 6.2
+and 6.3 in Nesterov and Todd (1998). Part of the reason that long-step algo-
+rithms are possible in this context is that approximations of F and of ∇2 F
+hold for much larger perturbations of a point x ∈ int K. Indeed, results like
+(2.5) hold true for any perturbation h with x ± h ∈ int K: see Theorems 4.1
+and 4.2 of Nesterov and Todd (1997).
+   There are also symmetric primal–dual potential-reduction algorithms, us-
+ing the Tanabe–Todd–Ye function (2.21). Note that
+                       √                                  √
+                  ϑ+ ϑ                               ϑ+ ϑ
+     ∇x p(x, s) =          s + ∇F (x), ∇s p(x, s) =           x + ∇F∗ (s),
+                    sT x                               sT x
+                                                  √
+and the coeﬃcient of s (or x) is t+ := (1 + 1/ ϑ)t(x, s). Thus Newton-
+like steps to decrease the potential function (where the Hessian is replaced
+              Interior-point methods for optimization                     223
+
+by t+ ∇2 F (w)) lead to exactly the same search directions as in the path-
+following algorithm above. Performing a line search on p in those directions
+leads to a guaranteed decrease of at least 0.24 (for details, √
+                                                              see Section 8 of
+Nesterov and Todd (1997)), and again, this leads to an O( ϑ ln(sT0 x0 /))-
+iteration algorithm from a well-centred initial pair to achieve an -optimal
+pair. The big advantage is that now there is no necessity to stay close to the
+central path, and indeed, the initial pair does not have to be well-centred –
+the only change is that the complexity bound is modiﬁed appropriately.
+   We now discuss how the scaling point w for x and s can be computed
+in the case of the non-negative orthant and the semideﬁnite cone; for the
+Lorentz cone, the computation is again straightforward but cumbersome.
+For the non-negative orthant Rn+ , we have ∇2 F (w) = [Diag(w)]−2 , so we
+ﬁnd the scaling point w for positive vectors x and s is given by
+                                           n
+                            w=        xj /sj    ,
+                                              j=1
+so that the equation to be solved for ∆y is
+       A Diag(x) [Diag(s)]−1 AT ∆y = A(x − t−1         −1
+                                            + [Diag(s)] e),            (3.11)
+leading to the usual LP primal–dual symmetric search direction. The com-
+putation required is of the same order as that for the primal or dual methods.
+   For the semideﬁnite cone Sp+ , the deﬁning relation ∇2 F (w)x = s becomes
+W −1 XW −1 = S, or W SW = X, for positive deﬁnite X and S, from which
+we ﬁnd
+                      W = S −1/2 (S 1/2 XS 1/2 )1/2 S −1/2 ,
+where V 1/2 denotes the positive semideﬁnite square root of a positive semi-
+deﬁnite matrix V . Todd, Toh and Tütüncü (1998) show that W can be
+computed using two Cholesky factorizations (X = LX LTX and S = RS RST )
+and one eigenvalue (of LTX SLX ) or singular value (of RST LX ) decomposition.
+(After W is obtained, ∆y (and hence ∆S and ∆X) can be computed using a
+system like that for the primal or dual barrier method, but with W replacing
+V or U −1 .)
+  The need for an eigenvalue or singular value decomposition makes each it-
+eration of a (path-following or potential-reduction) interior-point algorithm
+using the scaling point W quite expensive. While linear and second-order
+cone programming problems with hundreds of thousands of variables and
+constraints (with favourable sparsity patterns) can be solved in under 5
+minutes on a fairly modest PC, semideﬁnite programming problems with
+matrices of order a thousand, even with very favourable structure, can take
+up to half an hour. When the matrices are of order two thousand, the times
+increase to an hour even for the simplest such problems.
+  Alternative methods greatly improve the computational time per iter-
+ation. The Jordan algebra approach (Faybusovich 1997, Schmieta and
+224                    A. S. Nemirovski and M. J. Todd
+
+Alizadeh 2001) replaces the last equation in (3.6) by one exhibiting more
+primal–dual symmetry. For linear programming, this is x ◦ s = t−1 e, where
+◦ denotes the Hadamard or componentwise product. A Newton step for
+this leads to the same direction as the self-scaled method. For semideﬁnite
+programming, it gives XS + SX = 2t−1 I. Unfortunately, linearizing this
+equation to get
+
+         (∆XS + S∆X) + (X∆S + ∆SX) = −XS − SX + 2t−1
+                                                  + I,
+
+as proposed by Alizadeh, Haeberly and Overton (1997), leads to a system
+that requires even more computation than the self-scaled approach, and
+does not enjoy scale-invariance properties (see, e.g., Todd et al. (1998)).
+Suppose instead the iterates are ﬁrst scaled (X by pre- and postmultiplying
+by S 1/2 , and S by pre- and postmultiplying by S −1/2 ) so that the current
+iterates are transformed into X̃ = S 1/2 XS 1/2 and S̃ = S −1/2 SS −1/2 = I.
+If the Alizadeh–Haeberly–Overton approach is followed in the transformed
+space, the linearization becomes
+
+                  2∆X̃ + (X̃∆S̃ + ∆S̃ X̃) = −2X̃ + 2t−1
+                                                     + I,
+
+or in terms of the original variables after transforming back,
+                 1
+             ∆X + (X∆SS −1 + S −1 ∆SX) = −X + t−1 −1
+                                               + S .
+                 2
+Then the search directions can be obtained after solving the m × m system
+                           
+     Ai •      (XAj S )∆yj = Ai • (X − t−1
+                      −1                          −1
+                                             + S ),     i = 1, . . . , m.
+              j
+
+This method was developed independently by Helmberg, Rendl, Vanderbei
+and Wolkowicz (1996) and Kojima, Shindoh and Hara (1997), and later de-
+rived from a diﬀerent viewpoint by Monteiro (1997). This approach permits
+the solution of certain problems with matrices of order two thousand (and
+favourable structure) in under twenty minutes. A pure dual barrier method
+can also be used successfully on problems of this size with even faster results,
+but on some problems it seems not as successful as primal–dual methods.
+   For truly large semideﬁnite programming problems, either non-interior-
+point methods need to be used (see, e.g., Section 6.3 in Todd (2001)), or iter-
+ative techniques employed to solve approximately the linear systems arising
+at each iteration (see, e.g., Toh (2007) and Chai and Toh (2007)). For more
+information on semideﬁnite programming, the reader can consult Helm-
+berg’s page www-user.tu-chemnitz.de/∼ helmberg/semidef.html; software for
+linear, second-order cone, and semideﬁnite programming can be found at
+the NEOS solvers site neos.mcs.anl.gov/neos/solvers/index.html.
+               Interior-point methods for optimization                        225
+
+3.4. Recent developments
+In this ﬁnal subsection, we describe some recent developments in interior-
+point methods for conic optimization. We concentrate on classes of cones
+that are more general than self-scaled cones, but that have some structure
+that may help in developing eﬃcient interior-point algorithms.
+   The ﬁrst class of such cones consists of hyperbolicity cones. These cones
+arise in connection with hyperbolic polynomials: a homogeneous polynomial
+p on Rn is hyperbolic in direction d ∈ Rn if the univariate polynomial t →
+p(x − td) has only real roots for every x ∈ Rn . The associated hyperbolicity
+cone K(p, d) is the set of those x for which all these roots are non-negative.
+These objects were ﬁrst studied in the context of PDEs, but were introduced
+to the interior-point community by Güler (1997) because of their generality
+and nice properties.
+   The polynomial p(x) = x1 x2 · · · xn is hyperbolic in direction d for any
+positive vector d ∈ Rn , and the associated hyperbolicity        cone is the non-
+negative orthant. The Lorentz cone arises from x21 − nj=2 x2j , hyperbolic in
+the direction d = (1, 0, . . . , 0)T . Finally, if n = p(p + 1)/2 and we associate
+Rn with Sp , the polynomial det(X) is hyperbolic in the direction of the
+identity and gives rise to the semideﬁnite cone. However, the range of
+hyperbolicity cones is much larger: Güler (1997) shows, for example, that
+it includes (properly) all homogeneous cones.
+   The signiﬁcance of this class of cones for interior-point methods is that
+F (x) := − ln p(x) is an m-lhscb for the cone K(p, d), where m is the de-
+gree of homogeneity of p. This function has very good properties: for any
+x, ∇2 F (x) takes int K(p, d) into (but not necessarily onto) the interior of its
+dual cone; there is a unique scaling point for each x ∈ int K(p, d) and s in the
+interior of its dual; and F has good ‘long-step properties’ like those hinted
+at below Theorem 3.3 for self-scaled barriers. These results were obtained
+by Güler (1997), who showed that long-step primal potential-reduction al-
+gorithms could be extended from self-scaled cones to hyperbolicity cones.
+However, the dual barrier of a hyperbolic barrier of this kind is itself a hy-
+perbolic barrier only if the original barrier was self-scaled. Hence it seems
+unlikely that the primal–dual methods of the previous subsection can be
+extended to general hyperbolicity cones.
+   Bauschke, Güler, Lewis and Sendov (2001) study hyperbolic polynomials
+from the viewpoint of convex analysis and hence rederive some of Güler’s
+results. Of more interest in optimization, Renegar (2006) makes use of an
+important property of hyperbolic polynomials, namely, that if p is hyper-
+bolic in direction d, then so is the directional derivative dT ∇p, and the
+hyperbolicity cone of the latter contains that of p. In this way a hierar-
+chy of relaxations of a hyperbolicity cone programming problem can be
+deﬁned; Renegar suggests a homotopy method to solve the original problem
+226                   A. S. Nemirovski and M. J. Todd
+
+by considering solutions to these relaxed problems. At present, there is no
+complexity analysis for this approach, but it seems promising.
+   The second class of cones we wish to mention arises in global polynomial
+optimization: that is, one seeks the global minimizer p∗ of a polynomial
+function p of n variables, possibly subject to polynomial inequality con-
+straints. Here the functions involved need not be convex, and the problem
+is NP-hard even for degree-four polynomials, but we would still like to be
+able to solve (even approximately) small-scale problems. We describe here
+brieﬂy an approach, introduced by Parrilo (2003) and Lasserre (2001), that
+uses semideﬁnite programming problems as approximations.
+   Let us follow Lasserre in describing a convex formulation of such a poly-
+nomial optimization problem. Suppose p is a polynomial of       degree 2m in
+n variables. Using the notation xα := xα1 1 · · · xαnn and |α| := j αj , where
+α is a non-negative integer n-vector, we can associate p with its vector of
+coeﬃcients (pα )|α|≤2m , where
+                                      
+                             p(x) =        pα xα .
+                                       |α|≤2m
+
+The key idea is to replace an optimization problem over the n-vector x
+                                  µ on R . Then minimizing p over R
+with one over probability measures          n                              n
+
+can be replaced by minimizing p(x) dµ(x), which is a convex (even lin-
+ear!) function of the inﬁnite-dimensional variable µ. Moreover, since p is a
+polynomial, we have
+                                         
+                           p(x) dµ(x) =        p α yα ,
+                                           |α|≤2m
+                                   
+where yα is the α-moment of µ,         xα dµ(x).We now have a linear opti-
+mization problem over the ﬁnite-dimensional vector (yα )|α|≤2m , with the
+constraint that this vector be the vector of moments of some probability
+measure. The constraint can be separated: we need y to be the vector of
+moments of a Borel measure (this deﬁnes a convex cone, the moment cone),
+and y0 = 1 (this requires the measure to be a probability measure).
+   Unfortunately (as we would expect from the NP-hardness result), this
+convex cone is hard to deal with: in particular, it is very unlikely that a
+computationally tractable barrier function for it exists. We would therefore
+like to approximate it. Here is one necessary condition, based on a large
+matrix whose entries are the components of y. Let us enumerate all m+n  n
+monomials xβ with |β| ≤ m and use them to index the rows and columns of
+a matrix. Let Mm (y) denote the symmetric matrix whose entry in the row
+corresponding to xβ and column corresponding to xγ is yβ+γ . Then
+                                Mm (y)  0.
+Indeed, if (qα )|α|≤m is the vector of coeﬃcients of a polynomial q(x) of
+              Interior-point methods for optimization                     227
+                                 
+degree m, then q T Mm (y)q is (q(x))2    dµ(x), which is non-negative. We
+can then minimize the linear function        pα yα subject to y0 = 1 and this
+semideﬁnite constraint. This is a relaxation of the original polynomial op-
+timization problem and will provide a lower bound.
+   It turns out that this lower bound is tight exactly when p(x) − p∗ (a poly-
+nomial that is non-negative everywhere) can be written as a sum of squares.
+Indeed, ﬁnding the smallest p̄ such that p(x) − p̄ is a sum of squares can be
+formulated as a semideﬁnite programming problem, and it is precisely the
+dual of the problem above. The complication is that, except in very special
+cases, the set of non-negative polynomials is larger than the set of sums of
+squares (this is related to Hilbert’s 17th problem), but there are results in
+semi-algebraic geometry that provide ways to attack the problem. Without
+going into details, we merely note that a sequence of semideﬁnite program-
+ming problems can be formulated, whose optimal values approach p∗ , and
+frequently the value is attained in a ﬁnite (and small) number of steps. The
+disadvantage is that the sizes of these semideﬁnite problems grow very fast,
+so that only small-scale problems can be solved. Lasserre (2001) gives results
+for (constrained) problems with degree up to four and up to 10 variables;
+Parrilo and Sturmfels (2003) solve (unconstrained) degree four problems in
+13 variables and degree six problems in 7 variables in under half an hour. A
+MATLAB package for solving sum of squares optimization problems using
+semideﬁnite programming is available at www.cds.caltech.edu/sostools/.
+   We described
+                 above the polynomial minimization problem as that of min-
+imizing |α|≤2m pα yα , subject to y0 = 1 and (yα )|α|≤2m belonging to the
+cone of moments (up to degree 2m) of a Borel measure. It is not hard to
+see that the corresponding dual cone consists of the coeﬃcients (qα )|α|≤2m
+of polynomials q of degree at most 2m that are non-negative everywhere.
+These are two dual convex cones, easy to describe, but hard to deal with
+computationally, that are important in applications. Another such pair of
+cones arises in copositive programming.
+   Suppose we wish to minimize the quadratic function xT Qx over the stan-
+dard simplex {x ∈ Rn+ : eT x = 1}, where e ∈ Rn is the vector of ones. This
+standard quadratic programming problem includes the problem of comput-
+ing a maximum stable set in a graph and can arise in general quadratic
+optimization as a test for global optimality (see Bomze (1998)). In fact,
+the standard quadratic programming problem can be written as the conic
+optimization problem of minimizing Q • X subject to E • X = 1 and X
+lying in the cone of completely positive symmetric matrices: those that can
+be written as JJ T for a non-negative (entrywise) matrix J. Here E := eeT ,
+the n × n matrix of ones. This equivalence can be seen by characterizing
+the extreme solutions of the latter problem, as in Bomze, de Klerk, Roos,
+Quist and Terlaky (2000). The dual of the completely positive cone is eas-
+ily shown to be the cone of copositive matrices, i.e., those that are positive
+228                    A. S. Nemirovski and M. J. Todd
+
+semideﬁnite on the non-negative orthant. In turn, these are related
+                                                                to non-   2 2
+negative quartics: P is copositive if and only if the quartic     i,j pij zi zj
+is everywhere non-negative. Hence copositive programming (and so also
+the standard quadratic programming problem) can be attacked using the
+techniques discussed above, introduced by Parrilo and Lasserre. This is a
+topic of considerable recent interest: see Bomze and de Klerk (2002) and
+the references therein.
+
+
+4. IPMs for non-convex programming
+In this short ﬁnal section, we sketch the algorithms that have been proposed
+for general, not necessarily convex, nonlinear programming. For further
+details, see the survey papers of Forsgren et al. (2002) and Gould et al.
+(2005); the issues are also nicely treated in Nocedal and Wright (2006).
+These methods were inspired by the great success of interior-point meth-
+ods for specially structured convex problems, and diﬀer in many respects
+from the earlier barrier methods of the 1960s and 1970s. However, since
+they are designed for general problems, the motivating concerns are very
+diﬀerent from those for convex optimization: global convergence (possibly
+to an infeasible point which is a local minimizer of some measure of in-
+feasibility) replaces complexity analysis; superlinear convergence, and the
+resulting careful control of the parameter t, is of considerable interest; step-
+size control usually involves a merit function; and modiﬁcations to Newton
+systems are often employed to avoid convergence to stationary points that
+are not local minimizers. There are two families of interior-point methods
+for nonlinear programming: those based on line searches and those based
+on trust regions. Here we restrict ourselves to line-search methods as they
+are closer to what we have discussed for convex problems.
+   For simplicity, we concentrate on the inequality-constrained problem
+                       (NLP )    min f (y),   g(y) ≤ 0,
+where f : Rm → R and g : Rm → Rn are twice continuously diﬀerentiable
+functions. Other forms of problem are discussed by many of the authors
+of the papers cited below, but the main ideas can be illustrated in this
+framework. The somewhat unconventional notation is chosen to facilitate
+comparison with the dual linear programming problem, where f (y) = −bT y
+and g(y) = AT y − c.
+   The ﬁrst step is to introduce slack variables to convert the inequality
+constraints to the form g(y) + s = 0, s ≥ 0. A barrier method then tries to
+ﬁnd approximate solutions to problems of the form
+                                
+         (NLB t ) min tf (y) −      ln sj , g(y) + s = 0 (s > 0),
+                                   j
+              Interior-point methods for optimization                      229
+
+for positive parameters t increasing to ∞. If we associate Lagrange multi-
+pliers λ ∈ Rn to the constraints, and then deﬁne x := t−1 λ, we ﬁnd that
+the optimality conditions for (NLB t ) can be written as
+                  ∇f (y) + ∇g(y)x                   = 0,
+                    g(y)                       + s = 0,                   (4.1)
+                             Diag(x)Diag(s)e        = t−1 e.
+Given a trial solution (y, x, s) with x and s positive, a Newton step towards
+a solution of (4.1) will move in the direction (∆y, ∆x, ∆s) satisfying
+                                                                   
+        K       ∇g(y)         0       ∆y            −∇f (y) − ∇g(y)x
+    ∇g(y)T       0           I    ∆x =              −g(y) − s      ,
+                                      ∆s        t −1 e − Diag(x)Diag(s)e
+        0      Diag(s) Diag(x)
+                                                                          (4.2)
+where K denotes the Hessian of the Lagrangian function L(y, x, s) := f (y)+
+xT (g(y) + s) with respect to y. Using the last set of equations to solve for
+∆s, we arrive at
+   %                                &                                   
+      K              ∇g(y)              ∆y           −∇f (y) − ∇g(y)x
+                                             =                               ;
+    ∇g(y)T −[Diag(x)]−1 Diag(s) ∆x               −g(y) − t−1 [Diag(x)]−1 e
+                                                                          (4.3)
+if we further eliminate ∆x, we reach
+     [K + ∇g(y) Diag(x)[Diag(s)]−1 ∇g(y)T ]∆y
+                                                                          (4.4)
+          = −∇f (y) − ∇g(y)[x + t−1 s + Diag(x)[Diag(s)]−1 g(y)].
+This reduces to the primal–dual system (3.11) when (NLP ) reduces to the
+linear programming problem min{−bT y : AT y − c ≤ 0} and when s =
+c − AT y.
+   Primal–dual line-search methods start by solving one of the three linear
+systems above. If the coeﬃcient matrix in (4.4) is positive deﬁnite (this
+is guaranteed when suﬃciently close to a local minimizer of (NLP ) satis-
+fying the strong second-order suﬃcient conditions), the resulting solution
+(∆y, ∆x, ∆s) is taken as the search direction. Otherwise, most methods
+modify the system in some way: either a multiple of the identity matrix of
+order m is added to K, or a multiple of the identity matrix of order n is
+subtracted from the (2, 2) block in (4.3), for example. The resulting direc-
+tion ∆y can then be shown to be a descent direction for a merit function
+such as
+                                 
+                     f (y) − t−1   ln sj + ρ g(y) + s ,                (4.5)
+                                  j
+
+possibly after increasing the positive penalty parameter ρ. A step is then
+taken along the direction (∆y, ∆x, ∆s) to ensure ‘suﬃcient’ decrease in the
+merit function.
+230                   A. S. Nemirovski and M. J. Todd
+
+   In feasible methods (called quasi-feasible methods if there are also equal-
+ity constraints present that may not be satisﬁed exactly), s is reset after
+each iteration to −g(y), so that s > 0 forces g(y) < 0 for all iterates.
+This requirement complicates and restricts the line search, but can avoid
+some undesirable convergence behaviour. Such methods include those of
+Gay, Overton and Wright (1998), Forsgren et al. (2002) (except in their
+Section 6.4), and the quasi-feasible method of Chen and Goldfarb (2006).
+The more common infeasible methods allow g(y) + s to be non-zero, and
+control it implicitly through the merit function: see, e.g., Vanderbei and
+Shanno (1999) (LOQO), Waltz, Morales, Nocedal and Orban (2006) (KNI-
+TRO/DIRECT), Wächter and Biegler (2006) (IPOPT), and the infeasible
+method of Chen and Goldfarb (2006). Important practical issues such as
+how the linear systems are modiﬁed and solved, how the line searches are
+performed, how the parameter t is adjusted, and what – if any – back-up
+techniques are employed if poor convergence is observed, are discussed fur-
+ther in these papers. For example, KNITRO (Byrd et al. 2006) reverts to a
+trust-region interior-point subproblem to ensure global convergence if neg-
+ative curvature or slow convergence is detected, and IPOPT uses a ﬁlter
+approach instead of a traditional line search with a merit function, and also
+includes a feasibility restoration phase. Chen and Goldfarb (2006) modify
+the (2, 2)-block of (4.3) to correspond to the Newton system for moving
+to a local minimizer of the merit function in (4.5) and may also modify
+the (1, 1)-block; they prove strong global convergence properties for both
+quasi-feasible and infeasible algorithms.
+   Overall, these methods have proved strongly competitive for general non-
+linear programming problems, and research remains very active. Our treat-
+ment has only scratched the surface; for details, consult the references cited
+and the comprehensive survey articles of Forsgren et al. (2002) and Gould
+et al. (2005). The software systems mentioned are available (sometimes free)
+from the NEOS solvers website neos.mcs.anl.gov/neos/solvers/index.html.
+
+
+5. Summary
+Interior-point methods have changed the way we look at optimization prob-
+lems over the last twenty years. In this paper we have concentrated on con-
+vex problems, and in particular on the classes of structured convex problems
+for which interior-point methods provide provably eﬃcient algorithms. We
+have highlighted the theory and motivation for these methods and their do-
+mains of applicability, and also pointed out new topics of research. Finally,
+we have sketched very brieﬂy interior-point methods for general nonlinear
+programming.
+  Since the ﬁeld is so active, we conclude by pointing out once more some
+sources for tracking current research and algorithms: the websites for Opti-
+               Interior-point methods for optimization                          231
+
+mization Online at www.optimization-online.org/ and for the NEOS solvers
+at neos.mcs.anl.gov/neos/solvers/index.html, and, for semideﬁnite program-
+ming, Helmberg’s page at www-user.tu-chemnitz.de/∼ helmberg/semidef.html.
+
+Acknowledgements
+We are very grateful to Renato Monteiro, Jorge Nocedal and Jim Renegar
+for help with this paper. The second author was partially supported by NSF
+through grant DMS-0513337 and ONR through grant N00014-02-1-0057.
+
+REFERENCES
+F. Alizadeh (1995), ‘Interior point methods in semideﬁnite programming with ap-
+      plications to combinatorial optimization’, SIAM J. Optim. 5, 13–51.
+F. Alizadeh, J.-P. A. Haeberly and M. L. Overton (1998), ‘Primal–dual interior-
+      point methods for semideﬁnite programming: Convergence rates, stability
+      and numerical results’, SIAM J. Optim. 8, 746–768.
+E. D. Andersen and Y. Ye (1999), ‘On a homogeneous algorithm for monotone
+      complementarity system’, Math. Program. 84, 375–399.
+H. H. Bauschke, O. Güler, A. S. Lewis and H. S. Sendov (2001), ‘Hyperbolic
+      polynomials and convex analysis’, Canad. J. Math. 53, 470–488.
+A. Ben-Tal and A. S. Nemirovski (2001), Lectures on Modern Convex Optimization:
+      Analysis, Algorithms, and Engineering Applications, SIAM, Philadelphia.
+R. E. Bixby (2002), ‘Solving real-world linear programs: A decade and more of
+      progress’, Oper. Res. 50, 3–15.
+I. M. Bomze (1988), ‘On standard quadratic optimization problems’, J. Global
+      Optim. 13, 369–387.
+I. M. Bomze and E. de Klerk (2002), ‘Solving standard quadratic optimization
+      problems via semideﬁnite and copositive programming’, J. Global Optim. 24,
+      163–185.
+I. M. Bomze, M. Dür, E. de Klerk, C. Roos, A. J. Quist and T. Terlaky (2000),
+      ‘On copositive programming and standard quadratic optimization problems’,
+      J. Global Optim. 18, 301–320.
+S. Boyd and L. Vandenberghe (2004), Convex Optimization, Cambridge University
+      Press.
+S. Boyd, L. El Ghaoui, E. Feron and V. Balakrishnan (1994), Linear Matrix In-
+      equalities in System and Control Theory, Vol. 15 of Studies in Applied Math-
+      ematics, SIAM.
+R. H. Byrd, J. Nocedal and R. A. Waltz (2006), KNITRO: An integrated package
+      for nonlinear optimization. In Large-Scale Nonlinear Optimization (G. di Pillo
+      and M. Roma, eds), Springer, New York, pp. 35–59.
+C. W. Carroll (1961), ‘The created response surface technique for optimizing non-
+      linear, restrained systems’, Oper. Res. 9, 169–185.
+J. S. Chai and K. C. Toh (2007), ‘Preconditioning and iterative solution of sym-
+      metric indeﬁnite linear systems arising from interior point methods for linear
+      programming’, Comput. Optim. Appl. 36, 221–247.
+232                     A. S. Nemirovski and M. J. Todd
+
+L. Chen and D. Goldfarb (2006), ‘Interior-point l2 -penalty methods for nonlinear
+      programming with strong convergence properties’, Math. Program. 108, 1–36.
+R. Courant (1943), ‘Variational methods for the solution of problems of equilibrium
+      and vibrations’, Bull. Amer. Math. Soc. 49, 1–23.
+J. Faraut and A. Koranyi (1994), Analysis on Symmetric Cones, Clarendon Press,
+      Oxford.
+L. Faybusovich (1997), ‘Linear systems in Jordan algebras and primal–dual interior-
+      point algorithms’, J. Comput. Appl. Math. 86, 149–175.
+A. V. Fiacco and G. P. McCormick (1968), Nonlinear Programming: Sequential
+      Unconstrained Minimization Techniques, Wiley.
+A. Forsgren, P. E. Gill and M. H. Wright (2002), ‘Interior methods for nonlinear
+      optimization’, SIAM Review 44, 525–597.
+R. W. Freund, F. Jarre and S. Schaible (1996), ‘On self-concordant barrier functions
+      for conic hulls and fractional programming’, Math. Program. 74, 237–246.
+K. R. Frisch (1955), The logarithmic potential method of convex programming.
+      Memorandum of May 13, University Institute of Economics, Oslo, Norway.
+D. M. Gay, M. L. Overton and M. H. Wright (1998), A primal–dual interior method
+      for nonconvex nonlinear programming. In Advances in Nonlinear Program-
+      ming (Y. Yuan, ed.), Kluwer, pp. 31–56.
+P. E. Gill, W. Murray, M. A. Saunders, J. A. Tomlin and M. H. Wright (1986), ‘On
+      projected Newton barrier methods for linear programming and an equivalence
+      to Karmarkar’s projective method’, Math. Program. 36, 183–209.
+M. X. Goemans (1997), ‘Semideﬁnite programming in combinatorial optimization’,
+      Math. Program. 79, 143–161.
+C. C. Gonzaga (1989), An algorithm for solving linear programming problems in
+      O(n3 L) operations. In Progress in Mathematical Programming: Interior Point
+      and Related Methods (N. Megiddo, ed.), Springer, New York, pp. 1–28.
+N. I. M. Gould, D. Orban and P. L. Toint (2005), Numerical methods for large-scale
+      nonlinear optimization. In Acta Numerica, Vol. 14, Cambridge University
+      Press, pp. 299–361.
+C. Guéret, C. Prins and M. Sevaux (2002), Applications of Optimization with
+      XpressMP, Dash Optimization. Translated and revised by Susanne Heipcke.
+O. Güler (1996), ‘Barrier functions in interior-point methods’, Math. Oper. Res.
+      21, 860–885.
+O. Güler (1997), ‘Hyperbolic polynomials and interior-point methods for convex
+      programming’, Math. Oper. Res. 22, 350–377.
+C. Helmberg, F. Rendl, R. Vanderbei and H. Wolkowicz (1996), ‘An interior-point
+      method for semideﬁnite programming’, SIAM J. Optim. 6, 342–361.
+N. Karmarkar (1984), ‘A new polynomial-time algorithm for linear programming’,
+      Combinatorica 4, 373–395.
+E. de Klerk, C. Roos and T. Terlaky (1997), ‘Initialization in semideﬁnite pro-
+      gramming via a self-dual skew-symmetric embedding’, Oper. Res. Letters 20,
+      213–221.
+M. Kojima, S. Mizuno and A. Yoshise (1989), ‘A polynomial–time algorithm for a
+      class of linear complementarity problems’, Math. Program. 44, 1–26.
+M. Kojima, S. Shindoh and S. Hara (1997), ‘Interior-point methods for the mono-
+      tone semideﬁnite linear complementarity problem in symmetric matrices’,
+      SIAM J. Optim. 7, 86–125.
+               Interior-point methods for optimization                         233
+
+J. B. Lasserre (2001), ‘Global optimization with polynomials and the problem of
+      moments’, SIAM J. Optim. 11, 796–817.
+A. S. Lewis and M. L. Overton (1996), Eigenvalue optimization. In Acta Numerica,
+      Vol. 5, Cambridge University Press, pp. 149–160.
+M. S. Lobo, L. Vandenberghe, S. Boyd and H. Lebret (1998), ‘Applications of
+      second-order cone programming’, Linear Algebra Appl. 284, 193–228.
+Z.-Q. Luo, J. F. Sturm and S. Zhang (2000), ‘Conic convex programming and
+      self-dual embedding’, Optim. Methods Software 14, 169–218.
+N. Megiddo (1989), Pathways to the optimal set in linear programming. In
+      Progress in Mathematical Programming: Interior Point and Related Meth-
+      ods (N. Megiddo, ed.), Springer, New York, pp. 131–158.
+S. Mizuno (1994), ‘Polynomiality of infeasible-interior-point algorithms for linear
+      programming’, Math. Program. 67, 109–119.
+R. D. C. Monteiro (1997), ‘Primal–dual path-following algorithms for semideﬁnite
+      programming’, SIAM J. Optim. 7, 663–678.
+R. D. C. Monteiro and I. Adler (1989), ‘Interior path following primal–dual algo-
+      rithms I: Linear programming’, Math. Program. 44, 27–41.
+S. G. Nash (1998), ‘SUMT (revisited)’, Oper. Res. 46, 763–775.
+A. Nemirovski (2004), Interior Point Polynomial Time Methods in Convex Pro-
+      gramming. Lecture Notes: www2.isye.gatech.edu/∼ nemirovs/Lect IPM.pdf.
+A. Nemirovski and L. Tunçel (2005), ‘ “ Cone-free” primal–dual path-following and
+      potential-reduction polynomial time interior-point methods’, Math. Program.
+      102, 261–295.
+Y. Nesterov (1997), ‘Long-step strategies in interior-point primal–dual methods’,
+      Math. Program. 76, 47–94.
+Y. Nesterov (2003), Introductory Lectures on Convex Optimization: A Basic
+      Course, Kluwer, Dordrecht.
+Y. Nesterov and A. Nemirovski (1994), Interior Point Polynomial Time Methods
+      in Convex Programming, SIAM, Philadelphia.
+Y. E. Nesterov and M. J. Todd (1997), ‘Self-scaled barriers and interior-point
+      methods for convex programming’, Math. Oper. Res. 22, 1–42.
+Y. E. Nesterov and M. J. Todd (1998), ‘Primal–dual interior-point methods for
+      self-scaled cones’, SIAM J. Optim. 8, 324–364.
+Y. Nesterov, M. J. Todd and Y. Ye (1999), ‘Infeasible-start primal–dual meth-
+      ods and infeasibility detectors for nonlinear programming problems’, Math.
+      Program. 84, 227–267.
+J. Nocedal and S. J. Wright (2006), Numerical Optimization, Springer, New York.
+P. A. Parrilo (2003), ‘Semideﬁnite programming relaxations for semialgebraic prob-
+      lems’, Math. Program. 96, 293–320.
+P. A. Parrilo and B. Sturmfels (2003), Minimizing polynomials. In Algorithmic and
+      Quantitative Real Algebraic Geometry, Vol. 60 of DIMACS Series in Discrete
+      Mathematics and Theoretical Computer Science, AMS, pp. 83–99.
+F. A. Potra and R. Sheng (1998), ‘On homogeneous interior-point algorithms for
+      semideﬁnite programming’, Optim. Methods Software 9, 161–184.
+J. Renegar (1988), ‘A polynomial-time algorithm, based on Newton’s method, for
+      linear programming’, Math. Program. 40, 59–93.
+234                     A. S. Nemirovski and M. J. Todd
+
+J. Renegar (2001), A Mathematical View of Interior-Point Methods in Convex
+      Optimization, SIAM, Philadelphia.
+J. Renegar (2006), ‘Hyperbolic programs, and their derivative relaxations’, Found.
+      Comput. Math. 6, 59–79.
+C. Roos, T. Terlaky and J.-P. Vial (1997), Theory and Algorithms for Linear
+      Optimization: An Interior Point Approach, Wiley.
+S. H. Schmieta and F. Alizadeh (2001), ‘Associative and Jordan algebras, and
+      polynomial-time interior-point algorithms for symmetric cones’, Math. Oper.
+      Res. 26, 543–564.
+K. Tanabe (1988), Centered Newton method for mathematical programming. In
+      System Modeling and Optimization, Springer, New York, pp. 197–206.
+M. J. Todd (2001), Semideﬁnite optimization. In Acta Numerica, Vol. 10, Cam-
+      bridge University Press, pp. 515–560.
+M. J. Todd and Y. Ye (1990), ‘A centered projective algorithm for linear program-
+      ming’, Math. Oper. Res. 15, 508–529.
+M. J. Todd, K.-C. Toh and R. H. Tütüncü (1998), ‘On the Nesterov–Todd direction
+      in semideﬁnite programming’, SIAM J. Optim. 8, 769–796.
+K. C. Toh (2007), ‘An inexact primal–dual path-following algorithm for convex
+      quadratic SDP’, Math. Program. 112, 221–254.
+L. Tunçel (1998), ‘Primal–dual symmetry and scale-invariance of interior-point
+      algorithms for convex programming’, Math. Oper. Res. 23, 708–718.
+R. J. Vanderbei (2007), Linear Programming: Foundations and Extensions,
+      Springer, New York.
+R. J. Vanderbei and D. F. Shanno (1999), ‘An interior-point algorithm for noncon-
+      vex nonlinear programming’, Comput. Optim. Appl. 13, 231–252.
+R. A. Waltz, J. L. Morales, J. Nocedal and D. Orban (2006), ‘An interior algorithm
+      for nonlinear optimization that combines line search and trust region steps’,
+      Math. Program. 107, 391–408.
+A. Wächter and L. T. Biegler (2006), ‘On the implementation of an interior-point
+      ﬁlter line-search algorithm for large-scale nonlinear programming’, Math. Pro-
+      gram. 106, 25–57.
+H. Wolkowicz, R. Saigal and L. Vanderberghe, eds (2000), Handbook of Semideﬁnite
+      Programming: Theory, Algorithms, and Applications, Kluwer, Boston.
+M. H. Wright (1992), Interior methods for constrained optimization. In Acta Nu-
+      merica, Vol. 1, Cambridge University Press, pp. 341–407.
+S. J. Wright (1997), Primal–Dual Interior-Point Methods, SIAM, Philadelphia.
+X. Xu, P. F. Hung and Y. Ye (1996), ‘A simpliﬁed homogeneous self-dual linear
+      programming algorithm and its implementation’, Ann. Oper. Res. 62, 151–
+      171.
+Y. Ye (1991), ‘An O(n3 L) potential reduction algorithm for linear programming’,
+      Math. Program. 50, 239–258.
+Y. Ye (1997), Interior Point Algorithms: Theory√and Analysis, Wiley.
+Y. Ye, M. J. Todd and S. Mizuno (1994), ‘An O( nL)-iteration homogeneous and
+      self-dual linear programming algorithm’, Math. Oper. Res. 19, 53–67.
+Y. Zhang (1994), ‘On the convergence of a class of infeasible interior-point meth-
+      ods for the horizontal linear complementarity problem’, SIAM J. Optim. 4,
+      208–227.
+

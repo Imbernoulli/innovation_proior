@@ -1,0 +1,162 @@
+# The Renormalization Group and Critical Phenomena
+
+## Problem
+
+Near a critical point the correlation length ξ diverges, so thermal fluctuations occur on **all**
+length scales at once. Single-scale tools fail: perturbation theory has no scale to expand around,
+direct integration drowns in coupled variables, and mean-field/Landau theory — which averages out only
+atomic-scale fluctuations — gives the wrong mean-field exponents (β=1/2, ν=1/2) below four
+dimensions, where the real values are β≈1/3, ν≈2/3. We need a method that performs the all-scales
+average, predicts the exponents, and explains why microscopically different systems share them
+(universality).
+
+## Key idea
+
+Handle the scales **one at a time**. Coarse-grain by integrating out the shortest-wavelength
+fluctuations, producing an effective Hamiltonian for the remaining longer-scale degrees of freedom;
+then rescale to dimensionless form so the step repeats identically. This defines a **renormalization
+group** transformation R on the space of couplings (a semigroup — coarse-graining is not invertible).
+Three consequences carry all the physics:
+
+- **Fixed points.** R(μ*) = μ* describes a scale-invariant system, so ξ is 0 or ∞. The critical
+  fixed point is the one with ξ = ∞.
+- **Universality.** Many different microscopic systems flow to the same fixed point, hence share its
+  critical behavior.
+- **Exponents from linearization.** Linearize R about μ*; eigenvalues λ_i of the derivative classify
+  directions as **relevant** (λ_i>1, must be tuned: temperature, field), **irrelevant** (λ_i<1, decay
+  — why microscopic detail doesn't matter), or **marginal** (λ_i=1). For a length-rescaling factor b,
+  the temperature eigenvalue λ_t = b^{y_t} gives ν = ln b / ln λ_t.
+
+The decisive break from prior renormalization-group ideas (Gell-Mann–Low's single charge, Kadanoff's
+two block-spin parameters) is to let the transformation generate **arbitrarily many couplings**;
+locality orders them by importance, so truncation is controlled and the transformation becomes
+constructible — and computable — rather than merely postulated.
+
+## Making it calculable: the ε = 4 − d expansion
+
+Above four dimensions the φ⁴ coupling is irrelevant and the Gaussian (mean-field) fixed point is
+stable. At d=4 it is marginal. Just below four it goes unstable and a nontrivial fixed point splits off
+at distance O(ε) with ε = 4 − d. Because that distance is small, the fixed point and its eigenvalues
+are reachable perturbatively (recursion formula, then a Feynman-graph expansion in ε), giving
+non-mean-field exponents such as ν = 1/2 + ε/12 + … (≈0.6 in d=3).
+
+## Worked example: 1D Ising chain by real-space decimation (exact)
+
+H/kT = −K Σ σ_i σ_{i+1}, K = J/kT. Sum out every other spin (rescaling b=2). For three spins σ₁, s, σ₂,
+
+Σ_{s=±1} exp[K s(σ₁+σ₂)] = 2 cosh(K(σ₁+σ₂)) ≡ z · exp[K' σ₁σ₂].
+
+Matching σ₁σ₂ = ±1 gives the recursion and the free-energy constant:
+
+  **K' = ½ ln cosh 2K**  (equivalently tanh K' = tanh²K),  z = 2√(cosh 2K).
+
+Fixed points: K*=0 (stable, ξ=0, disordered sink) and K*=∞ (unstable, ξ=∞, T=0 order). Every finite K
+flows to 0 — there is **no finite-temperature critical point in 1D**, which the flow exhibits as the
+absence of any finite-K fixed point. Tracking the additive constant z reconstructs the free energy per
+spin exactly: φ(K) = ½ ln z(K) + ½ φ(K'), which matches the transfer-matrix result f = −ln(2 cosh K) to
+machine precision.
+
+```python
+"""
+Real-space decimation renormalization group for the 1D Ising chain.
+
+H/kT = -K sum_i s_i s_{i+1},  s_i = +-1,  K = J/(k_B T).
+
+One RG step: sum over every other spin (decimate, rescaling factor b=2).
+Summing a middle spin s between fixed neighbors a, c:
+
+    sum_{s=+-1} exp[K s (a + c)] = 2 cosh(K (a + c))
+
+We demand this equal  z * exp[K' a c]  for ALL a,c in {+-1}:
+    a c = +1 :  2 cosh(2K) = z e^{ K'}
+    a c = -1 :  2          = z e^{-K'}
+=>  K' = (1/2) ln cosh(2K),     z = 2 sqrt(cosh 2K),   so per decimated spin the
+free energy picks up  g' = g + (1/2) ln z  (z accounts for two new-lattice bonds,
+hence (1/2) ln z per surviving bond).
+
+Fixed points of K -> K':  K* = 0 (stable, xi=0) and K* = oo (unstable, xi=oo).
+Equivalent compact form:  tanh K' = (tanh K)^2.
+"""
+
+import math
+
+
+def rg_step(K):
+    """
+    One decimation step (b=2). Returns (K', ln_z) where ln_z is the
+    partition-function factor PER DECIMATED spin:  Z = z^{N/2} Z'(K').
+    z = 2 sqrt(cosh 2K),  K' = (1/2) ln cosh 2K.
+    """
+    c = math.cosh(2.0 * K)
+    K_new = 0.5 * math.log(c)
+    ln_z = math.log(2.0 * math.sqrt(c))
+    return K_new, ln_z
+
+
+def flow(K0, n_steps):
+    """Iterate the RG map; show the coupling flowing to the K*=0 sink."""
+    K = K0
+    traj = [(0, K)]
+    for i in range(1, n_steps + 1):
+        K, _ = rg_step(K)
+        traj.append((i, K))
+    return traj
+
+
+def free_energy_per_spin_via_rg(K0, n_steps):
+    """
+    Free energy per spin f = -(1/N) ln Z (units of kT), built from the
+    additive constants generated by the flow.  One step halves the spins:
+        ln Z(K)/N = (1/2) ln z(K) + (1/2) * ln Z'(K')/(N/2),
+    i.e. with phi(K) = ln Z/N,   phi(K) = (1/2) ln z + (1/2) phi(K').
+    Unrolling:  phi = sum_k 2^{-(k+1)} ln z_k + 2^{-n} phi(K_n).
+    Once K_n ~ 0 the residual chain is free spins: phi -> ln 2.
+    """
+    K = K0
+    phi = 0.0
+    weight = 0.5  # 2^{-(k+1)} for k=0
+    for _ in range(n_steps):
+        K_new, ln_z = rg_step(K)
+        phi += weight * ln_z
+        K = K_new
+        weight *= 0.5
+    phi += 2.0 * weight * math.log(2.0)  # residual: 2^{-n} * ln2 ; weight=2^{-(n+1)}
+    return -phi
+
+
+def free_energy_per_spin_exact(K):
+    """Transfer-matrix result for the 1D Ising chain (zero field)."""
+    return -math.log(2.0 * math.cosh(K))
+
+
+if __name__ == "__main__":
+    print("RG flow of K (decimation, b=2):  K* = 0 is the stable sink\n")
+    for K0 in (0.1, 0.5, 1.0, 2.0, 4.0):
+        traj = flow(K0, 8)
+        ks = "  ".join(f"{k:.4f}" for _, k in traj)
+        print(f"K0={K0:>4}:  {ks}")
+
+    print("\ntanh K' = (tanh K)^2 check:")
+    for K in (0.3, 0.7, 1.5):
+        Kp, _ = rg_step(K)
+        lhs, rhs = math.tanh(Kp), math.tanh(K) ** 2
+        print(f"  K={K}:  tanh K'={lhs:.6f}   (tanh K)^2={rhs:.6f}")
+
+    print("\nFree energy per spin: RG (accumulated g) vs exact transfer matrix:")
+    for K0 in (0.25, 0.5, 1.0, 2.0):
+        f_rg = free_energy_per_spin_via_rg(K0, 30)
+        f_ex = free_energy_per_spin_exact(K0)
+        print(f"  K={K0}:  f_RG={f_rg:.6f}   f_exact={f_ex:.6f}   diff={abs(f_rg-f_ex):.2e}")
+```
+
+## Algorithm, in general
+
+1. Choose a coarse-graining (momentum-shell integration, or real-space block-spin/decimation).
+2. Apply it: integrate out the shortest scale, generating the effective couplings (allowing new ones,
+   truncated by locality).
+3. Rescale lengths and fields to dimensionless form so the map repeats: μ → R(μ).
+4. Iterate to a fixed point μ*; its ξ=∞ basin is the critical surface, shared across systems
+   (universality).
+5. Linearize R at μ*; convert eigenvalues to exponents (ν = ln b / ln λ_t, etc.).
+6. When a small parameter exists (ε = 4 − d, or 1/n), compute the fixed point and eigenvalues
+   perturbatively.

@@ -26,11 +26,11 @@ Then `tau_n = A(n, 1/2) <= f(1) / c_0`.
 
 *Proof.* Count `S = sum_{i,j} f(<x_i,x_j>)`. Lower: `S = sum_k c_k sum_{i,j} P_k^{(n)} >= c_0 N^2` (drop the `k>=1` terms, each `>= 0`). Upper: `S = N f(1) + sum_{i != j} f(<x_i,x_j>) <= N f(1)` (off-diagonal terms `<= 0` by (A1)). Hence `c_0 N^2 <= N f(1)`, so `N <= f(1)/c_0`.
 
-Minimizing `f(1)/c_0` over admissible `f` of fixed degree is a **linear program** (`c_k >= 0`, `f(t) <= 0` on a grid).
+Minimizing `f(1)/c_0` over admissible `f` of fixed degree is a **linear program** over the Gegenbauer coefficients after normalizing `c_0 = 1`. A grid version of `f(t) <= 0` on `[-1,s]` is a useful way to search for a candidate; the final certificate still needs the continuous sign condition, either by exact factor/sign reasoning or by reliable interval verification.
 
 ## Tightness reads off the polynomial
 
-For the bound to be exact both inequalities must be equalities: `f` must vanish at every inner product occurring between distinct vectors of the optimal configuration (upper-tight), and the configuration must be a spherical design (lower-tight). So the optimal `f`'s roots are *dictated by the candidate configuration*. Interior roots get even multiplicity (so `f` only touches `0` from below, preserving (A1)); the window endpoints `-1` and `1/2` get simple roots.
+For the bound to be exact both inequalities must be equalities: `f` must vanish at every inner product occurring between distinct vectors of the optimal configuration (upper-tight), and the harmonic sums must vanish for every positive nonconstant Gegenbauer coefficient in the certificate (lower-tight). In the tight `E_8` and Leech cases this is the relevant spherical-design condition. So the optimal `f`'s roots are *dictated by the candidate configuration*. Interior roots get even multiplicity (so `f` only touches `0` from below, preserving (A1)); the window endpoints `-1` and `1/2` get simple roots.
 
 - **`n = 8`, `E_8`:** normalized minimal vectors have inner products `{-1, -1/2, 0, 1/2}`. Take
   `f_8(t) = (t+1)(t+1/2)^2 t^2 (t-1/2)`. Then `f_8 <= 0` on `[-1,1/2]`, its dimension-`8` Gegenbauer coefficients are all `>= 0` (`c_0 = 3/320`), and `f_8(1)/c_0 = (9/4)/(3/320) = 240`. With `tau_8 >= 240` from `E_8`: **`tau_8 = 240`**.
@@ -45,8 +45,8 @@ At `s=1/2`: `L_6(8,1/2)=240`, `L_10(24,1/2)=196560`. Within the degree ranges wh
 
 ## Where pure LP stalls — Musin's relaxation
 
-For `n = 3` the Levenshtein bound is `L_5(3,1/2) ~ 13.285`, and known higher-degree pure-LP improvements only reach about `13.18` (`> 13`); for `n = 4` pure LP cannot do better than `25` (Arestov–Babenko: optimal). The obstruction is a flexible/non-tight optimum, so `f` cannot vanish on the needed range. Relax (A1): allow `f > 0` near `t = -1`, requiring only `f <= 0` on `[t_0, 1/2]` (`-1 <= t_0 < -1/2`) and `f` decreasing on `[-1, t_0]`. The off-diagonal terms with inner product in `[-1, t_0]` are no longer dropped but bounded by a cap count — at most `mu` points fit in the antipodal cap — giving
-`tau_n <= max{h_0, ..., h_mu}/c_0`, with `h_m = max[ f(1) + sum_{j<=m} f(<e_1, y_j>) ]` over `m` points in the cap. The `h_m` are nonconvex sub-optimizations. With `t_0=-0.5907`, `mu=4`, degree `9`: `tau_3 = 12`. With `t_0=-0.608`, `mu=6`, degree `9`: `tau_4 = 24`.
+For `n = 3` the Levenshtein bound is `L_5(3,1/2) ~ 13.285`, and known higher-degree pure-LP improvements only reach about `13.18` (`> 13`); for `n = 4` pure LP cannot do better than `25` (Arestov–Babenko: optimal). The obstruction is a flexible/non-tight optimum, so `f` cannot vanish on the needed range. Relax (A1): allow `f > 0` near `t = -1`, requiring only `f <= 0` on `[t_0, 1/2]` (`-1 <= t_0 < -1/2`) and `f` decreasing on `[-1, t_0]`. For each fixed point, only the near-antipodal neighbors with inner product `<= t_0` can contribute positive off-diagonal terms; at most `mu` such neighbors fit in that cap. This gives
+`tau_n <= max{h_0, ..., h_mu}/c_0`, with `h_m = max[ f(1) + sum_{j=1}^m f(<e_1, y_j>) ]` over `m` points satisfying `<e_1,y_j> <= t_0` and pairwise `<y_i,y_j> <= 1/2`. The `h_m` are nonconvex sub-optimizations. With `t_0=-0.5907`, `mu=4`, and a degree-`9` polynomial, the `n=3` upper bound is `< 13`; integrality plus the icosahedron's `12` contacts gives `tau_3 = 12`. With `t_0=-0.608`, `mu=6`, and a degree-`9` polynomial, the `n=4` bound matches the `24`-cell and gives `tau_4 = 24`.
 
 ## Lower bounds and intermediate dimensions (e.g. `n = 11`)
 
@@ -57,10 +57,13 @@ Constructions supply the lower-bound side. From a binary `(n,M,d)` code `C`, **C
 ```python
 import numpy as np
 from numpy.polynomial import polynomial as P
+from scipy.optimize import linprog
 
 def gegenbauer_n(n, kmax):
     """Dimension-n ultraspherical polynomials, normalized G_k(1)=1, by recurrence."""
-    G = [np.array([1.0]), np.array([0.0, 1.0])]
+    G = [np.array([1.0])]
+    if kmax >= 1:
+        G.append(np.array([0.0, 1.0]))
     for k in range(1, kmax):
         tGk = np.concatenate([[0.0], G[k]])
         gkm1 = np.zeros(len(tGk)); gkm1[:len(G[k-1])] = G[k-1]
@@ -83,8 +86,20 @@ def polynomial_from_roots(roots_with_mult):
             poly = P.polymul(poly, [-r, 1.0])
     return poly
 
+def sampled_lp_candidate(n, degree, s=0.5, grid=801):
+    """Grid-relaxed LP search over f(t)=sum c_k G_k(t), normalized by c_0=1."""
+    G = gegenbauer_n(n, degree)
+    t = np.linspace(-1.0, s, grid)
+    A = np.column_stack([P.polyval(t, g) for g in G])
+    objective = np.ones(degree + 1)
+    bounds = [(1.0, 1.0)] + [(0.0, None)] * degree
+    res = linprog(objective, A_ub=A, b_ub=np.zeros(grid), bounds=bounds, method="highs")
+    if not res.success:
+        raise RuntimeError(res.message)
+    return res.fun, res.x
+
 def certificate_bound(fpoly, n, s=0.5, grid=2001):
-    """Check the Delsarte conditions numerically and return the upper bound f(1)/c_0."""
+    """Numerically screen the Delsarte conditions and return f(1)/c_0."""
     poly = np.array(fpoly, dtype=float)
     c = gegenbauer_coeffs(poly, n)
     assert c[0] > 0 and np.all(c[1:] >= -1e-9), "Gegenbauer coefficients must be nonnegative"

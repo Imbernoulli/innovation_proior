@@ -1,0 +1,442 @@
+Metric Embedddings
+Lecture notes by Konstantin Makarychev
+
+1
+
+Bourgain’s Theorem
+
+Consider a vector x in an m dimensional space Rm . The `p norm of x is defined as follows
+kxkp =
+
+m
+X
+
+|xi |p
+
+1/p
+
+i=1
+
+for p ≥ 1. Particularly, for p = 1, we have
+kxk1 =
+
+m
+X
+
+|xi |.
+
+i=1
+
+The `1 distance between two vectors x and y equals kx − yk1 :
+kx − yk1 =
+
+m
+X
+
+|xi − yi |.
+
+i=1
+
+We say that a metric space (V, d) embeds into `1 with distortion D if there exists a map ϕ : V → Rm
+(for some m) and positive numbers α and β such that β/α ≤ D and for every u, v ∈ V :
+α d(u, v) ≤ kϕ(u) − ϕ(v)k1 ≤ β d(u, v).
+Note that by rescaling vectors ϕ(u) we may always assume that either α or β equals 1.
+Theorem 1.1 (Bourgain). Every finite metric space embeds into `1 with distortion D = O(log n), where
+n = |V |.
+
+1.1
+
+Frechet Embeddings
+
+To prove Bourgain’s theorem we need the notion of Frechet embeddings.
+Fix a metric space (V, d) and consider a 2n − 1 dimensional space indexed by non-empty subsets Z ⊂ V .
+In this space, the coordinates of any point x are numbers xZ for all non-empty Z ⊂ V . We denote the space
+by X. Now, for any probabilistic distribution D of subsets Z ⊂ V , we define an embedding ϕ to X as
+follows:
+ϕ(u)Z = Pr(Z) · d(u, Z).
+D
+
+Here, d(u, Z) denotes the distance from u to the set Z, which equals (by definition)
+d(u, Z) = min d(u, z).
+z∈Z
+
+1
+
+Lemma 1.2. Frechet embeddings do not increase distances: for every Frechet embedding ϕ and every u and
+v in V ,
+kϕ(u) − ϕ(v)k1 ≤ d(u, v).
+Let us first verify that the distance to a given set satisfies the triangle inequality.
+Lemma 1.3. For every u, v ∈ V , and every set Z ⊂ V ,
+|d(u, Z) − d(v, Z)| ≤ d(u, v).
+Proof. Assume without loss of generality that d(u, Z) ≥ d(v, Z). By the definition d(v, Z) = d(v, z ∗ ) for
+some z ∗ ∈ Z. Observe that
+d(u, Z) = min d(u, z) ≤ d(u, z ∗ ).
+z∈Z
+
+Thus,
+|d(u, Z) − d(v, Z)| = d(u, Z) − d(v, Z) ≤ d(u, z ∗ ) − d(v, z ∗ ) ≤ d(u, v).
+
+Proof of Lemma 1.2. Pick arbitrary vertices u and v. The distance between ϕ(u) and ϕ(v) equals:
+X
+kϕ(u) − ϕ(v)k1 =
+Pr(Z) |d(u, Z) − d(v, Z)|.
+Z⊂V :Z6=∅
+
+D
+
+By Lemma 1.3, |d(u, Z) − d(v, Z)| ≤ d(u, v). Hence,
+X
+kϕ(u) − ϕ(v)k1 ≤
+Pr(Z)d(u, v) ≤ d(u, v),
+Z⊂V :Z6=∅
+
+since
+
+D
+
+P
+
+Z⊂V PrD (Z) = 1.
+
+To prove Bourgain’s theorem, we need to find a probabilistic distribution D such that
+kϕ(u) − ϕ(v)k1 =
+
+X
+Z⊂V :Z6=∅
+
+Pr(Z)|d(u, Z) − d(v, Z)| ≥
+D
+
+d(u, v)
+.
+O(log n)
+
+Then, we will have
+d(u, v)
+≤ kϕ(u) − ϕ(v)k1 ≤ d(u, v).
+O(log n)
+We define D on Z ⊂ V via the following randomized algorithm:
+1. Pick a random number t ∈ {1, . . . , dln ne}. Let p = 1 − exp(−e−t ).
+2. Pick each element v in Z independently at random with probability p, and add it to the set Z.
+3. Return the set Z.
+Lemma 1.4. Consider two disjoint non-empty sets A ⊂ V and B ⊂ V . Then,
+Pr(Z ∩ A = ∅; Z ∩ B 6= ∅) + Pr(Z ∩ A 6= ∅; Z ∩ B = ∅) ≥
+D
+
+D
+
+2
+
+1
+.
+10dln ne
+
+Proof. Assume without loss of generality that |A| ≥ |B|. We estimate the probability of the event
+{Z ∩ A 6= ∅; and Z ∩ B = ∅}.
+Write,
+dln ne
+
+Pr(Z ∩ A 6= ∅; Z ∩ B = ∅) =
+D
+
+X
+1
+Pr(Z ∩ A 6= ∅; Z ∩ B = ∅ | t = i)
+D
+dln ne
+i=1
+
+dln ne
+
+=
+
+X
+1
+Pr(Z ∩ A 6= ∅ | t = i) · Pr(Z ∩ B = ∅ | t = i).
+D
+D
+dln ne
+i=1
+
+Here we used that the sets A and B are disjoint, and hence the events {Z ∩ A 6= ∅} and {Z ∩ B = ∅} are
+independent for any fixed t. Now, fix i ∈ {1, . . . , dln ne}.
+Y
+Pr(v is not chosen in Z | t = i)
+Pr(Z ∩ B = ∅ | t = i) =
+D
+
+v∈B
+
+=
+
+Y
+
+D
+
+(1 − (1 − exp(−e−i )))
+
+v∈B
+
+=
+
+Y
+
+exp(−e−i ) = exp(−|B|e−i ) = exp(−eln |B|−i ).
+
+v∈B
+
+Similarly,
+Pr(Z ∩ A 6= ∅ | t = i) = 1 − exp(−eln |A|−i ).
+D
+
+Therefore,
+dln ne
+
+Pr(Z ∩ A 6= ∅; Z ∩ B = ∅) =
+D
+
+X
+1
+Pr(Z ∩ A 6= ∅ | t = i) · Pr(Z ∩ B = ∅ | t = i)
+D
+D
+dln ne
+i=1
+
+dln ne
+
+=
+
+X
+1
+(1 − exp(−eln |A|−i )) · exp(−eln |B|−i ).
+dln ne
+i=1
+
+Note that all terms in the sum are positive, and for i = dln |A|e,
+(1 − exp(−eln |A|−i )) · exp(−eln |B|−i ) ≥ (1 − exp(−e−1 )) exp(−e0 ) ≥
+
+1
+.
+10
+
+The last inequality can be checked numerically. Therefore,
+Pr(Z ∩ A 6= ∅; Z ∩ B = ∅) ≥
+D
+
+1
+.
+10dln ne
+
+This completes the proof.
+We are now ready to finish the proof of Bourgain’s theorem. Recall, that it remains to show that kϕ(u) −
+ϕ(v)k1 ≥ d(u, v)/O(log n) for every u, v ∈ V . Write,
+X
+kϕ(u) − ϕ(v)k1 =
+Pr(Z)|d(u, Z) − d(v, Z)|.
+Z⊂V :Z6=∅
+
+3
+
+D
+
+Observe that for every nonnegative numbers a and b,
+Z ∞
+I(a ≤ r ≤ b) + I(b ≤ r ≤ a)dr,
+|a − b| =
+0
+
+where I(a ≤ r ≤ b) and I(b ≤ r ≤ a) are the indicator functions of the events {a ≤ r ≤ b} and
+{b ≤ r ≤ a} respectively. Using this observation for a = d(u, Z) and b = d(v, Z), we get
+Z ∞
+I(d(u, Z) ≤ r ≤ d(v, Z)) + I(d(v, Z) ≤ r ≤ d(u, Z))dr.
+|d(u, Z) − d(v, Z)| =
+0
+
+Consequently,
+X
+
+kϕ(u) − ϕ(v)k1 =
+
+Pr(Z)|d(u, Z) − d(v, Z)|
+
+X
+
+=
+
+Z ∞
+D
+
+=
+0
+
+0
+
+
+Pr(Z) I(d(u, Z) ≤ r ≤ d(v, Z)) + I(d(v, Z) ≤ r ≤ d(u, Z)) dr
+
+Z⊂V :Z6=∅
+
+Z ∞
+
+I(d(u, Z) ≤ r ≤ d(v, Z)) + I(d(v, Z) ≤ r ≤ d(u, Z))dr
+
+Pr(Z)
+
+Z⊂V :Z6=∅
+Z ∞ X
+0
+
+(1)
+
+D
+
+Z⊂V :Z6=∅
+
+D
+
+
+Pr (d(u, Z) ≤ r ≤ d(v, Z)) + Pr (d(v, Z) ≤ r ≤ d(u, Z)) dr.
+
+Z∼D
+
+Z∼D
+
+Let Ball(u, r) be the ball of radius r around u in the metric space V i.e.,
+Ball(u, r) = {w ∈ V : d(u, w) ≤ r}.
+Then,
+Pr (d(u, Z) ≤ r ≤ d(v, Z)) = Pr (Ball(u, r) ∩ Z 6= ∅; Ball(v, r) ∩ Z = ∅);
+
+Z∼D
+
+Z∼D
+
+Pr (d(v, Z) ≤ r ≤ d(u, Z)) = Pr (Ball(v, r) ∩ Z 6= ∅; Ball(u, r) ∩ Z = ∅);
+
+Z∼D
+
+Z∼D
+
+Note that the balls Ball(u, r) and Ball(v, r) are disjoint if r < d(u, v)/2 and are non-empty for every r ≥ 0
+(simply because u ∈ Ball(u, r) and v ∈ Ball(v, r)). Thus, by Lemma 1.4, for r ≤ d(u, v)/2,
+Pr (d(u, Z) ≤ r ≤ d(v, Z)) + Pr (d(v, Z) ≤ r ≤ d(u, Z)) ≥
+
+Z∼D
+
+Z∼D
+
+1
+.
+10dln ne
+
+Plugging this bound in (1), we get
+kϕ(u) − ϕ(v)k1 ≥
+
+d(u, v)
+.
+10dln ne
+
+This concludes the proof of Bourgain’s theorem.
+
+2 `1 as a positive combination of cut metrics
+We now show that every `1 metric can be represented as a positive combination of cut metrics and, conversely, every positive combination of cut metrics can be isometrically embedded into `1 . Recall, that for
+every subset S ⊂ V the cut metric is defined as follows:
+(
+1, if u ∈ S, v ∈
+/ S or u ∈
+/ S, v ∈ S;
+δS (x, y) =
+0, if u ∈ S, v ∈ S or u ∈
+/ S, v ∈
+/ S.
+4
+
+Theorem 2.1. If the distance function d of a metric space (V, d) can be represented as
+X
+d(u, v) =
+λS δS (u, v)
+S⊂V
+
+for some nonnegative numbers λS (here δS are cut metrics), then (V, d) can be isometrically embedded
+into `1 .
+Proof. We define an embedding ϕ from (V, d) into 2|V | dimensional `1 space. We index the coordinates of
+the host space by subsets S ⊂ V . Let
+(
+λS , if u ∈ S;
+ϕ(u)S =
+0,
+if u ∈
+/ S.
+Then,
+kϕ(u) − ϕ(v)k1 =
+
+X
+
+|ϕ(u)S − ϕ(v)S |.
+
+S⊂V
+
+Observe that |ϕ(u)S − ϕ(v)S | = λS δS (u, v). To verify this equality just consider four cases u ∈ S; v ∈ S,
+u ∈ S; v ∈
+/ S, u ∈
+/ S; v ∈ S, u ∈
+/ S; v ∈
+/ S. Thus,
+X
+kϕ(u) − ϕ(v)k1 =
+λS δS (u, v) = d(u, v).
+S⊂V
+
+Theorem 2.2. For every finite subset X of Rm , there exists nonnegative numbers λS (where S ⊂ X) such
+that for all x, y ∈ X
+X
+kx − yk1 =
+δS (x, y).
+S⊂X
+
+Proof. Let M = max x∈X |xi |. We chose M in such a way that all coordinates xi lied in the range
+1≤i≤d
+
+[−M, M ]. Consider the following random process: Pick a random i ∈ {1, . . . , d}. Pick a random t ∈
+[−M, M ]. Output the set U = {x ∈ X : xi ≤ t}. This procedure defines a probabilistic distribution on the
+set of all subsets of X. We now let
+λS = Pr(U = S)
+P
+and d(x, y) = S⊂X λS δS (x, y). Then, we have
+X
+X
+d(x, y) =
+λS δS (x, y) =
+Pr(U = S)δS (x, y)
+S⊂X
+
+S⊂X
+
+= EU [δU (x, y)]
+= Pr(x ∈ U ; y ∈
+/ U ) + Pr(x ∈
+/ U; y ∈ U)
+= Pr(xi ≤ t < yi ) + Pr(yi ≤ t < xi )
+m
+1 X |xi − yi |
+=
+m
+M
+i=1
+
+kx − yk1
+=
+.
+Mm
+We now rescale λ by M m: we let λ0S = mM λS . For d0 (x, y) =
+kx − yk1 . This finishes the proof.
+
+5
+
+0
+0
+S⊂X λS δS (x, y), we have d (x, y) =
+
+P
+
+

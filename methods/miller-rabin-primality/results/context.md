@@ -1,40 +1,40 @@
-# Context: deciding primality of a large integer quickly and reliably
-
 ## Research question
 
-Given an odd integer `n` with hundreds or thousands of bits, decide whether `n` is prime — fast, and with a controllable, vanishingly small chance of being wrong. The pain point is sharp. Cryptographic key generation (RSA, Diffie-Hellman) needs to draw random primes of, say, 1024 or 2048 bits; a candidate is sampled and must be tested for primality before anything else can proceed, and this happens constantly. The naive test — trial division by all integers up to `sqrt(n)` — costs on the order of `sqrt(n)` operations, which is exponential in the bit-length `log n`. For a 1024-bit `n` that is `2^512` divisions: utterly hopeless. A usable test must run in time polynomial in `log n`.
+Given an odd integer `n` with hundreds or thousands of bits, decide whether `n` is prime — fast, and with a controllable, vanishingly small chance of being wrong. The pain point is sharp. Public-key cryptography needs a steady supply of large primes; a candidate is sampled and must be tested for primality before anything else can proceed. The naive test — trial division by all integers up to `sqrt(n)` — costs on the order of `sqrt(n)` operations, which is exponential in the bit-length `log n`. A usable test must run in time polynomial in `log n`.
 
-Two further constraints shape what "a solution" must look like. First, it must not require factoring `n` — factoring is believed hard, and primality should be decidable without it. Second, because the test will be run on adversarially or randomly chosen inputs billions of times, any failure mode that a whole *class* of composites can exploit is unacceptable: a test that is fooled by a structured family of composite numbers is not reliable, even if it is fast.
+Three further constraints shape what "a solution" must look like. First, it must not require factoring `n` — factoring is believed hard, and primality should be decidable without it. Second, any failure mode that a whole *class* of composites can exploit is unacceptable: a test that is fooled by a structured family of composite numbers is not reliable, even if it is fast. Third — and this is the sharpest constraint, because a fast polynomial-time test already exists (Miller 1976) — the guarantee of correctness must rest on *proven* mathematics, not on an unproven conjecture. Miller's deterministic test is fast, but its correctness is conditional on the extended (generalized) Riemann hypothesis; without that hypothesis there is no proof that its fixed small-base search suffices. A solution must deliver a guarantee that can be proven unconditionally, today.
 
 ## Background
 
 The starting point is **Fermat's little theorem (FLT)**: if `n` is prime and `gcd(a, n) = 1`, then `a^(n-1) ≡ 1 (mod n)`. The left side is computable cheaply: **binary (square-and-multiply) modular exponentiation** computes `a^(n-1) mod n` in `O(log n)` modular multiplications by scanning the bits of the exponent, squaring the running base each step and multiplying in `a` when the bit is set. So FLT gives a fast *necessary* condition for primality, and its contrapositive gives a compositeness proof: if `a^(n-1) != 1 (mod n)` for some `a`, then `n` is composite. Such an `a` is called a **Fermat witness**; an `a` with `a^(n-1) ≡ 1` is a **Fermat nonwitness** (a "Fermat liar" when `n` is in fact composite).
 
-The structural fact that governs how good this test is: for fixed `n`, the Fermat nonwitnesses `{a : a^(n-1) ≡ 1 (mod n)}` form a subgroup of the multiplicative group of units `(Z/nZ)*`. A subgroup is either the whole group or at most half of it. So if the nonwitness subgroup is *proper*, at least half of all `a` are witnesses, and a few random trials catch a composite with high probability.
+The structural fact that governs how good this test is: for fixed `n`, the Fermat nonwitnesses `{a : a^(n-1) ≡ 1 (mod n)}` form a subgroup of the multiplicative group of units `(Z/nZ)*`. A subgroup is either the whole group or at most half of it. So if the nonwitness subgroup is *proper*, at least half of the coprime bases are witnesses, and the non-coprime bases also prove compositeness by sharing a factor with `n`.
 
-The catastrophe is that the nonwitness subgroup is **not always proper**. A **Carmichael number** is a composite `n` for which `a^(n-1) ≡ 1 (mod n)` for *every* `a` coprime to `n`. The smallest is `561 = 3·11·17`; `1105` and `1729` follow. For a Carmichael number the Fermat nonwitnesses are the *entire* unit group, so the only Fermat witnesses are the `a` sharing a factor with `n` — a vanishing fraction. Worse, Carmichael numbers are not rare curiosities: there are infinitely many of them. On a Carmichael `n` the Fermat test, run with random coprime bases, reports "probably prime" essentially always. The test has a class of composites it cannot reliably detect.
+The catastrophe is that the nonwitness subgroup is **not always proper**. A **Carmichael number** is a composite `n` for which `a^(n-1) ≡ 1 (mod n)` for *every* `a` coprime to `n`. The smallest is `561 = 3·11·17`; `1105` and `1729` follow. For a Carmichael number the Fermat nonwitnesses are the *entire* unit group, so random coprime bases never expose the composite at all; only non-coprime bases can do so. This is not an isolated bad input but a structured failure mode: on any Carmichael `n` the Fermat test, run with random coprime bases, reports "probably prime" every time. The test has a class of composites it cannot reliably detect.
 
-Two pieces of number theory point at the fix. First, the **structure of square roots of 1**. Modulo a prime `n`, the equation `x^2 ≡ 1` has only the solutions `x ≡ ±1`: from `x^2 - 1 = (x-1)(x+1) ≡ 0 (mod n)` and `n` prime, `n` must divide one of the factors. Modulo a composite `n` with at least two distinct prime factors, the Chinese remainder theorem (CRT) manufactures *extra* square roots of 1 — for instance modulo `15`, the values `1, 4, 11, 14` all square to `1`. A square root of 1 other than `±1` is therefore a *certificate of compositeness*. Second, the **decomposition `n - 1 = 2^e · k`** with `k` odd (and `e ≥ 1` because `n` is odd). This lets `a^(n-1)` be written as `(a^k)` raised to `2^e`, i.e. as the last term of the chain `a^k, a^(2k), a^(4k), …, a^(2^(e-1)k), a^(2^e k) = a^(n-1)`, where each term is the square of the one before. The polynomial identity `x^(2^e k) - 1 = (x^k - 1)(x^k + 1)(x^(2k) + 1)(x^(4k) + 1) \cdots (x^(2^(e-1)k) + 1)` makes this chain the natural place to look for an unexpected square root of 1.
+Two pieces of number theory point at the fix. First, the **structure of square roots of 1**. Modulo a prime `n`, the equation `x^2 ≡ 1` has only the solutions `x ≡ ±1`: from `x^2 - 1 = (x-1)(x+1) ≡ 0 (mod n)` and `n` prime, `n` must divide one of the factors. Modulo a composite `n` with at least two distinct prime factors, the Chinese remainder theorem (CRT) manufactures *extra* square roots of 1 — for instance modulo `15`, the values `1, 4, 11, 14` all square to `1`. A square root of 1 other than `±1` is therefore a *certificate of compositeness*. Second, the **decomposition `n - 1 = 2^s · d`** with `d` odd (and `s ≥ 1` because `n` is odd). This lets `a^(n-1)` be written as `(a^d)` raised to `2^s`, i.e. as the last term of the chain `a^d, a^(2d), a^(4d), …, a^(2^(s-1)d), a^(2^s d) = a^(n-1)`, where each term is the square of the one before. The polynomial identity `x^(2^s d) - 1 = (x^d - 1)(x^d + 1)(x^(2d) + 1)(x^(4d) + 1) \cdots (x^(2^(s-1)d) + 1)` makes this chain the natural place to look for an unexpected square root of 1.
 
-The group-theoretic background needed to *quantify* reliability: `(Z/nZ)*` has order `ϕ(n)`, and for composite `n` we have `ϕ(n) < n - 1` (some residues are not coprime to `n`). The standard lever for a >50% guarantee is to exhibit the set of nonwitnesses inside a *proper* subgroup; sharpening to >75% requires showing the index of that subgroup is at least 4. CRT, the structure of `(Z/p^α Z)*` (cyclic, of order `p^(α-1)(p-1)`), and the fact that a Carmichael number has at least three distinct prime factors are the tools that carry that sharpening.
+The conceptual lever that lets a test escape dependence on an unproven hypothesis is **randomization**. A probabilistic procedure that flips coins to make its choices need not provide a certain answer on a single run; but if one can prove that, for *every* composite `n`, a *large fraction* of all possible bases expose it, then independent random samples drive the chance of a wrong answer down geometrically — to a controllable, vanishingly small probability. This converts the demand "a fixed short list of bases is *certain* to contain an exposer" (which is what needs GRH) into "a *random* base exposes it with high probability" (which can be proven outright). The cost is a small one-sided error in place of certainty; the gain is an unconditional guarantee.
+
+The group-theoretic background needed to *quantify* that fraction: `(Z/nZ)*` has order `ϕ(n)`, and for composite `n` we have `ϕ(n) < n - 1` (some residues are not coprime to `n`). The standard lever for a >50% guarantee is to exhibit the set of nonwitnesses inside a *proper* subgroup; sharpening to at most 25% nonwitnesses in `{1,…,n-1}` requires either showing index at least 4 in the non-prime-power cases or directly counting the prime-power cases. Removing the two trivial nonwitnesses `1` and `n-1` then gives a strict >75% witness fraction in the sampled range `{2,…,n-2}`. CRT, the structure of `(Z/p^α Z)*` (cyclic, of order `p^(α-1)(p-1)`), and the fact that a Carmichael number has at least three distinct prime factors are the tools that carry that sharpening.
 
 ## Baselines
 
 **Trial division.** Test divisibility of `n` by `2, 3, 5, …, ⌊sqrt(n)⌋`. Correct and deterministic, but `Θ(sqrt(n))` = exponential in `log n`. Useful only as a cheap pre-filter (strip out small prime factors) before a real test. Gap: not polynomial-time.
 
-**Fermat test.** Pick random bases `a`, check `a^(n-1) ≡ 1 (mod n)`; declare composite on the first failure, else "probably prime." Fast — `O(k log n)` modular multiplications for `k` rounds. For *non-Carmichael* composite `n` the Fermat nonwitnesses are a proper subgroup, so at least half the bases are witnesses and `k` rounds give error `≤ 2^(-k)`. Gap: on **Carmichael numbers** the nonwitnesses are the whole unit group, so there is no error bound at all — the test silently passes infinitely many composites. This single failure mode is what a reliable test must remove.
+**Fermat test.** Pick random bases `a`, check `a^(n-1) ≡ 1 (mod n)`; declare composite on the first failure, else "probably prime." Fast — `O(r log n)` modular multiplications for `r` rounds. For *non-Carmichael* composite `n` the Fermat nonwitnesses are a proper subgroup, so at least half the bases are witnesses and `r` rounds give error `≤ 2^(-r)`. Gap: on **Carmichael numbers** the nonwitnesses are the whole unit group, so random coprime bases give no error reduction at all. This structured failure mode is what a reliable test must remove.
 
-**Euler / Solovay–Strassen test.** Strengthen Fermat using the **Euler criterion**: for prime `n` and `gcd(a,n)=1`, `a^((n-1)/2) ≡ (a/n) (mod n)`, where `(a/n)` is the Jacobi symbol. An `a` violating this (or with `gcd(a,n)>1`) is an **Euler witness**. The decisive improvement over Fermat: for *every* composite `n`, the Euler nonwitnesses form a *proper* subgroup of `(Z/nZ)*` — there is no Carmichael-style escape — so at least 50% of bases are witnesses and `k` rounds give error `≤ 2^(-k)` unconditionally. Gaps: it needs Jacobi-symbol machinery (more to implement and reason about), and its guarantee is only the 1/2 bound.
+**Euler / Solovay–Strassen test.** Strengthen Fermat using the **Euler criterion**: for prime `n` and `gcd(a,n)=1`, `a^((n-1)/2) ≡ (a/n) (mod n)`, where `(a/n)` is the Jacobi symbol. An `a` violating this (or with `gcd(a,n)>1`) is an **Euler witness**. The decisive improvement over Fermat: for *every* composite `n`, the Euler nonwitnesses form a *proper* subgroup of `(Z/nZ)*` — there is no Carmichael-style escape — so at least 50% of bases are witnesses and `r` rounds give error `≤ 2^(-r)` unconditionally. Gaps: it needs Jacobi-symbol machinery (more to implement and reason about), and its guarantee is only the 1/2 bound.
 
-**Deterministic-under-a-hypothesis test (Miller 1976).** If one assumes the Generalized Riemann Hypothesis (GRH), a compositeness witness of the relevant kind is guaranteed to exist among the small bases `a ≤ c·(log n)^2` (Bach's explicit form: `a ≤ 2(log n)^2`). Checking all of them then gives a *deterministic* polynomial-time primality test. Gap: correctness rests on an unproven conjecture; without GRH there is no proof that the small-base search suffices.
+**Deterministic-under-a-hypothesis test (Miller 1976).** Miller's base test is the strong path-based one: decompose `n-1 = 2^s d` with `d` odd and accept a base only when `a^d ≡ 1` or some `a^(2^i d) ≡ -1`. Assuming the Generalized/extended Riemann Hypothesis (GRH/ERH), a base exposing any composite is guaranteed to exist among bases bounded by a constant times `(log n)^2`; checking all of them gives a *deterministic* polynomial-time primality test. Gap — and the load-bearing one here: correctness rests on an *unproven* conjecture. Without GRH there is no proof that the fixed small-base search suffices, so the verdict has no unconditional guarantee. This is the dependence a reliable test must remove, replacing a conjecture-dependent certainty with a proven, controllable error probability.
 
 ## Evaluation settings
 
-The natural yardstick is success on inputs where the previous tests are known to be weak, and cost measured in modular multiplications as a function of bit-length. Concrete probe inputs that exist before any new method: the Carmichael numbers `561, 1105, 1729, 2465, …` (where Fermat fails); small odd composites and primes for exhaustive correctness checks; and the explicit hard composites that determine deterministic base sets, e.g. `1373653` (smallest odd composite that the strengthened test fails to expose with bases `2, 3`) and `3215031751` (smallest failing bases `2, 3, 5, 7`). Cost is reported as the number of `O(log n)`-mult modular exponentiations per round times the number of rounds `k`, and as the resulting error probability as a function of `k`. The application setting is random-prime generation for cryptographic key sizes (hundreds to thousands of bits), and 64-bit integers as the regime where a *fixed* finite base set can make the test deterministic.
+The natural yardstick is success on inputs where the previous tests are known to be weak, and cost measured in modular multiplications as a function of bit-length. Concrete probe inputs: Carmichael numbers such as `561, 1105, 1729, 2465, …`, where Fermat's test fails on every coprime base; small odd composites and primes for exhaustive correctness checks; prime powers, where the square-root intuition alone is not enough; and products of several odd prime factors, where CRT creates many square roots of `1`. Cost is reported as the number of modular exponentiations and squarings per random trial, the number of trials, and the resulting one-sided error probability as a function of the trial count. The application setting is random-prime generation for large public-key parameters.
 
 ## Code framework
 
-Pre-method primitives that already exist — fast modular arithmetic and a generic randomized "probably prime" harness with a single empty slot where the per-base test will go:
+A generic randomized primality harness has fast modular arithmetic, a small-factor prefilter, one candidate-preparation slot, and one per-base compositeness slot.
 
 ```python
 import random
@@ -59,19 +59,25 @@ def small_factor_prefilter(n):
             return False           # composite
     return None                    # undecided -> need the real test
 
-def single_base_test(n, a):
-    # TODO: the per-base compositeness check we are about to design.
+def prepare_candidate(n):
+    # TODO: compute any per-candidate data needed by the test.
+    pass
+
+def single_base_test(n, a, state):
+    # TODO: the per-base compositeness check.
     # Returns False if a proves n composite, True if a fails to (n still suspect).
     pass
 
-def is_probably_prime(n, k):
+def is_probably_prime(n, trials=40):
+    if n < 2:
+        return False
     pre = small_factor_prefilter(n)
     if pre is not None:
         return pre
-    # TODO: decompose n-1 to expose the structure single_base_test will exploit
-    for _ in range(k):
-        a = random.randrange(2, n - 1)   # 1 and n-1 will be useless bases
-        if not single_base_test(n, a):
+    state = prepare_candidate(n)
+    for _ in range(trials):
+        a = random.randrange(2, n - 1)   # skip the two trivial bases
+        if not single_base_test(n, a, state):
             return False                  # composite, with certainty
-    return True                           # probably prime; error controlled by k
+    return True                           # probably prime; error controlled by trials
 ```

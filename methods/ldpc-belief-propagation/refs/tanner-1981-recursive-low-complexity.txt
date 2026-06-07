@@ -1,0 +1,1094 @@
+IEEE TRANSACTIONS    ON INFORMATION    THEORY,   VOL.   IT-~?‘,   NO.   5, SEPTEMBER   1981                                                      533
+
+
+
+        A Recursive Approach to Low Complexity
+                         Codes
+                                                    R. MICHAEL TANNER, MEMBER, IEEE
+
+
+
+   A bstruci-   A method is described for constructing long error-correcting           known to be possible, and the simple decoding algorithms
+codes from one or more shorter error-correcting codes, referred to as                  are not even able to take advantage of the full power of the
+subcodes, and a bipartite graph. A graph is shown which specifies carefully
+chosen subsets of the digits of the new codes that must be codewords in
+                                                                                       code. While modifications to both the codes and the decod-
+one of the shorter subcodes. Lower bounds to the rate and the minimum                  ing algorithms can improve the situation (e.g., for product
+distance of the new code are derived in terms of the parameters of the                 codes, [5] and [6]), the improvements increase the complex-
+graph and the subcodes. Both the encoders and decoders proposed are                    ity.
+shown to take advantage of the code’s explicit decomposition into subcodes
+                                                                                          Recursion has been a central concept in a closely related
+to decompose and simplify the associated computational processes. Bounds
+on the performance of two specific decoding algorithms are established,
+                                                                                       field of study: the design and analysis of computer algo-
+and the asymptotic growth of the complexity of decoding for two types of               rithms [7] and complexity theory. The complexity of a
+codes and decoders is analyzed. The proposed decoders are able to mahe                 particular problem can often be understood by showing
+effective use of probabilistic information supplied by the channel receiver,           how the problem can be decomposed into smaller problems
+e.g., reliability information, without greatly increasing the number of                of the same type. For example, an algorithm for sorting a
+computations required. It is shown that choosing a transmission order for
+the digits that is appropriate for the graph and the subcodes can give the
+                                                                                       large unordered list of numbers consists of breaking the list
+code excellent burst-error correction abilities. The construction principles           into smaller lists, sorting each of these, and then merging
+are illustrated by several examples.                                                   the small sorted lists into successively larger sorted lists.
+                                                                                       The analysis of the algorithm then focuses on the work
+                         I.   INTRODUCTION                                             required for the merging process, because it is the merge
+                                                                                       work needed for a given subdivision scheme that ultimately
+T
+      HE EXPLICIT use of recursion in the construction of
+                                                                                       determines the growth of complexity. This same line of
+      error-correcting codes is not new. In addition to the
+                                                                                       attack has proven fruitful in a wide variety of problems.
+myriad construction techniques shown in [I], many well-
+                                                                                           In this paper we introduce a recursive approach to the
+known codes involve construction of a long length code
+                                                                                       construction of codes which generalizes the product code
+from shorter codes. For example, Elias’ product codes are
+                                                                                       construction and suggests that the design of algorithms for
+straightforwardly recursive [2]; the Reed- Muller codes can
+                                                                                       encoding and decoding is amenable to the basic techniques
+also be seen to be a recursive construction when viewed as
+                                                                                       of complexity theory. Long codes are built from a bipartite
+modifications of the basic product code construction [3];
+                                                                                       graph and one or more subcodes; a new code is defined
+and similarly Fomey’s concatenated codes are another
+                                                                                       explicitly by its decomposition into shorter subcodes. These
+variation on the recursive theme of product codes, al-
+                                                                                       subcodes are then used by the decoder as centers of local
+though there is no apparent advantage to more than one
+                                                                                       partial computations that, when performed iteratively, cor-
+stage of recursion within his framework [4]. It is note-
+                                                                                       rect the errors. The decoding algorithms we propose gener-
+worthy that in all of these constructions the conceptual
+                                                                                       alize and unify the decoding schemes originally presented
+simplicity of the recursion goes hand in hand with a
+                                                                                       by Elias for his product codes and those of Gallager’s
+simplicity in the computational process required for their
+                                                                                       low-density parity-check codes [8, pp. 4 1- 521. Correspond-
+implementation. Although the threshold decoder for the
+                                                                                       ingly, the asymptotic growth rate is also comparable to that
+Reed-Muller codes can tend to hide the recursive struc-
+                                                                                       of these two low-complexity schemes. This paper provides
+ture, in all three of these techniques the conceptual decom-
+                                                                                       a proof of a relatively weak lower bound on the minimum
+position of the recursion leads to a corresponding simplify-
+                                                                                       distance of the block code constructions and a related
+ing decomposition of the computational process. Unfor-
+                                                                                       decoding algorithm’s correction abilities, but our study of
+tunately, all three would likewise appear to testify that
+                                                                                       short codes indicates that these low-complexity codes can
+simplicity comes with a certain price; the decomposition
+                                                                                       have minimum distances as great as those of the best-known
+that affords the simplicity appears to prevent the long
+                                                                                       codes, and that simple algorithms can correct the errors
+versions of the codes from being of the quality that is
+                                                                                       effectively. Furthermore, the proper choice of the transmis-
+                                                                                       sion order for the bits can guarantee good performance
+  Manuscript received January 17, 1979; revised September 8, 1980. This                against burst errors or a mixture of burst and random
+work was supported in part -under a grant from ihe Faculty Research                    errors. The decoding by iteration of a fairly simple basic
+Committee of the Universitv of California. Santa Cruz. CA.
+  The author is with the Bbard of Compiter and Information Sciences,                   operation makes the suggested decoders naturally adapted
+University of California, Santa Cruz, CA, 95064.                                       to parallel implementation with large-scale-integrated cir-
+                                                 0018-9448/81/0900-0533$00.75                   01981 IEEE
+534                                                       IEEE TRANSACTIONS       ON INFORMATION        THEORY,   VOL.       IT-27, NO.   5, SEPTEMBER   1981
+
+
+cuit technology. Since the decoders can use soft decision                                     Subcode I                  Subcode 2
+                                                                          Subcode    nodes
+information effectively, and because of their low computa-
+tional complexity and parallelism can decode large blocks
+very quickly, these codes may well compete with current                Digit nodee
+convolutional techniques in some applications.                                           201021
+
+                                                                                  Subeode I                                            Subcode 2
+                 II.   CODE CONSTRUCTION
+
+   A new code is formed from a bipartite graph and one or
+more codes of shorter length, which will be referred to as
+subcodes. A bipartite graph is one in which the nodes can
+be partitioned into two disjoint classes. An edge of the
+graph may connect a node of one class to a node of the
+                                                                   A
+                                                                   2          I      0        I        2
+                                                                                                                         A
+                                                                                                                         0         I        0      2      I
+
+
+other class, but there are no edges connecting nodes of the                                       Fig. 1. Code definition.
+same class. To define the new code, all of the nodes of one
+class are associated with digits of the code; all the nodes of
+the other are associated with a subcode whose length is the       and binary digits will of course yield a circuit code, since
+same as the degree of the node. Each of the edges incident        each digit node then is connected to only two subcodes and
+on a subcode node is assigned a unique position number            can serve to identify a single edge between the two [9, pp.
+between one and n, the length of the associated subcode. It       136- 1381.
+is then natural to think of the digits to which each subcode          When all of the subcodes are simple binary parity checks,
+node is connected as forming a word in that subcode, with         there is obviously no need to assign position numbers to
+                                                                  each of the bits in a subcode, as each of the subcodes is
+each digit assigned the position in each subcode corre-
+                                                                  invariant under arbitrary permutation of its bits. Generally
+sponding to the label of the connecting edge. This defines
+                                                                  this is not the case, and the assignment of position num-
+the words in the new code: a pattern of digits is a code-
+                                                                  bers is of critical importance in determining both the rate
+word if and only if the digits connected to each subcode
+                                                                  and the minimum distance of the code. A straightforward
+form a word in the subcode. The code is thus specified by
+                                                                  graph representation of .a BCH code will serve to demon-
+requiring that particular permutations of subsets of the
+digits be codewords in the subcodes. This is illustrated in       strate the potential difficulty of the assignment problem. A
+Fig. 1.                                                           primitive binary BCH of prime length can be specified by
+                                                                  requiring that all codeword polynomials have as roots
+   Without further restriction, this definition is too broad
+to be meaningful. Given the parity-check matrix of an             several successive powers of (11,where ~1 is a primitive
+arbitrary linear code, it is easy to construct a correspond-      element of GF (2”) and 2” - 1 is prime. For the purpose
+ing bipartite graph by identifying each row with a subcode        of defining a graph, each of the roots can be viewed as a
+node, each column with a digit node, and creating an edge         subcode that checks all the bits. Since the codelength is
+in the graph for every nonzero matrix entry. This mapping         prime, all of the subcodes are simply Hamming codes, but
+of a code to a graph also serves to point out that the graph      the position numbering is different for each root. Thus the
+corresponding to a code is not unique. Different matrices         codeword must be a word from a Hamming code under as
+defining the same code lead to different graphs.                  many different permutations as there are nontrivial roots.
+   By placing restrictions on the form of bipartite graphs        Clearly in this case the entire question of code rate and
+and on the subcodes, it is easy to move beyond this trivial       minimum distance rests on understanding the effect of
+interpretation. The central idea is to use the graph to           different position number assignments. The form of the
+structure the equations defining the code in a way that           graph alone gives little insight.
+facilitates encoding and decoding. To start the exploration           The impact of a natural graph representation is more
+of the effect of different restrictions, we first consider         evident in the case of the standard product code construc-
+graph interpretations of three well-known coding schemes           tion. A codeword of length n, n2 is formed as an n, by n2
+- low-density parity check codes, Bose- Chaudhuri-                 rectangular array of digits where each row is a codeword of
+Hocquenqhem (BCH) codes (see e.g., [9, pp. 269-309]),              a code of length n2, and each column is a codeword of a
+and product codes-and       some related examples.                 code of length n,. To form a corresponding graph, create
+   An appealing uniformity is obtained by requiring that           n, subcode nodes of degree n2, one for each of the row
+the graph be regular. Let the degree of every digit node be        constraints, and n2 subcode nodes of degree n ,, one for
+a constant j and the degree of every subcode node a                each of the column constraints. The node corresponding to
+constant k. By letting each of the subcode nodes represent         each digit is then connected to two subcode nodes, one for
+a simple parity check, the graph defines a low-density             its row and one for its column. This is demonstrated in
+parity-check code. Note that if as the name impliesj and k         Figs. 2 and 3 using the product of two [7, 4, 31 Hamming
+are very small compared to the number of digit nodes (the          codes.’ The usual proof that the minimum distance of the
+length of the code), the graph corresponds to a sparse               ‘Following the notation of [I], a linear code will be denoted by a
+parity-check matrix. Further restriction to the case j = 2        3-tuple, [n, k, d,,].
+TANNER:   LOW   COMPLEXITY       CODES                                                                                                                       535
+
+
+
+
+Fig. 2.   Standard [49, 16, 91 product code from [7, 4, 31 Hamming code.
+                                                                              Fig. 4.    The bipartite graph as two rings of seven subcode nodes.
+                             n
+
+
+                                                                                                                         m Fvsitlon
+                                                                                                                          NWtlbWS
+                                                                                                                         I234567
+                                                                                                                                                CC&
+
+                                                                                                                                                [49X69]
+
+
+                                                                                                                                                [49,12. I4
+
+
+
+
+                  Fig. 3. Associated bipartite graph.                                                                                           [w, 171
+                                                                                Bit Position Number of
+                                                                                the connected bit
+
+
+                                                                                  Fig. 5. The effect of different bit position assignments,
+product code must be at least as great as the product of the
+minimum distances of the two constituent codes may now
+be rephrased in graph terms. Suppose two codewords differ
+in at least one digit. That digit is connected to one column                                                             Bit pOsition
+
+subcode node, which implies because that subcode has                                                                   I234567
+
+minimum distance d,, that the two codewords differ in at                                                              [bI!f        j yi]   Outer&codes
+least d, of the digits connected to that subcode node. These
+in turn are connected to at least d, different row subcode
+nodes; each of these has minimum distance d, and no two                                                               188      b 7 / {     Centersubcodes
+
+of them are connected to the same bit. Thus the codewords
+must differ in at least d,d, digits. The point that we wish to
+emphasize is that this is a consequence of the properties of                                         Fig. 6. A [28, 9, IO] code.
+the graph. This lower bound on minimum distance holds
+independently of the particular position assignments of the                 step further, let us now consider a simple example that
+digits in each subcode. The product code construction of                    starts from a different graph.
+course specifies position assignments for all of the digits,                  A complete graph on 8 nodes has 28 edges, one connect-
+but the lower bound on the distance would be valid for any                 ing every pair of nodes. From this we create a bipartite
+of the myriad possible assignments.                                        graph by replacing each edge with a bit node and two
+   To demonstrate the effect of different assignments, con-                edges so that there is now a unique bit node connected to
+sider once again the example of the product of two [7,4, 31                each pair of nodes, which can then serve as subcode nodes.
+binary Hamming codes. Starting from the bipartite graph                    Since the subcode nodes have degree seven, associate each
+of Fig. 3, we arrange it so that it appears as two rings of                with a [7, 4, 31 Hamming code. Of the many possible ways
+seven subcode nodes with a bit node between every pair of                  of assigning bit positions, those with some natural symme-
+top and bottom nodes as shown in Fig. 4, and impose the                    try seem most appealing. The code shown in Fig. 6 is built
+condition that the subcode position assignments have cir-                  with the graph in the form of a spoked wheel; the hub
+cular and reflexive symmetry so that rotating the graph                    subcode is the cyclic Hamming code, and the rest of the
+about its axis or reflecting about the midplane does not                   assignments have circular symmetry. It produces a [28, 9,
+change the relationship between the bits and the subcodes                   lo] code, matching the best-known code [ 1, p. 6761.
+at any position. The code will then be specified by choos-                    As both the modified product codes and the standard
+ing one of the 7! possible position assignments for the                    BCH code demonstrate, the choice of position assignments
+seven bits connected to a particular subcode node. Many                    in the subcodes can dramatically affect the parameters of
+of these choices will yield equivalent codes, obviously. Fig.              the resulting code. This paper will focus, however, on those
+5 gives three assignments yielding markedly different codes:               code properties that are derivable from the graph parame-
+the cyclic Hamming code assignment leads to the standard                   ters and the subcode minimum distance. Although the
+[49, 16, 91 code; the next gives a [49, 12, 161code; the third             bounds on the code rate and minimum distance that result
+gives a [49, 7, 171code. A comparable best-known code has                  are weak when compared for example to the comparable
+parameters [49, 12, 171 [l, p. 6781. Note further that the                 BCH bounds, the computational properties of the algo-
+largest minimum distance far exceeds the lower bound of                    rithms we will present could make these codes attractive
+nine guaranteed by the graph properties alone. Moving one                  nonetheless. Convolutional codes in current use are simi-
+536                                                          IEEE TRANSACTIONS          ON INFORMATION           THEORY,       VOL.   IT-27, NO. 5, SEPTEMBER    1981
+
+
+larly weak in terms of rate and minimum distance, but                parity-check matrix for a total of (n - k)S. These equa-
+their computational properties make them of practical im-            tions may not be linearly independent. Therefore
+portance. Moreover the evidence provided by short codes                             R r (n/m)S            - b - k)S
+suggests that it is the graph-based bounds that are weak,
+                                                                                                         Wm>S
+not the codes. Future work may well establish tighter
+bounds.
+                                                                                                             n-k
+   For the sake of the discussion of encoding and transmis-                               =1-m               7                 = 1 - m(1 - r).
+sion order we need more complete knowledge of the code                                                   (                 )
+structure than is provided by graph parameters and sub-              As an illustration of this simple theorem, consider the
+code minimum distance alone. The following class of codes            codes shown in Fig. 5. The digit nodes of this graph have
+will be used to demonstrate several techniques.                      degree two, so that the rate of these codes must be greater
+                                                                     than 1 - 2(1 - 4/7) = l/7, which is achieved by the [49,
+Field Plane Hexagon Codes                                            7, 171 code.
+                                                                        A lower bound on the minimum distance of the code can
+   The projective plane PG(2, q) [ 10, p. 61 has (q3 - l)/(q         be derived from the minimum distance of the subcode and
+- 1) lines and an equal number of points. We create a                the girth of the bipartite graph. Note that the girth of a
+subcode node for each point P and one for each line L,               bipartite graph must always be even.
+and a bit node for each point-line pair (P, L). A bit node
+(P, L) is connected in the obvious way to subcode node P                Theorem 2-Tree      Bound on Minimum Distance: Let d
+and subcode node L. The resulting graph is a generalized             be the minimum Hamming distance of the single subcode
+hexagon [ 11, pp. 300- 3051. It can be presented as a double         acting at all subcode nodes, D be the minimum Hamming
+ring similar to Fig. 4 with all point subcode nodes in the           distance of the resulting code, m be the degree of the digit
+top ring and all line subcode nodes in the bottom: let (Ybe          nodes, and g be the girth of the bipartite graph. Then
+a primitive element of GF(q3) represented by a vector
+                                                                           D 2 d [(d - l)(m - l)](g-2)‘4 - 1
+a E IF3,lF = GF(q). A point of PG(2, q) is a one-space of
+F3, i.e., {y(~ y E IF}. Consequently the distinct points of                                  (d - l)(m - 1) - 1
+PG (2, q) can be cyclically indexed by (Y~,i = 0, 1, - . a, t - 1,
+with t = ((q3 - l)/(q - 1)) (a’ is a primitive element of                         + & [(d - l)(m - 1)](g-2”4,                                  for g/2 odd,
+F) to form the top ring. Similarly, let /I E IF3correspond to
+                                                                                                                                                                (34
+a particular line in PG (2, q) and let A be the 3 X 3 matrix
+over IF that is the companion of cw;that is, Ay = (ay) for                 DI d[@- l>(m- 01g’4- 1
+some y E GF(q3). The line in the bottom ring below the                          (d- l)(m- 1)- 1 ’ forg/2even*
+point (Y~is then B@, B = (AT)-‘. Incidence in PG(2, q)
+can be defined via the dot product operation in IF3; namely,                                                                                                    (3.3)
+point a, is incident on line fl, whenever (Y: .&, = 0. The                 Proof: Suppose two codewords differ in a digit con-
+double ring presentation is circularly symmetric because if          nected to a particular subcode node. Arrange the graph in
+(Y:-& = 0, then (AiaJT*(Bi&) = aT(A=)‘B’P, = a:-&                    the form of a tree with that subcode as root, as shown in
+= 0. Since each subcode has q + 1 incident bits, this graph          Fig. 7. The two codewords must differ in at least d digits at
+can be combined with any code of length q + 1 to produce             the highest digit level. The minimum distance of the sub-
+a code of length (q + 1)(q3 - l)/(q - 1).                            code nodes at the next level down ensures that, descending
+                                                                     to the next digit level, the codewords will differ along
+                   III.   CODE PROPERTIES                            d(d - l)(m - 1) branches. If all of these edges do not
+                                                                     connect to distinct digit nodes, it implies that there is a
+   The properties of the bipartite graph alone can be used
+                                                                     cycle of length six. If the graph has girth greater than six,
+to guarantee lower bounds for the code rate and minimum
+                                                                     this next level of digits must have at least d [( d - l)( m - l)]
+distance. Obtaining a bound on rate is easy if all of the
+                                                                     digits where the codewords differ. The number of differing
+subcodes are linear, implying linearity of the resulting
+                                                                     digits increases by a factor of (d - l)(m - 1) at each new
+code.
+                                                                     digit level, until at least a depth equal to g/2. If g/2 is
+   Theorem I: Let R be the rate of a linear code con-                odd, the first level where differing branches may join to
+structed from a bipartite graph whose digit nodes have               form a cycle is a digit level, and each of these digits may
+degree m and whose subcode nodes have degree n. If a                 terminate m different branches. This leads to the factor of
+single linear subcode with parameters (n, k) and rate r =            l/m in the last term. Summing the differing digits over all
+k/n is associated with each of the subcode nodes, then               the levels yields
+                    R 2 1 - (1 - r)m.                (3.1)                    (r-6)/4
+
+      Proof: Suppose there are S subcode nodes in the                Did         ,zo         [(d-    l>(m-             l,]’
+
+graph. Then the code must have (n/m)S digits, since each
+digit node is connected to m of the (n)S edges in the graph.
+                                                                                                         +i[(d-                  l)(m - l)](g-2”4               (3.4
+Each subcode node contributes n - k equations to the
+ TANNER:    LOW   COMPLEXITY     CODES                                                                                         537
+
+    Depth
+                                                                     can be used as the root of the tree of Fig. 7 and the tree
+      0
+                                                                    will contain all the nodes at depth g/2 - 1 or less.
+      I                                                                Fortunately the existing literature provides many avenues
+      2                                                             for constructing regular graphs satisfying the girth condi-
+                                                                    tion approximately if not precisely. By inserting digit nodes
+                                                                    in the edges of a Moore graph [ 121or of a graph based on a
+                                                                    generalized polygon [ 11, pp. 300-3051, bipartite graphs
+                                                                    with digit node degree two that satisfies the condition
+                                                                    exactly can be obtained at a variety of sizes and girths.
+                                                                    Although this mathematical approach cannot furnish non-
+                                                                    trivial graphs with girths greater than 32 and t = [g/2],
+                                                                    this poses no particular obstacle from a practical point of
+                                                                    view. The field plane hexagon of Section II has a girth of
+            A first cycle formed y
+                                                                    only 12, yet can easily produce codes longer than current
+                  Fig. 7. Tree bound on minimum distance.           applications require.
+                                                                       An algorithmic attack on the graph construction prob-
+                                                                    lem is also possible. Using the matrix equivalent of the
+for g/2 odd and
+                                                                    code graph, Gallager provided a construction to guarantee
+                           (g--4)/4                                 independent decoding iterations for his low-density parity-
+                   D>d          x        [(d-l)(m-l)]i      (3.5)   check codes [8, pp. 91-991. The first 1g/2 - l] iterations
+                               j=O
+                                                                    are independent, and so his construction is precisely
+for g/2 even, which reduce to the expressions given.                addressed to the issue of achieving a large girth for a given
+                                                                    graph diameter. His construction will only ensure a girth
+   It is possible to derive a different bound by using a digit
+                                                                    approximately equal to the diameter, however. Given the
+as the root, but the given bound will always be better so
+                                                                    exponential dependence of length on girth, his construction
+long as d L m + 2. It is interesting to note that this bound,
+                                                                    yields graphs much weaker than those of the generalized
+which is closely related to arguments used by Gallager [8,
+                                                                    polygons.
+pp. 18-201, reduces to the bound satisfied by the product
+code construction when the graph has girth eight.
+   Unfortunately the bound is relatively weak. While the                                  IV.   ENCODING
+distance D grows exponentially with the graph girth, so                The form of the best encoder for a code of this type will
+does the code length N. Looking again at the tree, it is easy       necessarily depend on the specific graph, subcodes, and
+to see that                                                         position assignments. Nevertheless, fairly general consider-
+                                                                    ations enable us to conclude that the complexity of encod-
+                   N 1 n [(n - Mm - 111g’4- 1
+                                                            (3.6)   ing can be made at least comparable to the complexity of
+                                (n - l)(m        - 1) - 1
+                                                                    encoding normal cyclic codes, for example.
+for g/2 even. Consequently this bound alone does not                   For linear codes, of course, the linearity alone guarantees
+prevent the ratio of minimum distance to code length from           a relatively simple algorithm; solving the defining equation
+approaching zero as the girth of the graph is increased.            H *C = 0 for the parity check digits can be done in fewer
+    The bound of Theorem 2 will be strongest if the length          than K(N - K) multiplications and a like number of
+of the code achieves equality in (3.6), thereby minimizing          additions. The H matrix of a recursively defined code is
+the length for a fixed lower bound on the minimum                   sparse, and thus parallel algorithms for sparse matrices can
+distance. Then all digits in the code are contained in the          be used to solve this equation [ 131. With a cyclic code the
+tree of Fig. 7 when it is extended to the level where the first     null matrix has a simple representation, each row being a
+cycle is formed. For such a graph, the graph diameter,              cyclic shift of a fixed row, which permits a single shift
+which is the length of the path connecting the most distant         register with fixed connections to carry out the computa-
+pair of nodes in the graph, is t = [g/2]. The girth of an           tions. The same strategy can be employed to good end with
+undirected bipartite graph must always satisfy g I 2t + 1,          many of the recursively defined codes. What is required is
+as the following argument shows: let vi and v2 be two               that the code be invariant under a group of automorphisms
+nodes in the graph for which the shortest path has length t,        sufficiently powerful to carry one codeword into an orbit
+and let v3 be the first node encountered on another path            which includes a basis for the code space. Encoding can
+from v, to v2. By definition of the diameter, the minimum           then be implemented using registers which are wired to
+path from v3 to v2 must have length less than or equal to t.        carry out the necessary transformations. Both generator
+Clearly this path cannot include v2. Therefore there is a           matrix and null matrix versions of this concept will be
+cycle from v, to v2 to v3 and back to v, of length less than        discussed in the context of an example in Section VIII.
+or equal to 2t + 1. The condition t = [g/2] is therefore a             Another avenue to the implementation of encoders ex-
+fairly stringent requirement on the graph. With a graph             ploits the subcode constraints directly to reduce the re-
+satisfying this requirement, however, any node in the graph         quired computation. The key idea is to use the subcode
+538                                                      IEEE TRANSACTIONS    ON INFORMATION        THEORY,   VOL.      IT-27, NO.   5, SEPTEMBER   1981
+
+
+constraints to propagate the solution to the constraint
+equations across the graph. The normal [n2, k2, d2] prod-
+uct code can be encoded in two steps using k subcode
+encodings followed by n subcode encodings. The following
+theorem shows a similar propagation algorithm that can be
+used in some of the field plane hexagon codes introduced
+in Section II.
+   Theorem 3: Given an [n, k, d] subcode, there exists an
+assignment order in the nodes of a field plane hexagon
+such that knowledge of k(k - 1)n + k bits can be used to
+encode a codeword in five steps using fewer than 2((n -               0 “Line” Subcodes                       -         Specified bit
+                                                                      0 “Point” Subcodes                      -*-       Computed bit
+1)3 - l)/(n - 2) subcode encodings.
+      Proof: Fig. 8 exhibits a field plane hexagon in tree                                     Camputotkml        Stages:
+form with. the subcode nodes corresponding to lines in                               -w-D+--
+PG (2, q) indicated by squares, those corresponding to                                I st   2 nd      3rd        4th    50 h
+points indicated by circles. The encoding can proceed in                           Fig. 8. Encoding a field plane hexagon code.
+five steps.
+   ,l) An information set of k bits is specified in the top
+subcode and it is encoded.
+   2) An additional (k - 1) specified bits are chosen to        to permit propagation of the solution by localized subcode
+complete the information set for each of the k line sub-        computations.
+codes at depth one that share a specified bit with the top
+subcode, and they are encoded.                                               V.   TRANSMISSION ORDER FOR THE DIGITS
+   3) An additional (k - 1) specified bits are chosen to           Thus far the digits of a recursively defined code have
+complete an information set for each of the k(n - 1) point      been treated only as corresponding to the unordered digit
+subcodes that share a bit with the encoded subcodes of          nodes of the graph, with the desirability of one order over
+step 2), and they are encoded.                                  another influenced simply by the encoder design. If the
+   4) By the axioms for a projective plane satisfied by         errors introduced by the channel tend to occur in bursts,
+PG(2, q), each of the line subcodes at the bottom of the        however, the specific order of transmission becomes an
+tree is connected via a unique point subcode with each of       important issue because it greatly affects the ability of the
+the k line subcodes of step 2) at depth one. Thus each of       decoder to correct such burst errors.
+the bottom subcodes has k incident bits that are either            Assuming that the code is based on subcodes with a
+specified or computed in step 3). There exists an assign-       certain minimum distance of their own, it is clear that the
+ment order such that they form an information set in each,      subcode structure alone provides for a large distance be-
+and the bottom subcodes can thus be encoded.                    tween any two codewords which differ in many subcodes.
+   5) Each of (n - k) (n - 1) point subcodes at depth two       Consequently, an auspicious transmission order is one
+then have (n - 1) incident bits computed in step 4) and         which causes errors occurring in bursts to appear as low
+the last remaining bit in each case can be encoded.             weight errors in a large number of subcodes. Even if the
+The total number of specified bits is, from the first three     subcodes themselves are designed to operate against purely
+steps, k + k(k - 1) + k(n - l)(k - 1) = k(k - 1)n + k.          random errors, following this strategy will enhance the
+There are 2(( n - 1)3 - l)/(n - 2) subcode nodes in the         burst error correction abilities of the new code. If, in
+graph; all but (n - k) at depth one are encoded at some         addition, the subcodes themselves have superior burst error
+stage, although for those encoded in step 5), only one bit is   correction properties, the transmission order should make
+computed.                                                       a burst of errors appear as many correctable bursts in the
+   The need for a particular assignment order occurs only       subcodes. This will be important for a code defined with
+in the fourth step. If the k bits incident on a bottom          multiple stages of recursion, since the subcodes of the last
+subcode do not form an information set, it means that           stage will be a smaller recursively defined code with
+some of the specified bits could not have been freely           guaranteed strength against burst errors. Since in general
+chosen and that additional bits in that subcode may have        the order must be matched to both the graph and the
+to be specified for the encoding to be complete. For an         subcode, the field plane hexagon construction will be used
+arbitrary assignment, the set of known bits consisting of       to illustrate the general strategy.
+true information bits and possibly some generally com-
+puted bits, may have to be slightly larger.                        Theorem 4: A subcode of length n capable of correcting
+   This basic strategy can be adapted to a wide variety of      all bursts of length b or less can be used in a field plane
+graphs and subcodes. The subtlety lies in deducing from         hexagon to produce a code of length n((n - 1)3 - I)/(n
+the graph and the specific properties of the subcodes the       - 2) capable of correcting all bursts of length b((n - 1)3
+minimum amount of globally computed information needed          - I)/(n - 2) or less.
+ TANNER:   LOW   COMPLEXITY    CODES                                                                                           539
+
+         Proof Let bits incident on the point subcode corre-       of them as being carried out by a parallel architecture:
+ sponding to (Y, = 1 be labeled arbitrarily zero to n - 1 and      each subcode node in the graph has associated with it a
+ those incident on any other be given the labeling induced         special processor capable of executing a specific decoding
+ by circular symmetry; that is, if the bit between (Y, and /3,     procedure for the subcode at that node; each digit node
+ azfl= 0, is labeled j, the edge between A’a, and B’j3 is          has associated with it one or more registers accessible by
+ likewise. A bit in the graph can then be indexed by (j, i),       the subcodes checking it and a processor for updating the
+j = 0, 1; **,n- l,andi=O,l;+.          ,t - 1, (t = (n - 1)3 -     contents of the digit’s registers. With the exception of a
+  I)/(n - 2)). Assign a bit position in each subcode accord-       central control that sequences and coordinates the execu-
+ ing to labelj. Transmit the bits in lexicographical order on      tions at each node, the processors are autonomous and
+ \t i), i.e., to, 01, to, 11,*- *,a t - 11, (LO); *-41, t -        perform the computation solely on the contents of registers
+      . **,(n - 1, t - 1). Obviously any burst of length b((n      they access.
+  -’ 1)3 - l)/(n - 2) or 1ess will cause a burst of length b or       The first procedure generalizes the original product code
+ less in each subcode. If each subcode corrects errors in its      decoding procedure. There is a single register for each digit
+incident bits according to the subcode burst correction            which contains a current best estimate for that digit. Ini-
+procedure, the entire burst will be corrected.                     tially each register is loaded with the estimate for that digit
+                                                                   supplied by the channel receiver. The central control then
+   The graph in this case provides perfect interleaving for
+                                                                   requests each subcode processor, one by one in some
+the point subcodes alone and for the line subcodes alone.
+                                                                  prescribed order, to attempt to correct any .errors in the
+The advantage of the graph structure is that the same
+                                                                  bits as perceived by that subcode. Each processor may
+memory is simultaneously organized to correct random
+                                                                  change some digits, and the next subcode processor will
+errors as well.
+                                                                  operate on the new digits. The entire cycle of corrections
+   An analogous order for a complete graph is given in
+                                                                  may be repeated a fixed number of times or terminated
+Section VIII,
+                                                                  earlier if no digits are changed.
+                                                                      In the second class of algorithms, there are multiple
+                              VI.      DECODING
+                                                                  registers for each digit containing different estimates of the
+    The principal objective of defining the codes in terms of     digit. There are two phases to the procedure. In the first,
+ explicit subcodes is to reduce the complexity of the decod-      each subcode node processor receives a digit value from
+ ing process to provide high quality codes that can be            one of the registers of each of the digits it checks. Based on
+ decoded effectively by a computational process whose             those values the subcode processor computes corrections to
+ complexity grows only very slowly with increasing code           be made, and returns a “corrected” value for each digit to
+ length at fixed code rate. Given the close relationship          the corresponding digit register. In the second phase, the
+ between our codes and both product codes and low-density         contents of all of the digit registers for each digit are
+parity-check codes, it is not surprising that the decoding        updated by a computation based only on the contents of
+ algorithms we propose blend themes present in those earlier      the registers for that digit. For example, this could be a
+works. The crucial concept is the following: low complexity       threshold operation where all of the registers are set to the
+error-correction for the recursively defined code is achieved     value occurring most frequently among the “corrected”
+by the decomposition of the entire decoding process into          values returned by the subcodes, or each register could be
+an ensemble of independent partial decoding processes             determined by a vote of all the other registers. The two
+carried out, usually iteratively, by each of the constituent      phases are then alternated for a prescribed number of
+subcodes. Information is passed from one subcode to               iterations. The final value for each digit is determined by a
+another only through statistics associated with a digit they      vote of all associated registers.
+have in common.                                                       To illustrate with a specific algorithm of this type, con-
+    Before moving to the exposition of the more involved          sider a graph of girth g where all bit nodes have degree
+error-correction procedures, the use of a recursively defined     two, all subcodes have degree 2” - 1, and each subcode
+code for detection warrants a brief comment. Since the            node has associated a binary Hamming code of length
+codewords are defined to be any set of digits satisfying all      2” - 1. There are three registers for each bit, one which
+of the subcode relations, the correctness of a codeword can       stores the initial received value of the bit during the entire
+be verified by simply verifying that all of the subcode           decoding process, and one for each of the two subcodes
+constraints are satisfied. This in turn merely requires an        checking the bit.
+error detection check for each of the subcodes. Thus detec-           Algorithm A: All three registers are initially loaded with
+tion for the new code is no more difficult than the sum of        the received value of the bit. During the first phase, each
+the detection operations for all of the defining subcodes.        subcode takes in both a vector representing the initial
+   The underlying concept of decomposing the decoding             values of all incident bits and a vector of the values
+process can be embodied in a variety of algorithms. To give       currently in its own bit registers. It then calculates an
+some idea of the range of possibilities, we will present three    updated vector of values to be returned to its registers as
+types of algorithms of increasing sophistication that incor-      follows: the initial value of each bit is used along with the
+porate aspects of product code decoders and probabilistic         current values of all other bits to form a codeword; if the
+low-density parity-check decoders. It will be useful to think     single error correction procedure for the Hamming code
+540                                                      IEEE TRANSACTIONS     ON INFORhlATION      THEORY,    VOL.   IT-27,
+                                                                                                                          NO. 5,SEPTEMBER   1981
+
+indicates that the initial value is incorrect, then the up-      coder of low-density parity-check codes, remedies this de-
+dated value is the complement of the initial value; if the       ficiency by using registers which carry probability esti-
+correction procedure indicates that either ,the word is cor-     mates for the value of the associated digit.
+rect or some other bit is in error, then the updated value is        For clarity of exposition we will present the algorithm
+the initial value unchanged. This is carried out for every       for the binary case with digit degree three. At each bit node
+subcode in the code. Then for each bit the bit register          there is one register that stores a hard decision value for
+values coming from the two subcodes are simply inter-            the received bit and another that stores the probability that
+changed, so that the result of one subcode’s correction is       value is wrong based on information from the receiver. In
+used in the next correction of the other. The two phases are     addition there is a separate probability register for each
+alternated for I( g - 2)/4] iterations. The final decoded        subcode that checks the bit. These registers are initially
+value of a bit is the value in the two subcode registers when    loaded with the probability of bit error from the channel.
+they agree, and the initial value when they disagree.            At the start of the process each subcode calculates a
+   Algorithm A obviously unites principles from both prod-       syndrome using the hard decision bit values. This syn-
+uct codes and low-density codes (see, specifically, [8, pp.      drome is saved to be used throughout the process. As
+47-521). It is probably not surprising then, that the proba-     before, multiple iterations of a two-phase process carry
+bility of error in a bit can be made to go to zero asymptoti-    statistically independent information across the graph. The
+cally.                                                           computations which take place during a single iteration are
+                                                                 shown in Fig. 9. The underlying theory is the following.
+   Theorem 5: Any code based on a bipartite graph with
+                                                                 Let pi be the probability, supplied by the receiver, that the
+bit node degree two, subcode node degree 2” - 1, and the
+                                                                 original hard decision for bit i is in error. Let pi, be the
+length 2” - 1 single-error correcting Hamming code can
+                                                                 updated probability that the bit is in error given three
+be decoded by Algorithm A with bit error probability
+                                                                 statistics: first, pi; second, the current calculated probabili-
+approaching zero as the girth of the graph approaches
+                                                                 ties of error for all the bits in all the subcodes except the
+infinity when used on a binary symmetric channel with
+                                                                 first (those labeled b, through b,, in Fig. 9); third, the
+crossover probability q if q < l/(2”’ - 2).
+                                                                 original computed syndrome si, for all the subcodes except
+      Proof: Starting with an arbitrary bit as root, draw the    the first (s2 and s3 in Fig. 9). Then using Bayes law,
+code as a tree with that bit as root at the top. The nodes at                               Pr (bit i in error] S, , S, ) Pr ( S, , S, )
+                                                                         Pi1        -
+even depths of the tree are other bits in the code. Looking
+                                                                       ’ - Pi1           Pr (bit i not in error] S,, S,) Pr (S,, S, )
+first at the bits at depth 2 [g/4], the first subcode correc-
+tion will cause the “corrected” bits at the next level up to                                Pr ( S, , S, [bit i in error) pi
+have probability of error p,. By Lemma 2 of Appendix A,                             = Pr(S,,S,]bitinotinerror)(l            -pi)       *
+p, < rq for some r < 1. Clearly, these “corrected” bits are
+all statistically independent; consequently, after the next     Assuming all other bits in subcode two and subcode three
+iteration the bits at depth 2 1g/4] - 2 will have probability   are independent,
+p2 < rp, < r2q. Continued iterations give the “corrected”                                 Pr (S, (bit i in error)
+                                                                                =
+bit at the top of the tree a probability of error                                       Pr (S, [bit i not in error)
+                        p = rlg141q.                                                       Pr (S, lbit i in error)   . pi
+                                                                                         Pr (S, [bit i not in error)  1 - pi
+It follows immediately that p goes to zero as the girth goes
+to infinity.                                                                    = ri2ri3ri.
+
+   Gallager’s graph construction ensures the existence of          Each of the ratios 7j can be computed by computing the
+graphs with arbitrarily large girths. Because the length of     a posteriori probabihty   of error for the i th bit given the
+the code grows exponentially with the girth, this bit error     constraints of the jth code and using Bayes law. Several
+convergence alone does not give asymptotically reliable         methods for obtaining the required a posteriori probabili-
+communication. As the proof of the lemma reveals, how-          ties are presented in [ 141. Solving for pil,
+ever, by making the initial crossover probability q suffi-                                                ri2ri3ri
+ciently small the ratio r can be made arbitrarily small,                                       pi1 = 1 + ri2ri3ri *
+which will cause the probability of decoding error to go to
+zero. More rapid convergence of the decoding error proba-       By computing r = ri,ri2ri3ri and then dividing out the jth
+bility can be obtained by using a more powerful subcode or      term, pij can be computed for each subcode.
+a higher bit node degree.                                          This procedure propagates information across the graph,
+   One of the major sources of weaknesses of this type of       bringing independent information towards each digit along
+algorithm is the loss of information that occurs during a       all the paths of the tree emanating from that digit. (After
+subcode correction; the result passed to the next subcode is    L( g - 2)/4J    iterations the independence     assumption
+simply a “corrected” digit, with no indication of the relia-    breaks down.) At the end of the process, the final estimate
+bility of that “corrected” digit. The third type of algorithm   for each bit is based on the stored original value and the
+to be considered, which generalizes the probabilistic de-       computed probabilities of error of that value.
+TANNER: LOW COMPLEXITY CODES                                                                                                                541
+
+
+                                                       Subcode 2            1) Subcode phase: For j = 1,2,. **,S the jth               subcode
+                                                                   /b’
+                                                                         processor computes
+
+                                                                                     DII (C*Rj(t-l)-Rij(t-1))
+                                                                                    q=+l
+
+
+
+
+         Pr(Spt   I bit incorrect)
+                                                                                                -     Inn
+                                                                                                     c,=-1
+                                                                                                             (c -Rj(t   - 1) + Rij(t
+
+
+                                                                         for each i E Ii. Here (!? is the set of n-dimensional real
+                                                                                                                                        - 1))
+                                                                                                                                                1
+                                                                         vectors of plus and minus ones C = ( Ci,, Ci2,. . . ,C,,) each
+                                                                         derived from a codeword in the subcode by replacing each
+                                                                         1 in the codeword by + 1 and each 0 by - 1; Rj( t - 1) is
+                                                                         the ordered vector of register values [Ri, j(t - l), Riz j(t -
+                        Fig. 9.      Iteration step.                     11, * * *, Rimj(t - l)] with i, E Ii; and C .R,(t - 1) denotes
+                                                                         real vector inner product. If g/2 is odd, and t = 1, all Rij
+                                                                         values are divided by l/m (to avoid multiply counting bits
+                                                                         at the bottom of the tree).
+   Since this probabilistic decoder incorporates error prob-
+                                                                            2) Bit register phase: For each i = 1,2,. . a,N, the reg-
+abilities supplied by the receiver into the decoding process,
+                                                                         isters for the i th bit are updated according to
+it is able to take advantage of accurate channel models.
+The price paid for this generality is the need for fairly                              Rij(t)       = x R;, - Rij + F(O).
+involved real arithmetic operations in both the subcode                                               lE:J,
+and digit phases.                                                          Final Decision:
+   The final algorithm we present will correct any pattern                  The jth subcode processor finds the vector for C that
+of l(dT - w1          or fewer errors, where d, is the tree              achieves max cEe[C -Rj( I( g - 2)/4])] and sets Ri, j = Ci,,
+lower bound on minimum distance. Again for clarity we                    the corresponding component of the maximizing subcode
+will treat the binary case. Referring to Fig. 7, it can be seen          codeword. Then the output value of the i th bit is one if
+that the tree bound was derived by showing that any                      ZjEJiRij > 0, zero otherwise. In other words, the bit’s
+pattern of bits which satisfies all the subcodes in the tree,            value is determined by a majority vote of the best final
+meaning only those above or at the level where the first                 estimates provided by the subcodes checking it.
+minimum cycle is formed, must have minimum distance at                      We will now prove that any pattern [(dT - 1)/2] or
+least d,. The actual code is a subset of the set of vectors of           fewer errors will be corrected by Algorithm B because in
+bits satisfying the tree subcodes, and therefore must have a             fact all the values ci, returned for a bit will be + 1 if the bit
+minimum distance at least as large as d,. The algorithm is               was a one and - 1 if it was a zero. The first step is the
+designed to decode the bits at the top of the tree to those              following lemma. Referring to Fig. 7, let the jth subcode
+values occurring in the vector of bits that satisfies all the            node 5 be the root and the ith bit pi be an arbitrary bit at
+subcodes in the tree and requires the fewest changes in the              depth one. Let qj( X) be the set of nodes 17of the graph
+actual received bits. The vector itself may not be a code-               such that there is a minimum length path from uj to TJ
+word.                                                                    passing through pi of length 1, 1 I I I X.
+   Presentation of the algorithm will be facilitated by                     Lemma 1: After t iterations of Algorithm B, R,,(t) =
+establishing a formal indexing for the registers required.               Zij(t) - Qj(t) where:
+Let Rij be the register associated with bit i, i = 1,2,. **,N,
+                                                                           Zij(t)   =minimum number of received bits /3 E Kj(2t +
+that is accessed by subcode processor j, j = 1,2, ***,S,
+                                                                                      1) that must be changed in order to have pi = 0
+Rij(t) the value stored by the register after the t th itera-
+                                                                                      and have all subcode nodes u E qj(2t + 1) be
+tion, and Rij a corresponding temporary storage register.
+                                                                                      satisfied (i.e., the bits incident on u form a
+ Similarly let V;:,i = 1,2; **,N, be a register storing a value
+                                                                                      codeword in a).
+ K(O) that is + 1 or - 1 if the ith bit was received as a 1 or
+                                                                            Qj(t)   = minimum number of received bits p E 2;.,(2t +
+0 respectively. Finally let Ji be the index set of the subcode
+                                                                                      1) that must be changed in order to have pi = 1
+processors accessing bit i, and let Ii be the index set of bits
+                                                                                      and have all subcode nodes u E Tj(2t + 1) be
+ accessed by subcode processor j.
+                                                                                      satisfied.
+  Algorithm B:
+    Initialization: Each of the F, i = 1,2,. . -, N, is loaded                  Proof: The proof is by induction on the number of
+with a value of + 1 or - 1 supplied from the channel                     iterations. Clearly for t = 0 the lemma holds because
+according to the received value 1 or 0, respectively, of the             Rij(0) = Zij(0) - Qj(0) = y(O). Assuming it holds for
+ith bit. Then for i = 1,2; **, N, each register R,,, j E Ji is           t - 1, a register Rijjj between depths two and three coming
+assigned value Rij(0) = V,(O).                                           into subcode nodes uj, for some j’ E J., j’ # j, contains
+     Iterative loop: For t = 1,2; **, I( g - 2)/41 the fol-              zitjt(t - 1) - qrj!(t - l), i’ E Ij,. This can be recognized
+lowing two phases are performed.                                         as the difference in changes needed in the subtree below
+542                                                                                                                 IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. IT-27, NO. 5, SEPTEMBER 1981
+
+
+and including & to depth 2t + 1 for & to be zero or one,                                                                      Theorem 6: Algorithm B will correct              any pattern      of
+respectively. Then for the constraints of uj, to be satisfied                                                              I( d, - 1)/2] or fewer errors.
+requires
+                                                                                                                               Proof: Again referring to Fig. 7, by Lemma 1 after
+                                                                                                                           t, = ]( g - 2)/4] iterations the contents of the registers
+      z   =      ge                   x           zitj’(t           -      1) +      izt       qty(t        - 1)           coming into the subcode at the top of the tree will be
+                ci=--1         ( +-Ii ’# i                                                                         i
+                                                                                    cy= + 1                                Rj(t,) = Zj(t,) - iZ$(t,). Let C be the vector corre-
+                                                                                                                           sponding to the codeword in the subcode that was actually
+changes below uj, for & to be zero, and
+                                                                                                                           sent and let C’ be the vector for any other codeword in the
+                                                                                                                           subcode. By the proof of the tree bound, we know that if
+      U=         cue
+                 min                  x           ziJt              - 1) +            x        qtjj(t       - 1)           no errors occur during transmission
+                               (    i ’# i                                            i ’# i                       I
+                q=+l               +=-I                                             q= + 1
+
+for & to be one. Let -C be the vector achieving the former                                                                                                 c;=+l
+                                                                                                                                                           c;=-l
+minimum and + C the vector achieving the latter. The
+difference is                                                                                                                                         -,,z-,       (zij(to>   - Sj<‘o>> 2 d,*
+ z-u=                                 x                       (Zitj,(t           - 1) -        ~~j~(t       - 1))                                    cj=+l
+                                     i ’# i                                                                               It is obvious that changing the received value for a single
+                       -c,.=-1,++=+1
+                                                                                                                          bit in the subtree qj(2t, + 1) can at most change Zij(t,)
+                       -                                                ( Zitjt(t    - 1) -            Qtjp(t   - 1))
+                                              z                                                                           - qj(t,)   by two. Therefore, if fewer than [(dr - 1)/21
+                                           i ’# i
+                           -c,,=+I,+c,,=---l                                                                              errors have occurred
+                 = (1/2)[+C--C]                                         .Rj,(t      - 1) - Rij,(t - 1).                       (1/2)(C   - C’) -R,(&)      2 d, - 2[(d,         - 1)/2]   I 1.
+Now for any C with ci = - 1                                                                                               Thus C achieves max,,,[C        -RIand the value ci assigned
+      C .Rj<(t         - 1) + R,,,(t - 1)                                                                                 to each bit will be + 1 if the transmitted bit was one, - 1 if
+                                                                                                                          the transmitted bit was zero. Since this holds no matter
+                      =        izi         ( zitjp(t             - 1) - Q:,!( t - 1))                                     which subcode is at the top of the tree, the final majority
+                           c;,= + 1                                                                                       vote must give the correct value for each bit.
+
+                           -         izl           (zi!jp(t
+                                                                  This same algorithm can easily be modified to take
+                                                                        - 1) -        &tj!(t           - 1))
+                                                               advantage of channel reliability information coming from a
+                   q,=-1
+                                                               binary channel. Rather than loading the registers for a bit
+           = x zitj<(t - 1) + x qtjf(t - 1) - 2                with + 1 or - 1 from a hard decision receiver, the registers
+              i ’# i              i’#i                         can be loaded with the logarithm of the likelihood ratio for
+                                                               one versus zero. Algorithm B will then decode for a maxi-
+               * x zifjj(t - 1) + 2             qTj?(t - 1) .  mum likelihood version of the tree bound. Also, a similar
+                     i ’# i              i ’# i                algorithm can be devised for a nonbinary channel, but it
+                 1q-1                  cg= + 1             I   will require more registers for each digit.
+Therefore, since the first term is independent of C,              An immediate criticism that this algorithm invites is that
+  rnng (C .Rj,(t - 1) + Rij,(t - 1))                           it requires a maximum likelihood decoder for the subcodes.
+                                                               While this admittedly has dire implications for the com-
+ ci=-1
+                                                               plexity resulting from the use of an arbitrary subcode, the
+                            =-CSj,(t       - 1) + Rij,(t - 1). requirement is not as bad as it may seem for many recur-
+
+Similarly,                                                     sively defined codes. First, a maximum likelihood decoder
+                                                               for a simple parity check is not complex, and this algo-
+  mn (C .Rj,( t - 1) - Rij,(t - 1))
+                                                               rithm can thus easily be used on any low-density parity-
+ q=fl                                                          check code. Second, for fixed subcodes the complexity of
+                            =+C.Rj,(t      - 1) + Rij,(t - 1). the algorithm grows only linearly in the girth of the graph;
+                                                               thus, for codes based on a very large girth graph, the
+Thus
+                                                               complexity of the subcode decoder is not a major issue.
+Rij, = (1/2)[(+CR,.(t       - 1) + Rij,(t - 1))                Finally, it may be possible to get good decoding perfor-
+                                                               mance from a similar algorithm which works recursively,
+            - (-C -Rj,(t - 1) + Rij,(t - l))] = Z - U. namely the subcode decoding is performed by an algorithm
+The desired difference of changes in subtree qj(2t + 1) is of the same type which computes only an approximation to
+then                                                            the true maximum likelihood value of Zj(t,) - tI.$(t,).
+              Zij(t)       - qj(t)                   =       2          Rij, + K(O) = Rij(t)                                               VII.   DECODING COMPLEXITY
+                                                            j'EJ,
+                                                            j'#j                                                             The decomposition of a decoding process into a series of
+as required.                                                                                                               subcode operations requiring only local information
+TANNER: LOW COMPLEXITY CODES                                                                                                                                        543
+
+guarantees that the asymptotic growth of complexity for a          subcodes, on down to the base code. If there are s stages of
+ sequence of codes of fixed rate is very low, as we will now       recursion, N = n**, where n is the length of the base code.
+ argue by deriving upper bounds on the complexity for two          The complexity satisfies the recursion relation
+ specific sequences.
+   As a first case for analysis, consider the effect of using a              T(N,   P) = g/4(mN/fi)T(                                   fi,       i)     + CN
+single recursive step, basing a sequence of codes on a single
+subcode and a sequence of graphs of fixed subcode node
+degree and fixed digit degree but increasing girth. Al-
+though the exact rate of the codes depends on the tech-
+nique for assigning digit positions in each of the subcodes,       where CN is the number of operations required for the bit
+Theorem 1 ensures that the rate of any of the codes has a          register interchanges and final votes. Solving for T(N, P)
+fixed lower bound. For any of these codes, the number of           in terms of the base code complexity T(n, p) gives
+subcodes in the graph is proportional to the code length, as
+mentioned in Theorem 1. It follows’ immediately that the              T(N,     p)   =   4sN’-(‘/2s)T
+                                                                                                                 (
+                                                                                                                     N
+                                                                                                                         ’
+                                                                                                                             /
+                                                                                                                                 *‘,   $)        +     (5;4’1cN
+computational complexity of error detection is O(N), be-
+cause detection requires only a detection check by each of                          5   (41”9(l”N/logn)N/n)T(                               n,   s)
+the subcodes involving a fixed number of operations. Since
+the detection procedure admits total parallelism, the time
+                                                                                                   1%@‘gN/l‘%93)                       cN
+complexity is obviously 0( 1).                                                          + (4
+   Now consider the error-correcting Algorithm B used for
+Theorem 6. Each iteration requires a number of arithmetic
+                                                                                    I b-%
+                                                                                        w* N[;+~~)
+                                                                                      (logn)‘ +s]-
+operations proportional to N: the procedure carried out at
+each subcode node involves a fixed number of arithmetic            If the lower bound on rate is satisfied at every stage of
+operations per node, as does the set of operations carried         recursion, the base subcode used for the successive con-
+out at each digit node. Using Gallager’s graph construc-           structions must have a rate increasing toward one. For
+tion, the girth of the graph is proportional to log N. If, as is   instance, when the base subcodes are binary Hamming
+the case for Algorithm B, the number of iterations is held         codes decoded with a decoding algorithm that requires
+proportional to the girth, it follows that the computational       O(n2) operations, the ultimate complexity can be derived
+complexity in terms of arithmetic operations is 0( N log N ).      as follows: for a Hamming code p = log n/n, implying
+However, the registers required .for the algorithm must            n = log N/P and log n = log log N - log P. Thus
+store a number of the size of the minimum distance of the
+code, which for the best possible codes of this form, may
+grow linearly in N. This could appear to imply that the
+complexity of each register operation itself grows with N.
+                                                                   Therefore for fixed P,
+On the other hand, the values stored in the registers are
+used only in comparisons with other registers. Conse-                                          oog NJ2
+quently, by appropriately scaling the values in all of the         T(N,      P) 5
+                                                                                    (loglog N - log P)’
+registers at each iteration, the comparative accuracy can be
+maintained up to any desired level with registers of fixed
+                                                                                                                     -N &p((‘%                            NJ*)    + f ]
+size (see Appendix B). The O(Nlog N) bound is then                                                                     [
+preserved. Again, the complete parallelism gives the algo-
+                                                                   and T(N, P) = O(N(log N)3/(log log N)*). Again the
+rithm a time complexity of O(log N).
+                                                                   parallelism ensures that the time complexity of this process
+   A second avenue to the construction of a sequence of
+                                                                   is no worse than O((log N)3/(loglog N)*).
+codes is to use graphs of the same girth and digit node
+                                                                      By using graphs of larger girth in the same type of
+degree at each stage of recursion and create each new code
+                                                                   recursion, the exponent of the log N factor can be reduced.
+in the sequence by using an additional recursion. Assuming
+                                                                   Furthermore, all of the operations are of the same form,
+the lower bound on rate holds at each stage, however, the
+                                                                   namely repeated operations carried out by the base code
+rate of the base subcode must be increased with the num-
+                                                                   processors and digit processors. The complexity of the
+ber of stages of recursion to keep the rate of the final code
+                                                                   machine architecture of the decoder lies not in the actual
+fixed. As a specific illustration, consider forming a se-
+                                                                   computations but in the data movements or wiring that
+quence using the product code graph which has digit
+                                                                   allow the processor to access the appropriate subsets of the
+degree two, girth eight, and causes the codelength to be
+                                                                   data.
+squared. Let T(N, P) be the number of operations re-
+quired to decode a code of length N and redundancy rate
+                                                                                                 VIII.          ANEXAMPLE
+P=(N-K)/N            using a recursive algorithm similar to
+Algorithm B. A two-phase process is iterated g/4 times,               Many of the ideas of the previous sections can be
+but here the subcode node decoders themselves make                 illustrated with a two-stage recursive construction of a [55,
+iterated recursive calls to a similar algorithm for the sub-       11, 181 code starting from a simple parity-check base code.
+544                                                                IEEE TRANSACTIONS ON INFORMATION THEORY, VOL, IT-27, NO. 5, SEPTEMBER 1981
+
+
+
+
+                                 Complete Graph on II nodes                      The wbcode;A complete graph on
+                                 Ii subcade nodes each checking IO bits          5 nodes Sparity checks each check-
+                                                                                  ing 4 bits
+                                      (!)=55   bits
+                                                                                        A ClO,6,31 code
+
+                                                      Fig. 10. A [55, 11, 181recursive code.
+
+
+The graph used for each stage is a bipartite graph con-
+structed from a simple complete graph.
+   Starting from a complete graph on five nodes, create a
+bipartite graph by inserting a bit node in the middle of
+each edge, as shown in Fig. 10. Each of the original nodes
+can be viewed as a subcode node checking four bits. Let
+each of these subcodes correspond to a simple parity check.
+The result is the standard [lo, 6, 31 graph code. The tree
+bound for this simple construction guarantees minimum
+distance three, the true distance. The lower bound on the                                        Fig. 11. A weight 18 word.
+rate of the code is l/2, but one of the parities is depen-
+dent. Now use this code as the subcode in similar construc-
+                                                                          bit is one. For this particular code this would be a
+tion startin from a complete graph on 11 nodes. The new
+                                                                          cumbersome architecture requiring four eleven bit shift
+graph has 11   2 -- 55 bit nodes, and each subcode checks                 registers to store the parity bits and a large number of
+             f   1
+ten bits. Because the subcode has minimum distance three,                 adders. For similar codes of higher rate, it could be more
+the tree bound guarantees a minimum distance of at least                  advantageous.
+six for the new code, no matter how the positions of the ten                 A second encoder can be derived from the idea of
+bits checked are assigned in the subcode. The particular                  propagation of a solution via subcode encodings discussed
+assignment used for the top subcode is shown in Fig. 10;                  in Section IV. Since this code is a two-stage recursive
+the ten bits checked by that subcode, labelled one through                construction, the concept of a propagating solution can be
+ten in the eleven subcode node graph, are given the posi-                 carried down to the original parity checks. Referring to
+tions labelled one through ten in the graph for the subcode.              Fig. 10, suppose the outermost eleven bits are given. Sup-
+The assignments for the other subcodes are then de-                       pose the values for the bits on the second tier (e.g., bits two
+termined by cyclic symmetry in the large graph: the assign-               and nine) are computed using some general technique.
+ments for any subcode can be determined by rotating it to                 Now consider the subcode diagram. Since bits one, ten,
+the top subcode position. The minimum distance of the                     two, and nine are known, the top parity-check alone de-
+new code, determined by computer, is 18, far surpassing                   termines bit eight. Similarly, in another subcode a single
+the tree bound. A minimum weight word is shown in Fig.                    parity check determines bit three. But this implies that bit
+ 11.                                                                      four can be determined, and another subcode gives bit
+   A variety of encoders for the code can be constructed;                 seven, which in turn allows six and then five to be com-
+we will briefly sketch the principles underlying three differ-            puted. A parallel implementation of this strategy can com-
+ent versions. The space of codewords is spanned by the ten                pute the codeword in five steps.
+cyclic shifts of the word shown in Fig. 11 plus the all ones                 The third encoder we suggest is analogous to the parity-
+word. Another basis for the space is the set of eleven cyclic             check polynomial encoder for a standard cyclic code. Sup-
+shifts of a word that has only one of the outermost bits                  pose the information bits have been loaded into an 11 bit
+nonzero (e.g., the bits labelled one and ten in Fig. 10). The             cyclic shift register. Any bit on the second tier can be
+outermost bits thus constitute an information set for the                 computed by summing a subset of the information bits in
+code. The first encoder, somewhat analogous to an encoder                 the cyclic register; since the graph has cyclic symmetry, all
+for a normal cyclic code based on the generator poly-                     the second tier bits can be computed by cyclically shifting
+nomial, simply adds a one into every parity bit which is                  the register. The bits of the remaining three tiers can be
+one in the basis vector when the corresponding information                obtained in a similar manner by using three different
+TANNER: LOW COMPLEXITY CODES                                                                                                      545
+
+
+summing circuits connected to the appropriate stages of
+the information bit shift register. Clearly the codeword can
+be computed five bits at a time with an encoder requiring
+only 11 bits of memory and four different summing cir-
+cuits.
+   A good transmission order for enhancing the code’s
+effectiveness against burst errors is shown in Fig. 12. It is
+easy to see why bursts will tend to be corrected: for any
+burst of length 11 or less most of the errors appear as
+single errors in separate subcodes.
+                                                                        Fig. 12. Transmission order for burst-error correction.
+   A modified version of Algorithm B was implemented
+and tested on a general purpose computer. Rather than            of this form do indeed have minimum distances far greater
+decoding at the subcode level, the algorithm works only at       than that guaranteed by the tree bound, and that the
+the sub-subcode level, that is, on the parity checks them-
+                                                                 simple algorithms are effective.
+selves. Each of the eleven subcodes is built on a graph             Is there reason to believe that codes with this structure
+using five parity checks. Interpreted at this level, there are
+                                                                 cannot be good? For the codes formed from a fixed
+55 parity checks each checking four bits, and 55 bits each
+                                                                 subcode using large graphs, a partial answer to this ques-
+checked by four parities. The two-phase algorithm used
+                                                                 tion is provided by the upper bound on rate for low-density
+four registers for each bit; all four were, loaded with a + 1
+                                                                 codes [8, pp. 39-401 which shows that the rate of the code
+if the bit was a one, - 1 if the bit was a zero. In the
+                                                                 must be bounded away from channel capacity for the
+subcode phase the four registers of the bits checked by a
+                                                                 probability of error to approach zero. From a practical
+parity were updated according to the generic prescription
+                                                                 viewpoint, however, this limitation is insignificant. A closely
+    R; = R,( t - 1) + sgn (R,(t - 1))                            related argument is that the strength of such codes against
+                                                                 burst errors, which is a direct consequence of the de-
+           +gn (R,(t - 1)) en @& - 1))
+                                                                 composition into subcodes, must preclude optimal effecti-
+           .An(I&(t      - I)[, IR,(t - l>l, I%(t - l>l).        veness against random errors. On the other hand, as the
+In the bit phase the four registers for the bit were updated     previous example illustrates, the best codes appear to have
+according to                                                     the potential for correcting almost as many random errors
+                                                                 as burst errors.
+                            R; -I- R;+ R;
+                 R,(t) =
+                          I         2       1.
+                                                                    Using Gallager’s low-density codes, Zyablov and Pinsker
+                                                                 [ 151have shown that there exist codes capable of correcting
+After a specified number of iterations the output value of a all error patterns of weight less than aN, for a fixed
+bit was determined by the sign of the sum of the associated positive constant (Y,in 0( Nlog N) operations. The proof
+registers, one if the sum was postive, zero if the sum was necessitates a fairly dramatic loss of rate, and it may well
+negative.                                                        be that some loss of rate is necessary to maintain low
+   By testing the algorithm against five consecutive shifts of complexity even when using our approach.
+each burst error pattern containing i errors, i = 1,2, **. ,l 1,    On the other hand, the potential advantages of these
+we determined that the algorithm will correct all bursts of codes may well compensate some slight loss of rate. The
+length 11 or less. In preliminary empirical testing against low complexity may allow the use of much longer block
+random errors, the same algorithm corrected all randomly         lengths than can be realistically contemplated with most
+generated patterns of seven or fewer errors and many of existing techniques, and more accurate representations of
+greater weight. All weight six error patterns tested were the information provided by the receiver, such as bit reli-
+decoded in five or fewer iterations; one weight seven ability information, can be effectively incorporated into the
+required 22 iterations.                                          decoding process. In addition, the natural parallelism in
+                                                                 the computation is well suited to implementations using a
+                      IX. CONCLUSION                             large number of large scale integrated circuits of a single
+                                                                 design.
+   The recursive approach to the construction of error-
+                                                                    Although we have presented the central ideas in the
+correcting codes which we have presented offers hope that
+                                                                 context of block codes, the same concepts are applicable to
+very efficient codes can be implemented with relatively
+                                                                 convolutional codes as well, as we hope to discuss in a later
+simple circuits and decoded by algorithms requiring only
+                                                                 paper.
+O(Nlog N) operations of fixed type. For this hope to
+become provable reality will require that the results of the                         ACKNOWLEDGMENT
+current paper be strengthened by improved versions of the
+tree bound and a corresponding proof that low-complexity            The author wishes to thank Peter Wilde, formerly a
+algorithms can decode up to the actual minimum distance, senior at UCSC, for carrying out most of the computer
+Theorems 2 and 6, respectively. All the evidence provided        studies on the examples presented and for suggesting the
+by our study of specific examples indicates that best codes transmission order for the [55, 11, 181 code.
+546                                                                                 IEEE TRANSACTIONS ON INFORMATION THEORY, VOL. lT-27,
+                                                                                                                                      NO. 5, SEPTEMBER 1981
+
+
+                                 APPENDIX        A                                        Therefore
+
+Probability Bound for the Subcode Correction Procedure                                    p, = 2-m(1                  + 2”-‘(1           - 2p)zm-‘-’
+of Algorithm A
+                                                                                                                                                             + (2m--1 - l)( 1 - 2p)2m-‘).
+   Suppose that a vector of errors is added to a codeword from a
+Hamming code of length 2” - 1 such that one bit in the word
+                                                                                          Then
+has probability q of being in error and the remaining bits each
+have probability p of being in error, all independently. By the                           P, - P, = 22m(1 + (2”-‘)(l                                   - 2p)2m-I - 1
+symmetry of the code, we can assume without loss of generality
+that the first bit in the code is in error with probability q. Let the                                          -2m-I(1             -    2p)-’
+                                                                                                                                                             - (2*-l          - I)(1 - 2p)2m-‘)
+word be corrected according to the standard single error correc-
+                                                                                                          =    2-m(2m-l(1                 -      2p)2m-’      -     2m-‘(1       -   2p)2m-‘)
+tion procedure, and let p’ be the probability that the first bit is in
+error after the correction.
+   Lemma 2: If m > 2 and q = l/(2” - 2) there exists an r < 1
+                                                                                                          =    -p(l            -   2p)2m-‘-‘.
+such that p’ 5 rp for 0 5 p 5 q.                                                          Substituting,
+       Proof:                                                                                         p’ = q - (1 - q)(l                          - 2p)2”-’
+       p’ = qProb (first bit not changed/first               bit incorrect)
+                                                                                                                     + (1 - 2q)Z-m(1                       + 2”-*(1          - 2p)2*-‘-1
+                + (1 - q) Prob (first bit changed/first              bit correct)
+                                                                                                                     + (2m-’ - l)(l                   - 2p)2m-‘).
+          %Q,       + (1 - q)Q,
+       Q, = 1 - Prob (f irst bit changed/first              bit incorrect)                Now we will show that p’ - p 5 0 if q = 1/(2m - 2). Rearrang-
+                                                                                          ing terms,
+          = 1 - Prob (errors in remaining bits form a codeword)
+          Zl-P,.                                                                         p,   -p      =       q +     2-rn(1        -    Zq)      -   (l    -22p)       2m-‘-’
+
+
+That is, the incorrect first bit will be perceived as a single error if
+and only if the errors in the rest of the bits form a codeword.                                                            + (1 - 2p)2m-‘(l                    - 2q)2-m(2m-’                 - 1) -p.
+Note also that Q, = Prob (errors in remaining bits plus an error                          It is easy to check that p’ - p = 0 at p = 0. Taking the derivative
+in the first bit form a codeword).
+   To obtain an expression for the latter, consider a length                              $Cp’        -p)            = (y--1            - l)(l        - 2p)2”-‘-2             - p-1
+2” - 1 word in which all bits have probability of errorp. Let P,
+be the probability the errors form a codeword. Then P, = pQ, +                                                            .(l - 2p)2m-‘(2)(1                      - 2q)2-m(2m-’                 - 1) - 1
+(1 - p)P,, and so Q, = (P, - (1 - p)P’)/p.         Substituting,
+                                                                                                                    = (2* - 2)(1 - 2p)2m-‘-2(q                                +p(1      - 2q))      - 1.
+         P’ = q(1 - P,) + (1 - qHP0 - (1 - P)P’VP
+                                                                                          Setting q = 1/(2m - 2), atp = 0,
+             = 4 + (I/P)(l       - q)(P,        - P,) +        (1 - 2q)P,.
+Let A(z) by the weight enumerator for the Hamming code                                                    -3P’-P)tzo=                              (2m-2)&-1                           =o.
+                                         2”-1
+                             A(z)    =     x     AiT,                                    Furthermore, with q = 1/(2m - 2) the second derivative is nega-
+                                          i=O
+                                                                                         tive for all 0 <p I l/(2” - 2):
+where Ai is the number of codewords of weight i. Then
+                                                                                              -$(P!            -p)
+                       P, = (1 -P)~~-‘A                 &
+                                                    (          1
+                                                                                                   = (2m - 2)[(2m-’                       - 2)(1 - 2p)2”-+
+Using the MacWilliams identity, A(z) can be obtained from the
+weight enumerator for the dual of the Hamming code, B(z) [16,                                         .(-2)(qSp(l                        - 2q))            + (1 - 2p)2m-‘-2(1                - 2q)]
+pp. 400-4071:
+                                                                                                   = (2” - 2)(1 - 2p)2m-‘--3
+             A(z) = 2zm-‘--m ( !+)2m-‘B(                       !?),
+                                                                                                      .[(I       - 2P)(l                - 2q) - Pm - 4Nq + P(1 - 2q))]
+
+             B(z)     = 1 + (2” -        l)z*“-‘.                                                  = p          - 2)( 1 - 2p)2m-‘-3
+
+Thus                                                                                                  . [-p(1             - 2q)(2”             - 2) + (1 - 2q) - (2m - 4)q]
+
+                 P, = 22m(1 + (2” - l)(l                - 2p)2m-1).                                = (2” - 2)(1 - 2p)2m-‘-3[-p(2m                                        - 4)] 5 0
+
+Similarly P, is the probability errors occurring with probability p                      for m > 2. By using Taylor’s theorem with the remainder, it
+form a codeword in the shortened code whose null matrix is the                           follows that p’/p 5 1 for 0 5 p 5 q when q = 1/(2m - 2). To
+Hamming code null matrix without the first column. The dual of                           complete the proof, consider
+this code has weight enumerator
+                    1 + 2m--Iz2m-’   +    pm-1          _ 1)z2m-‘.                                             a    PI = (2m - 2) (1 - (1 - 2p)2m-’
+                                                                                                              as7 (   )     2”            P         .
+TANNER:LOW COMPLEXITY
+                    CODES                                                                                                                           541
+
+
+Since this is positive and independent of q for all p > 0, by                  occurred
+decreasing q from l/(2* - 2) we will decrease p’/p. Moreover,                                      (1/2)(C   - C’) .Rj(tO)     2 1,
+              limL         p’    =2m-22m=2*-2                                  and as before the errors will be corrected.
+             p-~ a4 ( P 1              2*
+
+Therefore the minimum of (a/aq)( p’/p) over 0 I p 5 l/(2” -                                                  REFERENCES
+2) is greater than zero and q < l/(2* - 2) implies that there
+exist an r < 1 such that (p//p) < r.                                            Ill F. J. MacWilliams and N. J. A. Sloane, The Theory of Error-
+                                                                                     Correcting Codes.   New York: North-Holland,     1977.
+                                                                                PI P. Elias, “Error-free coding,” IRE Trans. Inform. Theory, vol.
+                                APPENDIX B                                           PGIT-4, pp. 29-37, Sept. 1954.
+                                                                                 [31 W. C. Gore, “Further results on product codes,” IEEE Trans.
+                                                                                     Inform. Theory, vol. IT-16, pp. 446-451, July 1970.
+Algorithm B with Registers of Fixed Size
+                                                                                 [41 G. D. Fomey, Concatenated Codes. Cambridge: MIT Press, Res.
+   Theorem A2: Algorithm         B will correct any pattern      of                  Monograph 37, 1966.
+                                                                                 [51 S. M. Reddy, “On decoding iterated codes,” IEEE Trans. Inform.
+  (d,(l -x-c’-‘))       - 1)/ 2 ] using registers storing signed, 1                  Theory, vol. IT-16, pp. 624-627, Sept. 1970.
+a,‘git, integers represented base x, x = (d - l)(m - 1) for x > 1.               161 E. M. Kasahara, Y. Sugiyama, S. Hirasawa, and T. Namekawa,
+                                                                                     “New classes of binary-codes constructed on the basis of con-
+      Proof: During the t th iteration, the digits stored in a register              catenated codes and product codes,” IEEE Trans. Inform. Theory,
+are the 1 coefficients ai, of the base x expansion of the rounded-off                vol. IT-22, pp. 462-468, July 1976.
+                                                                                 [71 A. V. Aho, J. E. Hopcroft, and J. D. Ullman, The Design and
+value                                                                                Analysis of Computer Algorithms. Reading, MA: Addison-Wesley,
+                                                                                     1974.
+           Rij( t) = a,x’ + a,x’-’          + *. . +a,-,x’-‘+’
+                                                                                 PI R. G. Gallager, Low-Density Parity-Check Codes. Cambridge, MA:
+                                                                                     MIT Press, 1963.
+                     = zij(t)    - qj(t)        + Eij(t).
+                                                                                 [91 W. W. Peterson and E. J. Weldon, Jr., Error-Correcting Codes.
+                                                                                     Cambridge, MA: MIT Press, 1972.
+It is easy to prove by induction that the error, rij(t), must be
+                                                                               [lOI P. J. Cameron and J. H. Van Lint, Graph Theory, Coding Theory,
+bounded by 1eij( t)] s x’-‘+’ as follows: clearly when the register                  and Block Designs. Cambridge: Cambridge Univ. Press, 1975.
+is initialized rounding off the value guarantees that Ieij(0)l <               Fll P. Dembowski, Finite Geometries. New York: Springer, 1968.
+x -(‘- ‘). By the assumptions of the tree bound, the difference can            WI A. J. Hoffman and R. R. Singleton, “On Moore graphs with
+increase at most by a factor of (d - I)( m - 1) as it moves up                       diameters 2 and 3,” IBM J. Res. Dev., vol. 4, pp. 497-504, Nov.
+                                                                                      1960.
+one level in the tree. Since x = (d - l)( m - 1) the registers are
+                                                                               iI31 Y. Wallach and V. Konrad, “On block-parallel methods for solving
+guaranteed not to overflow unless minimum distance exceeds the                       linear equations,” IEEE Trans. Comput., vol. C-29, pp. 354-359,
+tree bound. Similarly, maxi j~ij(t) 5 (d - l)(m - 1) maxijcij(t                      May 1980.
+ - 1) and Ieij(t - l)/ 5 x ‘-‘for all i andj implies that (cij(t)l I           [I41 G. Battail, M. C. Decouvelaere, and P. Godlewski, “Replication
+                                                                                     decoding,” IEEE Trans. Inform Theory, vol. IT-25, pp. 332-345,
+x1-‘+’ for all i and j. Consequently, if no errors occur during                      May 1979.
+transmission,                                                                  [I51 V. V. Zyablov and M. S. Pinsker, “Estimation of the error-correction
+                                                                                     complexity of Gallager low-density codes,” Probl. Peredach. In-
+ (1/2)(C   - C)      d’tj(t,)   2 d, - dx’o-‘+’ z d,(l           - x-(‘-‘)).
+                                                                                     form., vol. 11, pp. 23-36, Jan. 1975.
+Therefore, if fewer than I( d, (1 - x -(‘-2))           -   I)/21 errorshave   I161 E. Berlekamp, Algebraic Coding Theory. New York: McGraw-Hill,
+                                                                                     1968.
+

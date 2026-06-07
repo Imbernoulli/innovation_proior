@@ -1,0 +1,2240 @@
+Chapter 3
+
+The Ellipsoid Method
+
+In 1979 a note of L. G. Khachiyan indicated how an algorithm, the so-called
+ellipsoid method, originally devised for nonlinear nondifferentiable optimization,
+can be modified in order to check the feasibility of a system of linear inequalities
+in polynomial time. This result caused great excitement in the world of mathematical programming since it implies the polynomial time solvability of linear
+programming problems.
+This excitement had several causes. First of all, many researchers all over the
+world had worked hard on the problem of finding a polynomial time algorithm
+for linear programming for a long time without success. So a really major open
+problem had been solved.
+Secondly, many people believe that f1J> = %.'3l' n co-%f1J> - cf. Section 1.1 and the linear programming problem was one of the few problems known to
+belong to %f1J> n co-%f1J> but that had not been shown to be in f1J>. Thus, a further
+indication for the correctness of this conjecture was obtained.
+Thirdly, the ellipsoid method together with the additional number theoretical "tricks" was so different from all the algorithms for linear programming
+considered so far that the method itself and the correctness proof were a real
+surprise.
+Fourthly, the ellipsoid method, although "theoretically efficient", did not prove
+to be "practically efficient". Therefore, controversies in complexity theory about
+the value of polynomiality of algorithms and about how to measure encoding
+lengths and running times - cf. Chapter 1 - were put into focus.
+For almost all presently known versions of the simplex method, there exist a
+few (artificial) examples for which this algorithm has exponential running time.
+The first examples of this type have been discovered by KLEE and MINTY (1972).
+Such bad examples do not exist for the ellipsoid method. But the ellipsoid
+method has been observed to be much slower than the simplex algorithm on the
+average in practical computation. In fact, BORGWARDT (1982) has shown that
+the expected running time of a version of the simplex method is polynomial and
+much better than the running time of the ellipsoid method. Although the ellipsoid
+method does not seem to be a breakthrough in applied linear programming, it
+is of value in nonlinear (in particular nondifferentiable) optimization - see for
+instance ECKER and KUPFERSCHMID (1983).
+As mentioned, nonlinear optimization is one of the roots of the ellipsoid
+method. The method grew out of work in convex nondifferential optimization
+(relaxation, subgradient, space dilatation methods, methods of central sections)
+as well as of studies on computational complexity of convex programming
+M. Grötschel et al., Geometric Algorithms and Combinatorial Optimization
+© Springer-Verlag Berlin Heidelberg 1993
+
+Chapter 3. The Ellipsoid Method
+
+65
+
+problems. The history of the ellipsoid method and its antecedents has been
+covered extensively by BLAND, GOLDFARB and TODD (1981) and SCHRADER (1982).
+Briefly, the development was as follows.
+Based on his earlier work, SHOR (1970a,b) described a new gradient projection
+algorithm with space dilatation for convex nondifferential programming. YUDIN
+and NEMIRovsKn (1976a,b) observed that Shor's algorithm provides an answer
+to a problem discussed by LEVIN (1965) and - in a somewhat cryptical way
+- gave an outline of the ellipsoid method. The first explicit statement of the
+ellipsoid method, as we know it today, is due to SHOR (1977). In the language of
+nonlinear programming, it can be viewed as a rank-one update algorithm and is
+quite analogous to a variable metric quasi-Newton method - see GOFFIN (1984)
+for such interpretations of the ellipsoid method. This method was adapted by
+KHACHIYAN (1979) to state the polynomial time solvability oflinear programming.
+The proofs appeared in KHACHIYAN (1980). Khachiyan's 1979-paper stimulated
+a flood of research aiming at accelerating the method and making it more stable
+for numerical purposes - cf. BLAND, GOLDFARB and TODD (1981) and SCHRADER
+(1982) for surveys. We will not go into the numerical details of these modifications.
+Our aim is to give more general versions of this algorithm which will enable us
+to show that the problems discussed in Chapter 2 are equivalent with respect
+to polynomial time solvability and, by applying these results, to unify various
+algorithmic approaches to combinatorial optimization. The applicability of the
+ellipsoid method to combinatorial optimization was discovered independently by
+KARP and PAPADIMITRIOU (1980), PADBERG and RAo (1981), and GROTSCHEL,
+LoVASZ and SCHRIJVER (1981).
+We do not believe that the ellipsoid method will become a true competitor of
+the simplex algorithm for practical calculations. We do, however, believe that the
+ellipsoid method has fundamental theoretical power since it is' an elegant tool for
+proving the polynomial time solvability of many geometric and combinatorial
+optimization problems.
+YAMNITSKI and LEVIN (1982) gave an algorithm - in the spirit of the ellipsoid
+method and also based on the research in the Soviet Union mentioned above in which ellipsoids are replaced by simplices. This algorithm is somewhat slower
+than the ellipsoid method, but it seems to have the same theoretical applicability.
+Khachiyan's achievement received an attention in the nonscientific press that
+is - to our knowledge - unpreceded in mathematics. Newspapers and journals
+like The Guardian, Der Spiegel, Nieuwe Rotterdamsche Courant, Nepszabadsag,
+The Daily Yomiuri wrote about the "major breakthrough in the solution of
+real-world problems". The ellipsoid method even jumped on the front page
+of The New York Times: "A Soviet Discovery Rocks World of Mathematics"
+(November 7, 1979). Much of the excitement of the journalists was, however, due
+to exaggerations and misinterpretations - see LAWLER (1980) for an account of
+the treatment of the implications of the ellipsoid method in the public press.
+Similar attention has recently been given to the new method of KARMARKAR
+(1984) for linear programming. Karmarkar's algorithm uses an approach different
+from the ellipsoid method and from the simplex method. Karmarkar's algorithm
+has a better worst-case running time than the ellipsoid method, and it seems that
+this method runs as fast or even faster than the simplex algorithm in practice.
+
+66
+
+Chapter 3. The Ellipsoid Method
+
+But Karmarkar's algorithm requires - like the simplex method - the complete
+knowledge of the constraint system for the linear programmming problem. And
+thus - as far as we can see - it cannot be used to derive the consequences to be
+discussed in this book.
+The unexpected theoretical and practical developments in linear programming
+in the recent years have prompted a revival of research in this area. The nonlinear
+approach to linear programming - using techniques like the Newton method and
+related descent procedures - receives particular attention. A number of further
+polynomial time methods for the solution of linear programming problems have
+been suggested - see for instance IRI and IMAI (1986), DE GHELLINCK and
+VIAL (1986), BETKE and GRITZMANN (1986), and SONNEVEND (1986) - and are
+under investigation with respect to their theoretical and practical behaviour.
+It is conceivable that careful implementations of these methods and, possibly,
+combinations of these methods with the simplex algorithm will lead to good codes
+for linear programming problems. Such codes may become serious competitors
+for the simplex codes that presently dominate the "LP-market". A thorough
+computational and theoretical study of such prospects is the recent paper GILL,
+MURRAY, SAUNDERS, TOMLIN and WRIGHT (1986), where variants of Karmarkar's
+algorithm are discussed in a general framework of projected Newton barrier
+methods and where these are compared with several versions of the simplex
+method with respect to practical efficiency for various classes of LP-problems.
+
+3.1 Geometric Background and an Informal Description
+The purpose of this section is to explain the geometric idea behind the ellipsoid method, to give an informal description of it, to demonstrate some proof
+techniques, and to discuss various modifications. We begin by summarizing wellknown geometric facts about ellipsoids. Then we describe the ellipsoid method
+for the special case of finding a point in a polytope that is explicitly given by
+linear inequalities and known to be empty or full-dimensional. We also present
+proofs of a few basic lemmas, and finally, computational aspects of the ellipsoid
+method are discussed, in particular questions of "rounding" and quicker "shrinking". Proofs of more general results than described in this section can be found
+in Sections 3.2 and 3.3.
+The problems we address are trivial for the case of one variable. So we
+assume in the proofs throughout Chapter 3 that n ~ 2.
+Properties of Ellipsoids
+
+A set E ~ Rn is an ellipsoid if there exist a vector a E Rn and a positive definite
+n x n-matrix A such that
+(3.1.1)
+
+E = E(A, a) := {x E R n I (x - a)T A-I(x - a) :s 1}.
+
+(It will become clear soon that using A-I here, which is also a positive definite
+matrix, is more convenient than using A.) Employing the ellipsoidal norm II IIA
+
+3.1 Geometric.Background and an Informal Description
+
+67
+
+defined in Section 0.1 we can write equivalently
+(3.1.2)
+
+E(A,a) = {x E JR.n I IIx - aliA :5; I},
+
+that is, the ellipsoid E (A, a) is the unit ball around a in the vector space JR.n
+endowed with the norm II IIA. SO in particular, the unit ball S(0,1) around zero
+(in the Euclidean norm) is the ellipsoid E (J, 0). Note that E determines A and a
+uniquely. The vector a is called the center of E, and we say that E(A, a) is the
+ellipsoid associated with A and a.
+For every positive definite matrix A there exists a unique positive definite
+matrix, denoted by A 1/2, such that A = A 1/2 A 1/2. It follows by a simple calculation
+that
+(3.1.3)
+
+E(A, a) = A I / 2 S(0, 1) + a.
+
+Thus every ellipsoid is the image of the unit ball under a bijective affine transformation.
+There are some interesting connections between geometric properties of the
+ellipsoid E = E (A, a) and algebraic properties of the matrix A which we want to
+point out here. Recall from (0.1.3) that all eigenvalues of A are positive reals.
+The diameter of E is the length of a longest axis and is equal to 2v'1\., where A is
+the largest eigenvalue of A. The longest axes of E correspond to the eigenvectors
+belonging to A. The width of E is the length of a shortest axis which is 2VI,
+where A. is the smallest eigenvalue of A. These observations imply that the ball
+S(a, VI) is the largest ball contained in E(A,a) and that S(a,v'1\.) is the smallest
+ball containing E(A,a). In fact, this is the geometric contents of inequality (0.1.9) .
+. Moreover, the axes of symmetry of E correspond to the eigenvectors of A.
+Figure 3.1 shows an ellipsoid graphically. It is the ellipsoid E (A, 0) ~ JR.2 with
+A = diag«16,4f). The eigenvalues of A are A = 16 and A. = 4'with corresponding
+eigenvectors el = (l,O)T and e2 = (0, 1)T. SO the diameter of E(A,O) is 2v'1\. = 8,
+while the width is 2VI = 4.
+
+length yT
+·t--
+
+length
+
+VA
+
+Figure 3.1
+
+The volume of an ellipsoid E = E(A, a), denoted by vol(E), depends only on
+the determinant of A and on the dimension of the space. More exactly, we have
+(3.1.4)
+
+vol(E(A, a» = vdetA· V n ,
+
+68
+
+Chapter 3. The Ellipsoid Method
+
+where VII is the volume of the unit ball S(O, 1) in lR". It is well known that
+n"/2
+VII = r(n12 + 1) '"
+
+(3.1.5)
+where
+
+J
+
+1 ( 2en ) 11/2
+
+vnn --;;- ,
+
+00
+
+r(x) :=
+
+e-ttx - 1 dt, for x > 0
+
+o
+is the gamma-function. The gamma-function satisfies
+r(n) = (n -1)1 for all n E N.
+We will frequently need bounds on VII' It turns out that for our purposes it will
+be enough to use the very rough estimates
+
+(3.1.6)
+which are derived from the facts that S(O, 1) contains {x E lR" I 0 ~ Xi ~ lin, i =
+1, ... , n} and that S(O, l)is contained in {x E lR" IlIxli oo ~ I}.
+If x f-----+ Dx + d is a bijective affine transformation T then vol(T(E(A, a))) =
+det DJdet A . VII' This in particular shows that
+vol(E(A,a»
+vol(E (B, b»
+
+vol(T(E(A, a)))
+vol(T(E(B, b)))'
+
+that is, the quotient of the volumes of two ellipsoids is invariant under bijective
+affine transformations.
+It will be necessary for us to optimize linear objective functions over ellipsoids.
+This is easy and can be derived from the obvious fact that, for c i= 0, max cT x,
+x E S(a, 1) is achieved at the vector a+c/llcil. Namely, suppose that E(A,a) ~ lR"
+is an ellipsoid and let c E lR" \ {O}. Set Q := Al/2. Recall from (3.1.3) that
+Q-l E(A, a) = S (0,1) + Q-1a = S (Q-l a, 1) and thus
+max{c Tx I x E E(A, a)} = max{c T QQ-l x I Q-1 X E Q-l E(A,a)}
+= max{cTQy lye S(Q-l a, I)}
+TIT
+
+= c Q II Qc II Qc
+
++ c QQ
+
+1
+
+= cT--Ac+cTa
+JcTAc
+T
+= c a + J cTAc.
+By setting
+
+(3.1.7)
+
+b:=
+
+1
+
+~Ac,
+
+vcTAc
+
+Zmax := a+b,
+Zmin := a-b,
+
+-1
+
+a
+
+3.1 Geometric Background and an Informal Description
+
+69
+
+we therefore obtain
+(3.1.8) e T Zmax = max{e T x I x E E(A,a)} = eTa + JeT Ae = eTa + IIeIlA-I,
+
+e TZmin = min{e T x I x E E(A,a)} = eTa - JeT Ae = e T a -lieIlA-I.
+
+This means that Zmax maximizes and Zmin minimizes eTx over E(A,a). The line
+connecting Zmax and Zmin goes through the center a of E (A, a) and has direction b.
+In Figure 3.2 we show the ellipsoid E(A,a) with A = diag«16,4)T), aT = (1,0.5)
+and objective function eT = (-2,-3). From (3.1.7) we obtain bT = (-3.2,-1.2),
+z~ax = (1,0.5) + (-3.2,-1.2) = (-2.2,-0.7) and Z~in = (1,0.5) - (-3.2,-1.2) =
+(4.2,1.7).
+
+Figure 3.2
+
+It is a well-known fact that every convex body is contained in a unique
+ellipsoid of minimal volume and contains a unique ellipsoid of maximal volume.
+Apparently, these two results have been discovered independently by several
+mathematicians - see for instance DANZER, GRUNBAUM and KLEE (1963, p. 139).
+In particular, these authors attribute the first result to K. Lowner. lOHN (1948)
+proved the following more general theorem, the "moreover" part of which will
+be of interest later.
+
+(3.1.9) Theorem. For every convex body K £; IR" there exists a unique ellipsoid
+E of minimal volume containing K. MoreOver, K contains the ellipsoid obtained
+0
+from E by shrinking it from its center by a factor ofn.
+Let us call the minimum volume ellipsoid containing a convex body K the
+Lowner-John ellipsoid of K. In formulas, the second part of Theorem (3.1.9)
+states that, if E(A, a) is the Lowner-lohn ellipsoid of K, then K contains the
+ellipsoid E(n- 2A,a).
+For a regular simplex S, the Lowner-lohn ellipsoid is a ball E (R 2I, a) with
+an appropriate radius R around the center of gravity a of S. The concentrical
+ball E(n- 2 R 2 I,a) is the largest ellipsoid contained in S. This shows that the
+parameter n ·in Theorem (3.1.9) is best possible.
+
+70
+
+Chapter 3. The Ellipsoid Method
+
+(a)
+
+(b)
+
+Figure 3.3
+
+In general, the L6wner-John ellipsoid of a convex body K is hard to compute.
+We will, however, show in Section 4.6 that, under certain assumptions on K, good
+approximations of it can be computed in polynomial time. In the ellipsoid method
+and its variants, L6wner-John ellipsoids of certain ellipsoidal sections are used;
+and for these L6wner-John ellipsoids, explicit formulas are known. We will
+describe some of them.
+Suppose E(A, a) is an ellipsoid and c E lRn \ {o}. Set
+
+(3.1.10)
+
+E'(A,a,c) := E(A, a)
+
+n {x eo lRn leT x::; cTa}.
+
+So E' (A, a, c) is one half of the ellipsoid E (A, a) obtained by cutting E (A, a)
+through the center a using the hyperplane {x E lRn I cTX = eTa}. The L6wnerJohn ellipsoid of E'(A,a,c) is the ellipsoid E(A',a') given by the following formulas:
+
+(3.1.11)
+
+,
+1
+a := a- n+ 1b,
+
+(3.1.12)
+
+,
+n2 (
+2 bb T )
+A := n 2 _ 1 A - n + 1
+'
+
+where b is the vector defined in (3.1.7). In Figure 3.3 we show the L6wnerJohn ellipsoids E(A', a') of two halfellipsoids E'(A, a, c), where in (a), A =
+diag((1,25/4)T), a = 0, c = (25,-4) and in (b), A = diag((16,4)T), a = 0,
+c = (-2,-3)T. The halfellipsoids E'(A,a,c) are the dotted regions.
+Note that the center a' of the L6wner-John ellipsoid E(A', a') of E'(A,a,c) lies
+on the line through the vectors Zmax and Zmin - see (3.1.7). More exactly, one can
+
+3.1 Geometric Background and an Informal Description
+
+71
+
+get from a to a' by making a step from a towards Zmin of length "!lllzmin - all.
+Moreover, the boundary of E(A', a') touches E'(A, a, c) in the point Zmin and in
+the set {x I IIx - aliA = 1} n {x I c TX = eTa}. In R.2 the last set consists of two
+points only - see Figure 3.3 - while in R. 3 this is an ellipse.
+We will see later that the algorithm described by Khachiyan makes use of
+the Lowner-John ellipsoid of E' (A, a, c). There are modifications of this method
+using Lowner-John ellipsoids of other ellipsoidal sections. Here we will describe
+those that we use later - see BLAND, GOLDFARB and TODD (1981) for further
+details. So suppose E(A, a) is an ellipsoid and c E R." \ {OJ, Y E R.. It follows from
+(3.1.8) that the hyperplane
+H :={xER."lcTx=y}
+
+has a nonempty intersection with E(A, a) if and only if c T Zmin ;S; Y ;S; c T Zmax, that
+is, if and only if
+For notational convenience, let us set
+(3.1.13)
+
+cTa-y
+
+. -----===
+vcTAc'
+
+IX '=
+
+Then H intersects E (A, a) if and only if
+(3.1.14)
+
+-1 ;S; IX ;S; 1.
+
+The number IX can be interpreted as the signed distance of the center a from the
+boundary of the halfspace {x leT X ;S; y} in the space R." endowed with the norm
+II IIA~[' (The distance is nonpositive if a is contained in the halfspace.)
+We want to cut E(A,a) into two pieces using H and to compute the LownerJohn ellipsoid of the piece contained in {x I cTx;S; y}. For
+(3.1.15)
+
+E'(A,a,c,y) := E(A, a) n {x ER." leT x;S; y},
+
+the Lowner-John ellipsoid E(A', a') can be determined as follows.
+
+If -1 ;S; IX;S; -lin then E(A',a') = E(A,a).
+If -l/n;s; IX < 1 then E(A',a') is given by
+(3.1.16)
+
+(3.1.17)
+
+'._
+
+a .- a
+
+_ 1 + nlXb
+n+ 1 '
+
+,
+n2
+2 (
+2(1 + nIX)
+T)
+A := n2 _ 1 (1 -IX ) A - (n + 1)(1 + IX) bb ,
+
+where b is the vector defined in (3.1.7). Note that if y = eTa then E'(A, a, c, y) =
+E' (A, a, c) and formulas (3.1.16) and (3.1.17) reduce to formulas (3.1.11) and
+
+72
+
+Chapter 3. The Ellipsoid Method
+
+(3.1.12). So in formulas (3.1.11) and (3.1.12) we compute the Lowner-John
+ellipsoid of the section E (A, a, c) of E (A, a) that is obtained by cutting with H
+through the center a. We call this a central cut. If 0 < IX < 1 then E' (A, a, e, y)
+is strictly contained in E' (A, a, c). This means that we cut off a larger piece of
+E(A,a), and therefore eT x:s; y is called a deep cut. If -lin < IX < 0 then we leave
+more of E(A, a) than the "half" E'(A, a, c), and we call eT x :s; y a shallow cut;
+but in this case the Lowner-John ellipsoid of E'(A,a,e,y) is still strictly smaller
+than E(A,a), in the sense that it has a smaller volume. (We shall see later that
+a volume reduction argument will prove the polynomial time termination of the
+ellipsoid method.)
+It is also possible to compute explicit formulas for the Lowner-John ellipsoid
+of E(A, a) n {x I y' :s; eT x :s; y}, i. e., for an ellipsoidal section determined by
+parallel cuts. However, the formulas are quite horrible - see BLAND, GOLDFARB
+and TODD (1981). We will need a special case of this, namely the Lowner-John
+ellipsoid of an ellipsoidal section determined by centrally symmetric parallel cuts,
+i. e., of
+(3.1.18)
+where y > O. Similarly as in (3.1.13), let IX = -ylve T Ae. It turns out that the
+Lowner-John ellipsoid of E"(A, a, e, y) is the ellipsoid E(A', a') defined as follows.
+IfIX < -1/..;n then E(A',a') = E(A,a).
+If -1 l..;n :s; IX < 0 then E (A', a') is given by
+
+. (3.1.19)
+
+a' :=a,
+
+(3.1.20)
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 3.4a-d
+
+Figure 3.4 shows the four types of cuts used in various versions of the ellipsoid
+method. In all cases we assume that E(A,a) is the unit ball S(O,l). Let e :=
+
+3.1 Geometric Background and an Informal Description
+
+73
+
+(-I,O)T be the vector used to cut through E(A, a). Picture (b) shows the LownerJohn ellipsoid of the dotted area E'(A,a,c) = S(O, 1) n {x I Xl ~ O}, a central cut.
+Picture (a) shows the Lowner-John ellipsoid of the dotted set E'(A,a,c,-1/2) =
+S(O, l)n{x I XI ~ 1/2}, a deep cut. Picture (c) shows the Lowner-John ellipsoid of
+E'(A,a,c, 1/3) = S(O, 1) n {x I XI ~ -I/3}, a shallow cut; while the Lowner-John
+ellipsoid of E"(A,a,c, 1/4) = S(O, 1) n {x I -1/4 ::;; XI ::;; 1/4} is displayed in
+picture (d). This set is determined by a centrally symmetric parallel cut.
+
+Description of the Basic Ellipsoid Method
+To show the basic idea behind the ellipsoid method, we describe it now as a
+method to solve the strong nonemptiness problem for explicitly given polytopes
+that are either empty or full-dimensional. The input for our algorithm is a system
+of inequalities cT X ::;; Yi, i = 1, ... , m, with n variables in integral coefficients. We
+would like to determine whether
+(3.1.21)
+P := {x E IRn leT x::;; Yi, i = 1, ... , m} = {x I Cx ::;; d}
+is empty or not, and if it is nonempty, we would like to find a point in P. In
+order to get a correct answer the input must be accompanied by the following
+guarantees:
+(3.1.22)
+P is bounded.
+If P is nonempty, then P is full-dimensional.
+(3.1.23)
+It will turn out later that the certificates (3.1.22) and (3.1.23) are not necessary. The
+(appropriately modified) method also works for possibly unbounded polyhedra
+.that are not full-dimensional. Moreover, we can handle polyhedra defined by
+inequalities that are provided by a separation oracle, that is, the inequalities need
+not be given in advance. To treat all these additional possibilities now would
+only obscure the lines of thought. Thus, in order to explain the ideas underlying
+the ellipsoid method, we restrict ourselves to the special case described above.
+Recall the well-known method of catching a lion in the Sahara. It works as
+follows. Fence in the Sahara, and split it into two parts; check which part does
+not contain the lion, fence the other part in, and continue. After a finite number
+of steps we will have caught the lion - if there was any - because the fenced-in
+zone will be so small that the lion cannot move anymore. Or we realize that the
+fenced-in zone is so small that it cannot contain any lion, i. e., there was no lion
+at all. In order to illustrate the ellipsoid method by this old hunter's story we
+have to describe what our Sahara is, how we split it into two parts, how we fence
+these in, and when we can declare the lion caught or nonexistent.
+For the Sahara we choose a ball around the origin, say S(O,R), that contains
+our polytope P, the lion. If the system of inequalities (3.1.21) contains explicit
+upper and lower bounds on the variables, say Ii ::;; Xi ::;; Ui, i = 1, ... , n then a
+radius R with P s;;: S (0, R) is easily found. Take for instance
+(3.1.24)
+
+R :=
+
+V"'[,7=1 max{ur,If}.
+
+If bounds on the variables are not given explicitly we can use the information
+that C and d are integral and that P is a polytope to compute such a radius R,
+namely we have:
+
+74
+
+Chapter 3. The Ellipsoid Method
+
+o
+
+(3.1.25) Lemma. P £ S (0, R), where R := Vn 2(C,d)-n 2 •
+
+Recall that <C, d) denotes the encoding length of C and d - see Section 1.3.
+(Since we do not want to interrupt the flow of thought, the proofs of all lemmas
+stated in this subsection are postponed to the next subsection.)
+Now we have the starting point for the ellipsoid method. We know that P is
+in S(O,R) with R given by (3.1.24) or (3.1.25). This ball around the origin will
+be our first ellipsoid E(Ao,ao) (which is clearly given by setting Ao := R2[ and
+
+ao = 0).
+
+Let us now describe the k-th step, k ~ 0, of the procedure. By construction,
+the current ellipsoid
+(3.1.26)
+
+contains P. The ellipsoid Ek has one distinguished point, its center ak, and we
+have it explicitly at hand. So we can substitute ak into the inequality system
+(3.1.21) and check whether all inequalities are satisfied. If this is the case, we can
+stop, having found a feasible solution. If the center is not feasible, then at least
+one inequality of the system (3.1.21) must be violated, let us say cT x ~ y. So we
+have cT ak > y. The hyperplane {x I cT X = cT ad through the center ak of Ek
+cuts Ek into two "halves", and we know from the construction that the polytope
+P is contained in the half
+(3.1.27)
+Therefore we choose, as the next ellipsoid Ek+1 in our sequence, the Lowner-John
+ellipsoid of E'(Ak, ak, c), which is given by formulas (3.1.11) and (3.1.12). And we
+continue this way by successively including P into smaller and smaller ellipsoids.
+The question to be answered now is: When can we stop? Clearly, if we find
+a point in P, we terminate. But how long do we have to continue the iterations
+if no feasible point is obtained? The stopping criterion comes from a volume
+argument. Namely, we know the initial ellipsoid S (0, R) and therefore we can
+estimate its volume, e. g., through (3.1.6). In each step k we construct a new
+ellipsoid Ek+1 whose volume is strictly smaller than that of Ek. More precisely,
+one can show:
+(3.1.28) Lemma.
+_vo_I.....:(_E_k+-,-I-'-.) =
+vol(Ek)
+
+((_n_) n+1 (_n_) n-I) 1/2 <
+n+1
+
+n- 1
+
+e-1/(2n)
+
+< 1.
+
+o
+By our guarantees (3.1.22) and (3.1.23) we are sure that our polytope P has
+a positive volume, unless it is empty. One can use the integrality of the data and
+the fact that' P is a polytope to prove
+
+3.1 Geometric Background and an Informal Description
+
+75
+
+(3.1.29) Lemma. If the polytope P is full-dimensional, then
+vol(P) ~ 2-(n+l)(C}+n3 •
+
+o
+Now we can finish our analysis. We can estimate the volume of the initial
+ellipsoid from above, and the volume of P, if P is nonempty, from below; and
+we know the shrinking rate of the volumes. Therefore, we iterate until the present
+ellipsoid has a volume that is smaller than the lower bound (3.1.29) on the volume
+of P. If we have reached this situation, in step N say, we can stop since we know
+that
+(3.1.30)
+
+P £; EN,
+vol(EN) < vol(P).
+
+This is clearly impossible, and we can conclude that P is empty. Thenumber N
+of iterations that have to be done in the worst case can be estimated as follows.
+If we choose
+N := 2n«2n + 1)( e) + n(d) - n3 )
+
+(3.1.31)
+
+then it is easy to see that vol(EN) < 2-(n+l)(C}+n3 (for an elaboration, see Lemma
+(3.1.36». Combining this with (3.1.29) we see that (3.1.30) holds for this N.
+Our description of the ellipsoid method (except for implementational details) is
+complete and we can summarize the procedure.
+(3.1.32) The Basic Ellipsoid Method (for the strong nonemptiness problem for
+full-dimensional or empty polytopes).
+Input: An mxn-inequality system ex ::;; d with integral coefficients. We assume
+that the data are accompanied by a guarantee that P = {x E R n I ex ::;; d} is
+bounded and either empty or fuji-dimensional.
+Initialization:
+
+Set
+
+(a) k:= 0,
+(b) N := 2n«2n + 1)( e) + n(d) - n3 ),
+
+(c) Ao:= R2 I with R := .;n 2(C,d}-n2 (or use any valid smaller R
+as, for example, given in (3.1.24»,
+ao := 0
+(so Eo := E (Ao, ao) is the initial ellipsoid).
+
+General Step:
+(d)
+(e)
+(f)
+
+Ifk = N, STOP! (Declare P empty.)
+If ak E P, STOP! (A feasible solution is found.)
+If ak ¢ P, then choose an inequality, say c T x ::;; y,
+of the system ex ::;; d that is violated byak.
+
+76
+
+Chapter 3. The Ellipsoid Method
+
+Set
+(g)
+
+(see (3.1.7»,
+
+(h)
+
+(see (3.1.11»,
+
+(i)
+
+(see (3.1.12»,
+
+o
+
+and go to (d).
+
+We call algorithm (3.1.32) the basic ellipsoid method since it contains all the
+fundamental ideas of the procedure. To make it a polynomial time algorithm or
+to make it more efficient certain technical details have to be added. For instance,
+we have to specify how the vector ak+l in (h) is to be calculated. Our formula on
+the right hand side of (h) leads to irrational numbers in general since a square
+root is computed in the formula for b in (g). Nevertheless, the lemmas stated
+before prove that the basic ellipsoid method works - provided that the single
+steps of algorithm (3.1.32) can be implemented correctly (and efficiently). We will
+discuss this issue in the subsection after the next one.
+Proofs of Some Lemmas
+We now give the proofs of the lemmas stated above. We begin with a slight.
+generalization of Lemma (3.1.25).
+
+(3.1.33) Lemma. If P = {x E R n I Cx ~ d} is a polyhedron and C, dare
+integral, then all vertices of P are contained in the ball around 0 with radius
+R := ..;n 2(C,d)-n2 • In particular, if P is a polytope then P £; S (0, R).
+Proof. In order to show that the vertices of P are in S (0, R) with the R given
+above, we estimate the largest (in absolute value) component of a vertex of P.
+Clearly, if we can find a number t ~ such that no vertex of P has a component
+which (in absolute value) is larger than t, then the vertices of P are contained
+in {x I -t ~ Xi ~ t, i = 1, ... , n}, and thus in S (0, ..;n t). From polyhedral theory
+we know that for each vertex v of P there is a nonsingular subsystem of ex ~ d
+containing n inequalities, say Bx ~ b, such that v is the unique solution of
+Bx = b. By Cramer's rule, each component Vi of v is given by
+
+°
+
+detBi
+
+v
+·--1 - detB
+where we obtain Bi from B by replacing the i-th column of B by the vector b. Since
+B is integral and nonsingular, we have that I det BI ~ 1, and so Ivd ~ I det Bd. By
+(1.3.3) (c)
+
+3.1 Geometric Background and an Informal Description
+
+77
+
+And thus, since (Bj) :s; (C,d),
+
+Therefore, setting R :=
+contained in S(O,R).
+
+vn
+
+2(C,d)-n2
+
+we can conclude that all vertices of Pare
+0
+
+The reader is invited to find better estimates for R, for instance by using the
+Hadamard inequality (0.1.28) directly and not only via (1.3.3).
+Next we prove (3.1.28) and estimate how much the volume of the LownerJohn ellipsoid of the halfellipsoid E' (Ak, ak, c) shrinks compared with the volume
+of E(Ak,ak).
+(3.1.34) Lemma. Let E £ R n be an ellipsoid and E' be the ellipsoid obtained
+from E using formulas (3.1.7), (3.1.11), (3.1.12) for some vectorc E R n \ {O}. Then
+
+((_n_)n+1 (_n_)n-I) 1/2 <
+
+vol(E ' ) =
+
+n+ 1
+
+vol(E)
+
+e-I/(2n)
+
+n- 1
+
+< 1.
+
+Proof. To estimate the volume quotient, let us assume first, that the initial
+ellipsoid is F := E (/,0) i. e., the unit ball around zero, and that the update vector
+c used to compute b in (3.1.7) is the vector (-1,0, ... , O)T. In this case we obtain
+from (3.1.7), (3.1.11), and (3.1.12):
+
+b = (-1,0, ... , O)T,
+a'=a-
+
+n~lb= (n~I'O' ... ,O)T,
+
+n2(
+
+T
+
+I
+2
+A = n2 -1 / - n+l(-I,O, ... ,0) (-1,0, ... ,0)
+
+.
+
+= dlag
+
+((
+
+)
+
+n2
+n2
+n2 ) T)
+(n + 1)2' n2 - l' ... , n2 - 1
+.
+
+From this and (3.1.4) we conclude for the volumes of F. and F' := E(A', d):
+vol(F ') = .JdetA' Vn = videt A' = (
+vol(F)
+vdetA Vn
+
+n2n
+
+n - 1)
+
+(n+J)n(n-l)n n+ 1
+l
+l 2
+= (C:lf+ (n:lf- f/ .
+
+1/2
+
+Hence, by taking the natural logarithm In, we obtain:
+vol(F ' ) < e- I /(2n) <==> el / n < (n+
+vol(F)
+n
+
+1
+< (n
+n
+
+<==> -
+
+l)n+l(n-l)n-1
+n
+
+1
++1)ln(1 +-)n1 +(n - 1)ln(1 - -).
+n
+
+78
+
+Chapter 3. The Ellipsoid Method
+
+Using the power series expansion Inx = L~l (-I)k+l(X _1)k /k for 0 < x ::;; 2,
+we obtain
+1
+1
+(n + 1) In (1 + -) + (n - 1) In (1 - -) =
+n
+n
+
+f
+f(-I)k+1~ f 2(n~;)
+
+= f(_I)k+l n +k1 -
+
+=
+
+k=l
+
+kn
+
+k=l
+
+kn
+
+-
+
+n-kl
+k=l kn
+
+k=l 2kn
+
+2
+
+2
+
+00
+
+1
+
+00
+
+1
+
+=
+
+L (2k -1)n2k- 1 - k=l
+L 2kn2k - k=l
+L kn2k- 1 + k=l
+L kn2k
+k=l
+
+=
+
+L (2k - l)k n2k- 1
+
+00
+
+00
+
+1
+
+00
+
+1
+
+k=l
+1
+> -,
+n
+
+and thus the claim is proved for our special choice of the initial ellipsoid and c.
+Now let E = E(A,a) be any ellipsoid and E' = E(A',a') be an ellipsoid
+constructed from E using the formulas (3.1.7), (3.1.11), and (3.1.12) for some
+vector C E R" \ {O}. By (3.1.3), E = A 1/ 2E(I,0) + a = Al/2F + a. Clearly, there
+is an orthogonal matrix, say Q, which rotates Al/2C into a positive multiple of
+(-1,0, ... , 0), that 'is, there is an orthogonal matrix Q such that
+
+Then
+
+T(x) := Al/2QT x + a
+
+is a bijective affine transformation with T-l(X) = QA-l/ 2 (X - a). Now
+T(F) = {T(y) I yT y::;; I}
+= {x I (T-1x)T(T-1x)::;; I}
+
+= {x I (x-a)T A-1/ 2QTQA- 1/ 2(x_a)::;; I}
+= {x I (x-a)T A-1(x-a)::;; I}
+=E,
+and similarly for the ellipsoid F' defined above, we obtain T(F') = E'. In the
+subsection about properties of ellipsoids we have seen that the quotient of the
+volumes of two ellipsoids is invariant under bijective transformations. Thus we
+have
+vol(E') = vol(T(F'» = vol(F') =
+vol(E)
+vol(T(F»
+vol(F)
+
+which completes the proof.
+
+((_n_)n+l(_n_)n-l)I/2 < e-1
+n+1
+
+/(2n)
+
+n- 1
+
+'
+
+D
+
+3.1 Geometric Background and an Informal Description
+
+79
+
+The following lemma proves (3.1.29) and shows the interesting fact that the
+volume of a full-dimensional polytope cannot be "extremely small", that is, a
+lower bound on vol(P) can be computed in polynomial time.
+(3.1.35) Lemma. If P = {x ERn I Cx ::;;; d} is a full-dimensional polytope and
+the matrix C and the vector d are integral then
+
+vol(P) ~ r(n+1)(C)+n J •
+Proof. From polyhedral theory we know that every full-dimensional polytope P
+in R n contains n + 1 vertices vo, VI, .•. , Vn , say, that are affinely independent. The
+convex hull of these vertices forms a simplex S that is contained in P. Thus,
+the volume of P is bounded from below by the volume of S. The volume of a
+simplex can be determined by a well-known formula, namely we have
+
+1 (1 1 ... 1) I
+
+vol(S) = -, Idet
+n.
+
+Vo
+
+VI
+
+...
+
+Vn
+
+.
+
+Now recall that, for every vertex Vj, its i-th component is of the form ddet BBji by
+et j
+Cramers rule, where B j is a submatrix of C and Bji a submatrix of (C,d). So we
+obtain
+
+Idet (1 . . . 1) I Idet
+Vo
+
+...
+
+Vn
+
+=
+
+1
+
+Bo ..... det Bn
+
+II det ( det
+
+Bo
+
+Uo
+
+...
+
+...
+
+det Bn )
+Un
+
+I
+
+where Uo, .. ,' Un are integral vectors in Rn. Since the last determinant above is
+a nonzero integer, and since by (1.3.3) (c), Idet Bj I ::;;; 2(C)-n2 holds, we get
+
+1 Idet
+Idet (1 ... 1) I ~ Idet Bol .....
+Vo
+
+...
+
+Vn
+
+Bnl
+
+~ (2(C)-n 2)-(n+1).
+
+Therefore, using n! ::;;; 2n2 , we obtain
+vol(P) ~ vol(S) ~ ~(2(C)-n2)-(n+l) ~ 2-(n+I)(C)+nJ ,
+
+n.
+
+D
+
+The last lemma in this sequence justifies the choice (3.1.31) of the number N
+of iterations of the general step in the basic ellipsoid method.
+(3.1.36) Lemma. Suppose P = {x E R n I Cx::;;; d} is a full-dimensional polytope
+and Cx ::;;; d is an integral inequality system, If Eo = E(Ao,ao) with ao = 0,
+Ao = R2[ and R = y'n2(C,d)-n2 is the initial ellipsoid, and if the general step of
+the basic ellipsoid method (3.1.32) is applied N := 2n«2n + 1)( C) + n(d) - n3 )
+times then
+vo~(EN) < 2-(n+I)(C)+n J ::;;; vol(P).
+
+80
+
+Chapter 3. The Ellipsoid Method
+
+Proof. Since Eo £ {x E 1R.n I IIxli oo ~ R}, we have
+
+By (3.1.34), in each step of the basic ellipsoid method the volume of the next
+ellipsoid shrinks at least with the factor e- 1/(2n). Thus after N steps we get
+vol(EN) < e-N /(2n) vol (Eo) < TN /(2n)+n(C,d) = 2-(n+1)(C)+n3 ~ vol(P),
+
+where the last inequality folloWS from (3.1.35). The equality above is, in fact, the
+defining equality for N. This-'proves our claim.
+D
+The reader will have noticed that most of the estimates in the proofs above
+are quite generous. By a somewhat more careful analysis one can improve all
+crucial parameters slightly to obtain a smaller upper bound N on the number of
+iterations of the ellipsoid method. Since our main point is that the upper bound
+is polynomial we have chosen a short way to achieve this. As far as we can see,
+however, the order of magnitude of N, which is O(n2 (e,d», cannot be improved.
+
+Implementation Problems and Polynomiality
+To estimate the running time of the basic ellipsoid method (3.1.32) in the worst
+case, let us count" each arithmetic operation as one elementary step of the
+algorithm. The initialization (a), (b), (c) can obviously be done in O(m' n) ,
+elementary steps. In each execution of the general step (d), ... , (i) of (3.1.32) we
+have to substitute ak into the system ex ~ d which requires O(m . n) elementary
+steps, and we have to update ak and Ak in (h), (i). Clearly (h) needs O(n)
+elementary steps while (i) requires O(n2) elementary steps. The maximum number
+of times the general step of (3.1.32) is executed is bounded from above by
+N = 2n«2n + 1)(C) + n(d) - n3 ) = O(n2 (e,d». Since P is a polytope we have
+m ~ n, and thus the total number of elementary steps of the basic ellipsoid
+method is O(mn 3 (e,d». So we have found a polynomial upper bound on the
+number of elementary steps of the basic ellipsoid method.
+However, there are certain problems concerning the implementation of some
+of the elementary steps. We take a square root in step (c) to calculate R, so we
+may obtain an irrational number. One can take care of this by rounding R up
+to the next integer. But, in fact, we only need the rational number R2 in the
+initialization of Ao, so we do not have to compute R at all. A more serious
+problem comes up in the general step. The vector b calculated in (g) is in general
+irrational, and so is ak+1' Since irrational numbers have no finite representation in
+binary encoding, we are not able to calculate the center ak+l exactly. Thus, in any
+implementation of the ellipsoid method we have to round the coefficients of the
+entries of the center of the next ellipsoid. This causes difficulties in our analysis.
+Namely, by rounding ak+l to some vector Qk+1 E Gr, say, we will translate the
+ellipsoid Ek+l slightly to the ellipsoid Ek+1 := E(Ak+1' Qk+l)' Recalling that Ek+1
+is the ellipsoid of minimum volume containing the halfellipsoid E' (Ak, ak, c) -
+
+3.1 Geometric Background and an Informal Description
+
+81
+
+cf. (3.1.27) - we see that Ek+l does not contain E'(Ak,ak,c) any more. So it
+may happen that the polytope P £; E' (Ak, ak, c) is not contained in Ek+l either.
+And therefore, our central proof idea of .constructing a sequence of shrinking
+ellipsoids each containing P is not valid any more.
+There is a further issue. Observe that the new matrix Ak+l calculated in (i)
+is rational, provided Ak and c are. But it is not clear a priori that the entries of
+Ak+l do not grow too fast.
+All these difficulties can be overcome with some effort. We will describe
+here the geometric ideas behind this. The concrete mathematical analysis of the
+correctness and implementability of these ideas will be given in Section 3.2.
+We have seen that rounding is unavoidable in the calculation of the center
+ak+l. We will do this as follows. We write each entry of ak+l in its binary
+representation and cut off after p digits behind the binary point, where p is to
+be specified. In other words, we fix a denominator 2P and approximate each
+number by a rational number with this denominator. To keep the growth of the
+encoding lengths of the matrices Ak+l under control, we apply the same rounding
+method to the entries of Ak+l. As remarked before, rounding of the entries of the
+center results in a translation of the ellipsoid. By rounding the entries of Ak+l
+we induce a change of the shape of the ellipsoid in addition. The two roundings
+may produce a new ellipsoid which does not contain P. Moreover, by rounding
+a positive definite matrix too roughly positive definiteness may be lost. So we
+also have to take care that the rounded matrix is still positive definite. It follows
+that we should maJce p large enough, subject to the condition that all numbers
+coming up during the execution of the algorithm are of polynomial encoding
+length.
+We still have to find a way to keep P inside the newly calculated ellipsoid.
+Since we cannot move P, we have to do something with the new ellipsoid. One
+idea that works is to maintain the (rounded) center and to blow up the ellipsoid
+obtained by rounding the entries of Ak+l in such a way that the blow-up will
+compensate the translation and the change of shape of the Lowner-John ellipsoid
+induced by rounding. The blow-up factor must be so large that the enlarged
+ellipsoid contains P. Clearly, we have to blow up carefully. We know from
+(3.1.28) that the shrinking rate is below 1; but it is very close to 1. In order to
+keep polynomial time termination, we have to choose a blow-up factor that on
+the one hand gives a sufficient shrinking rate and on the other, guarantees that
+P is contained in the blown-up ellipsoid. This shows that the blow-up factor and
+the number p determining the precision of the arithmetic influence each other,
+and they have to be chosen simultaneously to achieve all the goals at the same
+time.
+It turns out that appropriate choices of N, p, and the blow-up factor can
+be made, namely if we choose
+
+e
+
+(3.1.37)
+
+N := 50(n+ 1)2(C,d),
+p :=8N,
+
+1
+
+e := 1 + 4(n+ 1)2'
+
+82
+
+Chapter 3. The Ellipsoid Method
+
+we can make all the desired conclusions. These modifications turn the basic
+ellipsoid method (3.1.32) into an algorithm that runs in polynomial time.
+From the practical point of view these considerations and modifications
+seem quite irrelevant. Note that the ellipsoid method requires problem-specific
+precision. But usually, our computers have fixed precision. Even software that
+allows the use of variable precision would not help, since the precision demands of
+the ellipsoid method in this version are so gigantic that they are hardly satisfiable
+in practice. Thus, in a computer implementation of the ellipsoid method with
+fixed precision it will be possible to conclude that one of the calculated centers is
+contained in P, but by stopping after N steps we cannot surely declare P empty.
+To prove emptiness, additional tests have to be added, based for instance on the
+Farkas lemma.
+By looking at the formulas we have stated for Lowner-John ellipsoids of
+various ellipsoidal sections - see (3.1.11), (3.1.12); (3.1.16), (3.1.17); (3.1.19),
+(3.1.20) - one can immediately see that a speed-up of the shrinking can be
+obtained by using deep or other cuts. There are many possibilities to "play" with
+the parameters of the ellipsoid method. To describe some of them let us write
+the basic iteration of the ellipsoid method in the following form
+(3.1.38)
+(3.1.39)
+where "~" means cutting off after the p-th digit behind the point in the binary
+representation of the number on the right hand side. Following BLAND, GOLDFARB
+and TODD (1981) we call p the step parameter (it determines the length of the
+step from ak in the direction of -b to obtain ak+l), (J the dilatation parameter,
+"t" the expansion parameter and ~ the blow-up parameter (this is the factor used
+to blow up the ellipsoid to compensate for the rounding errors). The ellipsoid
+method in perfect arithmetic (no rounding) as stated in (3.1.32) is thus given by
+(3.1.40)
+
+1
+p:= n+ l'
+
+2
+
+n2
+
+(J
+
+:= -2--1'
+n -
+
+"t"
+
+:= n+ l'
+
+~ := 1.
+
+It is a so-called central-cut method since it always uses cuts through the center
+of the current ellipsoid. The ellipsoid method with rounding and blow-up, i. e.,
+the polynomial time version of (3.1.32) is thus defined by
+(3.1.41)
+
+1
+p:= n+ l'
+
+(J
+
+n2
+n -
+
+:= -2--1'
+
+"t"
+
+2
+:= n+l'
+
+1
+
+~ := 1 + 4(n + 1)2 .
+
+If c T x $; y is the violated inequality found in (f) of (3.1.32), then defining oc :=
+(c T ak - y)jJc T AkC as in (3.1.13) and setting
+(3.1.42)
+
+1 + noc
+p:= n+ 1 '
+
+2(1 + noc)
+
+"t" . -
+
+(n + 1)(1 + oc)'
+
+3.1 Geometric Background and an Informal Description
+
+83
+
+we obtain the deep-cut ellipsoid method (in perfect arithmetic). Note that since
+
+c T ak > }I, the hyperplane {x I c T X = }I} is indeed a deep cut, and so the LownerJohn ellipsoid of E'(Ak,ak,C,}I) - see (3.1.15) - which is given through formulas
+
+(3.1.38), (3.1.39) (without rounding), and (3.1.42) has indeed a smaller volume
+than that of E'(Ak,ak, c) used in (3.1.32).
+The use of deep cuts will - due to faster shrinking - in general speed up the
+convergence of the ellipsoid method. But one can also easily construct examples
+where the standard method finds a feasible solution more quickly. However,
+the use of deep cuts does not seem to change the order of magnitude of the
+number N of iterations of the general step necessary to correctly conclude that
+P is empty. So from a theoretical point of view, deep cuts do not improve the
+worst-case running time of the algorithm.
+Using a number (X in (3.1.42) with -lin < (X < 0 we obtain a shallow-cut
+ellipsoid method. Although - from a practical point of view - it seems ridiculous
+to use a shallow-cut method, since we do not shrink as much as we can, it will
+turn out that this version of the ellipsoid method is of particular theoretical
+power. Using this method we will be able to prove results which - as far as we
+can see - cannot be derived from the central-cut or deep-cut ellipsoid method.
+
+Some Examples
+The following examples have been made up to illustrate the iterations of the
+ellipsoid method geometrically. Let us first consider the polytope P s;;; R2.
+defined by the inequalities
+(1)
+
+(2)
+
+(3)
+
+-
+
+Xl- x2::;-2
+3Xl
+
+::;
+
+-2Xl +2X2::;
+
+4
+3.
+
+This polytope is contained in the ball of radius 7 around zero. To find a point in
+P, we start the basic ellipsoid method (3.1.32) with E (Ao, ao) where
+
+Ao = (
+
+0) '
+
+49
+0 49
+
+see Figure 3.5. The center ao violates inequality (1). One iteration of the algorithm
+yields the ellipsoid E(A\,ad also shown in Figure 3.5. The new center al violates
+(2). We update and continue this way. The fifth iteration produces the ellipsoid
+E(As,as) displayed in Figure 3.6. In the 7-th iteration the ellipsoid E(A7,a7)
+shown in Figure 3.7 is found. Its center a7 = (1.2661,2.3217)T is contained in
+P. The whole sequence of ellipsoids E(Ao,ao), ... , E(A 7,a7) produced in this
+example is shown in Figure 3.8.
+
+84
+
+Chapter 3. The Ellipsoid Method
+
+Figure 3.5
+
+Figure 3.6
+
+3.1 Geometric Background and An Informal Description
+
+Figure 3.7
+
+Figure 3.8
+
+85
+
+86
+
+Chapter 3. The Ellipsoid Method
+
+The pictures of the iterations of the ellipsoid method show clearly that in
+an update the ellipsoid is squeezed in the direction of c while it is expanded
+in the direction orthogonal to c. If many updates are done with one and the
+same vector c the ellipsoids become "needles". To demonstrate this effect, let us
+consider the polytope P ~ JR 2 defined by
+
+Starting the basic ellipsoid method with E(Ao,ao) = S(0,1), we make five iterations until the center as = (211 /243, 0) T of the fifth ellipsoid E (As, as) is
+contained in P. The six ellipsoids ~ (Ao, ao), ... , E (A5, as) of this sequence are
+displayed in Figure 3.9 (a). If the ellipsoid method receives "fiat" polytopes as
+its input, it is likely that the algorithm produces extremely fiat ellipsoids, say of
+several kilometers length and a few millimeters width. This inevitably leads to
+numerical difficulties in practice. In such cases, some variants of the ellipsoid
+method frequently perform better empirically. For instance, the deep-cut ellipsoid
+method finds a feasible point of the polytope P defined above in one iteration.
+This iteration is shown in Figure 3.9 (b). But there is no general result quantifying
+this improvement in performance.
+
+(a)
+
+Figure 3.9
+
+(b)
+
+* 3.2 The Central-Cut Ellipsoid Method
+We shall now give a description and analysis of the version of the basic ellipsoid
+method (3.1.32) where arithmetic operations are performed in finite precision
+and the errors induced by rounding are compensated for by blowing up the
+
+3.2 The Central-Cut Ellipsoid Method
+
+87
+
+"rounded" Lowner-John ellipsoid. This section provides proofs of the claims
+about this method made in the previous section. In particular, the polynomial
+running time is established. Moreover, we do not restrict ourselves to the case
+of an explicitly given polytope, but we treat the general case of a circumscribed
+closed convex set given by a certain separation oracle. Our main result of this
+section can be stated as follows.
+(3.2.1) Theorem. There exists an oracle-polynomial time algorithm, called the
+central-cut ellipsoid method, that solves the following problem:
+Input: A rational number e > 0 and a circumscribed closed convex set (K ; n, R)
+given by an oracle SEPK that, for any y E <Qn and any rational number [) > 0,
+either asserts that y E S(K,[) or finds a vector c E <Q" with IIcll oo = 1 such that
+cT x :::; c T y + [) for every x E K.
+Output:
+
+One of the following:
+
+(i) a vector a E S (K, e),
+(ii) a positive definite matrix A E <Qnxn and a point a E <Q" such that K s;; E(A,a)
+and vol(E(A, a» :::; e.
+
+Whenever we speak of the ellipsoid method without referring to a special
+version we will mean the central-cut ellipsoid method, to be described in the proof
+of Theorem (3.2.1). This method specifies a sequence of ellipsoids Eo, Et, ... , EN
+(i. e., a sequence of positive definite matrices Ao,Al, ... , AN, and a sequence of
+centers ao,at, ... , aN, with Ek = E(Ak,ak), k = 0, ... , N), that contain the given
+set K, such that either at least one of the centers ak satisfies ak E S(K, e) (so
+alternative (i) of (3.2.1) is achieved), or the last ellipsoid EN ~as volume at most
+e.
+Proof of Theorem (3.2.1). The proof will be given in several steps. We first
+describe the method, then prove its correctness assuming that several lemmas
+hold. Finally the truth of the lemmas will be established.
+So let numbers n, R, e and an oracle SEPK be given as required in the theorem.
+Without loss of generality e < 1.
+
+I. For the precise description of the algorithm we need the following parameters:
+
+(3.2.2)
+(3.2.3)
+(3.2.4)
+
+N := rSnJlog eJ + Sn2 Jlog(2R)Il,
+
+p :=8N,
+[) := 2-p •
+
+The integer N is the maximum number of iterations of the central-cut ellipsoid
+method, the rational number [) is the error we allow the oracle SEPK to make, and
+the integer p is the precision parameter for representation of numbers. We assume
+throughout the algorithm that all numbers occurring are represented in binary
+form and are rounded to p digits behind the point. Clearly, for every rational
+number given by a numerator and denominator, this binary approximation can
+be easily computed.
+
+88
+
+Chapter 3. The Ellipsoid Method
+
+We initialize the procedure by setting:
+(3.2.5)
+
+ao:= 0,
+Ao := R2I,
+
+so that Eo = S (0, R) and hence K £ Eo.
+Assume ak, Ak are found for some k ~ 0. If k = N, then the ellipsoid EN =
+E(AN,aN) has the property required in (ii) of (3.2.1) (we shall prove this later),
+and we stop.
+If k < N, we call the oracle SEPK with y = ak and the error parameter {)
+defined in (3.2.4).
+If SEPK concludes that ak E S(K,{)), then by the choice of {), ak E S(K,e),
+and we stop having achieved (i) of (3.2.1).
+If SEPK gives a vector c E <Qn with Ilclloo = 1 and c T x :5: c T ak + {) for all
+x E K, then we do the following computations:
+(3.2.6)
+
+1
+AkC
+.::;::: ak - - - --===
+.
+n+1vc TA k C '
+
+(3.2.7)
+
+:::;::: 2n 2 + 3 (Ak _ _
+2_ Ak CCT Ak) ,
+2
+n + 1 cT AkC
+2n
+
+where the sign "::;:::" in (3.2.6), (3.2.7) means that the left hand side is obtained by
+cutting the binary expansions of the numbers on right hand side after p digits
+behind the binary point. This finishes the description of the central-cut ellipsoid
+method.
+II. To prove the correctness of the algorithm, we establish the following facts ..
+(Recall that for a vector x, IIxll denotes the Euclidean norm, and for a matrix A,
+IIAII denotes the spectral norm (0.1.16).)
+(3.2.8) Lemma.
+
+The matrices Ao,A 1, ••• are positive definite. Moreover,
+
+lIakll:5: R2k,
+
+II Akll:5: R22k,
+
+and
+
+(3.2.9) Lemma.
+
+K £ Ek for k = 0, 1, ...
+
+(3.2.10) Lemma.
+
+vol(Ek+dl vol(Ek) :5: e- I /(5n)
+
+IIA;;III:5: R- 24 k.
+
+for k = 0, 1, ...
+
+We shall prove these lemmas in III, IV, and V below.
+It follows from Lemma (3.2.8) that all the formulas on the right hand sides
+of (3.2.6), (3.2.7) are meaningful (no division by 0) and that the intermediate
+numbers (entries of ak and Ak) do not grow too large, i. e., have polynomial
+encoding lengths. This shows that all the arithmetic operations can be carried
+out in polynomial time.
+If the algorithm stops with ak E S (K, e), then of course we have nothing to
+prove. If it stops with k = N, then by Lemma (3.2.9), EN indeed contains K.
+Moreover, by Lemma (3.2.10) the volume of EN satisfies
+vol(EN) :5: e-N /(5n) vol(Eo).
+
+3.2 The Central-Cut Ellipsoid Method
+
+89
+
+Eo is the ball around zero with radius R, so Eo is contained in the hypercube
+Q = {x E R n I -R ~ Xi ~ R, i = 1, ... , n}. From the very rough estimate
+vol(Eo) ~ vol(Q) = (2R)n we get
+
+(3.2.11)
+
+The last inequality in (3.2.11) in fact is the inequality from which the value of
+N is derived. So the truth of this inequality directly follows from the choice of
+N. This finishes the proof of Theorem (3.2.1) subject to the correctness of (3.2.8),
+
+(3.2.9), (3.2.10), which we show now.
+
+0
+
+III. Proof of Lemma (3.2.8). We prove the lemma by induction on k. Since
+
+ao = 0 and since the largest eigenvalue of Ao is R2, all the statements of (3.2.8)
+
+are clearly true for k = O. Assume that they are true for k ~ O. Let a~+ .. A~+1 be
+the right hand sides of (3.2.6) and (3.2.7) without rounding, i. e.,
+(3.2.12)
+(3.2.13)
+
+Then note first that
+(3.2.14)
+
+which is easy to verify by computation. Thus, (A~+1)-! is the sum of a .positive
+definite and a positive semidefinite matrix, and so it is positive definite. Hence
+also A~+1 is positive definite.
+Equation (0.1.17) immediately implies that for positive semidefinite matrices
+A and B, IIAII ~ IIA + BII holds. Using this, the fact that A:+! is positive definite,
+and the induction hypothesis, we have:
+(3.2.15)
+
+Further, since each entry of Ak+! differs from the corresponding entry of A~+! by
+at most 2-P (due to our rounding procedure) we have from (0.1.23)
+(3.2.16)
+
+So (3.2.15), (3.2.16), and the choice of p give
+(3.2.17)
+
+.IIAk+!1I ~ IIAk+l - A~+111 + IIA~+!II ~ nrp + 181 R22k ~ R22k+!.
+
+90
+
+Chapter 3. The Ellipsoid Method
+
+This proves the second claim of Lemma (3.2.8).
+Moreover, setting Q := A!/2, using formula (3.2.12) and the definition of the
+spectral norm (0.1.16) we obtain
+(3.2.18)
+
+•
+
+lIa k+ 1 - ak I = n
+
+IIAkc11
+
+1
+
+1
+
++ 1 ..jcT Akc = n + 1
+
+c T A~c
+cT Ak C
+
+(c T QT)Ak(QC)
+n+1
+
+CTQTQc
+
+< _1_ fll.;li'IIAII < _1_ R2k- 1
+- n + 1 V lI.fIk II - n + 1
+
+.
+
+Our rounding procedure and (0.1.7) give
+(3.2.19)
+
+lIak+1 - a~+111 5 y'iillak+1 - a~+IIICX) 5 y'ii2- P ;
+
+and therefore, by the induction hypothesis, the choice of p, and the inequalities
+(3.2.18) and (3.2.19) derived above we get
+(3.2.20)
+
+Ilak+lll 5 Ilak+1 - a~+111 + lIa~+1 - ak II + lIak II
+
++ - -1R 2 k- 1 + R2k
+
+5 y'ii2- P
+
+n+1
+
+5 R2k+l.
+
+This proves the first claim of (3.2.8). Finally, we observe that
+(3.2.21)
+
+TII )
+II(A~+I)-III 5 ~2n2 (11Aklll + _2_ IIcc
+T
+2n
+
++3
+
+2n
+
+2
+
+5 2n2 + 3
+
+n - 1 c AkC
+
+(-I
+2
+-I)
+IIAk II + n _ 1" A k II
+
+< :~! IIAkl1l
+5 3R- 24k •
+(The first inequality above follows from (3.2.14). To get the second inequality,
+note that (0.1.16) immediately yields IIccTIl = cT c. Setting Q = A!12, by (0.1.18)
+we have
+I Til
+cT
+
+~ = _c_ 511Q- 11I 2 = IIA-Ili.
+c T AkC
+
+cT Q 2c
+
+k
+
+The last inequality in (3.2.21) follows from n ~ 2 and our induction hypothesis.)
+Let ..to denote the least eigenvalue of Ak+1 and let v be a corresponding
+eigenvector with IIvll = 1. Then by (3.2.16), (3.2.21), and (0.1.17), (0.1.23), and the
+choice of p:
+(3.2.22)
+
+..to = v T Ak+lV = v T A~+IV+VT(Ak+l-A~+I)v
+~ II (A~+I)-III-I - IIAk+1 - A~+III
+
+> -1 R24-k -n2-P
+3
+
+~ R 24-(k+l) .
+
+From..to > 0 we can conclude that Ak+1 is positive definite. Moreover, by (0.1.18)
+and (3.2.22),
+This proves the third assertion of (3.2.8).
+
+o
+
+3.2 The Central-Cut Ellipsoid Method
+
+91
+
+IV. Proof of Lemma (3.2.9). By induction on k. The claim holds by construction
+for k = O. Suppose the claim is true for k, and let ak+1 and Ak+1 be the vector
+resp. matrix defined in (3.2.12) and (3.2.13) in the proof of the previous lemma.
+Take any x E K. We have to prove that
+(3.2.23)
+We shall estimate the left-hand side of (3.2.23) in several steps. Using (3.2.14) we
+get
+
+By induction hypothesis, we know that K £; Ek. So x belongs to Ek, and thus
+the first term in the last formula of (3.2.24) above is at most 1. Setting
+(3.2.25)
+we therefore obtain
+(3.2.26)
+To estimate t(t+ 1), we proceed as follows. Using the fact that Ak can be written as
+QQ, where Q = A!/2, we can bound t from above employing the Cauchy-Schwarz
+inequality (0.1.26):
+
+leT (x - ak)1 = leT Q(Q-I (x - ak))1
+~ lIeTQIIIIQ-I(X-ak)11
+
+= JeT QQe ...;r-(x---ak-)T=-Q---:-I-Q--I=-(x---a-k)
+= JeT Ake V(x - ak)T Akl(x - ak),
+and hence, since x E Ek
+(3.2.27)
+
+92
+
+Chapter 3. The Ellipsoid Method
+
+The oracle SEP K guarantees that cT (x - ad ::; J, and so
+t = cT(xT-ad ::;
+J
+::; JVIIAkl I ::; JR- 12k;
+VC AkC
+lie II VIIAklll-1
+
+Using this estimate and (3.2.27), we can conclude
+t(t + 1) ::; 2JR- 12N .
+
+Substituting this upper bound for t(t + 1) in (3.2.26), we get
+(3.2.28)
+
+• )T
+
+(x - ak+1
+
+n (n
+
+N)
+
+2
+2 2
+• -I.
+-I
+(Ak+1) (x - ak+l ) ::; 2n 2 + 3 n2 _ 1 + 4JR 2
+
+2n4
+1 N
+::; 2 4
+2
+3 + 4JR- 2 .
+n +n -
+
+The rest of the proof is standard error estimation:
+L\ := I(x - ak+d TAk~1 (x - ak+l) -
+
+(x - aZ+I)T(AZ+1)-I(x - a~+1)1
+
+::; I(x - ak+I)T Ak~1 (aZ+1 - ak+dl + l(aZ+ 1- ak+1)Ak~1 (x - aZ+1) I
++ I(x - a~+I) T (Ak~1 - (A~+1)-I)(X - a~+1)1
+::; IIx - ak+111 IIAk~11I lIaZ+ , - ak+111 + IlaZ+1 - ak+111 IIAk~11I IIx - aZ+111
++ IIx - aZ+11121IAk~11I I (AZ+1)-111 IIAZ+I - Ak+lll·
+To continue the estimation, we observe that by Lemma (3.2.8), by the choice of
+p, and by the facts that XES (0, R) and k ::; N - 1 :
+
+Ilx-ak+lll::; IIxll + Il ak+111 ::;R+R2k+1 ::;R2N+1,
+IIx - aZ+,1I ::; IIx - ak+111 + lIak+1 - a~+,11 ::; R + R2k+1 + y'/1 TP ::; R2N+I.
+So again by (3.2.8) and by (3.2.21), we conclude:
+(3.2.29)
+
+L\ ::; (R2 N+ 1)(R-24N )(y'/1TP) + (y'/12-P)(R-24N)(R2N+1)
++ (R222N+2)(R-24N)(R-24N)(n2-P)
+::; nR-123N+2-p + nR-226N+2-p.
+
+Now we can put the estimates (3.2.28) and (3.2.29) together to get (3.2.23):
+(x - ak+d T Ak~l (x - ak+d ::;
+
+::; I(x - ak+,f Ak~1 (x - ak+d - (x - a~+I)(AZ+I)-1 (x - aZ+1) I
++ (x - a~+1) T (AZ+1)-1 (x - a~+I)
+
+::;
+
+2n4
++ 4JR- 12N + nR-123N+2-p + nR-226N+2-p
+2n4 + n2 - 3
+
+::; 1,
+
+where the last inequality follows from the choice of p.
+
+o
+
+3.2 The Central-Cut Ellipsoid Method
+
+93
+
+V. Proof of Lemma (3.2.10). As mentioned in (3.1.4), the volume of an ellipsoid
+E(A, a) £ JRn is known to be v'det(A) vol(S(O, 1». Hence we obtain
+
+(3.2.30)
+
+vol(Ek+d
+
+det(Ak+l)
+
+det(Ak+d
+
+vol (Ed
+
+det(Ad
+
+det(A~+l) ,
+
+where A~+l is the matrix defined in (3.2.l3). To estimate the first factor on the
+right hand side of (3.2.30), write Ak = QQ where Q = A!/2 and use the definition
+of A~+l:
+
+Since Qcc T Q/ c T QQc has rank one and trace one, the matrix in the last determinant has eigenvalues 1, ... , 1,1 - 2/(n + 1). So
+(3.2.31)
+To obtain the last estimate we have used the well-known facts that 1 + x ::; ~
+for all x E JR and (1 + n~l)n > e2, for n ~ 2 - cf. POLYA and SZEOO (1978), I. 172.
+To estimate the second factor of (3.2.30) write it as follows (and recall
+inequality (3.2.21) and the fact that det B ::; liB lin):
+(3.2.32)
+
+»
+
+det Ak+l
+• -1
+•
+d
+• = det(I + (A k+1) (Ak+l - A k+ 1
+etA k+ 1
+
+::; III + (A~+1)-1 (Ak+1 - A~+I) lin
+::; (11111 + I (A~+1)-II1IIAk+1 - A~+1 W
+::; (1 + (R- 24k + 1 )(nTPW
+::; en222N-PR-2
+
+::; e l /(lOn),
+
+where the last inequality follows from the choice of Nand p. Thus, from the
+estimates (3.2.31) and (3.2.32) we get
+vol(Ek+d
+<
+vol (Ed -
+
+--:-c--
+
+This finishes the proof of Lemma (3.2.10).
+Thus the proof of Theorem (3.2.l) is complete.
+
+o
+
+94
+
+Chapter 3. The Ellipsoid Method
+
+(3.2.33) Remark. Suppose that, instead of the oracle SEPK in the input of
+Theorem (3.2.1), we have an oracle SEPK,KI (for some fixed subset KI !;;; K),
+which is weaker than SEPK in the following sense: for any y E.Cfl' and any
+rational fJ > 0, SEPK,KI either asserts that y E S(K, fJ) or finds a vector e E Cfl'
+with lIeli oo = 1 such that eT x ~ eT y+fJ for every x E K 1• Then we obtain the same
+conclusion as in (3.2.1) except that we can only guarantee that KI is contained
+0
+in E(A,a).
+
+(3.2.34) Remark. For technical reasons, the "separation" oracle used in Theorem
+(3.2.1) is slightly stronger than a weak separation oracle. However, for wellbounded convex bodies (where we know an inner radius for the convex set), any
+weak separation oracle can be turned into one necessary for Theorem (3.2.1).
+This is immediate from the following lemma.
+0
+
+(3.2.35) Lemma. Let (K;n,R,r) be a well-bounded convex body, e E R" with
+lIeli oo = 1, and y,fJ E R with r > fJ > O. Suppose that eT x ~ y is valid for
+S(K,-fJ). Then
+2RfJ
+
+eT x ~ y +
+
+--vn
+for all x K.
+r
+E
+
+Proof. Let Xo be a point in K maximizing e T x over K. By definition (2.1.16), there
+is a point ao E R" with S(ao,r) !;;; K. Consider the function f(x) := ~x+(I-~)xo.
+Set a := f(ao), then f(S(ao,r» = S(a,fJ), and moreover, S(a,fJ) is contained in
+conv({xo} U S(ao,r». Since Xo E K, and S(ao,r) !;;; K, S(a,fJ) is contained in K
+by convexity. Hence a E S(K,-fJ), and so we know that eT a ~ y. Now note
+that Xo = a + ~(xo - ao). Thus in order to estimate eT Xo, we have to find a
+bound on eT (xo - ao). Since Xo, ao E K and K !;;; S (0, R), we can conclude that
+Ilxo - aoll ~ 2R, and since Ilell oo = 1, we know that lIell ~.;n. Putting this
+together and using the Cauchy-Schwarz inequality (0.1.26) we get:
+T
+T
+fJ
+fJ T
+fJ
+fJt=
+e Xo ~ e (a+-(xo-ao» ~ y+-e (xo-ao) ~ y+-Ilellllxo-aoll ~ y+-vn2R,
+
+r
+
+r
+
+and the claim is proved.
+
+r
+
+r
+
+0
+
+* 3.3 The Shallow-Cut Ellipsoid Method
+We have already mentioned before that the central-cut ellipsoid method as
+described in the previous section does not make full use of the geometric idea
+behind it. It has been observed by many authors that, for instance, using deep
+cuts can speed up the method (see SHOR and GERSHOVICH (1979), and BLAND,
+GoLDFARB and TODD (1981) for a survey). A deeper idea due to YUDIN and
+NEMIROVSKli (1976b) is the use of shallow cuts. These provide slower (though
+still polynomial time) termination but work for substantially weaker separation
+oracles. This method will allow us to derive (among other results) the polynomial
+
+3.3 The Shallow-Cut Ellipsoid Method
+
+95
+
+time equivalence of the weak membership (2.1.14) and weak separation problems
+(2.1.13) for centered convex bodies.
+To formulate this method precisely, we have to define a shallow separation
+oracle for a convex set K. Before giving an exact definition, we describe the
+geometric idea on which the shallow-cut method is based. In the central-cut
+ellipsoid method we stop as soon as we have found a point almost in the convex
+set K. Now we want to find a point deep in K - even more, we are looking for an
+ellipsoid E(A, a) containing K such that the concentrical ellipsoid E«n+ 1)-2A,a)
+is contained in K. The method stops as soon as such an ellipsoid E(A, a) is found.
+If an ellipsoid E (A, a) does not have this property, then E «n + 1)-2A, a) \ K is
+nonempty, and we look for a halfspace c T x :s; y which contains K but does not
+completely contain E«n+ 1)-2A,a). Such a halfspace will be called a shallow cut
+since it may contain the center a of E(A, a) in its interior - see Figure 3.10.
+
+Figure 3.10
+
+The method proceeds by determining the minimum volume ellipsoid containing
+(3.3.1)
+
+E(A, a) n {x I c TX :s; eTa + ~1 VeT Ac}
+n+
+
+and continues this way. Of course, since irrational numbers may come up, it will
+be necessary to round, and therefore the Lowner-John-ellipsoid has to be blown
+up a little bit as in the central-cut ellipsoid method.
+Note that, by (3.1.8), the right hand side c Ta+(n+l)-lVc TAc = cT a+(n+l)-l
+II ellA-I in (3.3.1) is the maximum value the linear function cT x assumes on the
+ellipsoid E«n+l)-2A,a). So the halfspace {x ERn I c Tx:s; c Ta+(n+l)-lVC TAc}
+contains this ellipsoid and supports it at the point a + «n + I)VcT AC)-l Ac.
+(3.3.2) Definition. A shallow separation oracle for a convex set K s;;; R n is an
+oracle whose input is an ellipsoid E(A, a) described by a positive definite matrix
+A E q'xn and a vector a E q'. A shallow separation oracle for K can write one
+of the following two possible answers on its output tape:
+
+96
+
+Chapter 3. The Ellipsoid Method
+
+(i) a vector c E CQn, e j 0, so that the halfspace H := {x E JRn I c T X ~
+c T a + (n + 1)-1 JeT Ae} contains K n E(A,a) (a vector c with this property is
+called a shallow cut for K and E(A, a»),
+(ii) the assertion that E(A, a) is tough.
+
+o
+
+At least two remarks are necessary to explain this definition. In answer
+(i), the inequality c T x ~ y with y = eTa +
+JeT Ac defining the halfspace H
+containing K n E (A, a) has an irrational right hand side in general. But note
+that this right hand side y is not written on the output tape. The oracle only
+confirms that H contains K n E (A, a). In answer (ii) we have used the yet
+undefined word "tough". Loosely speaking, the word "tough" stands for "cutting
+is impossible". "Toughness" is a parameter left open, and in every instance of a
+shallow separation oracle the particular meaning of "tough" has to be specified.
+For instance, in the example described above a tough ellipsoid would be an
+ellipsoid E(A, a) such that E((n + 1)-2 A, a) is contained in K. But there are other
+meaningful and interesting definitions of toughness possible.
+We assume, as usual, that with each shallow separation oracle a polynomial
+function <I> is associated such that for every input to the oracle of encoding length
+at most L the encoding length of its output is at most <I>(L).
+The aim of this section is to prove the following.
+
+n!t
+
+(3.3.3) Theorem. There exists an oracle-polynomial time algorithm, called the
+shallow-cut ellipsoid method, that, for any rational number e > 0 and for any
+circumscribed closed convex set (K; n, R) given by a shallow separation oracle,
+finds a positive definite matrix A E CQnxn and a point a E ~ such that one of the
+following holds:
+(i) E(A, a) has been declared tough by the oracle,
+(ii) K c:; E (A, a) and vol(E (A, a» ~ e.
+
+o
+
+Before giving a proof of a slightly more general version of this theorem, we
+want to illustrate it by three special cases.
+(3.3.4) Example. Suppose that K c:; JRn, n ~ 2, is a full-dimensional polytope
+given as the solution set of a system of linear inequalities
+aiT x ~ lXi, .1= 1, ... , m,
+
+where ai E CQn, lXi E CQ for i = 1, ... , m. We design a shallow separation oracle as
+follows. Let E(A, a) be an ellipsoid given by A and a. For i = 1, ... , m, determine
+whether all points in the ellipsoid E((n+ 1)-2 A, a) satisfy aT x ~ lXi. It follows from
+(3.1.8) that this can be done by checking whether (n + 1)-2aT Aai ~ (lXi - aT a)2
+holds. If an index i is found for which this inequality does not hold, then the
+oracle gives the shallow cut ai as answer. If all inequalities of the given system
+are satisfied by all points in E((n + 1)-2A,a), then the oracle declares E(A,a)
+tough.
+.
+
+3.3 The Shallow-Cut Ellipsoid Method
+
+97
+
+If L denotes the encoding length of the inequality system aT x :S cx;, i =
+1, ... , m, then we know from Lemma (3.1.33) that K 5; S (0, R(K)) with R(K) :=
+y'n2 L - n2 and from Lemma (3.1.35) that vol(K) ~ e(K) := 2-(n;+-I)L+n J •
+So,
+by running the shallow-cut ellipsoid method of Theorem (3.3.3) with input
+(K; n, R(K)) and e = e(K) and with the shallow separation oracle defined above,
+we will obtain an ellipsoid E (A, a) containing K such that the concentrical
+0
+ellipsoid E«n + 1)-2A,a) is contained in K.
+Example (3.3.4) applies to more general situations. Namely, if for a circumscribed convex set K we have a shallow separation oracle where toughness of
+an ellipsoid E(A, a) means that E«n + 1)-2 A, a) 5; K, then the shallow-cut ellipsoid method solves the weak nonemptiness problem for K with the additional
+advantage that it gives a point deep inside K.
+(3.3.5) Example.
+The central-cut ellipsoid method can be simulated by the
+shallow-cut ellipsoid method, and Theorem (3.2.1) is a consequence of Theorem
+(3.3.3). In fact, suppose that we have an oracle SEPK as in (3.2.1) for a
+circumscribed closed convex set (K; n, R) and that a positive rational number
+e > 0 is given. Then we can design a shallow separation oracle for K as follows.
+Let an ellipsoid E(A,a) be given by A and a. Compute a positive strict lower
+bound el for the square root of the least eigenvalue A. of A. Let ~' := min{e,ed
+and ~ := (n + 1)-1~'. Call the oracle SEP K for K with input y := a and error
+parameter~. If the oracle SEP K asserts that y E S(K,~), then we declare the
+ellipsoid E(A, a) tough. If SEP K finds a vector e E <Q" with Ilell oo = 1 and
+e T x :S e T y + ~ for all x E K, then we take the vector e as output of the shallow
+separation oracle. By the choice of ~, the vector e is indeed a shallow cut for K
+and E(A,a), namely, for all x E K we have
+(3.3.6)
+
+eT x :S eT a + ~ :S eT a + (n + 1)-lel :S eT a + (n + 1)-1 v';:
+
++ (n + 1)-1 v';: lIeli oo :S eT a + (n + 1)-1 v';: lIell
+:S eTa + (n + 1)- l lleliA-l,
+= eT a
+
+where the last inequality follows from (0.1.9). In this case, toughness implies that
+0
+the center of the tough ellipsoid is in S(K,~) and hence in S(K,e).
+(3.3.7) Example. We can also turn a weak separation oracle into a shallow
+separation oracle provided an inner radius r for K is known. This follows
+0
+directly by combining Remark (3.2.33) with Example (3.3.5).
+
+By definition (3.3.2), a shallow cut for K and E (A, a) is a vector e E <Q" such
+that eT x :S eT a + (n + 1)-1 JeT Ae for all x E K n E(A, a). The parameter (n + 1)-1
+used in the right hand side of this inequality is just a convenient choice out of an
+interval of possible parameters with which a shallow-cut method can b~ defined
+and for which it works. For our applications, greater generality is not necessary.
+But we will state and prove a slightly more general theorem to show what can
+be done.
+
+98
+
+Chapter 3. The Ellipsoid Method
+
+°
+
+(3.3.8) Definition.
+For any rational number 13 with < 13 < lin a shallow
+f3-separation oracle for a convex set K c;; R n is an oracle which, for an input a,
+A, where a E <Q" and A is a rational positive definite n x n-matrix, writes one of
+the following two answers on its output tape:
+(i) a vector c E <Q", c =1= 0, such that the halfspace {x I c Tx:$; eTa + f3Jc TAc}
+contains K n E (A, a) (such a vector c is called a shallow f3-(!ut for K and
+E(A,a»),
+(ii) the assertion that E (A, a) is tough.
+o
+
+Observe that the halfspace {x ERn I c TX :$; eTa + 13 .jeT Ae} contains and
+supports the ellipsoid E (13 2A, a). Clearly a shallow separation oracle as defined
+in (3.3.2) is a shallow n~1 -oracle as defined above.
+
+°
+
+(3.3.9) Theorem. There exists an algorithm, called the shallow-f3-(!ut ellipsoid
+method, that, for any 13 E <Q, < 13 < lin, and for any circumscribed closed
+convex set (K; n, R) given by a shallow 13 -separation oracle, and for any rational
+e > 0, finds, in time oracle-polynomial in n + (R) + (e) +
+nf3)- l l, a positive
+definite matrix A E <Q"xn and a vector a E <Qn such that one of the following
+holds:
+
+r(1 -
+
+(i) E(A, a) has been declared tough by the oracle;
+(ii) K c;; E(A, a) and vol(E(A,a» :$; e.
+
+Note that the algorithm we are going to design is not polynomial in the
+encoding length (13) of 13. But if we choose 13 such that the encoding length
+of the number (1 - nf3)-1 is bounded by a polynomial in the encoding length·
+n+(R)+(e) of the other input (e. g., if we set 13 := (n+ 1)-1), then the algorithm
+is truely oracle-polynomial. So Theorem (3.3.3) directly follows from Theorem
+(3.3.9).
+Proof of Theorem (3.3.9). As in the proof of Theorem (3.2.1) we are going
+to describe a sequence of ellipsoids Eo, E I.. .. ,i. e., we are going to construct a
+sequence of positive definite matrices Ao, AJ, ... and a sequence of centers ao, al, ...
+such that Ek = E (Ak, ak). The algorithm we describe is the shallow-f3-(!ut ellipsoid
+method. Set
+
+r
+
+(3.3.10)
+
+5n
+5n 2
+N:= (1 _ nf3)2 Ilog el + (1 _ nf3)2 Ilog(2R) I + Ilog(l - nf3)1
+
+(3.3.11)
+
+p :=8N.
+
+We initialize the procedure by setting
+(3.3.12)
+
+ao:=
+
+1
+
+°
+
+Assume ak, Ak are defined for some k ;:::: 0. If k = N, we stop. In this case the
+ellipsoid EN contains K and has volume at most e, so alternative (ii) of (3.3.9)
+is achieved. If k < N, we call the shallow f3-separation oracle with a = ak and
+A=Ak.
+
+3.3 The Shallow-Cut Ellipsoid Method
+
+99
+
+If the oracle concludes that E(A,a) is tough, then Ek has the desired property.
+If the oracle gives a shallow p-cut c, then we perform the following computations.
+(3.3.13)
+(3.3.14)
+where
+(3.3.15)
+(3.3.16)
+(3.3.17)
+(3.3.18)
+
+1-np
+n+ 1 '
+ni(1 _ p2)
+(1 :=
+n2 - 1 '
+p:=
+
+t
+
+2(I-np)
+:= (n + 1)(1 _ P)'
+
+r '= 1
+
+...
+
++
+
+(1 - np)2
+2n2
+
+Again "~" means that the left hand side is obtained by rounding the right hand
+side to p digits behind the point. (Note that without rounding and without
+blowing-up (i. e., with setting' := 1) the update formulas above determine the
+Lowner-John-ellipsoid of Ek(A, a, c, y) with y := cT ak + P-v'c T AkC - cf. (3.1.15),
+(3.1.16), (3.1.17).)
+.
+Similarly as in the case of the central-cut ellipsoid method, to establish the
+correctness of the algorithm we need the following lemmas.
+(3.3.19) Lemma.
+
+The matrices Ao, At, . .. are positive definite. Moreover,
+
+(3.3.20) Lemma. K £; Ek for k = 0, 1, ....
+(3.3.21) Lemma. vol(Ek+dl vol(Ek) ::::;; e-(I-np)2/(5n) for k = 0, 1, ....
+
+The first two of these lemmas can be proved along the same lines as Lemmas
+(3.2.8) and (3.2.9). We will prove Lemma (3.3.21), where the crucial condition
+p < lin plays a role.
+Proof of Lemma (3.3.21). As in the proof of Lemma (3.2.10) we write
+
+(3.3.22)
+
+det(Ak+d
+det(A k+1) ,
+
+100
+
+Chapter 3. The Ellipsoid Method
+
+where Ak+1 is defined in (3.3.14), and we obtain for the first factor in (3.3.22)
+(3.3.23)
+=
+
+(1 + (1 - nP)2) n/2 (n2(1 - P2») (n-1)/2 n(1 + P> .
+n2 -1
+2n2
+n+l
+
+The first of the three factors in (3.3.23) can be easily estimated as follows:
+
+(1 + (1 ;n~P)2r/2 ~ e(1-np)2/(4n).
+
+(3.3.24)
+
+To derive an upper bound for the last two factors in (3.3.23) take the natural
+logarithm In (and recall the power series expansion of In(1 + x) and In(1 - x»:
+(3.3.25) In ( (
+
+n2(1 _ P2») (n-1)/2 • n(1 + P») _
+2
+1
+1
+n n+
+=
+
+n;
+
+1 (In(1 _ p2) -In ( 1 -
+
+= n- 1
+2
+
+(f ! (
+
+:2)) + In(1 + P) -In ( 1 + ~)
+
+f
+
+!k _ p2k ) ) +
+(_I)k ( lk _ pk)
+k=l k n
+k=l k
+n
+
+1 ( 1
+2k)) ~
+1 (1
+2k-1)
+= n (~
+f..J 2k n2k - p
+- f..J 2k - 1 n2k- 1 - p
+k=l
+
+k=l
+
+=
+
+6~ 2k(2k _-1l)n2k-1 «2k - l)(np) 2k - 2k(np) 2k-1 + 1)
+
+~
+
+-(I-np)2
+2n
+
+The last inequality follows from the observation that each term of the series on
+the left hand side is negative as np < 1. Hence the first term -(1 - np)2 j(2n) of
+this last sum is an upper bound for it.
+Thus, from (3.3.24) and (3.3.25) we get
+(3.3.26)
+The second factor in (3.3.22) can be estimated just like in the proof of Lemma
+(3.2.10), and we obtain
+(3.3.27)
+Combining inequalities (3.3.26) and (3.3.27) gives the desired result. This completes the proof of Lemma (3.3.21) and, by the same argument as in the proof of
+Theorem (3.2.1), also the proof of Theorem (3.3.9).
+0
+
+3.3 The Shallow-Cut Ellipsoid Method
+
+101
+
+As mentioned above, we will only use the shallow fJ-cut ellipsoid method for
+fJ = n~l in the sequel, and that is what we call the shallow-cut ellipsoid method.
+Similarly, if fJ = n~l' a shallow fJ-separation oracle is called just a shallow
+
+separation oracle. The parameters used in the shallow-cut ellipsoid method are
+
+the following (compare with (3.3.10), ... , (3.3.18) and (3.2.2), ... , (3.2.7)):
+N : r5n(n + 1)211ogel + 5n 2 (n + 1)21 log(2R) 1+ log(n + 1)1,
+p :=8N,
+
+P := (n+ 1)2'
+n (n + 2)
+.= ----'---=---'--3
+
+(1
+
+.
+
+(n + 1)3(n - 1)'
+
+2
+
+r .- n(n + 1)'
+
+1
+
+, := 1 + 2n 2 (n + 1)2.
+So, in particular one can see that the number N of iterations of the shallow-cut
+ellipsoid method is about (n + 1)2 times as large as the number of iterations of
+the central-cut ellipsoid method. This, of course, matters for practical purposes,
+but is of no significance if one is only interested in polynomial time solvability.
+
+

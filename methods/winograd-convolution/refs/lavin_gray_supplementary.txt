@@ -1,0 +1,178 @@
+Appendices                                                       are
+                                                                       g (0) (x) = g(x)          mod m(0) = g0
+A. Minimal Filtering Algorithms                                        g (1) (x) = g(x)          mod m(1) = g0 + g1 + g2
+    In this supplemental material we will first illustrate how         g (2) (x) = g(x)          mod m(2) = g0                       g1 + g2
+                                                                                                                                                     (29)
+minimal filtering algorithms are derived, using F (4, 3) as an         g   (3)
+                                                                                 (x) = g(x)      mod m        (3)
+                                                                                                                       = g0 + 2g1 + 4g2
+example, which is more complex than the typical textbook
+example. The polynomial math gets fairly tedious for large             g (4) (x) = g(x)          mod m(4) = g0                       2g1 + 4g2
+                                                                           (5)                                (5)
+filters, so we used Mathematica to perform the symbolic                g         (x) = g(x)      mod m                 = g2
+math.
+                                                                 and
+    Then in the following sections, we give transforms for
+the algorithms that were mentioned in the paper but not ex-        d(0) (x) = d(x)              mod m(0) = d0
+plicitly detailed due to space limitations.                        d(1) (x) = d(x)              mod m(1) = d0 + d1 + d2 + d3
+                                                                   d(2) (x) = d(x)              mod m(2) = d0                    d1 + d2       d3
+A.1. F(4,3)
+                                                                       (3)                                   (3)
+                                                                   d         (x) = d(x)         mod m              = d0 + 2d1 + 4d2 + 8d3
+   Recall the minimal filtering algorithm F (4 ⇥ 4, 3 ⇥ 3)
+                                                                       (4)                                   (4)
+is created by nesting 1D algorithm F (4, 3) with itself. In        d         (x) = d(x)         mod m              = d0          2d1 + 4d2          8d3
+this section we derive F (4, 3) using the Chinese Remainder        d   (5)
+                                                                             (x) = d(x)         mod m        (5)
+                                                                                                                   = d3
+Theorem technique pioneered by Winograd, using a nota-                                                                                               (30)
+tion similar to [2, p. 155].
+   The 3 element filter g and 4 element signal d can be rep-       We can represent the residues d(i) (x) in matrix form as
+resented as polynomials,                                                             2                     3
+                                                                                       1 0 0 0
+                                                                                     6 1 1 1 1 7
+                                                                                     6                     7
+              g(x) = g2 x2 + g1 x + g0                                               6 1     1 1        1 7
+                                                         (24)                  A=6   6                     7
+                                                                                                           7            (31)
+              d(x) = d3 x3 + d2 x2 + d1 x + d0                                       6 1 2 4 8 7
+                                                                                     4 1     2 4        8 5
+and the linear convolution g ⇤ d is equal to the coefficients                          0 0 0 1
+of the polynomial product
+                                                                   Define M (i) (x) = m(x)/m(i) (x), yielding:
+                     y(x) = g(x)d(x)                     (25)                        M (0) (x) = x4                5x2 + 4
+                                                                                     M (1) (x) = x4 + x3                       4x2     4x
+   For polynomial m(x) of degree 6, this is equal to                                     (2)             4             3         2
+                                                                                     M         (x) = x             x           4x + 4x
+                                                                                                                                                     (32)
+                                                                                         (3)             4                 3
+               y(x) = g(x)d(x)     mod m(x)              (26)                        M         (x) = x + 2x                     x2     2x
+                                                                                     M (4) (x) = x4                2x3          x2 + 2x
+If instead m(x) is of degree 5, we can write
+                                                                                         m(x) = x5                 5x3 + 4x
+    y(x) = g(x)d(x)      mod m(x) + Rm(x) [y(x)]         (27)    Construct the matrix B such that column Bi is the coeffi-
+                                                                 cients of M (i 1) and column B6 is the coefficients of m,
+where Rm (x)[y(x)] is the remainder of y(x) divided by           yielding:
+m(x).                                                                       2                                 3
+                                                                                4    0     0   0     0    0
+  We choose                                                                 6 0       4 4        2 2      4 7
+                                                                            6                                 7
+                                                                            6 5       4     4    1    1   0   7
+m(x) = m(0) (x)m(1) (x)m(2) (x)m(3) (x)m(4) (x)m(5) (x)                B=6  6                                 7       (33)
+                                                                                0    1      1  2      2    5  7
+                                                                            6                                 7
+       = x(x     1)(x + 1)(x     2)(x + 2)(x     1)                         4 1      1     1   1     1    0 5
+                                                         (28)                   0    0     0   0     0    1
+                                                                   In order to apply the Chinese Remainder Theorem, we
+which uses the popular convention of writing x 1 in place
+                                                                 must solve for n(i) (x), N (i) (x), such that
+of Rm(x) [y(x)].
+   The residues of g(x) and d(x) with respect to m(i) (x)                          n(i) (x)m(i) (x) + n(i) (x)M (i) (x) = 1                          (34)
+yielding:                                                               Applying the nesting formula (8) yields a minimal algo-
+                                                                    rithm for F (3 ⇥ 3, 3 ⇥ 3) using 5 ⇥ 5 = 25 multiplies. The
+                        1
+            n(0) (x) =     5x x3                                    standard algorithm uses 3 ⇥ 3 ⇥ 3 ⇥ 3 = 81 multiplies. This
+                        4                                           is an arithmetic complexity reduction of 3.24X.
+                        1 3
+            n(1) (x) =     x + 2x2 2x 6                                 The data transform for the 2D algorithm uses 9(5 + 5) =
+                        6                                           90 floating point instructions, the filter transform uses 7(5+
+                        1 3
+            n(2) (x) =     x   2x2 2x + 6                           3) = 56, and the inverse transform uses 7(5 + 3) = 56.
+                        6
+            n(3) (x) =
+                        1
+                             x3 4x2 7x 12                           A.3. F(6x6,3x3)
+                        24
+                        1                                              F (6 ⇥ 6, 3 ⇥ 3), has quite large coefficients.
+            n(4) (x) =       x3 + 4x2 7x + 12
+                        24                                   (35)
+                        1                                                   2                                                  3
+            N (0) (x) =                                                          36      0 49           0   14      0    1   0
+                        4                                              6          0     36 36          13   13      1    1   0 7
+                                                                       6                                                       7
+              (1)         1                                            6          0     36 36          13   13      1    1   0 7
+            N (x) =                                                    6                                                       7
+                          6                                            6          0     18 9           20   10      2    1   0 7
+                          1                                         B =6
+                                                                     T
+                                                                       6
+                                                                                                                               7
+              (2)
+            N (x) =                                                    6          0     18 9           20   10      2    1   0 7
+                                                                                                                               7
+                          6                                            6          0     12 4           15    5      3    1   0 7
+                                                                       6                                                       7
+              (3)       1                                              4          0     12 4           15    5      3    1   0 5
+            N (x) =
+                        24                                                        0     36 0           49    0     14    0   1
+              (4)       1                                                   2      1
+                                                                                                        3
+            N (x) =                                                               36        0      0
+                        24                                              6          1       1       1   7
+                                                                        6         48      48      48   7
+   Matrix G is constructed by setting row Gi equal to the               6          1       1       1   7
+                                                                        6         48      48      48   7
+coefficients of g (i 1) multiplied by N (i 1) :                         6         1        1       1   7
+                       2 1                  3                         G=6
+                                                                        6
+                                                                                 120
+                                                                                  1
+                                                                                          60
+                                                                                           1
+                                                                                                  30
+                                                                                                   1
+                                                                                                       7
+                                                                                                       7
+                                  0     0                               6        120      60      30   7
+                           4                                            6         1       1        1   7
+                       6 1          1     1 7                           6        720     240      80   7
+                       6 61         6     6 7                           4         1       1        1   5
+                       6          1       1 7                                    720     240      80
+                 G=6   6 1
+                            6     6
+                                  1
+                                          6 7
+                                        1 7          (36)                          0        0      1
+                       6 24      12     6 7                                 2                                              3
+                       4 1          1   1 5                               1 1            1 1         1   1          1    0
+                          24       12   6
+                          0       0     1                               6 0 1            1  2        2   3          3    0 7
+                                                                        6                                                  7
+                                                                        6 0 1            1 4         4   9          9    0 7
+A.2. F(3x3,3x3)                                                      A =6
+                                                                      T
+                                                                        6 0 1
+                                                                                                                           7
+                                                                        6                1  8        8 27          27    0 7
+                                                                                                                           7
+                                                                        4 0 1            1 16       16 81          81    0 5
+   A minimal algorithm for F (3, 3) uses the matrices:
+                                                                          0 1            1 32       32 243        243    1
+                    2                                    3                                                                     (38)
+                     2            1        2       1   0
+                   6 0            2        1       1   0 7              This minimal algorithm for F (6, 3) uses 8 multiplies.
+                   6                                     7
+              BT = 6
+                   6 0            2        3       1   0 7
+                                                         7          The data transform uses 26 floating point instructions, the
+                   4 0            1        0       1   0 5          filter transform uses 13, and the inverse transform uses 20.
+                     0            2        1       2   1                By nesting, F (6 ⇥ 6, 3 ⇥ 3) uses 8 ⇥ 8 = 64 multiplies,
+                   2 1                             3
+                                      0        0                    while the standard algorithm uses 6 ⇥ 6 ⇥ 3 ⇥ 3 = 324. This
+                          2
+                 6        1           1        1   7         (37)   is an arithmetic complexity reduction of 5.06X.
+                 6        2           2        2   7
+               G=6        1           1        1   7                    The 2D data transform uses 26(8 + 8) = 416 floating
+                 6        6           6        6   7
+                 4        1           1        2   5                point instructions, the filter transform uses 13(3+8) = 143,
+                          6           3        3
+                          0           0        1                    and the inverse transform uses 20(8 + 6) = 280.
+                    2                           3
+                     1        1           1 1 0
+              AT = 4 0        1           1 2 0 5
+                     0        1           1 4 1
+   The algorithm uses 5 multiplications, while standard al-
+gorithm uses 3 ⇥ 3 = 9. The data transform uses 9 floating
+point instructions, the filter transform uses 7, and the inverse
+transform uses 7.
+

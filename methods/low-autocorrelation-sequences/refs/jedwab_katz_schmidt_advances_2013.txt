@@ -1,0 +1,2525 @@
+ADVANCES IN THE MERIT FACTOR PROBLEM FOR
+BINARY SEQUENCES
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+Abstract. The identification of binary sequences with large merit factor (small mean-squared aperiodic autocorrelation) is an old problem
+of complex analysis and combinatorial optimization, with practical importance in digital communications engineering and condensed matter
+physics. We establish the asymptotic merit factor of several families
+of binary sequences and thereby prove various conjectures, explain numerical evidence presented by other authors, and bring together within
+a single framework results previously appearing in scattered form. We
+exhibit, for the first time, families of skew-symmetric sequences whose
+asymptotic merit factor is as large as the best known value (an algebraic
+number greater than 6.34) for all binary sequences; this is interesting
+in light of Golay’s conjecture that the subclass of skew-symmetric sequences has asymptotically optimal merit factor. Our methods combine
+Fourier analysis, estimation of character sums, and estimation of the
+number of lattice points in polyhedra.
+
+1. Introduction
+Let A = (a0 , a1 , . . . , at−1 ) be an element of {−1, 1}t with t > 1. We call
+A a binary sequence of length t. The aperiodic autocorrelation of A at shift
+u is
+t−u−1
+X
+cu =
+aj aj+u for u ∈ {0, 1, . . . , t − 1}.
+j=0
+
+Following Golay [14], we define the merit factor of A to be
+F (A) =
+
+2
+
+t2
+Pt−1
+
+2
+u=1 cu
+
+.
+
+Date: 03 May 2012 (revised 22 January 2013).
+Key words and phrases. Merit factor; binary sequence; asymptotic; skew-symmetric;
+Fourier analysis; character sum; lattice point.
+J. Jedwab and D.J. Katz are with Department of Mathematics, Simon Fraser University, 8888 University Drive, Burnaby BC V5A 1S6, Canada. K.-U. Schmidt was with
+Department of Mathematics, Simon Fraser University and is now with Faculty of Mathematics, Otto-von-Guericke University, Universitätsplatz 2, 39106 Magdeburg, Germany.
+Email: jed@sfu.ca, dkatz@sfu.ca, kaiuwe.schmidt@ovgu.de.
+J. Jedwab is supported by NSERC.
+K.-U. Schmidt was supported by German Research Foundation.
+1
+
+2
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+A large merit factor means that the sum of squares of the autocorrelations
+at nonzero shifts is small when compared to the squared autocorrelation at
+shift zero (which always equals t2 ).
+The determination of the largest possible merit factor of long binary sequences is of considerable importance in various disciplines (see [24] and [19]
+for surveys, and [25] for background on related problems). In digital communications, binary sequences with large merit factor correspond to signals
+whose energy is very uniformly distributed over frequency [1]. In theoretical
+physics, binary sequences achieving the largest merit factor for their length
+correspond to the ground states of Bernasconi’s Ising spin model [2]. The
+growth rate of the optimal merit factor of binary sequences, as the sequence
+length increases, is related to classical conjectures due to Littlewood [36], [37]
+and Erdős [11, Problem 22], [12], [40] on the asymptotic behavior of norms
+of polynomials on the unit circle. This relationship arises because,
+when
+P
+j
+a
+z
+the binary sequence A is represented as a polynomial A(z) = t−1
+j=0 j , its
+merit factor F (A) satisfies
+(1.1)
+
+1
+1
+= −1 +
+F (A)
+2πt2
+
+Z 2π
+
+4
+
+A(eiθ ) dθ
+
+0
+
+(see [36, pp. 370–371] or [20, eq. (4.1)], for example).
+Littlewood [37, Chapter III, Problem 19] proved in 1968 that the merit
+factor of Rudin-Shapiro sequences tends to 3 as their length tends to infinity.
+Høholdt and Jensen [20], building on studies due to Turyn and Golay [17],
+proved in 1988 that the merit factor of Legendre sequences rotated by a quarter of their length is asymptotically 6, and conjectured that 6 is asymptotically the largest possible merit factor for binary sequences. But the present
+authors [26] recently disproved this conjecture by showing that a certain family of binary sequences attains an asymptotic merit factor Fa = 6.342061 . . . ,
+which is the largest root of 29x3 −249x2 +417x−27. These sequences, called
+appended rotated Legendre sequences, had been studied numerically by Kirilusha and Narayanaswamy [33] and Borwein, Choi, and Jedwab [8].
+Prior to the paper [26], only two methods were known for calculating the
+asymptotic merit factor of a family of binary sequences [19]. The first is direct calculation, particularly in the case that the polynomials are recursively
+defined [37]. The second, introduced by Høholdt and Jensen [20] in 1988,
+is more widely applicable [30], [31], [5], [6], [4], [7], [44], [28], [29]. The new
+approach of [26] made it possible for the first time to handle appended rotated Legendre sequences, thereby showing that an asymptotic merit factor
+of 6 can be exceeded. In this paper, we elaborate and further develop the
+method of [26] to deal with other highly-studied binary sequence families,
+including Galois sequences (also known as m-sequences), Jacobi sequences,
+and sequences formed using Parker’s periodic and negaperiodic constructions [41]. This allows us to explain several previous numerical results and
+prove a series of conjectures [42], [52], [49], [27] (see Section 3). Moreover,
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+3
+
+we give simple unifying proofs, as well as generalizations, of the main results
+of [20], [30], [31], [41], [8], [49], [44], [28], [29] and [26].
+The binary sequences we consider in this paper fall into two classes. The
+largest achievable asymptotic merit factor for the first class, based on Legendre sequences, is Fa = 6.342061 . . . mentioned above, whereas that for
+the second class, based on Galois sequences, is Fb = 3.342065 . . . , the largest
+root of 7x3 − 33x2 + 33x − 3.
+A binary sequence (a0 , a1 , . . . , a2s ) of odd length 2s + 1 is called skewsymmetric if
+as+j = (−1)j as−j
+
+for all j ∈ {1, 2, . . . , s}.
+
+Historically, skew-symmetric binary sequences have been considered good
+candidates for a large merit factor (see [24, Section 3.1] for background),
+in part because half of their aperiodic autocorrelations are zero [14]. Computer calculations indicate [15, Table III], [39] that skew-symmetric binary
+sequences have largest possible merit factor among all binary sequences of
+their length, for all odd lengths between 2 and 60 except 19, 23, 25, 31, 33,
+35, and 37. Golay conjectured [15], [16], based on a heuristic argument, that
+the largest asymptotic merit factor among all binary sequences is attained
+by skew-symmetric sequences. It is interesting, in light of Golay’s conjecture, that Corollary 2.4 provides the first known families of skew-symmetric
+binary sequences with asymptotic merit factor Fa = 6.342061 . . . .
+To the authors’ knowledge, this paper contains all currently known results
+on the asymptotic merit factor of nontrivial families of binary sequences,
+except for Rudin-Shapiro sequences [37] and related binary sequence families [21], [9], and certain modifications of Jacobi sequences [29], [51], [50].
+2. Results
+Pn−1
+
+Let A(z) = j=0 aj z j be a polynomial of degree n − 1 with coefficients
+in {−1, 1}; we call (a0 , a1 , . . . , an−1 ) the coefficient sequence of A, and write
+F (A) for its merit factor. Let r and t be integers that can depend on n,
+where t ≥ 0, and define the polynomial
+Ar,t (z) =
+
+t−1
+X
+
+aj+r z j ,
+
+j=0
+
+where henceforth we extend the definition of aj so that aj+n = aj for all
+j ∈ Z. The coefficient sequence of Ar,t is derived from that of A by cyclically
+permuting (rotating) the sequence elements through r positions, and then
+truncating when t < n or periodically extending (appending) when t > n.
+We follow Parker [41, Lemma 3] by applying a “negaperiodic” construction
+to A to give the polynomial
+N (A)(z) =
+
+4n−1
+X
+j=0
+
+(−1)j(j−1)/2 aj z j ,
+
+4
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+whose coefficient sequence is the element-wise product of the coefficient sequence of A0,4n with the sequence (+, +, −, −, +, +, −, −, . . . , +, +, −, −) of
+length 4n. We also follow Parker [41, Lemma 4] by applying a “periodic”
+construction to A to give the polynomial
+P (A)(z) =
+
+4n−1
+X
+2
+(−1)j(j−1) /2 aj z j ,
+j=0
+
+whose coefficient sequence is the element-wise product of the coefficient sequence of A0,4n with the sequence (+, +, −, +, +, +, −, +, . . . , +, +, −, +) of
+length 4n.1 The advantage of interpreting Parker’s constructions in terms of
+product sequences was recognized by Xiong and Hall [49] in the negaperiodic
+case, and by Yu and Gong [52] in the periodic case.
+Let p be an odd prime. The Legendre symbol (j | p) is given by
+
+
+if j ≡ 0 (mod p),
+0
+(j | p) = −1 if j not a square modulo p,
+
+
++1 otherwise,
+and the coefficient sequence of
+(2.1)
+
+Xp (z) = 1 +
+
+p−1
+X
+
+
+j p zj
+
+j=1
+
+is a binary sequence called the Legendre sequence of length p.
+Define the function g : R × R+ → R by
+
+
+
+
+X
+4T
+m 2 X
+2R − m 2
+1
+= 1− +4
+max 0, 1−
++
+max 0, 1− 1+
+,
+g(R, T )
+3
+T
+T
+m∈N
+
+m∈Z
+
+where N is the set of positive integers. Then we have the following asymptotic merit factor result for Legendre sequences, and their negaperiodic and
+periodic versions.
+Theorem 2.1. Let Xp be the Legendre sequence of length p and let R and
+T > 0 be real. Then the following hold, as p → ∞:
+(i) If r/p → R and t/p → T , then F (Xpr,t ) → g(R, T ).
+(ii) If r/(2p) → R and t/(2p) → T , then F (N (Xp )r,t ) → g(R + 41 , T ).
+(iii) If r/(4p) → R and t/(4p) → T , then F (P (Xp )r,t ) → g(R, T ).
+Theorem 2.1 (i) is the main result of [26]. The function g satisfies g(R, T ) =
+g(R + 21 , T ) on its entire domain. As shown in [26, Corollary 3.2], the global
+1Our constructions are cyclically permuted versions of those of Parker [41], and our
+N (A) is defined to be twice as long as Parker’s; we address all cyclic shifts and lengths
+in our results, but the definitions above give the most convenient reference point for
+subsequent calculations.
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+5
+
+maximum of g(R, T ) exists and equals
+(2.2)
+
+Fa = 6.342061 . . . , the largest root of 29x3 − 249x2 + 417x − 27.
+
+The global maximum is unique for R ∈ [0, 12 ), and is attained when T =
+1.057827 . . . is the middle root of 4x3 − 30x + 27 and R = 43 − T2 .
+Now let F2d be the finite field with 2d elements and write n = 2d − 1. Let
+ψ : F2d → {−1, 1} be the canonical additive character of F2d , given by
+ψ(y) = (−1)Tr(y) ,
+P
+2j is the absolute trace on F . Let θ be a primitive
+where Tr(y) = d−1
+2d
+j=0 y
+element of F2d and define the polynomial
+(2.3)
+
+Yn,θ (z) =
+
+n−1
+X
+
+ψ(θj ) z j .
+
+j=0
+
+The coefficient sequence of Yn,θ is a binary sequence which we call the Galois
+sequence of length n with respect to θ (cf. [46] for this terminology).2
+Define the function h : R+ → R by
+
+
+X
+m 2
+2T
+1
+=1−
++4
+max 0, 1 −
+.
+h(T )
+3
+T
+m∈N
+
+Then we have the following asymptotic merit factor result for Galois sequences, and their negaperiodic and periodic versions.
+Theorem 2.2. For each n = 2d − 1, choose an integer r and a primitive
+θ ∈ F2d , and let Yn,θ be the Galois sequence of length n with respect to θ.
+Let T > 0 be real. Then the following hold, as n → ∞:
+r,t
+(i) If t/n → T , then F (Yn,θ
+) → h(T ).
+(ii) If t/(2n) → T , then F (N (Yn,θ )r,t ) → h(T ).
+(iii) If t/(4n) → T , then F (P (Yn,θ )r,t ) → h(T ).
+Elementary calculus shows that h(T ) is strictly decreasing on the intervals
+[2, 3], [3, 4], . . ., and so one can confine the optimization problem to [0, 2],
+where it is not hard to show that the global maximum of h(T ) is unique and
+is attained for T = 1.115749 . . . , which is the middle root of x3 − 12x + 12.
+The maximum value attained there is
+Fb = 3.342065 . . . , the largest root of 7x3 − 33x2 + 33x − 3.
+We find it rather curious that, if (Ra , Ta ) is the pair (R, T ) that maximizes
+g(R, T ) and Tb is the T that maximizes h(T ), then the algebraic numbers
+g(Ra , Ta ) − 6 = 0.342061 . . .
+2The m-sequences associated with θ are the n cyclic permutations of this Galois ser,n
+quence. Their corresponding polynomials are Yn,θ
+for r = 0, 1 . . . , n − 1, all of which we
+handle in Theorem 2.2.
+
+6
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+and
+h(Tb ) − 3 = 0.342065 . . .
+are distinct, but first differ in only the sixth decimal place. Likewise, the
+algebraic numbers
+Ta − 1 = 0.057827 . . .
+and
+1
+2 (Tb − 1) = 0.057874 . . .
+
+are distinct, but first differ in only the fifth decimal place.
+Our third main result is a far-reaching generalization of Theorem 2.1. For
+j an integer and n a positive odd integer, the Jacobi symbol (j | n) extends
+the Legendre symbol via (j | 1) = 1 and (j | n1 )(j | n2 ) = (j | n1 n2 ) for positive
+odd integers n1 , n2 . For n a positive odd square-free integer, the coefficient
+sequence of
+Xn (z) =
+
+n−1
+X
+
+j
+
+n
+gcd(j,n)
+
+ j
+z
+
+j=0
+
+is a binary sequence called the Jacobi sequence of length n. When n is prime,
+then Xn is the Legendre sequence of length n.
+We denote by ω(n) and κ(n) the number of distinct prime divisors of n
+and the smallest prime divisor of n, respectively. Then the merit factor for
+Jacobi sequences, and their negaperiodic and periodic versions, has the same
+asymptotic form as that for Legendre sequences as presented in Theorem 2.1.
+Theorem 2.3. Let n > 1 take values in an infinite set of positive odd
+square-free integers such that
+(2.4)
+
+max(4ω(n) (log n)6 , 5ω(n) )
+→0
+κ(n)
+
+as n → ∞.
+
+Let Xn be the Jacobi sequence of length n and let R and T > 0 be real. Then
+the following hold, as n → ∞.
+(i) If r/n → R and t/n → T , then F (Xnr,t ) → g(R, T ).
+(ii) If r/(2n) → R and t/(2n) → T , then F (N (Xn )r,t ) → g(R + 41 , T ).
+(iii) If r/(4n) → R and t/(4n) → T , then F (P (Xn )r,t ) → g(R, T ).
+In the special case where each n is prime, Theorem 2.3 reduces to Theorem 2.1.
+The following corollary is an immediate consequence of Theorem 2.3, and
+the fact that (j | d) = (−j | d) when d ≡ 1 (mod 4).
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+7
+
+Corollary 2.4. Let n > 1 take values in an infinite set of positive odd
+square-free integers such that each prime divisor of n is congruent to 1 modulo 4 and such that
+max(4ω(n) (log n)6 , 5ω(n) )
+→ 0 as n → ∞.
+κ(n)
+Let Xn be the Jacobi sequence of length n. Then the coefficient sequence of
+each of the polynomials N (Xn )n−s,2s+1 and P (Xn )n−s,2s+1 is skew-symmetric
+for each nonnegative integer s, and for real T > 0 the following hold, as
+n → ∞:
+(i) If s/n → T , then F (N (Xn )n−s,2s+1 ) → g( 41 − T2 , T ).
+(ii) If s/(2n) → T , then F (P (Xn )n−s,2s+1 ) → g( 41 − T2 , T ).
+Since the global maximum Fa of g(R, T ) (see (2.2)) occurs when R =
+1 T
+−
+4
+2 , Corollary 2.4 shows that the largest known asymptotic merit factor for
+a family of binary sequences can be achieved by families of skew-symmetric
+binary sequences. This is of particular interest in view of Golay’s conjecture
+(see the final paragraph of Section 1).
+The rest of the paper is organized as follows. Section 3 describes some
+consequences of our results, including the resolution of several conjectures,
+the explanation of numerical evidence due to other authors, and the encompassing of numerous special cases that have previously appeared in scattered
+form. Section 4 presents our general method for calculating the asymptotic
+merit factor of a family of binary sequences and their negaperiodic and
+periodic versions. Section 5 applies this method to Legendre and Galois
+sequences to establish Theorems 2.1 and 2.2, respectively, using estimates
+on character sums. Section 6 extends the analysis for Legendre sequences
+to Jacobi sequences and so proves Theorem 2.3, using counting results for
+lattice points in polyhedra. (We have chosen to present the proof of Theorem 2.1 separately, even though it is a special case of Theorem 2.3, in order
+to introduce ideas progressively and maintain clarity of explanation.) Section 7 discusses what underlies the negaperiodic and periodic constructions,
+extends the results of the paper to other binary sequence families, and proposes conjectures for the asymptotic merit factor behavior of two further
+binary sequence families.
+3. Relationship to Previous Results
+The results where T 6= 1 in Theorem 2.1 (ii), (iii), Theorems 2.2 and 2.3,
+and Corollary 2.4 are all new, and prove various conjectures posed in the
+literature. Theorem 2.1 (ii) shows how N (Xp )r,t can achieve an asymptotic
+merit factor Fa , as defined in (2.2), proving a conjecture due to Parker [42,
+Conjecture 4], and how N (Xp )0,t can achieve an asymptotic merit factor
+greater than 6.17, explaining numerical results presented by Xiong and
+Hall [49, Section VI]. Theorem 2.1 (iii) shows how P (Xp )r,t can achieve an
+asymptotic merit factor Fa , proving a conjecture due to Yu and Gong [52,
+
+8
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+Conjecture 3]. Theorem 2.2 (i) proves the conjecture of Jedwab and Schmidt
+[27, Conjecture 9, Corollary 10] that for all θ and r, the asymptotic merit
+r,bnT c
+factor of Yn,θ
+is h(T ) when 0 < T ≤ 2. Theorem 2.3 (i) shows how
+r,t
+Xn can attain an asymptotic merit factor Fa for composite n, explaining
+numerical evidence reported by Parker [42, p. 82].
+Various special cases of Theorems 2.1, 2.2, 2.3, and Corollary 2.4 have appeared in scattered form in the literature. The case T = 1 of Theorem 2.1 (i)
+implies that Xpr,p has asymptotic merit factor g(R, 1) if r/p → R as p → ∞.
+Since
+2
+1
+= 61 + 8 R − 14
+g(R, 1)
+
+for 0 ≤ R ≤ 12 ,
+
+the maximum asymptotic merit factor that can be attained in this way
+is g( 14 , 1) = 6. This was proved by Høholdt and Jensen [20]. Theorem 2.1 (i)
+was proved for general R and T by the present authors [26].
+The case T = 1 of Theorem 2.1 (ii) implies that N (Xp )b2pRc,2p has asymptotic merit factor g(R+ 41 , 1), and so the largest asymptotic merit factor that
+can be attained in this way is 6. Xiong and Hall [49, Theorem 3.3] proved
+this result for R = 0. Schmidt, Jedwab, and Parker [44, Theorem 5] then
+proved the result for general R. The case T = 1 of Theorem 2.1 (iii) shows
+that P (Xp )b4pR−pc,4p also has asymptotic merit factor g(R + 41 , 1), as was
+proved by Schmidt, Jedwab, and Parker [44, Theorem 8].
+r,n
+has asymptotic merit
+The case T = 1 of Theorem 2.2 (i) implies that Yn,θ
+factor h(1) = 3 for all θ and r. This was proved by Jensen and Høholdt [30,
+Section 5] (see also Jensen, Jensen, and Høholdt [31, Theorem 2.2]). The
+case T = 1 of Theorem 2.2 (ii) and (iii) implies a corresponding result for
+N (Yn,θ )r,2n and P (Yn,θ )r,4n , respectively, which was proved by Jedwab and
+Schmidt [28, Theorems 11 and 12]. Jedwab and Schmidt [27, Corollary 7]
+proved that, for 1 ≤ T ≤ 2 and for all θ, there is a choice of r for each n
+r,bnT c
+such that the infimum limit of F (Yn,θ ) is at least h(T ). The question as
+r,bnT c
+
+to whether the limit of F (Yn,θ ) equals h(T ) for all choices of θ and r was
+left as an open problem [27, Section 5] and is answered in the affirmative by
+Theorem 2.2 (i).
+The case T = 1 of Theorem 2.3 (i) was proved by Jedwab and Schmidt [29,
+Theorem 2.5] under conditions on the growth rate of ω(n) that are different
+from (2.4). The case T = 1 of Theorem 2.3 (ii) was proved by Xiong and
+Hall [49, Theorem 5.2] for n = pq and R = 0, where p and q are odd primes
+satisfying p ≡ q ≡ 1 (mod 4), under a more restrictive condition than (2.4).
+The case T = 1 of Corollary 2.4 implies that, for n ≡ 1 (mod 4), both
+N (Xn )0,2n+1 and P (Xn )−n,4n+1 are skew-symmetric binary sequences, each
+having asymptotic merit factor 6. This was proved by Schmidt, Jedwab,
+and Parker for prime n [44, Corollaries 6 and 9].
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+9
+
+4. Asymptotic Merit Factor Calculation
+Let A be a binary sequence of length n with associated polynomial A(z)
+and write k = e2πik/n . It turns out that F (Ar,t ), F (N (A)r,t ), and F (P (A)r,t )
+depend only on the function LA defined, for a, b, c ∈ Z/nZ, by
+1 X
+LA (a, b, c) = 3
+A(k )A(k+a )A(k+b )A(k+c ).
+n
+k∈Z/nZ
+
+In the following two theorems, we shall determine the asymptotic behavior
+of F (Ar,t ), F (N (A)r,t ), and F (P (A)r,t ) when LA approximates either of the
+functions In and Jn defined, for a, b, c ∈ Z/nZ, by
+(
+1 if one of a, b, c is zero and the other two are equal,
+In (a, b, c) =
+0 otherwise,
+and
+(
+1 if (c = a and b = 0) or (a = b and c = 0),
+Jn (a, b, c) =
+0 otherwise.
+In Section 5, we shall establish that the error of this approximation for LA
+vanishes asymptotically for Legendre and Galois sequences, thereby proving Theorems 2.1 and 2.2. We shall make repeated use of the elementary
+counting identities
+X
+(4.1)
+1 = max(0, t − |u|),
+0≤j, j+u<t
+
+X
+
+(4.2)
+
+1 = max(0, t − |t − 1 − u|).
+
+0≤j, u−j<t
+
+Theorem 4.1. Let n take values in an infinite set of positive integers. For
+each n, let Vn be a binary sequence of length n and suppose that, as n → ∞,
+(4.3)
+
+(log n)3
+
+max
+
+a,b,c ∈ Z/nZ
+
+LVn (a, b, c) − In (a, b, c) → 0.
+
+Let R and T > 0 be real. Then the following hold, as n → ∞:
+(i) If r/n → R and t/n → T , then F (Vnr,t ) → g(R, T ).
+(ii) If each n is odd, r/(2n) → R, and t/(2n) → T , then F (N (Vn )r,t ) →
+g(R + 14 , T ).
+(iii) If each n is odd, r/(4n) → R, and t/(4n) → T , then F (P (Vn )r,t ) →
+g(R, T ).
+P
+j
+Proof. Let Vn (z) = n−1
+j=0 vn,j z be the polynomial associated with Vn and
+write vn,j+n = vn,j for all j. We treat the three parts of the theorem together
+by letting the binary sequence Un be one of Vn , N (Vn ), or P (Vn ). In all three
+
+10
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+parts, Un can written in polynomial form as
+Un (z) =
+
+sn−1
+X
+
+wj vn,j z j ,
+
+j=0
+
+where s ∈ {1, 4} and wj ∈ {−1, 1} for all j. After elementary manipulations,
+we find from (1.1) that 1 + 1/F (Unr,t ) equals
+X
+1
+(wj1 +r wj2 +r wj3 +r wj4 +r )(vn,j1 +r vn,j2 +r vn,j3 +r vn,j4 +r ).
+(4.4) 2
+t
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+Write k = e2πik/n . It is readily verified that, for all integers j,
+1 X
+vn,j =
+Vn (k ) −j
+k .
+n
+k∈Z/nZ
+
+A straightforward calculation then shows that, if j1 , j2 , j3 , j4 are integers
+satisfying j1 + j2 = j3 + j4 , then
+X
+1
+2 j3 j4
+LVn (a, b, c)−j
+(4.5)
+vn,j1 vn,j2 vn,j3 vn,j4 =
+a b c .
+n
+a,b,c∈Z/nZ
+
+Note that In (a, b, c) approximates LVn (a, b, c) via (4.3). Consider three cases
+for the tuple (a, b, c) ∈ Z/nZ: (1) c = a and b = 0, (2) a = b and c = 0, and
+(3) b = c and a = 0. Then In (a, b, c) = 1 if at least one of these conditions
+is satisfied, and In (a, b, c) = 0 otherwise. The only tuple (a, b, c) that satisfies more than one of these conditions is (0, 0, 0). We now substitute (4.5)
+into (4.4) and reorganize (4.4) by writing LVn (a, b, c) as In (a, b, c) plus an
+error term, and then break the sum involving In (a, b, c) into four parts: three
+sums corresponding to the three cases, and a fourth sum to correct for the
+triple counting of (a, b, c) = (0, 0, 0). We keep the sum E over the error term
+entire, and thus have
+1
+F (Unr,t )
+
+= −1 + A + B + C − 2D + E,
+
+where
+A=
+
+B=
+
+C=
+
+1
+2
+t n
+1
+t2 n
+1
+2
+t n
+
+X
+
+wj1 +r wj2 +r wj3 +r wj4 +r
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+ja4 −j2 ,
+
+a∈Z/nZ
+
+wj1 +r wj2 +r wj3 +r wj4 +r
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+X
+
+X
+
+bj3 −j2 ,
+
+b∈Z/nZ
+
+wj1 +r wj2 +r wj3 +r wj4 +r
+
+X
+c∈Z/nZ
+
+jc3 +j4 +2r ,
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+D=
+
+E=
+
+1
+t2 n
+1
+2
+t n
+
+X
+
+11
+
+wj1 +r wj2 +r wj3 +r wj4 +r ,
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+
+
+
+LVn (a, b, c) − In (a, b, c) r−a+b+c
+
+a,b,c ∈ Z/nZ
+2 j3 j4
+wj1 +r wj2 +r wj3 +r wj4 +r −j
+a b c .
+
+X
+
+×
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+Notice that A = B and there are contributions in A only when j4 = j2 + mn
+for some m ∈ Z. When this occurs, we also have j1 = j3 + mn since
+j1 + j2 = j3 + j4 , so that
+
+2
+X
+2 X
+(4.6)
+A+B = 2
+wj+r wj+r+mn .
+t
+m∈Z
+
+0≤j, j+mn<t
+
+Likewise (using j4 = j2 + m instead of j4 = j2 + mn), we obtain
+2
+
+X
+1 X
+wj+r wj+r+m .
+D= 2
+t n
+m∈Z
+
+0≤j, j+m<t
+
+Similarly, there are contributions in C only when j4 = mn − 2r − j3 for some
+m ∈ Z, and therefore
+
+2
+X
+1 X
+(4.7)
+C= 2
+wj+r wmn−(j+r) .
+t
+m∈Z
+
+0≤j, mn−2r−j<t
+
+If t/n tends to a positive real number as n → ∞, then assumption (4.3),
+combined with Lemma 4.3 (with vj = wj+r ) stated below, implies that
+E → 0. Thus it remains to determine the asymptotic behavior of the sums
+A + B, C, and D for the three parts of the theorem. We shall use the
+notation xn ∼ yn to mean that xn − yn → 0 as n → ∞.
+(i) Un = Vn : Here we have s = 1 and wj = 1 for all j, and we suppose
+that r/n → R and t/n → T as n → ∞. Identities (4.1) and (4.2) give
+2 X
+max(0, t − |m|n)2 ,
+A+B = 2
+t
+m∈Z
+1 X
+D= 2
+max(0, t − |m|)2 ,
+t n
+m∈Z
+X
+1
+C= 2
+max(0, t − |t − 1 − mn + 2r|)2 ,
+t
+m∈Z
+
+and we can then evaluate D exactly as (2t2 + 1)/(3tn). Then, since A + B
+and C are continuous functions of t and r, we obtain −1+A+B +C −2D →
+1/g(R, T ), as required.
+(ii) Un = N (Vn ): Here we have s = 4 and wj = (−1)j(j−1)/2 for all j, and
+we suppose that each n is odd and r/(2n) → R and t/(2n) → T as n → ∞.
+
+12
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+Since wj+2k = (−1)k wj for all j, by (4.1) the contribution to A + B arising
+by restricting the outer sum in (4.6) to even m is
+2 X
+max(0, t − 2|m|n)2 .
+t2
+m∈Z
+
+Now, for all j and for all odd u we have wj wj+u + wj+1 wj+1+u = 0, and
+therefore if S is a finite set of consecutive integers, we have
+(4.8)
+
+X
+
+wj wj+u ≤ 1
+
+for odd u.
+
+j∈S
+
+The terms in the outer sum of A + B are zero whenever |m|n > t − 1, so
+that the number of nonzero terms in the outer sum of A + B is bounded
+by 1 + 2(t − 1)/n. Using (4.8) and the assumption that n is odd, we then
+find that the contribution to A + B arising by restricting the outer sum to
+odd m is at most 2/t2 + 4/(tn), and therefore
+2 X
+max(0, t − 2|m|n)2 .
+A+B ∼ 2
+t
+m∈Z
+
+Likewise,
+D∼
+
+1 X
+max(0, t − 2|m|)2
+t2 n
+m∈Z
+
+and therefore D ∼ t/(3n). We proceed similarly to estimate C. Here we use
+that w1−j = wj for all j. It then follows from (4.8) that, if S is a finite set
+of consecutive integers, then
+X
+
+wj wu−j ≤ 1
+
+for even u.
+
+j∈S
+
+We now split the outer sum of C in (4.7) into sums over odd and even m,
+noting that we may neglect contributions arising from the sum over even m
+as n → ∞. Since w2k+1−j = (−1)k wj for all j, by (4.2) this gives
+1 X
+C∼ 2
+max(0, t − |t − 1 − (2m − 1)n + 2r|)2 .
+t
+m∈Z
+
+We conclude that −1 + A + B + C − 2D → 1/g(R + 41 , T ), as required.
+2
+(iii) Un = P (Vn ): Here we have s = 4 and wj = (−1)j(j−1) /2 for all j,
+and we suppose that each n is odd and r/(4n) → R and t/(4n) → T as
+n → ∞. This can be treated similarly to part (ii). We have wj+4 = wj and
+P3
+j=0 wj wj+u = 0 for u 6≡ 0 (mod 4), from which we can conclude by (4.1)
+that
+2 X
+A+B ∼ 2
+max(0, t − 4|m|n)2 ,
+t
+m∈Z
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+and
+D∼
+
+13
+
+1 X
+max(0, t − 4|m|)2 ,
+t2 n
+m∈Z
+
+so that D ∼ t/(6n). In order to estimate C, we use w−j = wj and (4.2) to
+obtain
+1 X
+C∼ 2
+max(0, t − |t − 1 − 4mn + 2r|)2 .
+t
+m∈Z
+
+We conclude that −1 + A + B + C − 2D → 1/g(R, T ), as required.
+
+
+
+Theorem 4.2. Let n take values in an infinite set of positive integers. For
+each n, let Vn be a binary sequence of length n and suppose that, as n → ∞,
+(4.9)
+
+(log n)3
+
+max
+
+a,b,c ∈ Z/nZ
+
+LVn (a, b, c) − Jn (a, b, c) → 0.
+
+Let T > 0 be real. Then the following hold, as n → ∞:
+(i) If t/n → T , then F (Vnr,t ) → h(T ).
+(ii) If each n is odd and t/(2n) → T , then F (N (Vn )r,t ) → h(T ).
+(iii) If each n is odd and t/(4n) → T , then F (P (Vn )r,t ) → h(T ).
+Proof. The proof of the theorem is similar to the proof of Theorem 4.1,
+though slightly simpler. Here we consider only two cases for the tuple
+(a, b, c) ∈ Z/nZ: (1) c = a and b = 0, and (2) a = b and c = 0, so that
+Jn (a, b, c) = 1 if at least one of these conditions is satisfied and Jn (a, b, c) = 0
+otherwise. Letting Un be one of the sequences Vn , N (Vn ), or P (Vn ), we then
+have
+1
+= −1 + A + B − D + E,
+F (Unr,t )
+where A, B, and D are the same expressions (and have the same asymptotic
+evaluations) as in the proof of Theorem 4.1, but now
+X
+
+
+1
+E= 2
+LVn (a, b, c) − Jn (a, b, c) r−a+b+c
+t n
+a,b,c ∈ Z/nZ
+X
+2 j3 j4
+×
+wj1 +r wj2 +r wj3 +r wj4 +r −j
+a b c .
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+The term C never arises because we have no analogue of case (3) following
+(4.5) in the proof of the previous theorem; and we subtract D, rather than
+2D as previously, because the tuple (a, b, c) = (0, 0, 0) is doubly counted
+in cases (1) and (2) rather than trebly counted. When Un = Vn , N (Vn ),
+or P (Vn ), the proof is completed by observing that, as n → ∞, we have
+−1 + A + B − D → 1/h(T ), and if t/n tends to a positive real number then
+E → 0 by the assumption (4.9) and Lemma 4.3.
+
+We close this section by proving the result used in the proof of Theorems 4.1 and 4.2, which is similar to Lemma 2.2 of [26] but more widely
+applicable.
+
+14
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+Lemma 4.3. Let n be a positive integer and write k = e2πik/n . Let s be
+a positive integer coprime to n, and let vj ∈ C be such that |vj | ≤ 1 and
+vj+s = vj for all j ∈ Z. Then
+X
+
+X
+
+vj1 vj2 vj3 vj4 a−j2 jb3 jc4 ≤ 936s3 max(n, dt/se)3 (1+log n)3 .
+
+a,b,c ∈Z/nZ 0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+Proof. Since |vj | ≤ 1 for all j, and the value of vj depends only on the
+congruence class of j modulo s, the sum to be bounded is at most
+s−1
+X
+
+X
+
+a,b,c ∈Z/nZ k2 ,k3 ,k4 =0
+
+2 j3 j4
+−j
+a b c .
+
+X
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+(j2 ,j3 ,j4 )≡(k2 ,k3 ,k4 ) (mod s)
+
+Reparameterize the inner sum by (j1 , j2 , j3 , j4 ) = (i1 , i2 , i3 , i4 )s + (k3 + k4 −
+k2 , k2 , k3 , k4 ) and (x, y, z) = (−a, b, c)s. Since s is coprime to n, we obtain
+s−1
+X
+
+X
+
+X
+
+ix2 iy3 iz4 ,
+
+k2 ,k3 ,k4 =0 x,y,z ∈Z/nZ (i1 ,i2 ,i3 ,i4 )∈I1 ×I2 ×I3 ×I4
+i1 +i2 =i3 +i4
+
+where each of I1 , I2 , I3 , and I4 is a set of at most dt/se consecutive integers
+(depending on k2 , k3 , and k4 ). Apply Lemma 4.4 to the sum over x, y, z. 
+Lemma 4.4. Let n be a positive integer and write k = e2πik/n . Let each of
+I1 , I2 , I3 , I4 be a finite set of at most L consecutive integers. Then
+X
+
+X
+
+ia2 ib3 ic4 ≤ 936 max(n, L)3 (1 + log n)3 .
+
+a,b,c ∈Z/nZ (i1 ,i2 ,i3 ,i4 )∈I1 ×I2 ×I3 ×I4
+i1 +i2 =i3 +i4
+
+Proof. We may assume that each of the sets I1 , I2 , I3 , I4 is nonempty, otherwise the result is trivial. By reparameterizing, we may also assume that
+|I1 | ≤ |I2 | and |I3 | ≤ |I4 |. Translate I1 , I2 , I3 , and I4 to sets H1 , H2 , H3 , and
+H4 , respectively, each of whose least element is zero. Then for some λ ∈ Z
+the sum to be bounded is
+X
+X
+ha 2 hb 3 hc 4 .
+(4.10)
+a,b,c∈Z/nZ (h1 ,h2 ,h3 ,h4 )∈H1 ×H2 ×H3 ×H4
+h1 +h2 =h3 +h4 +λ
+
+Set u = 2L. We may assume that |λ| < u, otherwise the inner sum is empty
+and the desired bound is immediate.
+Let H1 = {0, 1, . . . , f } and H2 = {0, 1, . .P
+. , g}; note that 0 ≤ f ≤ g. Then
+for a function S of two variables, the sum (h1 ,h2 )∈H1 ×H2 S(h1 , h2 ) equals
+f
+−1 v
+X
+X
+v=0 h1 =0
+
+S(h1 , v − h1 ) +
+
+g X
+f
+X
+v=f h1 =0
+
+S(h1 , v − h1 ) +
+
+f
++g
+X
+
+f
+X
+
+v=g+1 h1 =v−g
+
+S(h1 , v − h1 ).
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+15
+
+The range of each of the three inner sums over h1 has the form jv − w ≤
+h1 ≤ kv + x, where w ∈ {0, |H2 | − 1}, x ∈ {0, |H1 | − 1}, and j, k ∈ {0, 1}.
+Apply the same rationale to sums over (h3 , h4 ) ∈ H3 × H4 to break the inner
+sum of (4.10) into nine sums (some of which may be empty), each of the
+form
+m(v−λ)+γ
+kv+x
+X
+X
+X
+1 h3 v−λ−h3
+v−h
+b c
+a
+v∈V
+
+h1 =jv−w
+
+h3 =`(v−λ)−β
+
+where V is a set of consecutive integers in [0, u), the integers w, x, β, γ satisfy
+0 ≤ w + x < u and 0 ≤ β + γ < u, and j, k, `, m ∈ {0, 1}. By the triangle
+inequality and some reparameterization, it suffices to show that
+X
+
+G=
+
+kv+x
+X
+
+X
+
+mv+z
+X
+
+va hb 1 hc 3
+
+a,b,c∈Z/nZ v∈V h1 =jv−w h3 =`v−y
+
+is at most 104 max(n, L)3 (1+log n)3 , where V is a set of consecutive integers
+lying in [0, u), the integers w, x, y, z satisfy 0 ≤ w + x < u and |y + z| < 2u,
+and j, k, `, m ∈ {0, 1}.
+Now separate G into four sums according to whether each of b and c is 0
+to obtain G = G1 + G2 + G3 + G4 , where
+G1 =
+
+X va (jv−w − x+1+kv )(`v−y
+− z+1+mv
+)
+c
+c
+
+X
+
+b
+
+a,b,c∈Z/nZ v∈V
+b,c6=0
+
+G2 =
+
+X
+
+X
+
+b
+
+(1 − b )(1 − c )
+
+(y + z + 1) + (m − `)v
+
+ va (jv−w
+)
+− x+1+kv
+b
+b
+,
+1 − b
+
+(w + x + 1) + (k − j)v
+
+ va (`v−y
+− z+1+mv
+)
+c
+c
+,
+1 − c
+
+a,b∈Z/nZ v∈V
+b6=0
+
+G3 =
+
+X
+
+X
+
+a,c∈Z/nZ v∈V
+c6=0
+
+G4 =
+
+X
+
+X
+
+,
+
+
+
+(w + x + 1) + (k − j)v (y + z + 1) − (m − `)v va .
+
+a∈Z/nZ v∈V
+
+By the triangle inequality, the constraints |w + x| < u and |y + z| < 2u and
+j, k, `, m ∈ {0, 1}, and some reparameterization, we have
+G1 ≤
+
+X
+b,c,d∈Z/nZ
+b,c6=0
+
+G2 , G3 ≤
+
+X
+b,d∈Z/nZ
+b6=0
+
+X
+4
+vd ,
+|1 − b | · |1 − c |
+
+1
+|1 − b |
+
+v∈V
+
+!
+4u
+
+X
+v∈V
+
+vd + 2
+
+X
+v∈V
+
+vvd
+
+,
+
+16
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+!
+G4 ≤
+
+X
+
+2
+
+2u
+
+X
+
+va
+
++ 3u
+
+v∈V
+
+a∈Z/nZ
+
+X
+
+vva
+
++
+
+v∈V
+
+X
+
+v 2 va
+
+.
+
+v∈V
+
+We next prove by induction on h ≥ 0 that, for a set V of consecutive integers
+in [0, u),
+X
+
+X
+
+(4.11)
+
+v h va ≤ 2uh n log n,
+
+a∈Z/nZ v∈V
+a6=0
+
+For the base case h = 0, we note that |
+standard bound [10, p. 136]
+n−1
+X
+
+(4.12)
+
+a=1
+
+v
+−1 and use the
+v∈V a | ≤ 2|1 − a |
+
+P
+
+1
+≤ n log n.
+|1 − a |
+
+For h > 0, write V = {σ, σ + 1, . . . , τ − 1} and note that
+X
+
+v h va =
+
+τ −2 X
+τ −1
+X
+
+v h−1 va + σ
+
+i=σ v=i+1
+
+v∈V
+
+τ −1
+X
+
+v h−1 va .
+
+v=σ
+
+Apply the triangle inequality and the inductive hypothesis to obtain
+X
+
+X
+
+
+v h va ≤ (τ − σ − 1) + σ 2uh−1 n log n,
+
+a∈Z/nZ v∈V
+a6=0
+
+which completes the proof of (4.11) since τ ≤ u. From (4.11), we find
+X
+
+X
+
+v h va ≤ uh+1 + 2uh n log n,
+
+a∈Z/nZ v∈V
+
+and we apply this and (4.12) to the bounds for G1 , G2 , G3 , and G4 to obtain
+G1 ≤ 4(n log n)2 (u + 2n log n)
+G2 , G3 ≤ 4u(n log n)(u + 2n log n) + 2n log n(u2 + 2un log n)
+G4 ≤ 2u2 (u + 2n log n) + 3u(u2 + 2un log n) + (u3 + 2u2 n log n).
+Since u = 2L and G = G1 + G2 + G3 + G4 , we conclude that G ≤
+104 max(n, L)3 (1 + log n)3 as required.
+
+5. Legendre and Galois sequences
+At the beginning of Section 4, it was noted one can compute the merit
+factor of a binary sequence A of length n from the function LA defined, for
+a, b, c ∈ Z/nZ, by
+1 X
+A(k )A(k+a )A(k+b )A(k+c ),
+LA (a, b, c) = 3
+n
+k∈Z/nZ
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+17
+
+where k = e2πik/n . In this section, we combine Theorem 4.1 with an estimate of LA (a, b, c) for Legendre sequences in order to complete the proof of
+Theorem 2.1, and combine Theorem 4.2 with an estimate of LA (a, b, c) for
+Galois sequences in order to complete the proof of Theorem 2.2.
+Theorem 2.1 is obtained by combining the following lemma with Theorem 4.1, taking Vn = Xn for odd prime n.
+Lemma 5.1. Let Xp be the Legendre sequence of prime length p, as defined
+in (2.1). Then
+max
+
+a,b,c ∈ Z/pZ
+
+LXp (a, b, c) − Ip (a, b, c) ≤ 18p−1/2 .
+
+Proof. For k = e2πik/p , from (2.1) we have
+Xp (k ) − 1 =
+
+p−1
+X
+
+
+j p jk ,
+
+j=1
+
+
+2
+which is a quadratic Gauss sum and evaluates to i(p−1) /4 p1/2 k p [13], [3].
+It follows from the multiplicativity of the Legendre symbol that
+
+1 X
+LXp (a, b, c) =
+x(x + a)(x + b)(x + c) p + ∆,
+p
+x∈Fp
+
+where |∆| ≤ 15p−1/2 . The Weil bound [48], [35, Theorem 5.41] shows that
+the sum over x has magnitude at most 3p1/2 when x(x + a)(x + b)(x + c)
+is not a square in Fp [x]. This polynomial is a square in Fp [x] if and only if
+it either has two distinct double roots, in which case the sum over x equals
+p − 2, or else has a quadruple root, in which case the sum is p − 1.
+
+Theorem 2.2 is obtained by combining the following lemma with Theorem 4.2, taking Vn = Yn,θ .
+Lemma 5.2. Let Yn,θ be the Galois sequence of length n = 2d − 1 with
+respect to a primitive element θ ∈ F2d , as defined in (2.3). Then
+max
+
+a,b,c ∈ Z/nZ
+
+LYn,θ (a, b, c) − Jn (a, b, c) ≤
+
+(n + 1)3/2
+.
+n2
+
+Proof. Write q = 2d = n + 1 and k = e2πik/n . Let χ : F∗q → C be the
+multiplicative character of order q − 1 given by χ(θj ) = j , so that χk (θj ) =
+kj . Then from (2.3),
+X
+Yn,θ (k ) =
+ψ(x)χk (x)
+x∈F∗q
+
+is a Gauss sum. We use the following facts [35, Theorems 5.11 and 5.12]: (i)
+Yn,θ (1) = −1; and (ii) Yn,θ (k ) and Yn,θ (−k ) are complex conjugates, each
+of magnitude q 1/2 , when k 6≡ 0 (mod n).
+
+18
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+Now LYn,θ (a, b, c) can be written as
+1 X
+n3
+
+X
+
+ψ(w + x + y + z)χk (w)χk+a (x)χk+b (y)χk+c (z).
+
+k∈Z/nZ w,x,y,z∈F∗q
+
+Since
+
+k
+k∈Z/nZ χ (v) equals n for v = 1 and equals zero otherwise, we have
+
+P
+
+LYn,θ (a, b, c) =
+
+1
+n2
+
+X
+
+ψ(w + x + y + z)χa (x)χb (y)χc (z).
+
+w,x,y,z∈F∗q
+wx=yz
+
+Set v = w/y = z/x, and separate out terms with v = 1 to obtain
+LYn,θ (a, b, c) = δb δa−c +
+
+1
+n2
+
+X
+
+ψ((v + 1)(x + y))χa−c (x)χ−b (y)χ−c (v),
+
+v,x,y∈F∗q
+v6=1
+
+where
+δ0 = 1 and δu = 0 for nonzero u, and we have used the fact that
+P
+u (s) = nδ for u ∈ Z/nZ. Reparameterize with t = (v + 1)x and
+χ
+∗
+u
+s∈Fq
+u = (v + 1)y to get
+LYn,θ (a, b, c) = δb δa−c +
+
+= δb δa−c +
+
+1
+n2
+
+X
+
+ψ(t)ψ(u)χa−c (t)χ−b (u)χ(v −c (v + 1)b+c−a ),
+
+t,u,v∈F∗q
+v6=1
+
+1
+Yn,θ (a−c )Yn,θ (−b )
+n2
+
+X
+
+χ(v −c (v + 1)b+c−a ).
+
+v∈F∗q r{1}
+
+Using facts (i) and (ii), we get the explicit evaluation
+(
+1 + n−1
+if a = b = c = 0,
+n2
+LYn,θ (a, b, c) =
+1 − n12
+if {0, a} = {b, c} and a 6= 0,
+which gives the desired result in the case that Jn (a, b, c) = 1.
+Otherwise we have {0, a} 6= {b, c} (so that Jn (a, b, c) = 0). Then δb δa−c
+vanishes, and the exponents −c and b + c − a in the last sum over v cannot
+simultaneously vanish. Thus the Weil bound [48], [35, Theorem 5.41] shows
+that the sum over v has magnitude at most q 1/2 . This, along with facts (i)
+3/2
+
+and (ii), shows that |LYn,θ (a, b, c)| ≤ (n+1)
+n2
+
+.
+
+
+
+6. Jacobi sequences
+In this section, we prove Theorem 2.3. We shall give a detailed proof of
+part (i) of Theorem 2.3, making use of the machinery developed in the proof
+of Theorem 4.1 together with Lemma 5.1. We shall then describe how to
+modify the proof to establish parts (ii) and (iii).
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+19
+
+The condition (2.4) is given, and we suppose that r/n → R and t/n → T
+as n → ∞. Let
+n−1
+X
+Xn (z) =
+xn,j z j
+j=0
+
+be the polynomial associated with the Jacobi sequence of length n and write
+xn,j+n
+Q = xn,j for all j. Let P (n) be the set of prime divisors of n, so that
+n = p∈P (n) p since n is square-free. The crucial ingredient of the proof is
+the representation
+Y
+xp,j ,
+(6.1)
+xn,j =
+p∈P (n)
+
+which is an immediate consequence of the definition of the Jacobi symbol.
+Then, by the same reasoning as in the beginning of the proof of Theorem 4.1,
+we find that
+X
+Y
+1
+1
+(6.2) 1 +
+xp,j1 +r xp,j2 +r xp,j3 +r xp,j4 +r .
+r,t = t2
+F (Xn )
+0≤j1 ,j2 ,j3 ,j4 <t p∈P (n)
+j1 +j2 =j3 +j4
+
+Also, writing ζd = e2πi/d , we see from (4.5) that, if j1 , j2 , j3 , j4 are integers
+satisfying j1 + j2 = j3 + j4 , then
+1 X
+xp,j1 xp,j2 xp,j3 xp,j4 =
+LXp (a, b, c) ζp−aj2 ζpbj3 ζpcj4 .
+p
+a,b,c∈Z/pZ
+
+Substitute into (6.2) and write P (n) = {p1 , p2 , . . . , p` } (where ` = ω(n) is
+the number of prime divisors of n) to see that 1 + 1/F (Xnr,t ) equals
+(6.3)
+
+1
+2
+t n
+
+X
+
+X
+
+Y
+`
+
+a` ,b` ,c` ∈Z/p` Z
+
+k=1
+
+···
+
+a1 ,b1 ,c1 ∈Z/p1 Z
+
+×
+
+X
+
+`
+Y
+
+
+LXpk (ak , bk , ck )
+k (j2 +r) bk (j3 +r) ck (j4 +r)
+ζpk
+.
+ζp−a
+ζpk
+k
+
+0≤j1 ,j2 ,j3 ,j4 <t k=1
+j1 +j2 =j3 +j4
+
+For each p ∈ P (n), write LXp (a, b, c) = Ip (a, b, c) + Np (a, b, c).
+Lemma 5.1, we have
+max
+a,b,c∈Z/pZ
+
+From
+
+|Np (a, b, c)| ≤ 18p−1/2 ≤ 18κ(n)−1/2
+
+(where κ(n) is the smallest prime divisor of n). Henceforth, let n ≥ n0 ,
+where n0 is the smallest n such that 18κ(n)−1/2 ≤ 1 for all n ≥ n0 . Such
+an n0 exists since κ(n) → ∞, by (2.4). Then, expanding the first product
+in (6.3) into 2` terms, all but one of which contains at least one factor
+
+20
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+Npk (ak , bk , ck ), we see that 1 + 1/F (Xnr,t ) equals
+(6.4)
+
+1
+2
+t n
+
+X
+
+Y
+
+X
+
+Ip (a, b, c) ζp−a(j2 +r) ζpb(j3 +r) ζpc(j4 +r) ,
+
+0≤j1 ,j2 ,j3 ,j4 <t p∈P (n) a,b,c∈Z/pZ
+j1 +j2 =j3 +j4
+
+plus an error term whose magnitude is bounded by
+18(2` − 1)
+t2 n κ(n)1/2
+
+X
+
+X
+
+···
+
+`
+Y
+
+X
+
+k j2 bk j3 ck j4
+ζp−a
+ζpk ζpk .
+k
+
+a` ,b` ,c` ∈Z/p` Z 0≤j1 ,j2 ,j3 ,j4 <t k=1
+j1 +j2 =j3 +j4
+
+a1 ,b1 ,c1 ∈Z/p1 Z
+
+By the Chinese Remainder Theorem, and replacing 2` by 2ω(n) , this error
+term equals
+18(2ω(n) − 1)
+t2 n κ(n)1/2
+
+(6.5)
+
+X
+
+X
+
+a,b,c∈Z/nZ
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+ζn−aj2 ζnbj3 ζncj4 .
+
+Now we turn back to the main term (6.4). Proceeding with three cases for
+(a, b, c), as in the proof of Theorem 4.1, we find that, for integral j, k, and `,
+1 X
+2
+Ip (a, b, c) ζp−aj ζpbk ζpc` = δp (` − j) + δp (k − j) + δp (k + `) − ,
+p
+p
+a,b,c∈Z/pZ
+
+where, for integral m and j,
+(
+1
+δm (j) =
+0
+
+if m | j
+otherwise.
+
+Hence, (6.4) equals
+1
+t2
+
+X
+
+
+
+Y
+
+0≤j1 ,j2 ,j3 ,j4 <t p∈P (n)
+j1 +j2 =j3 +j4
+
+2
+δp (j4 − j2 ) + δp (j3 − j2 ) + δp (j3 + j4 + 2r) −
+p
+
+
+.
+
+By expanding the product, this expression can be written as
+X
+[P0 :P1 :P2 :P3 ]=P (n)
+
+X
+(−2)|P0 |
+δ × (j4 −j2 )δP × (j3 −j2 )δP × (j3 +j4 +2r),
+×
+2
+2
+3
+t P0 0≤j ,j ,j ,j <t P1
+1
+
+2
+
+3
+
+4
+
+j1 +j2 =j3 +j4
+
+where we write the sum over [P0 : P1 : P2 : P3 ] = P (n) to mean the sum
+over all ordered partitions
+of P (n) into sets P0 , P1 , P2 , P3 , and where we
+Q
+write Pk× to mean p∈Pk p. We partition this sum by separating the three
+summands where P1 , P2 , or P3 equals P (n) and so have
+1
+F (Xnr,t )
+
+= −1 + A + B + C + D + E,
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+21
+
+where
+A=
+
+B=
+
+C=
+
+D=
+
+1
+t2
+1
+t2
+1
+t2
+
+X
+
+δn (j4 − j2 ),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+δn (j3 − j2 ),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+δn (j3 + j4 + 2r),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+[P0 :P1 :P2 :P3 ]=P (n)
+P1 ,P2 ,P3 6=P (n)
+
+×
+
+(−2)|P0 |
+t2 P0×
+
+X
+
+δP × (j4 − j2 )δP × (j3 − j2 )δP × (j3 + j4 + 2r),
+1
+
+2
+
+3
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+and E is an error term whose magnitude is bounded by (6.5). The sums A,
+B, and C are identical to those in the proof of Theorem 4.1 (i), and E → 0
+by Lemma 4.3 and (2.4), because t/n tends to a positive real number. We
+now show that D → −4T /3, and therefore −1+A+B +C +D → 1/g(R, T ),
+which completes the proof of part (i).
+Lemma 6.2 (i) (to be proved below) shows that the inner sum of D equals
+2t3
+,
+3P1× P2× P3×
+plus an error term whose magnitude is at most
+4572 max(t, P1× , P2× , P3× )2 max(P1× , P2× , P3× )
+.
+P1× P2× P3×
+All partitions involved in the outer sum of D satisfy max(P1× , P2× , P3× ) ≤
+n/κ(n), because none of P1 , P2 , and P3 equals P (n). We further assume
+that n ≥ n1 , where n1 is the smallest n such that n/κ(n) ≤ t for all n ≥ n1 .
+Such an n1 exists since t/n tends to a positive real number and κ(n) → ∞
+as n → ∞ by (2.4). Therefore max(t, P1× , P2× , P3× ) = t, and the error term
+for the inner sum of D has magnitude at most
+4572 t2 n
+.
+P1× P2× P3× κ(n)
+Therefore each summand of the outer sum of D equals
+2t
+(−2)|P0 | ,
+3n
+
+22
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+plus an error term whose magnitude is at most
+4572 · 2|P0 |
+.
+κ(n)
+
+(6.6)
+
+Hence D equals
+2t
+3n
+
+!
+X
+
+|P0 |
+
+(−2)
+
+−3 ,
+
+[P0 :P1 :P2 :P3 ]=P (n)
+
+plus 4ω(n) − 3 error terms each with magnitude at most (6.6). The principal
+term for D then evaluates to
+2t
+3n
+
+ω(n) 
+
+!
+X ω(n)
+4t
+j
+ω(n)−j
+3 (−2)
+−3 =− ,
+3n
+j
+j=0
+
+which tends to −4T /3, while the sum over the 4ω(n) − 3 error terms has
+magnitude smaller than
+
+ω(n) 
+4572 X ω(n) j ω(n)−j
+4572 · 5ω(n)
+,
+3 2
+=
+κ(n)
+κ(n)
+j
+j=0
+
+which by (2.4) tends to zero as n → ∞. Therefore D → −4T /3, as required.
+We now sketch how to prove parts (ii) and (iii). We treat both cases
+together by letting Un be either N (Xn ) or P (Xn ). The condition (2.4) is
+given; for part (ii) we suppose that r/(2n) → R and t/(2n) → T as n → ∞,
+and for part (iii) we suppose that r/(4n) → R and t/(4n) → T as n → ∞.
+In polynomial form, we have
+
+Un (z) =
+
+4n−1
+X
+j=0
+
+wj
+
+ Y
+
+
+xp,j z j ,
+
+p∈P (n)
+
+2
+
+where wj = (−1)j(j−1)/2 for Un = N (Xn ) and wj = (−1)j(j−1) /2 for Un =
+P (Xn ). Then, proceeding as in the proof of part (i), we arrive at
+1
+F (Unr,t )
+
+= −1 + A + B + C + D + E,
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+23
+
+where
+A=
+
+B=
+
+C=
+
+1
+t2
+1
+t2
+1
+t2
+
+X
+
+wj1 +r wj2 +r wj3 +r wj4 +r δn (j4 − j2 ),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+wj1 +r wj2 +r wj3 +r wj4 +r δn (j3 − j2 ),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+
+wj1 +r wj2 +r wj3 +r wj4 +r δn (j3 + j4 + 2r),
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+X
+(−2)|P0 |
+wj1 +r wj2 +r wj3 +r wj4 +r
+t2 P0× 0≤j ,j ,j ,j <t
+
+X
+
+D=
+
+[P0 :P1 :P2 :P3 ]=P (n)
+P1 ,P2 ,P3 6=P (n)
+
+1
+
+2
+
+3
+
+4
+
+j1 +j2 =j3 +j4
+
+× δP × (j4 − j2 )δP × (j3 − j2 )δP × (j3 + j4 + 2r),
+1
+
+2
+
+3
+
+and E is an error term whose magnitude is, for all sufficiently large n,
+bounded by
+18(2ω(n) − 1)
+t2 n κ(n)1/2
+
+X
+
+X
+
+a,b,c∈Z/nZ
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+wj1 +r wj2 +r wj3 +r wj4 +r ζn−aj2 ζnbj3 ζncj4 .
+
+The sums A, B, and C are the same as in the corresponding parts of the
+proof of Theorem 4.1, and E → 0 by Lemma 4.3 and (2.4) because t/n
+tends to a positive real number. By invoking Lemma 6.2 (ii) and (iii), we
+can show, by proceeding as in the proof of part (i), that D ∼ −2t/(3n) for
+Un = N (Xn ) and D ∼ −t/(3n) for Un = P (Xn ), from which parts (ii) and
+(iii) follow.
+
+To prove Lemma 6.2, which was invoked in the proof of Theorem 2.3, we
+require the following lemma.
+Lemma 6.1. Let t be a nonnegative real number and define the half-open
+polyhedron
+
+C = (x, y, z) ∈ R3 : 0 ≤ x, y, z, y + z − x < t .
+Let a, b, and c be positive integers of the same parity. Define the lattice
+
+Λ = (x, y, z) ∈ Z3 : x ≡ y (mod a), x ≡ z (mod b), y ≡ −z (mod c)
+and let K be a translation of Λ. Then
+|K ∩ C| −
+
+2t3
+4572 max(t, a, b, c)2 max(a, b, c)
+≤
+3abc
+abc
+
+if a, b, and c are odd, and
+|K ∩ C| −
+
+4t3
+1332 max(t, a, b, c)2 max(a, b, c)
+≤
+3abc
+abc
+
+24
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+if a, b, and c are even.
+Proof. A standard calculation shows that the volume of C is vol(C) = 2t3 /3.
+For positive real d, let Cd− be the set of points within C that are at distance
+more than d from the boundary of C, and let Cd+ be the set of points lying
+within C or no further than distance d from some point in C. Then Cd− ⊆
+C ⊆ Cd+ , and by translating the planes bounding C inward or outward, it
+can be shown that
+√ 3
+√ 3
+(6.7)
+vol(Cd− ) ≥ 32 t − 2 3d
+and vol(Cd+ ) ≤ 23 t + 2 3d .
+Let v and ` be the volume and the largest diagonal of the fundamental
+parallelepiped of Λ, respectively. Then |K ∩ C| is at least the number of
+parallelepipeds of K wholly contained in C, which is at least the number
+intersecting C`− , so that |K ∩ C| is at least vol(C`− )/v. Likewise, |K ∩ C| is
+at most the number of parallelepipeds of K intersecting C, which is at most
+the number wholly contained in C`+ , and so |K ∩ C| is at most vol(C`+ )/v.
+Now, if a, b, and c are odd, it is readily verified that Λ is generated by
+1
+2 (c + a, c − a, c + a),
+
+1
+2 (c + b, c + b, c − b),
+
+(c, c, c),
+
+from
+√ which we find that v = abc and (by the triangle inequality) ` ≤
+3 3 max(a, b, c), and the result follows from (6.7). On the other hand, if a,
+b, and c are even, Λ is generated by
+1
+2 (a, −a, a),
+
+1
+2 (b, b, −b),
+
+1
+2 (c, c, c),
+
+√
+and v = abc/2 and ` ≤ 3 3 max(a, b, c)/2.
+
+
+
+We now prove the lemma that was invoked in the proof of Theorem 2.3.
+Lemma 6.2. Let r be an integer, let t be a nonnegative integer, and let a,
+b, and c be odd positive integers. For some wj with j ∈ Z, consider the sum
+X
+(6.8)
+wj1 +r wj2 +r wj3 +r wj4 +r δa (j4 −j2 )δb (j3 −j2 )δc (j3 +j4 +2r),
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+
+where δm (j) equals 1 if m | j and equals 0 otherwise.
+(i) Let S1 (a, b, c) be the sum (6.8), where wj = 1 for all j ∈ Z. Then
+S1 (a, b, c) −
+
+4572 max(t, a, b, c)2 max(a, b, c)
+2t3
+≤
+.
+3abc
+abc
+
+(ii) Let S2 (a, b, c) be the sum (6.8), where wj = (−1)j(j−1)/2 for all j ∈ Z.
+Then
+S2 (a, b, c) −
+
+t3
+42624 max(t, a, b, c)2 max(a, b, c)
+≤
+.
+3abc
+abc
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+25
+
+2
+
+(iii) Let S3 (a, b, c) be the sum (6.8), where wj = (−1)j(j−1) /2 for all j ∈ Z.
+Then
+S3 (a, b, c) −
+
+42624 max(t, a, b, c)2 max(a, b, c)
+t3
+.
+≤
+6abc
+abc
+
+Proof. For part (i), let C and Λ be as in Lemma 6.1 and let K = Λ−(r, r, r).
+Then
+S1 (a, b, c) = |K ∩ C|,
+and (i) follows from Lemma 6.1 since a, b, and c have the same parity.
+For parts (ii) and (iii), we claim that when h1 + h2 = h3 + h4 , the value of
+wh1 wh2 wh3 wh4 depends only on the congruence class modulo 4 of h4 − h2 ,
+h3 − h2 , and h3 + h4 . Indeed, for part (ii) we have
+wh1 wh2 wh3 wh4 = (−1)(h4 −h2 )(h3 −h2 )
+whenever h1 + h2 = h3 + h4 , while for part (iii) we have
+(
+(−1)(h4 −h2 )(h3 −h2 )/2 if (h4 − h2 )(h3 − h2 ) is even,
+wh1 wh2 wh3 wh4 =
+(−1)(h3 +h4 )/2
+otherwise
+whenever h1 + h2 = h3 + h4 . For either part, define σ : Z3 → {−1, 1} so that
+wh1 wh2 wh3 wh4 = σ(h4 − h2 , h3 − h2 , h3 + h4 ) whenever h1 + h2 = h3 + h4 ,
+and reparameterize (6.8) to obtain
+X
+X
+(6.9)
+σ(k, `, m)
+δa (j4 − j2 )δb (j3 − j2 )δc (j3 + j4 + 2r).
+0≤k,`,m<4
+m≡k+` (mod 2)
+
+0≤j1 ,j2 ,j3 ,j4 <t
+j1 +j2 =j3 +j4
+j4 −j2 ≡k (mod 4)
+j3 −j2 ≡` (mod 4)
+j3 +j4 +2r≡m (mod 4)
+
+Since a, b, and c are odd, by the Chinese Remainder Theorem each of the
+32 inner sums counts the number of points of some translate of the lattice
+
+Λ = (x, y, z) ∈ Z3 : x ≡ y (mod 4a), x ≡ z (mod 4b), y ≡ −z (mod 4c)
+lying within the half-open polyhedron C defined in Lemma 6.1. By Lemma
+6.1, each of these 32 inner sums equals t3 /(48abc) plus an error term of
+magnitude at most
+(6.10)
+
+1332 max(t, a, b, c)2 max(a, b, c)
+.
+abc
+
+In part (ii), σ(k, `, m) equals +1 for 24 of the triples (k, `, m) in the summation and equals −1 for the remaining 8 triples, so (6.9) equals t3 /(3abc)
+plus an error term whose magnitude is at most 32 times (6.10). In part (iii),
+σ(k, `, m) equals +1 for 20 of the triples (k, `, m) in the summation and
+equals −1 for the remaining 12 triples, so (6.9) equals t3 /(6abc) plus an
+error term whose magnitude is at most 32 times (6.10).
+
+
+26
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+7. Closing Comments
+We close with a discussion of what underlies the negaperiodic and periodic
+constructions, some generalizations of our results to other binary sequence
+families involving combinations of Legendre and Galois sequences, and some
+conjectures on the asymptotic merit factor behavior of two binary sequence
+families examined by other authors. We hope this will stimulate further
+research.
+7.1. What underlies the negaperiodic and periodic constructions?
+Let V = (v0 , v1 , . . . , vn−1 ) and W = (w0 , w1 , . . . , ws−1 ) be binary sequences
+of length n and s, respectively, and write vj+n = vj and wj+s = wj for
+all j ∈ Z. Define the product sequence formed from V and W to be the
+length ns coefficient sequence of
+(V ⊗ W )(z) =
+
+ns−1
+X
+
+v j wj z j .
+
+j=0
+
+Then we can write V = V ⊗ (+) and N (V ) = V ⊗ (+, +, −, −) and P (V ) =
+V ⊗ (+, +, −, +), and it is natural to ask whether the methods of this paper
+can be applied to V ⊗ W when W is not one of (+), (+, +, −, −), and
+(+, +, −, +).
+Indeed, it is readily shown that the same method used to prove Theorem 4.2 (ii) for N (V ) can be applied to V ⊗ W for general W , under the
+sufficient conditions that s is even, gcd(n, s) = 1, and
+
+
+for u ≡ 0 (mod s),
+s−1
+s
+X
+(7.1)
+wj wj+u = −s for u ≡ s/2 (mod s),
+
+
+j=0
+0
+otherwise.
+The sequence (+, +, −, −) satisfies these conditions, and gives rise to the
+negaperiodic construction N (V ) = V ⊗ (+, +, −, −). The sequence (+, −)
+also satisfies these conditions, but the resulting product sequence V ⊗(+, −)
+trivially has the same merit factor properties as V .3 Since the existence of a
+binary sequence satisfying (7.1) for even s > 2 is equivalent to the existence
+of a (s/2, 2, s/2, s/4) relative difference set R in Z/sZ (via the correspondence j ∈ R if and only if wj = −1), standard nonexistence results for
+relative difference sets in cyclic groups show that there are no such binary
+sequences for even s > 4 [23, Result 4.8], [43, Corollary 6]; see [38, Appendix VI] for a direct proof. Therefore there are no binary sequences W
+satisfying the sufficient conditions for s > 4.
+Likewise, the same method used to prove Theorem 4.1 (ii) for N (V ) can
+be applied to V ⊗ W for general W , under the same sufficient conditions as
+3Let U = V ⊗ (+, −). Then U r,t arises by negating every other element of V r,t , so that
+the aperiodic autocorrelation of U r,t is obtained from that of V r,t by negating the values
+at odd shifts, thus preserving the merit factor.
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+27
+
+above together with the additional condition
+(7.2)
+
+wk−j = wj
+
+for all j ∈ Z and some integer k.
+
+This enlarged set of conditions is satisfied by all the sequences that satisfy
+the original set of conditions, namely the sequences (+, +, −, −), (+, −),
+and their cyclic shifts.
+The same method used to prove Theorem 4.2 (iii) for P (V ) can be applied
+to V ⊗ W for general W , under the sufficient conditions that gcd(n, s) = 1
+and
+(
+s−1
+X
+s for u ≡ 0 (mod s),
+(7.3)
+wj wj+u =
+0 otherwise.
+j=0
+The sequences (+, +, −, +) and (+) satisfy these conditions, and give rise to
+the periodic construction P (V ) = V ⊗ (+, +, −, +) and the trivial construction V = V ⊗ (+), respectively. The existence of a binary sequence
+√ satisfys)/2, (s −
+ing
+(7.3)
+for
+s
+>
+1
+is
+equivalent
+to
+the
+existence
+of
+an
+(s,
+(s
+−
+√
+2 s)/4)-difference set in Z/sZ, and there are no such binary sequences for
+4 < s < 4 · 117152 [34, Corollary 4.5].
+Likewise, the same method used to prove Theorem 4.1 (iii) for P (V ) can
+be applied to V ⊗ W for general W , under the same sufficient conditions
+from the previous paragraph together with the additional condition (7.2).
+This additional condition constrains the difference set to have multiplier −1,
+and a classical nonexistence result on difference set multipliers shows that
+there are no such sequences for s > 4 [32, Corollary 3.7].
+7.2. Product of Legendre and Galois sequences. Using the operator ⊗
+defined in Section 7.1, we consider product sequences involving Legendre and
+Galois sequences. As previously, we write Xp for the Legendre sequence of
+length p, and Yn,θ for the Galois sequence of length n = 2d − 1 with respect
+to a primitive θ ∈ F2d .
+Let P be a set of odd primes, and let M be a set of Mersenne numbers
+(having the form 2d − 1 for integral d) such that P and M are disjoint and
+the elements of P ∪ M are pairwise coprime. For each 2d − 1 ∈ M , choose
+a primitive element θ ∈ F2d and consider the product sequence
+O   O
+
+(7.4)
+Xp ⊗
+Yn,θ
+p∈P
+
+n∈M
+
+Q
+Q
+of length ( p∈P p)( n∈M n). If M is empty, then by (6.1) the product
+sequence (7.4) is a Jacobi sequence and its asymptotic merit factor behavior
+is the same as that of a Legendre sequence (see Theorem 2.3). Otherwise,
+the product sequence involves at least one Galois sequence. In that case, a
+straightforward (albeit notationally cumbersome) generalization of the proof
+of Theorem 2.3 shows that, under suitable conditions on the growth rate of
+|P ∪M | and min(P ∪M ), the asymptotic merit factor behavior of the product
+
+28
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+sequence (7.4) and its negaperiodic and periodic versions is the same as that
+of a Galois sequence (see Theorem 2.2).
+
+7.3. Gordon-Mills-Welch sequences and Sidelnikov sequences. Let
+F = F2d be the finite field with 2d elements and let K be a subfield of F of
+size 2k (so that k divides d). The relative trace TrF/K : F → K is given by
+d/k−1
+
+TrF/K (y) =
+
+X
+
+jk
+
+y2 .
+
+j=0
+
+Let ψ be the canonical additive character of K, let θ be a primitive element
+of F , and let ` be an integer coprime to 2k − 1. The coefficient sequence of
+the polynomial
+n−1
+X
+
+
+ψ TrF/K (θj )` z j
+
+j=0
+
+is called a Gordon-Mills-Welch sequence of length n = 2d − 1 [45] with
+respect to θ, k, `. The special case ` = 1 reduces to a Galois sequence. In
+1991, Jensen, Jensen and Høholdt asked how the asymptotic merit factor of
+a Gordon-Mills-Welch sequence behaves [31]. Based on numerical evidence,
+we conjecture that the generalization from a Galois sequence to a GordonMills-Welch sequence does not affect the asymptotic merit factor, and that
+the same holds for the negaperiodic and periodic versions of these sequences.
+Conjecture 7.1. For each n = 2d − 1, choose a primitive θ ∈ F2d , and k
+dividing d, and ` coprime to 2k − 1. Then the asymptotic merit factor of the
+Gordon-Mills-Welch sequence of length n (and its negaperiodic and periodic
+versions) with respect to θ, k, ` is the same as that of a Galois sequence as
+specified in Theorem 2.2.
+Now let q be an odd prime power, and let θ be a primitive element of Fq .
+Let η : Fq → {1, −1} be the quadratic character on the nonzero elements
+of Fq , and extend η (in a nonstandard way) via η(0) = 1. The coefficient
+sequence of the polynomial
+
+Zn,θ (z) =
+
+q−2
+X
+
+η(θj + 1)z j
+
+j=0
+
+is called a Sidelnikov sequence of length q − 1 with respect to θ [47]. Based
+on numerical evidence, we conjecture that the asymptotic merit factor of a
+Sidelnikov sequence is the same as that of a Galois sequence as specified in
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+29
+
+Theorem 2.2 (i).4 (Since the length of a Sidelnikov sequence is even, there
+is no negaperiodic or periodic version to consider.)
+Conjecture 7.2. For each odd prime power q, choose an integer r and a
+primitive θ ∈ Fq , and let Zn,θ be the Sidelnikov sequence of length n = q − 1
+r,t
+with respect to θ. Let T > 0 be real. If t/n → T as n → ∞, then F (Zn,θ
+)→
+h(T ) as n → ∞.
+References
+[1] G. F. M. Beenker, T. A. C. M. Claasen, and P. W. C. Hermens, Binary sequences
+with a maximally flat amplitude spectrum, Philips J. Res. 40 (1985), 289–304.
+[2] J. Bernasconi, Low autocorrelation binary sequences: statistical mechanics and configuration state analysis, J. Physique 48 (1987), 559–567.
+[3] B. C. Berndt and R. J. Evans, The determination of Gauss sums, Bull. Amer. Math.
+Soc. (N.S.) 5 (1981), 107–129.
+[4] P. Borwein, Computational excursions in analysis and number theory, CMS Books
+in Mathematics/Ouvrages de Mathématiques de la SMC, 10, Springer-Verlag, New
+York, 2002.
+[5] P. Borwein and K.-K. S. Choi, Merit factors of character polynomials, J. London
+Math. Soc. 61 (2000), 706–720.
+[6]
+, Merit factors of polynomials formed by Jacobi symbols, Canad. J. Math. 53
+(2001), 33–50.
+, Explicit merit factor formulae for Fekete and Turyn polynomials, Trans.
+[7]
+Amer. Math. Soc. 354 (2002), 219–234.
+[8] P. Borwein, K.-K. S. Choi, and J. Jedwab, Binary sequences with merit factor greater
+than 6.34, IEEE Trans. Inf. Theory 50 (2004), 3234–3249.
+[9] P. Borwein and M. Mossinghoff, Rudin-Shapiro-like polynomials in L4 , Math. Comp.
+69 (2000), 1157–1166.
+[10] H. Davenport, revised by H. L. Montgomery, Multiplicative number theory, third ed.,
+Springer-Verlag, New York, 2000.
+[11] P. Erdős, Some unsolved problems, Michigan Math. J. 4 (1957), 291–300.
+, An inequality for the maximum of trigonometric polynomials, Ann. Polon.
+[12]
+Math. 12 (1962), 151–154.
+[13] C. F. Gauss, Summatio quarumdam serierum singularium, Comment. Soc. Reg. Sci.
+Gottingensis 1 (1811).
+[14] M. J. E. Golay, A class of finite binary sequences with alternate autocorrelation values
+equal to zero, IEEE Trans. Inf. Theory IT-18 (1972), 449–450.
+[15]
+, Sieves for low autocorrelation binary sequences, IEEE Trans. Inf. Theory
+IT-23 (1977), 43–51.
+[16]
+, The merit factor of long low autocorrelation binary sequences, IEEE Trans.
+Inf. Theory IT-28 (1982), 543–549.
+[17]
+, The merit factor of Legendre sequences, IEEE Trans. Inf. Theory 29 (1983),
+934–936.
+[18] K. G. Hare and S. Yazdani, Fekete-like polynomials, J. Number Theory 130 (2010),
+2198–2213.
+4Huo [22] presents numerical evidence suggesting that the merit factor of the nonbinary
+
+analogues of the Sidelnikov sequences (which use multiplicative characters of higher order
+in place of the quadratic character) might also have the same asymptotic behavior. In
+their paper on Fekete-like polynomials, Hare and Yazdani [18] present numerical evidence
+suggesting that a particular cyclic shift of a Sidelnikov sequence (namely the coefficient
+P
+j
+j
+sequence of q−2
+j=0 η(θ − 1)z ) has asymptotic merit factor 3.
+
+30
+
+JONATHAN JEDWAB, DANIEL J. KATZ, AND KAI-UWE SCHMIDT
+
+[19] T. Høholdt, The merit factor problem for binary sequences, Applied algebra, algebraic algorithms and error-correcting codes, Lecture Notes in Comput. Sci., vol. 3857,
+Springer, Berlin, 2006, pp. 51–59.
+[20] T. Høholdt and H. E. Jensen, Determination of the merit factor of Legendre sequences,
+IEEE Trans. Inf. Theory 34 (1988), 161–164.
+[21] T. Høholdt, H. E. Jensen, and J. Justesen, Aperiodic correlations and the merit factor
+of a class of binary sequences, IEEE Trans. Inf. Theory IT-31 (1985), 549–552.
+[22] F. Huo, Sequences design for OFDM and CDMA systems, Master’s thesis, University
+of Waterloo, 2011.
+[23] J. Jedwab, Generalized perfect arrays and Menon difference sets, Des. Codes Cryptogr. 2 (1992), 19–68.
+[24] J. Jedwab, A survey of the merit factor problem for binary sequences, Proc. of Sequences and Their Applications, Lecture Notes in Comput. Sci., vol. 3486, New York:
+Springer Verlag, 2005, pp. 30–55.
+[25] J. Jedwab, What can be used instead of a Barker sequence?, Finite fields and applications, Contemp. Math., vol. 461, Amer. Math. Soc., Providence, RI, 2008, pp. 153–
+178.
+[26] J. Jedwab, D. J. Katz, and K.-U. Schmidt, Littlewood polynomials with small L4
+norm, arXiv:1205.0260v1 [math.NT] (2011).
+[27] J. Jedwab and K.-U. Schmidt, Appended m-sequences with merit factor greater than
+3.34, Sequences and Their Applications (C. Carlet and A. Pott, eds.), Lecture Notes
+in Comput. Sci., vol. 6338, Springer, 2010, pp. 204–216.
+[28] J. Jedwab and K.-U. Schmidt, The merit factor of binary sequence families constructed from m-sequences, Finite fields: theory and applications, Contemp. Math.,
+vol. 518, Amer. Math. Soc., Providence, RI, 2010, pp. 265–278.
+[29]
+, The L4 norm of Littlewood polynomials derived from the Jacobi symbol, Pac.
+J. Math. 257 (2012), 395–418.
+[30] H. E. Jensen and T. Høholdt, Binary sequences with good correlation properties,
+Applied algebra, algebraic algorithms and error-correcting codes, Lecture Notes in
+Comput. Sci., vol. 356, Springer, Berlin, 1989, pp. 306–320.
+[31] J. M. Jensen, H. E. Jensen, and T. Høholdt, The merit factor of binary sequences
+related to difference sets, IEEE Trans. Inform. Theory 37 (1991), 617–626.
+[32] E. C. Johnsen, The inverse multiplier for abelian group difference sets, Canad. J.
+Math. 16 (1964), 787–796.
+[33] A. Kirilusha and G. Narayanaswamy, Construction of new asymptotic classes of binary sequences based on existing asymptotic classes, Summer Science Program Tech.
+Rep., Dept. Math. Comput. Sci., Univ. Richmond, VA, 1999.
+[34] K. H. Leung and B. Schmidt, The field descent method, Des. Codes Cryptogr. 36
+(2005), 171–188.
+[35] R. Lidl and H. Niederreiter, Finite fields, second ed., Encyclopedia of Mathematics
+and its Applications, vol. 20, Cambridge
+University
+Cambridge, 1997.
+P
+Pn αmPress,
+[36] J. E. Littlewood, On polynomials n ±z m ,
+e i z m , z = eθi , J. London Math.
+Soc. 41 (1966), 367–376.
+, Some problems in real and complex analysis, D. C. Heath and Co. Raytheon
+[37]
+Education Co., Lexington, Mass., 1968.
+[38] H.D. Lüke, H.D. Schotten, and H. Hadinejad-Mahram, Binary and quadriphase sequences with optimal autocorrelation properties: a survey, IEEE Trans. Inform. Theory 49 (2003), 3271–3282.
+[39] S. Mertens, Ground states of the Bernasconi model with open boundary conditions,
+http://www-e.uni-magdeburg.de/mertens/research/labs/open.dat, 2001.
+[40] D. J. Newman and J. S. Byrnes, The L4 norm of a polynomial with coefficients ±1,
+Amer. Math. Monthly 97 (1990), 42–45.
+
+MERIT FACTOR PROBLEM FOR BINARY SEQUENCES
+
+31
+
+[41] M. G. Parker, Even length binary sequence families with low negaperiodic autocorrelation, Applied algebra, algebraic algorithms and error-correcting codes, Lecture Notes
+in Comput. Sci., vol. 2227, Springer, Berlin, 2001, pp. 200–209.
+[42] M. G. Parker, Univariate and multivariate merit factors, Proc. of Sequences and Their
+Applications, Lecture Notes in Computer Science, vol. 3486, New York: Springer
+Verlag, 2005, pp. 72–100.
+[43] A. Pott, Two applications of relative difference sets: difference triangles and negaperiodic autocorrelation functions, Discrete Math. 308 (2008), no. 13, 2854–2861.
+[44] K.-U. Schmidt, J. Jedwab, and M. G. Parker, Two binary sequence families with large
+merit factor, Adv. Math. Commun. 3 (2009), 135–156.
+[45] R. A. Scholtz and L. R. Welch, GMW sequences, IEEE Trans. Inf. Theory 30 (1984),
+548–553.
+[46] M. R. Schroeder, Number theory in science and communication, fifth ed., SpringerVerlag, Berlin, 2009.
+[47] V. M. Sidel’nikov, Some k-valued pseudo-random sequences and nearly equidistant
+codes, Probl. Inf. Transm. 5 (1969), 12–16.
+[48] A. Weil, On some exponential sums, Proc. Nat. Acad. Sci. U. S. A. 34 (1948), 204–
+207. MR 0027006 (10,234e)
+[49] T. Xiong and J. I. Hall, Construction of even length binary sequences with asymptotic
+merit factor 6, IEEE Trans. Inf. Theory 54 (2008), 931–935.
+[50] T. Xiong and J. I. Hall, Modifications on character sequences and construction of
+large even length binary sequences, preprint (2010).
+[51]
+, Modifications of modified Jacobi sequences, IEEE Trans. Inf. Theory 57
+(2011), 493–504.
+[52] N. Y. Yu and G. Gong, The perfect binary sequence of period 4 for low periodic and
+aperiodic autocorrelations, Sequences, subsequences, and consequences, Lecture Notes
+in Comput. Sci., vol. 4893, Springer, Berlin, 2007, pp. 37–49.
+
+

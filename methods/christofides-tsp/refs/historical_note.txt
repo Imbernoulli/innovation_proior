@@ -1,0 +1,408 @@
+A historical note on the 3/2-approximation algorithm
+for the metric traveling salesman problem
+René van Beverna,∗, Viktoriia A. Sluginab,c
+a Department of Mechanics and Mathematics, Novosibirsk State University, Novosibirsk, Russian Federation
+b Institute of History of the Siberian Branch of the Russian Academy of Sciences, Novosibirsk, Russian Federation
+
+arXiv:2004.02437v2 [cs.DS] 25 Apr 2020
+
+c Humanities Institute, Novosibirsk State University, Novosibirsk, Russian Federation
+
+Abstract
+One of the most fundamental results in combinatorial optimization is the polynomial-time 3/2-approximation algorithm
+for the metric traveling salesman problem. It was presented by Christofides in 1976 and is well known as “the Christofides
+algorithm”. Recently, some authors started calling it “Christofides-Serdyukov algorithm”, pointing out that it was
+published independently in the USSR in 1978. We provide some historic background on Serdyukov’s findings and a
+translation of his article from Russian into English.
+Zusammenfassung
+Eines der grundlegendsten Resultate auf dem Gebiet der kombinatorischen Optimierung ist der Polynomialzeit-3/2Approximationsalgorithmus für das metrische Problem des Handlungsreisenden. Er wurde 1976 von Christofides
+vorgestellt und ist bekannt unter dem Namen „Christofides-Algorithmus”. In letzter Zeit bezeichnen ihn einige Autoren
+als „Christofides-Serdyukov-Algorithmus” mit dem Hinweis, er sei 1978 unabhängig in der UdSSR publiziert worden.
+In diesem Artikel beleuchten wir den historischen Hintergrund um Serdyukovs Entdeckung und liefern eine Übersetzung
+seines Artikels aus dem Russischen ins Englische.
+Аннотация
+Одним из самых фундаментальных результатов в области комбинаторной оптимизации является полиномиальный 3/2-приближённый алгоритм для метрической задачи коммивояжёра. Он был представлен Никосом
+Кристофидесом в 1976 г. и хорошо известен под названием «алгоритм Кристофидеса». В последнее время
+некоторые авторы стали называть его «алгоритмом Кристофидеса-Сердюкова», утверждая, что он был опубликован независимо в СССР в 1978 г. В этой статье рассматривается исторический контекст появления результата
+А. И. Сердюкова и приводится перевод его статьи с русского на английский язык.
+Keywords: combinatorial optimization, Christofides algorithm, USSR, Novosibirsk Akademgorodok
+2010 MSC: 90-03
+
+1. Introduction
+One of the most fundamental problems in combinatorial optimization is the traveling salesman problem, formalized as
+early as 1832 (cf. Applegate et al., 2006, Chapter 1): given n cities and their pairwise distances, find a shortest tour to
+visit each city exactly once and return to the starting point.
+Finding the shortest tour is a computationally intractable problem even in the special case where the distances
+between the cities satisfy the triangle inequality (Garey and Johnson, 1979). Christofides (1976) presented an O(n3 )-time
+3/2-approximation algorithm for this special case: it yields a tour that is at most 3/2 times longer than the shortest
+one. It is a prime example for approximation algorithms that entered textbooks and encyclopedias as “the Christofides
+∗ Correspondence to: Novosibirsk State University, ul. Pirogova 1, Novosibirsk, 630090, Russian Federation.
+
+Email addresses: rvb@nsu.ru (René van Bevern), v.slugina@g.nsu.ru (Viktoriia A. Slugina)
+Preprint submitted to Elsevier
+
+April 28, 2020
+
+algorithm” or “the Christofides heuristic” (Garey and Johnson, 1979; Christofides, 1979; Gutin, 2009; Williamson and
+Shmoys, 2011; Bläser, 2016).
+Quite some efforts have been made trying to improve it (cf. the surveys of Vygen, 2012; Svensson, 2013). One
+line of research aims for improving its running time: there are many faster heuristics, which cannot guarantee 3/2approximate solutions (Johnson and McGeoch, 2007), yet (3/2 + ε)-approximate solutions for any ε > 0 are computable
+by a randomized algorithm in O(n2 log4 n/ε2 ) time (Chekuri and Quanrud, 2017). Another line of research aims for
+improving the approximation factor, which was successful only in special cases: in polynomial time, one can compute
+8/7-approximate solutions if the distances are in {1, 2} (Berman and Karpinski, 2006), 7/5-approximate solutions if
+the distances are lengths of shortest paths in an unweighted graph (Sebő and Vygen, 2014), and (1 + ε)-approximate
+solutions for any fixed ε > 0 if the cities are points in fixed-dimensional Euclidean (Arora, 1998; Mitchell, 1999) or
+doubling spaces (Bartal et al., 2016, using a randomized algorithm), or if the distances are lengths of shortest paths in a
+graph excluding some fixed minor (Demaine et al., 2011).
+For general distances satisfying the triangle inequality, the 3/2 approximation factor of Christofides’ algorithm
+remains the state of the art.1 Recently, a small but growing group of authors started referring to it as “the ChristofidesSerdyukov algorithm” (Burkard et al., 1998; Deineko and Tiskin, 2010; Bérczi et al., 2019; Gutekunst and Williamson,
+2019; Sebő and van Zuylen, 2019; Tarnawski, 2019; Traub and Vygen, 2019),2 claiming that it was independently
+obtained in the USSR by Serdyukov (1978).
+At the one hand, this claim is plausible: in the beginning of the 70s, a lot of research on computationally intractable
+problems was carried out parallely in the USSR, leading to independent proofs of seminal results like the Cook-Levin
+theorem about the NP-completeness of the satisfiability problem for Boolean formulas (Trakhtenbrot, 1984). Moreover,
+the submission date given in the journal article of Serdyukov (1978), January 27th, 1976, predates the report of
+Christofides (1976), dated February, 1976. On the other hand, such claims should be treated with caution: for example,
+the wide-spread claim that Kuratovski’s theorem was earlier proved in the USSR has little support (Kennedy et al., 1985).
+We give some historic background on Serdyukov’s findings, which indeed supports the claim of his independent
+discovery of the 3/2-approximation algorithm and sheds some light on the timely coincidence of the publications of
+Christofides and Serdyukov. We also provide a translation of Serdyukov’s article in the appendix.
+2. Anatoliy I. Serdyukov (1951–2001)
+The following information about Serdyukov can be found in Barvinok et al. (2007), Demidenko (2017),3 the archives
+of the Department of Mechanics and Mathematics of Novosibirsk State University, and the State Public Scientific
+Technological Library of the Siberian Branch of the Russian Academy of Sciences.
+Anatoliy Ivanovich Serdyukov was born on October 29th, 1951, in Prokopyevsk, a city in Kemerovo region (Western
+Siberia), USSR. He graduated from Novosibirsk State University in 1973, after which he was employed in the structures
+of the Siberian Branch of the Lenin Academy of Agricultural Sciences, then at the Institute of Cytology and Genetics of
+the Siberian Branch of the Academy of Sciences of the USSR (SB AS USSR), and finally at the Institute of Mathematics
+of the SB AS USSR (now named the Sobolev Institute of Mathematics, Siberian Branch of the Russian Academy of
+Sciences), where he was working until his death on February 7th, 2001.
+In 1980, already working at the Institute of Mathematics, he was awarded the academic degree of candidate of
+physico-mathematical sciences. Serdyukov’s (1980) thesis is on the complexity of finding Hamiltonian and Eulerian
+cycles in graphs. His best known results are approximation algorithms for finding longest traveling salesman tours
+(surveyed by Barvinok et al., 2007).
+Taking into account his graduation year and the submission date of Serdyukov’s (1978) article, January 27th, 1976,
+Serdyukov must have obtained his 3/2-approximation algorithm as a young graduate student in about 1975.
+1 Actually, Wolsey (1980) showed that the length of the computed tours is within a factor 3/2 not only of the optimum, but of a lower bound given
+by the optimal solution to a relaxation of an integer linear programming model.
+2 We deliberately omit articles coauthored by Serdyukov’s former colleagues from this list.
+3 The birth year 1952 given in the book edited by Demidenko (2017) is incorrect.
+
+2
+
+3. Circulation of Christofides’ result between 1976 and 1979
+Authors usually refer to Christofides’ 1976 technical report at Carnegie-Mellon University (CMU) as the source of
+the 3/2-approximation algorithm for the metric traveling salesman problem, which some authors do not consider as
+published (cf. Bläser, 2016, who also claims that “Christofides never published his algorithm”).
+Apparently, Christofides’ technical report was not known to a wide audience up to 1978. For example, Karp (1977)
+and Rosenkrantz et al. (1977) refer to Christofides’ abstract in the proceedings of a symposium held at CMU in April
+1976. The proceedings were published only in December 1976 (Traub, 1976). Frederickson et al. (1976) refer to the
+same abstract, whereas later, in the journal version of their article, Frederickson et al. (1978) refer to the technical report.
+Christofides’ technical report could have been popularized in 1977, when its abstract stating the 3/2-approximation
+was indexed by the NASA abstract journal Scientific and Technical Aerospace Reports (Christofides, 1977).
+Some authors of that time, for example Lenstra and Rinnooy Kan (1979), refer to a journal article of Christofides
+that is to appear in the journal Mathematical Programming. In a combinatorial optimization textbook, Christofides
+(1979) describes his algorithm without proving the approximation factor, referring to an article in press in Mathematical
+Programming for the proof, not mentioning his technical report. Interestingly, according to the archives of Mathematical
+Programming, his article was not published. The algorithm with complete proof details was published to a wide
+audience not later than in the seminal textbook of Garey and Johnson (1979).
+Summarizing, Serdyukov (1978) submitted his journal article in January 1976, which predates all traces of
+Christofides’ publications on this topic. Thus, it is plausible that Serdyukov (1978) obtained the result independently.
+4. Serdyukov’s work between 1974 and 1978
+We give some historic background on the findings of Serdyukov to shed some light on the timely coincidence of the
+publications of Christofides (1976) and Serdyukov (1978). To this end, it is helpful to interpret the 3/2-approximation algorithm for the traveling salesman problem as follows: A first step computes a minimum-cost spanning tree that connects
+all the cities. A second step computes a shortest tour in the input graph that traverses the edges of the spanning tree.
+The second step is solved using an approach earlier developed for the closely related Chinese postman problem of
+computing a shortest tour traversing all edges of a graph: Christofides (1973) and Serdyukov (1974), but also Edmonds
+and Johnson (1973), actively study the Chinese postman problem at that time. They all reduce it to the problem of
+finding a minimum-cost perfect matching on the complete edge-weighted graph on all odd-degree vertices of the input
+graph.4 Surprisingly, while Christofides, Edmonds and Johnson solve the matching problem using the polynomial-time
+algorithm of Edmonds (1965), Serdyukov reduces it to an exponential number of matching problems in bipartite
+graphs.5 Apparently, in 1974 neither Serdyukov nor his reviewers were aware of the work of Christofides (1973),
+Edmonds and Johnson (1973), or the polynomial-time algorithm for computing maximum-weight matchings in general
+graphs, published by Edmonds nine years earlier.
+Since Serdyukov (1978) uses Edmonds’ algorithm to solve the matching problem in his 3/2-approximation algorithm
+for the traveling salesman problem but was unaware of it in 1974, he must have learned about Edmonds’ algorithm in
+1974 or 1975. One scenario is that he learned about it via the article of Christofides (1973), which Serdyukov (1976)
+cites in an article studying reductions between matching, covering, the Chinese postman, and the traveling salesman
+problems. In this scenario, Serdyukov obtained his 3/2-approximation independently of Christofides but because of
+him. Another scenario is that Serdyukov (1978) learned about Edmonds’ algorithm from Karzanov (1976), whose
+O(n3 log n)-time implementation of Edmonds’ algorithm he uses in his 3/2-approximation. Karzanov’s article was
+probably not yet published in January 1976, when Serdyukov submitted his article, but he might have had access to a
+preliminary copy, which is supported by the fact that the titles given by Serdyukov and Karzanov differ slightly.
+4 Notably, Serdyukov (1974) explicitly introduces the problem that forty years later is intensively studied as the Eulerian extension problem (Sorge
+et al., 2011; Höhn et al., 2012; Sorge et al., 2012; Dorn et al., 2013; Gutin et al., 2017; van Bevern et al., upcoming).
+5 In contemporary terms of parameterized complexity theory (cf. Cygan et al., 2015), Serdyukov (1974) merely describes a fixed-parameter
+algorithm for the Chinese postman problem parameterized by the number of odd-degree vertices in the input graph.
+
+3
+
+5. Conclusion
+Our findings support the claim that Serdyukov (1978) discovered the 3/2-approximation algorithm for the metric
+traveling salesman problem independently of Christofides (1976).
+Concerning the timely coincidence of the publications of Christofides and Serdyukov, we conclude that, on the one
+hand, it was impossible for Serdyukov to find the algorithm much earlier than Christofides, being unaware of Edmonds’
+polynomial-time matching algorithm up to 1974. On the other hand, actively working on the Chinese postman before,
+he found the 3/2-approximation for the traveling salesman problem as soon as he became aware of Edmonds’ algorithm.
+An English abstract of Serdyukov’s (1978) article was indexed in zbMATH only in 1982 (Serdyukov, 1982). At this
+time, “the Christofides algorithm” had already entered fundamental textbooks like that of Garey and Johnson (1979).
+Moreover, the English abstract does not mention any approximation factors. Thus, it is not surprising that Serdyukov’s
+result remained largely unknown beyond the USSR.
+Acknowledgments. We thank Edward Kh. Gimadi and Oxana Yu. Tsidulko for helpful input.
+Funding. René van Bevern is supported by the Mathematical Center in Akademgorodok, agreement No. 075-15-20191675 with the Ministry of Science and Higher Education of the Russian Federation. Viktoriia A. Slugina is supported
+by grant No. 19-39-60006 of the Russian Foundation for Basic Research.
+References
+Applegate, D. L., Bixby, R. E., Chvátal, V., and Cook, W. J. (2006). The Traveling Salesman Problem — A Computational Study, volume 40 of
+Princeton Series in Applied Mathematics. Princeton University Press, Princeton, Oxford, USA. doi:10.1515/9781400841103.
+Arora, S. (1998). Polynomial time approximation schemes for Euclidean traveling salesman and other geometric problems. Journal of the ACM
+45(5): pp. 753–782. doi:10.1145/290179.290180.
+Bartal, Y., Gottlieb, L.-A., and Krauthgamer, R. (2016). The traveling salesman problem: Low-dimensionality implies a polynomial time approximation
+scheme. SIAM Journal on Computing 45(4): pp. 1563–1581. doi:10.1137/130913328.
+Barvinok, A., Gimadi, E. Kh., and Serdyukov, A. I. (2007). The maximum TSP. In G. Gutin and A. P. Punnen, editors, The Traveling Salesman
+Problem and Its Variations, volume 12 of Combinatorial Optimization, pp. 585–607. Springer, Boston, USA. doi:10.1007/0-306-48213-4_12.
+Berman, P. and Karpinski, M. (2006). 8/7-approximation algorithm for (1,2)-TSP. In Proceedings of the Seventeenth Annual ACM-SIAM Symposium
+on Discrete Algorithm, p. 641–648. SIAM, USA.
+van Bevern, R., Fluschnik, T., and Tsidulko, O. Yu. (upcoming). On approximate data reduction for the rural postman problem: Theory and
+experiments. Networks. Accepted for publication, https://arxiv.org/abs/1812.10131.
+Bläser, M. (2016). Metric TSP. In M.-Y. Kao, editor, Encyclopedia of Algorithms, pp. 1276–1279. Springer, New York, USA. doi:10.1007/978-14939-2864-4_230.
+Burkard, R. E., Deı̆neko, V. G., and Woeginger, G. J. (1998). The travelling salesman and the PQ-tree. Mathematics of Operations Research 23(3):
+pp. 613–623. doi:10.1287/moor.23.3.613.
+Bérczi, K., Berger, A., Mnich, M., and Vincze, R. (2019). Degree-bounded generalized polymatroids and approximating the metric many-visits TSP.
+ArXiv preprint, http://arxiv.org/abs/1911.09890.
+Chekuri, C. and Quanrud, K. (2017). Approximating the Held-Karp bound for metric TSP in nearly-linear time. In 58th Annual IEEE Symposium on
+Foundations of Computer Science (FOCS 2017), pp. 789–800. IEEE Computer Society, Los Alamitos, California, USA. doi:10.1109/FOCS.2017.78.
+Christofides, N. (1973). The optimum traversal of a graph. Omega 1(6): pp. 719–732. doi:10.1016/0305-0483(73)90089-3.
+Christofides, N. (1976). Worst-case analysis of a new heuristic for the traveling salesman problem. Management Science Research Report 388,
+Carnegie-Mellon University, Pittsburgh, Pennsylvania, USA.
+Christofides, N. (1977). Worst-case analysis of a new heuristic for the traveling salesman problem. Scientific and Technical Aerospace Reports 15(1):
+p. 389. Accession number N77-12799.
+Christofides, N. (1979). The travelling salesman problem. In N. Christofides, A. Mingozzi, P. Toth, and C. Sandi, editors, Combinatorial Optimization,
+pp. 131–149. John Wiley & Sons, Chichester, New York, Brisbane, Toronto.
+Cygan, M., Fomin, F. V., Kowalik, L., Lokshtanov, D., Marx, D., Pilipczuk, M., Pilipczuk, M., and Saurabh, S. (2015). Parameterized Algorithms.
+Springer, Cham, Switzerland. doi:10.1007/978-3-319-21275-3.
+Deineko, V. and Tiskin, A. (2010). Fast minimum-weight double-tree shortcutting for metric TSP: Is the best one good enough? Journal of
+Experimental Algorithmics 14: art. 6. doi:10.1145/1498698.1594232.
+Demaine, E. D., Hajiaghayi, M., and Kawarabayashi, K. (2011). Contraction decomposition in H-minor-free graphs and algorithmic applications. In
+STOC’11: Proceedings of the 43rd ACM Symposium on Theory of Computing, p. 441–450. ACM, New York, USA. doi:10.1145/1993636.1993696.
+Demidenko, G. V., editor (2017). Ocherki ob Institute matematiki im. S. L. Soboleva. Institute of Mathematics, Novosibirsk, Russian Federation.
+Dorn, F., Moser, H., Niedermeier, R., and Weller, M. (2013). Efficient algorithms for Eulerian Extension and Rural Postman. SIAM Journal on
+Discrete Mathematics 27(1): pp. 75–94. doi:10.1137/110834810.
+Edmonds, J. (1965). Maximum matching and a polyhedron with 0,1-vertices. Journal of Research of the National Bureau of Standards—B. Mathematics
+and Mathematical Physics 69: pp. 125–130. doi:10.6028/jres.069B.013.
+Edmonds, J. and Johnson, E. L. (1973). Matching, Euler tours and the Chinese postman. Mathematical Programming 5: pp. 88–124.
+doi:10.1007/BF01580113.
+
+4
+
+Frederickson, G. N., Hecht, M. S., and Kim, C. E. (1976). Approximation algorithms for some routing problems. In 17th Annual Symposium on
+Foundations of Computer Science, pp. 216–227. IEEE Computer Society, Long Beach, California, USA. doi:10.1109/SFCS.1976.6.
+Frederickson, G. N., Hecht, M. S., and Kim, C. E. (1978). Approximation algorithms for some routing problems. SIAM Journal on Computing 7(2):
+pp. 178–193. doi:10.1137/0207017.
+Garey, M. R. and Johnson, D. S. (1979). Computers and Intractability: A Guide to the Theory of NP-Completeness. Freeman, New York, USA.
+Gutekunst, S. C. and Williamson, D. P. (2019). Semidefinite programming relaxations of the traveling salesman problem and their integrality gaps.
+ArXiv preprint, http://arxiv.org/abs/1907.09054.
+Gutin, G. (2009). Traveling salesman problem. In C. A. Floudas and P. M. Pardalos, editors, Encyclopedia of Optimization, pp. 3935–3944. Springer,
+Boston, USA. doi:10.1007/978-0-387-74759-0_687.
+Gutin, G., Wahlström, M., and Yeo, A. (2017). Rural Postman parameterized by the number of components of required edges. Journal of Computer
+and System Sciences 83(1): pp. 121–131. doi:10.1016/j.jcss.2016.06.001.
+Höhn, W., Jacobs, T., and Megow, N. (2012). On Eulerian extensions and their application to no-wait flowshop scheduling. Journal of Scheduling
+15(3): pp. 295–309. doi:10.1007/s10951-011-0241-1.
+Johnson, D. S. and McGeoch, L. A. (2007). Experimental analysis of heuristics for the STSP. In G. Gutin and A. P. Punnen, editors, The Traveling
+Salesman Problem and Its Variations, pp. 369–443. Springer, Boston, USA. doi:10.1007/0-306-48213-4_9.
+Karp, R. M. (1977). Probabilistic analysis of partitioning algorithms for the traveling-salesman problem in the plane. Mathematics of Operations
+Research 2(3): pp. 209–224. doi:10.1287/moor.2.3.209.
+Karzanov, A. V. (1976). Ekonomnye realizatsii algoritmov Edmondsa dlya nakhozhdeniya parosochetanii maksimal’noi moshchnosti i maksimal’nogo
+vesa. In A. A. Fridman, editor, Issledovaniya po diskretnoi optimizatsii, pp. 306–327. Nauka, Moscow, USSR.
+Kennedy, J. W., Quintas, L. V., and Sysło, M. M. (1985). The theorem on planar graphs. Historia Mathematica 12(4): pp. 356–368. doi:10.1016/03150860(85)90045-X.
+Lenstra, J. K. and Rinnooy Kan, A. H. G. (1979). Computational complexity of discrete optimization problems. In P. L. Hammer, E. L. Johnson, and
+B. H. Korte, editors, Discrete Optimization I, volume 4 of Annals of Discrete Mathematics, pp. 121–140. North-Holland Publishing Company,
+Amsterdam, New York, Oxford. doi:10.1016/S0167-5060(08)70821-5.
+Mitchell, J. S. B. (1999). Guillotine subdivisions approximate polygonal subdivisions: A simple polynomial-time approximation scheme for geometric
+TSP, k-MST, and related problems. SIAM Journal on Computing 28(4): pp. 1298–1309. doi:10.1137/S0097539796309764.
+Rosenkrantz, D. J., Stearns, R. E., and Lewis, P. M., II (1977). An analysis of several heuristics for the traveling salesman problem. SIAM Journal on
+Computing 6(3): pp. 563–581. doi:10.1137/0206041.
+Sebő, A. and van Zuylen, A. (2019). The salesman’s improved paths through forests. Journal of the ACM 66(4): art. 28. doi:10.1145/3326123.
+Sebő, A. and Vygen, J. (2014). Shorter tours by nicer ears: 7/5-approximation for the graph-TSP, 3/2 for the path version, and 4/3 for two-edgeconnected subgraphs. Combinatorica 34(5): pp. 597–629. doi:10.1007/s00493-014-2960-3.
+Serdyukov, A. I. (1974). O zadache nakhozhdeniya minimal’nogo Eilerova mul’tigrafa dlya svyaznogo grafa so vzveshennymi rebrami. Upravlyaemye
+sistemy 12: pp. 61–67. http://nas1.math.nsc.ru/aim/journals/us/us12/us12_008.pdf.
+Serdyukov, A. I. (1976). O vzaimnoi svodimosti nekotorykh ekstremal’nykh zadach teorii grafov. Upravlyaemye sistemy 15: pp. 69–73. http:
+//nas1.math.nsc.ru/aim/journals/us/us15/us15_005.pdf.
+Serdyukov, A. I. (1978). O nekotorykh ekstremal’nykh obkhodakh v grafakh. Upravlyaemye sistemy 17: pp. 76–79. http://nas1.math.nsc.ru/
+aim/journals/us/us17/us17_007.pdf.
+Serdyukov, A. I. (1980). Slozhnost’ otyskaniya gamil’tonovykh i eilerovykh marshrutov v grafakh. Abstract of thesis of a candiate of physicomathematical sciences, Academy of Sciences of the USSR, Siberian Branch, Institute of Mathematics, Novosibirsk, USSR.
+Serdyukov, A. I. (1982). On some extremal by-passes in graphs. Zentralblatt für Mathematik und ihre Grenzgebiete (zbMATH) 475: p. 520. Accession
+number 0475.90080.
+Sorge, M., van Bevern, R., Niedermeier, R., and Weller, M. (2011). From few components to an Eulerian graph by adding arcs. In P. Kolman
+and J. Kratochvíl, editors, WG 2011: Graph-Theoretic Concepts in Computer Science, volume 6986 of Lecture Notes in Computer Science, pp.
+307–318. Springer, Berlin, Heidelberg, Germany. doi:10.1007/978-3-642-25870-1_28.
+Sorge, M., van Bevern, R., Niedermeier, R., and Weller, M. (2012). A new view on Rural Postman based on Eulerian Extension and Matching.
+Journal of Discrete Algorithms 16: pp. 12–33. doi:10.1016/j.jda.2012.04.007.
+Svensson, O. (2013). Overview of new approaches for approximating TSP. In A. Brandstädt, K. Jansen, and R. Reischuk, editors, WG 2013:
+Graph-Theoretic Concepts in Computer Science, pp. 5–11. Springer, Berlin, Heidelberg, Germany. doi:10.1007/978-3-642-45043-3_2.
+Tarnawski, J. (2019). New Graph Algorithms via Polyhedral Techniques. Ph.D. thesis, École Polytechnique Fédérale de Lausanne, Switzerland.
+Trakhtenbrot, B. A. (1984). A survey of Russian approaches to perebor (brute-force search) algorithms. IEEE Annals of the History of Computing
+6(4): p. 384–400. doi:10.1109/MAHC.1984.10036.
+Traub, J. F., editor (1976). Algorithms and complexity: new directions and recent results. Academic Press.
+Traub, V. and Vygen, J. (2019). Approaching 3/2 for the s-t-path TSP. Journal of them ACM 66(2): art. 14. doi:10.1145/3309715.
+Vygen, J. (2012). New approximation algorithms for the TSP. OPTIMA Mathematical Optimization Society Newsletter 90: pp. 1–13. http:
+//www.mathopt.org/Optima-Issues/optima90.pdf.
+Williamson, D. P. and Shmoys, D. B. (2011). The Design of Approximation Algorithms. Cambridge University Press. doi:10.1017/CBO9780511921735.
+Wolsey, L. A. (1980). Heuristic analysis, linear programming and branch and bound. In V. J. Rayward-Smith, editor, Combinatorial Optimization II,
+volume 13 of Mathematical Programming Studies, pp. 121–134. Springer, Berlin, Heidelberg, Germany. doi:10.1007/BFb0120913.
+
+5
+
+Appendix
+The following is a translation of the Russian article of A. I. Serdyukov, O nekotorykh ekstremal’nykh obkhodakh v
+grafakh, Upravlyaemye sistemy 17:76–79, 1978.
+On some extremal walks in graphs
+A. I. Serdyukov
+1. Let G = (X, U) be an undirected n-vertex graph with edge weights ρi j , ui j ∈ U, 1 ≤ i, j ≤ n, where the ρi j are
+positive real numbers. Moreover, let there be a real number k ≥ 1. By L we denote the set of Hamiltonian cycles in the
+graph G, and by M the set of cycles that contain all vertices of G. We consider two extremum problems.
+Problem A. Find an element L∗ ∈ L with the property
+X
+ρ(L∗ ) =
+ρi j ≤ k · min ρ(L).
+L∈L
+
+ui j ∈L∗
+
+Note that, for k = 1, Problem A is nothing else but the traveling salesman problem.
+Problem B. Find an element M ∗ ∈ M with the property
+X
+ρi j ≤ k · min ρ(M).
+ρ(M ∗ ) =
+M∈M
+
+ui j ∈M ∗
+
+(herein we take into account the multiplicity that each edge appears on the cycle).
+For k = 1, Problems A and B are NP-complete [1]. Moreover, as shown in [2], Problem A is NP-complete for
+arbitrary k ≥ 1. In [3], an algorithm with polynomial running time is presented for Problem A with k = 2 in complete
+undirected graphs whose edge weights respect the triangle inequality.
+In this work, we present an algorithm for Problem A with k = 3/2 in the very same class of graphs, whose complexity
+is O(n3 ln n) operations.
+Terminology related to graph theory used in this work can be found in [4].
+2.
+
+Assume that the edge weights of a complete undirected n-vertex graph G satisfy the triangle inequality:
+ρi j ≤ ρik + ρk j ,
+
+1 ≤ i, j, k ≤ n.
+
+(1)
+
+We introduce some necessary notation:
+L0 — a minimum Hamiltonian cycle in graph G;
+M0 — the shortest cycle containing all vertices of graph G;
+D0 — the shortest spanning tree in graph G;
+X1 ⊆ X — the set of odd-degree vertices in the tree D0 ;
+Ḡ = (X1 , Ū) — the complete subgraph of G with vertex set X1 ;
+L̄0 — a minimum Hamiltonian cycle in Ḡ;
+w0 — a minimum perfect matching in graph Ḡ.
+We prove the following theorem.
+Theorem 1. Independently of the edge weights of the input graph G, which satisfy (1), the following relations hold:
+ρ(L0 ) = ρ(M0 ),
+
+(2)
+
+ρ(L0 ) ≥ ρ(L̄0 ),
+1
+ρ(w0 ) ≤ ρ(L̄0 ).
+2
+
+(3)
+
+6
+
+(4)
+
+The proof of equality (2) can be found in [5] (cf. Lemma 1). Inequality (4) follows from the fact that graph Ḡ has
+an even number of vertices (since the number of odd-degree vertices in a graph is even [4]) and that a Hamiltonian
+cycle can be partitioned into two edge-disjoint perfect matchings. We prove inequality (3). To this end, we write the
+Hamiltonian cycle L0 as a sequence of vertices:
+{x1 , x2 , x3 , . . . , xn−1 , xn , x1 }.
+
+(5)
+
+If X1 = X, then inequality (3) is proven. Let X1 ( X. In this case, there must be vertices xi ∈ X1 , x j ∈ X1 , i < j − 1
+such that xi+s < X1 , 1 ≤ s < j − i. Then, replacing the path between vertices i and j in the Hamiltonian cycle L0 by the
+edge ui j , we obtain a simple cycle visiting all vertices in X1 with a weight not exceeding ρ(L0 ). This is possible since
+the graph G is complete and (1) holds. By executing this process for all pairs of such vertices in the sequence (5), we
+obtain a Hamiltonian cycle in the graph Ḡ of weight not exceeding ρ(L0 ). Theorem 1 is proved.
+3. We now describe the algorithm for Problem A in the class of complete undirected graphs whose edge weights
+satisfy (1). The algorithm consists of five steps.
+First step. Compute a minimum spanning tree D0 in the graph G. To this end, one can use the algorithm of Prim [6],
+whose complexity is O(n2 ) operations.
+Second step. Find all odd-degree vertices in the tree D0 , which form the set X1 ⊆ X. Then build the subgraph Ḡ =
+(X1 , Ū) described above.
+Third step. Find the perfect matching w0 in graph Ḡ. To find such a perfect matching, one can use the algorithm
+described in [7], whose complexity is O(n3 ln n) operations. (In fact, the algorithm in [7] solves the problem of finding
+a maximum-weight matching in a graph. To reduce the problem of finding a minimum-weight perfect matching
+in the graph Ḡ to this problem, it is enough to assign the edges of Ḡ the weights ρ∗i j = 2a − ρi j , ūi j ∈ Ū, where
+a = maxūi j ∈Ū ρi j .) Note that the edge set D0 ∪ w0 forms an Eulerian graph (taking into account multi-edges that may
+appear when D0 ∩ w0 , ∅).
+Fourth step. Find an Eulerian walk of all edges of the graph D0 ∪ w0 using the algorithm described in [4].
+Fifth step. Write the Eulerian walk for the edges in the set D0 ∪ w0 as a sequence of vertices
+{x1 , x2 , x3 , . . . , xk−1 , x1 , xk , . . . , x1 }.
+
+(6)
+
+If there are no vertex repetitions in this sequence, then D0 ∪ w0 is a Hamiltonian cycle. Then we set L∗ = D0 ∪ w0 . In this
+case the algorithm stops. Assume that some vertex, without loss of generality x1 , is repeated in the sequence (6). Then
+we transform (6) into a cycle {x1 , x2 , x3 , . . . , xk−1 , xk , . . . , x1 } without increasing its weight. This is possible because
+G is a complete graph whose edge weights satisfy (1). Executing this process for each vertex of graph G as often as
+it is repeated in (6), we obtain a Hamiltonian cycle L1 . Set L∗ = L1 . This concludes the description of the algorithm.
+Theorem 2. The weight of the Hamiltonian cycle L∗ constructed by the described algorithm in the graph G satisfies the
+inequality
+ρ(L∗ ) <
+
+3
+· ρ(L0 ).
+2
+
+(7)
+
+Proof. To prove this, it is enough to notice that ρ(L∗ ) ≤ ρ(D0 ) + ρ(w0 ) < ρ(L0 ) + ρ(w0 ) and to use Theorem 1.
+4. We now consider Problem B in an arbitrary connected graph G̃ = (X, Ũ), the edges of which have weights ρ̃i j , ũi j ∈
+Ũ, 1 ≤ i, j ≤ n, where ρ̃i j are positive real numbers. For G̃ we build the shortest-path graph G = (X, U), which is
+complete and whose edge weights satisfy (1) (cf. [5]). By M̃0 denote the shortest cycle containing all vertices of G̃.
+Then we have the following equality [5]:
+ρ̃( M̃0 ) = ρ(L0 ).
+
+(8)
+
+By replacing each edge ui j ∈ L∗ by a shortest path between the vertices i and j in the graph G̃, we find some cycle M̃ ∗
+containing all vertices of graph G̃, whose weight equals ρ(L∗ ). Moreover, taking into account (7), (8), we obtain the
+following inequality:
+3
+ρ̃( M̃ ∗ ) < · ρ̃( M̃0 ).
+2
+7
+
+This last inequality means that one can use M̃ ∗ as a solution to Problem B in the graph G̃.
+For the complexity analysis of the algorithm, it is enough to note that each of its five steps requires no more than
+Cn3 ln n operations. All subsequent computations related to finding a solution for Problem B can be executed using
+the algorithm of Dijkstra [8] in O(n3 ) operations. Thus, the number of operations required for realizing the described
+algorithms is proportional to n3 ln n.
+Received by the editorial-publishing office
+January 27, 1976
+Literature
+1. Karp R. M., Slozhnost’ resheniya ekstremal’nykh kombinatornykh problem. Kiberneticheskii sbornik, volume 12,
+Moscow, Mir, 1975.
+2. Sahni S. and Gonzales T., P-complete approximation problems. Journal of Association for Computing Machinery,
+July 1976, No. 3, volume 23, pp. 555–565.
+3. Rosenkrantz D. J., Stearns R. E. and Lewis P. M., Approximate algorithms for the travelling salesperson problem.
+15th Annual IEEE Symp. on Switching and Automata Theory, 1974, pp. 33–42.
+4. Berzh K., Teoriya grafov i ee prilozhenie. Moscow, IL, 1962.
+5. Serdyukov A. I., O vzaimnoi svodimosti nekotorykh ekstremal’nykh zadach teorii grafov. Upravlyaemye sistemy,
+No. 15, Novosibirsk, 1976, pp. 68–73.
+6. Prim R. M., Kratchaishie svyazyvayushchie seti i nekotorye obobshcheniya. Kiberneticheskii sbornik, volume 2,
+Moscow, Mir, 1961.
+7. Karzanov A. V., Ekonomnye realizatsii algoritmov Edmondsa nakhozhdeniya parosochetanii maksimal’noi moshchnosti (maksimal’nogo vesa). In Issledovaniya po Diskretnoi Optimizatsii, Moscow, Mir, 1976, pp. 306–327.
+8. Khu T., Tselochislennoe programmirovanie i potoki v setyakh. Moscow, Mir, 1974.
+
+8
+
+
